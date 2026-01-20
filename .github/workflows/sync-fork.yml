@@ -1,0 +1,17 @@
+name: Sync Fork
+permissions:
+  contents: write
+  
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+jobs:
+  sync_fork:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh repo sync ${OWNER}/${REPO} --source danielmiessler/Personal_AI_Infrastructure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}

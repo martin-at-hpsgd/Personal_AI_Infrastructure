@@ -12,6 +12,6 @@ jobs:
     steps:
       - run: gh repo sync ${OWNER}/${REPO} --source danielmiessler/Personal_AI_Infrastructure
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.SYNC_FORK_TOKEN }}
           OWNER: ${{ github.repository_owner }}
           REPO: ${{ github.event.repository.name }}

@@ -27,9 +27,14 @@
 ![Open PRs](https://img.shields.io/github/issues-pr/danielmiessler/PAI?style=flat&logo=github&color=EC4899)
 ![License](https://img.shields.io/github/license/danielmiessler/PAI?style=flat&color=60A5FA)
 
+<!-- Metrics -->
+![Discussions](https://img.shields.io/github/discussions/danielmiessler/PAI?style=flat&logo=github&label=Discussions&color=EAB308)
+![Commit Activity](https://img.shields.io/github/commit-activity/m/danielmiessler/PAI?style=flat&logo=git&label=Commits%2Fmo&color=F59E0B)
+![Repo Size](https://img.shields.io/github/repo-size/danielmiessler/PAI?style=flat&logo=database&label=Repo%20Size&color=D97706)
+
 <!-- Content -->
 [![Get Started](https://img.shields.io/badge/🚀_Get_Started-Install-22C55E?style=flat)](#-installation)
-[![Release v2.4](https://img.shields.io/badge/📦_Release-v2.4-8B5CF6?style=flat)](Releases/v2.4/)
+[![Release v2.5](https://img.shields.io/badge/📦_Release-v2.5-8B5CF6?style=flat)](Releases/v2.5/)
 [![Packs](https://img.shields.io/badge/📦_Packs-23-8B5CF6?style=flat)](Packs/)
 [![Bundles](https://img.shields.io/badge/🎁_Bundles-1-F97316?style=flat)](Bundles/)
 [![Contributors](https://img.shields.io/github/contributors/danielmiessler/PAI?style=flat&logo=githubsponsors&logoColor=white&label=Contributors&color=EC4899)](https://github.com/danielmiessler/PAI/graphs/contributors)
@@ -44,7 +49,7 @@
 
 **Overview:** [Purpose](#the-purpose-of-this-project) · [What is PAI?](#what-is-pai) · [New to AI?](#new-to-this-start-here) · [Principles](#the-pai-principles) · [Primitives](#pai-primitives)
 
-**Get Started:** [Installation](#-installation) · [Packs](#-packs) · [Bundles](#-bundles)
+**Get Started:** [Installation](#-installation) · [Releases](Releases/) · [Packs](#-packs) · [Bundles](#-bundles)
 
 **Resources:** [FAQ](#-faq) · [Roadmap](#-roadmap) · [Community](#-community) · [Contributing](#-contributing)
 
@@ -59,9 +64,9 @@
 </div>
 
 > [!IMPORTANT]
-> **PAI v2.4.0 Released** — The Algorithm: A universal problem-solving system with ISC tracking and Euphoric Surprise.
+> **PAI v2.5.0 Released** — Think Deeper, Execute Faster: Two-Pass Capability Selection, Thinking Tools with Justify-Exclusion, and Parallel-by-Default Execution.
 >
-> **[Release notes →](Releases/v2.4/README.md)** | **[GitHub Release →](https://github.com/danielmiessler/PAI/releases/tag/v2.4.0)**
+> **[Release notes →](Releases/v2.5/README.md)** | **[GitHub Release →](https://github.com/danielmiessler/PAI/releases/tag/v2.5.0)**
 
 <div align="center">
 
@@ -361,7 +366,7 @@ Rich tab titles and pane management. Dynamic status lines show learning signals,
 ```bash
 # Clone the repo
 git clone https://github.com/danielmiessler/PAI.git
-cd PAI/Releases/v2.4
+cd PAI/Releases/v2.5
 
 # Back up your existing Claude Code configuration (if any)
 [ -d ~/.claude ] && mv ~/.claude ~/.claude-backup-$(date +%Y%m%d)
@@ -381,7 +386,7 @@ cd ~/.claude && bun run PAIInstallWizard.ts
 
 **After installation:** Restart Claude Code to activate hooks.
 
-[**Full Release documentation →**](Releases/v2.4/README.md)
+[**Full Release documentation →**](Releases/v2.5/README.md)
 
 ---
 
@@ -651,6 +656,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 <summary><strong>📜 Update History</strong></summary>
 
 <br/>
+
+**v2.5.0 (2026-01-30) — Think Deeper, Execute Faster**
+- Two-Pass Capability Selection: Hook hints validated against ISC in THINK phase
+- Thinking Tools with Justify-Exclusion: Opt-OUT, not opt-IN for Council, RedTeam, FirstPrinciples, etc.
+- Parallel-by-Default Execution: Independent tasks run concurrently via parallel agent spawning
+- 28 skills, 17 hooks, 356 workflows
+- [Release Notes](Releases/v2.5/README.md)
 
 **v2.4.0 (2026-01-23) — The Algorithm**
 - Universal problem-solving system with ISC (Ideal State Criteria) tracking

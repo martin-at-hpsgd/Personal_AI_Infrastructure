@@ -57,6 +57,7 @@
 
 import { appendFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { homedir } from 'os';
 import { getLearningCategory } from './lib/learning-utils';
 import { getPrincipalName } from './lib/identity';
 import { getISOTimestamp, getPSTComponents } from './lib/time';
@@ -133,7 +134,7 @@ function parseRating(prompt: string): { rating: number; comment?: string } | nul
  * NOTE: Ratings are now stored in LEARNING/SIGNALS/ (consolidated from separate SIGNALS/)
  */
 function writeRating(entry: RatingEntry): void {
-  const baseDir = process.env.PAI_DIR || join(process.env.HOME!, '.claude');
+  const baseDir = process.env.PAI_DIR || join((process.env.HOME || process.env.USERPROFILE || homedir()), '.claude');
   const signalsDir = join(baseDir, 'MEMORY', 'LEARNING', 'SIGNALS');
   const ratingsFile = join(signalsDir, 'ratings.jsonl');
 
@@ -144,7 +145,7 @@ function writeRating(entry: RatingEntry): void {
   const jsonLine = JSON.stringify(entry) + '\n';
   appendFileSync(ratingsFile, jsonLine, 'utf-8');
 
-  console.error(`[ExplicitRatingCapture] Wrote rating ${entry.rating} to ${ratingsFile}`);
+  // Wrote rating to ratings file
 }
 
 /**
@@ -185,7 +186,7 @@ function getLastResponseSummary(transcriptPath: string): string {
 function captureLowRatingLearning(rating: number, comment: string | undefined, responseContext: string): void {
   if (rating >= 6) return;
 
-  const baseDir = process.env.PAI_DIR || join(process.env.HOME!, '.claude');
+  const baseDir = process.env.PAI_DIR || join((process.env.HOME || process.env.USERPROFILE || homedir()), '.claude');
   const { year, month, day, hours, minutes, seconds } = getPSTComponents();
 
   const yearMonth = `${year}-${month}`;
@@ -231,12 +232,12 @@ ${comment ? `**${getPrincipalName()}'s feedback:** ${comment}` : ''}
 `;
 
   writeFileSync(filepath, content, 'utf-8');
-  console.error(`[ExplicitRatingCapture] Captured low rating learning to ${filepath}`);
+  // Captured low rating learning
 }
 
 async function main() {
   try {
-    console.error('[ExplicitRatingCapture] Hook started');
+    // ExplicitRatingCapture hook started
     const input = await readStdinWithTimeout();
     const data: HookInput = JSON.parse(input);
     const prompt = data.prompt || '';
@@ -244,11 +245,11 @@ async function main() {
     const result = parseRating(prompt);
 
     if (!result) {
-      console.error('[ExplicitRatingCapture] Not a rating, exiting');
+      // Not a rating, exiting
       process.exit(0);
     }
 
-    console.error(`[ExplicitRatingCapture] Detected rating: ${result.rating}${result.comment ? ` - ${result.comment}` : ''}`);
+    // Detected explicit rating
 
     const entry: RatingEntry = {
       timestamp: getISOTimestamp(),
@@ -262,14 +263,14 @@ async function main() {
     writeRating(entry);
 
     // Update trending analysis cache (fire-and-forget, don't block)
-    const baseDir = process.env.PAI_DIR || join(process.env.HOME!, '.claude');
+    const baseDir = process.env.PAI_DIR || join((process.env.HOME || process.env.USERPROFILE || homedir()), '.claude');
     const trendingScript = join(baseDir, 'tools', 'TrendingAnalysis.ts');
     if (existsSync(trendingScript)) {
       Bun.spawn(['bun', trendingScript, '--force'], {
         stdout: 'ignore',
         stderr: 'ignore'
       });
-      console.error('[ExplicitRatingCapture] Triggered TrendingAnalysis update');
+      // Triggered TrendingAnalysis update
     }
 
     if (result.rating < 6) {
@@ -286,17 +287,17 @@ async function main() {
             detailedContext: responseContext,
             sessionId: data.session_id,
           });
-          console.error(`[ExplicitRatingCapture] Created full failure capture for rating ${result.rating}`);
+          // Created full failure capture
         } catch (err) {
-          console.error(`[ExplicitRatingCapture] Error creating failure capture: ${err}`);
+          // Error creating failure capture - non-critical
         }
       }
     }
 
-    console.error('[ExplicitRatingCapture] Done');
+    // ExplicitRatingCapture done
     process.exit(0);
   } catch (err) {
-    console.error(`[ExplicitRatingCapture] Error: ${err}`);
+    // ExplicitRatingCapture error - non-blocking
     process.exit(0);
   }
 }

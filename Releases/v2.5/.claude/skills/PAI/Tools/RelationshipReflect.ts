@@ -15,7 +15,7 @@
  * ACTIONS:
  * 1. Scan MEMORY/RELATIONSHIP/ for recent notes
  * 2. Update OPINIONS.md confidence scores based on evidence
- * 3. Update ABOUT_DANIEL.md patterns and preferences
+ * 3. Update ABOUT_PRINCIPAL.md patterns and preferences
  * 4. Check for milestone achievements → OUR_STORY.md
  * 5. Queue soul updates if significant patterns emerge
  *
@@ -28,8 +28,9 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
+import { homedir } from 'os';
 
-const PAI_DIR = process.env.PAI_DIR || join(process.env.HOME!, '.claude');
+const PAI_DIR = process.env.PAI_DIR || join(process.env.HOME || process.env.USERPROFILE || homedir(), '.claude');
 
 interface RelationshipNote {
   type: 'W' | 'B' | 'O';

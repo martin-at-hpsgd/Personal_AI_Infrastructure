@@ -21,10 +21,11 @@
 
 import { statSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { homedir } from 'os';
 import { spawnSync } from 'child_process';
 
 export async function handleRebuildSkill(): Promise<void> {
-  const CORE_DIR = join(process.env.HOME!, '.claude/skills/PAI');
+  const CORE_DIR = join(process.env.HOME || process.env.USERPROFILE || homedir(), '.claude', 'skills', 'PAI');
   const COMPONENTS_DIR = join(CORE_DIR, 'Components');
   const SKILL_MD = join(CORE_DIR, 'SKILL.md');
   const BUILD_SCRIPT = join(CORE_DIR, 'Tools/CreateDynamicCore.ts');
@@ -36,7 +37,7 @@ export async function handleRebuildSkill(): Promise<void> {
       skillStat = statSync(SKILL_MD);
     } catch {
       // SKILL.md doesn't exist - rebuild needed
-      console.error('[RebuildSkill] SKILL.md missing - rebuilding');
+      // SKILL.md missing - rebuilding
       rebuild(BUILD_SCRIPT);
       return;
     }
@@ -50,25 +51,21 @@ export async function handleRebuildSkill(): Promise<void> {
     });
 
     if (anyNewer) {
-      console.error('[RebuildSkill] Components modified - rebuilding SKILL.md');
+      // Components modified - rebuilding SKILL.md
       rebuild(BUILD_SCRIPT);
     } else {
-      console.error('[RebuildSkill] SKILL.md is current - no rebuild needed');
+      // SKILL.md is current - no rebuild needed
     }
   } catch (error) {
-    console.error('[RebuildSkill] Error checking/rebuilding:', error);
+    // Error checking/rebuilding - non-critical
   }
 }
 
 function rebuild(buildScript: string): void {
   const result = spawnSync('bun', [buildScript], {
-    cwd: join(process.env.HOME!, '.claude/skills/PAI'),
+    cwd: join(process.env.HOME || process.env.USERPROFILE || homedir(), '.claude', 'skills', 'PAI'),
     encoding: 'utf-8',
   });
 
-  if (result.error) {
-    console.error('[RebuildSkill] Build failed:', result.error);
-  } else {
-    console.error('[RebuildSkill]', result.stdout?.trim() || 'Build completed');
-  }
+  // Build completed (or failed silently)
 }

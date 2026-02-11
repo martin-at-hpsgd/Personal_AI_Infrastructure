@@ -24,6 +24,7 @@
 
 import { mkdirSync, existsSync, readFileSync, writeFileSync, symlinkSync, unlinkSync, lstatSync } from 'fs';
 import { join } from 'path';
+import { homedir } from 'os';
 import { getPSTComponents, getISOTimestamp } from './lib/time';
 import { inference } from '../skills/PAI/Tools/Inference';
 
@@ -48,7 +49,7 @@ interface PromptClassification {
   is_new_topic: boolean;
 }
 
-const BASE_DIR = process.env.PAI_DIR || join(process.env.HOME!, '.claude');
+const BASE_DIR = process.env.PAI_DIR || join((process.env.HOME || process.env.USERPROFILE || homedir()), '.claude');
 const WORK_DIR = join(BASE_DIR, 'MEMORY', 'WORK');
 const STATE_DIR = join(BASE_DIR, 'MEMORY', 'STATE');
 const CURRENT_WORK_FILE = join(STATE_DIR, 'current-work.json');
@@ -133,7 +134,7 @@ status: "ACTIVE"
 `;
   writeFileSync(join(sessionPath, 'META.yaml'), meta, 'utf-8');
 
-  console.error(`[AutoWork] Created session: ${sessionPath}`);
+  // Created session directory
   return sessionPath;
 }
 
@@ -227,7 +228,7 @@ _Important observations during execution..._
   } catch { /* ignore if doesn't exist */ }
   symlinkSync(taskDirName, currentLink);
 
-  console.error(`[AutoWork] Created task: ${taskPath}`);
+  // Created task directory
   return taskDirName;
 }
 
@@ -263,7 +264,7 @@ async function classifyPrompt(prompt: string, hasExistingSession: boolean): Prom
       };
     }
   } catch (err) {
-    console.error(`[AutoWork] Classification failed: ${err}`);
+    // Classification failed - using fallback
   }
 
   // Fallback
@@ -295,7 +296,7 @@ async function main() {
 
     // Skip task creation for pure conversational
     if (classification.type === 'conversational' && !classification.is_new_topic) {
-      console.error('[AutoWork] Conversational continuation, no new task');
+      // Conversational continuation, no new task
       process.exit(0);
     }
 
@@ -322,7 +323,7 @@ async function main() {
       };
       writeCurrentWork(currentWork);
 
-      console.error(`[AutoWork] New session with task: ${taskDirName}`);
+      // New session with task created
     } else if (classification.is_new_topic) {
       // Existing session, new topic: create new task
       const sessionPath = join(WORK_DIR, currentWork!.session_dir);
@@ -341,15 +342,14 @@ async function main() {
       currentWork!.task_count = newTaskNumber;
       writeCurrentWork(currentWork!);
 
-      console.error(`[AutoWork] New task in session: ${taskDirName}`);
+      // New task in session
     } else {
       // Continuation of current task - no new task needed
-      console.error(`[AutoWork] Continuing task: ${currentWork!.current_task}`);
     }
 
     process.exit(0);
   } catch (err) {
-    console.error(`[AutoWork] Error: ${err}`);
+    // AutoWork error - non-blocking
     process.exit(0);
   }
 }

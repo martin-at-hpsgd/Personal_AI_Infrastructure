@@ -34,7 +34,9 @@
 
 <!-- Content -->
 [![Get Started](https://img.shields.io/badge/🚀_Get_Started-Install-22C55E?style=flat)](#-installation)
-[![Release v4.0.3](https://img.shields.io/badge/📦_Release-v4.0.3-8B5CF6?style=flat)](Releases/v4.0.3/)
+[![Release v5.0.0](https://img.shields.io/badge/📦_Release-v5.0.0-8B5CF6?style=flat)](Releases/v5.0.0/)
+[![Algorithm v6.3.0](https://img.shields.io/badge/Algorithm-v6.3.0-D97706?style=flat)](Releases/v5.0.0/.claude/PAI/ALGORITHM/v6.3.0.md)
+[![Pulse](https://img.shields.io/badge/Pulse-included-3B82F6?style=flat)](Releases/v5.0.0/.claude/PAI/PULSE/)
 [![Contributors](https://img.shields.io/github/contributors/danielmiessler/Personal_AI_Infrastructure?style=flat&logo=githubsponsors&logoColor=white&label=Contributors&color=EC4899)](https://github.com/danielmiessler/Personal_AI_Infrastructure/graphs/contributors)
 
 <!-- Tech Stack -->
@@ -62,9 +64,13 @@
 </div>
 
 > [!IMPORTANT]
-> **PAI v4.0.3 Released** — 3 patch updates since v4.0.0 with 30+ community-contributed fixes: Linux compatibility, JSON parsing, installer improvements, portability, and upgrade migration.
+> **PAI v5.0.0 — Life Operating System** — the biggest release in PAI history. PAI is no longer "AI scaffolding" — it's a **Life Operating System** with the unified **Pulse** daemon (Life Dashboard at `localhost:31337`), a **DA** (Digital Assistant) identity layer, **Algorithm v6.3.0** (Current State → Ideal State, seven phases, classifier-driven mode + tier), the **ISA** primitive (universal "ideal state" articulation), 45 skills, 171 workflows, 37 hooks, and structural privacy via containment zones.
 >
-> **[Release notes →](Releases/v4.0.3/README.md)** | **[All releases →](Releases/)**
+> **[v5.0.0 release notes →](Releases/v5.0.0/README.md)** | **[All releases →](Releases/)**
+>
+> **One-line install:** `curl -sSL https://ourpai.ai/install.sh | bash`
+>
+> Upgrading from v4.x? This is a different system, not a patch. Read the [migration guide](Releases/v5.0.0/README.md#migration-guide-from-v4x) first.
 
 <div align="center">
 
@@ -136,11 +142,26 @@ The key difference: **PAI learns from feedback**. Every interaction makes it bet
 
 ## What is PAI?
 
-PAI is a Personalized AI Platform designed to magnify your capabilities.
+**PAI is a Life Operating System.**
 
-It's designed for humans most of all, but can be used by teams, companies, or Federations of Planets desiring to be better versions of themselves.
+Like a computer OS manages files, processes, memory, and interfaces, PAI manages **your life** — your goals, relationships, work, health, finances, creative output, time. It turns AI from a chatbot you talk to into a system that *runs your life* — knowing your current state, your ideal state, and continuously hill-climbing you from one to the other.
 
-The scale of the entity doesn't matter: It's a system for understanding, articulating, and realizing its principal's goals using a full-featured Agentic AI Platform.
+Three layers, top to bottom:
+
+```
+┌─────────────────────────────────────────────────┐
+│  THE DA — your Digital Assistant                │  ← Primary interface
+│  (the voice / personality you interact with)    │
+├─────────────────────────────────────────────────┤
+│  PULSE — the Life Dashboard + daemon            │  ← Visible surface
+│  (where you SEE your state, goals, work)        │
+├─────────────────────────────────────────────────┤
+│  PAI — the Life Operating System                │  ← The OS itself
+│  (skills, memory, algorithm, telos, identity)   │
+└─────────────────────────────────────────────────┘
+```
+
+It's designed for humans most of all, but can be used by teams, companies, or Federations of Planets desiring to be better versions of themselves. The scale of the entity doesn't matter: it's a system for understanding, articulating, and realizing its principal's goals using a full-featured agentic AI platform.
 
 ### Who is PAI for?
 
@@ -208,6 +229,49 @@ While the Principles describe the *philosophy* of PAI, the Primitives are the *a
 </p>
 
 These primitives work together to create the experience of working with a system that understands and knows you—as opposed to a tool harness that just executes commands.
+
+---
+
+### Pulse — the unified daemon (NEW in v5.0.0)
+
+**`PAI/PULSE/pulse.ts`** — one Bun process, one port (`localhost:31337`), one launchd plist, one log file. Pulse replaces every previous loose service. It runs voice notifications (ElevenLabs), the entire hook lifecycle (SessionStart, PreToolUse, PostToolUse, Stop, PreCompact, etc.), observability (tool activity, failures, satisfaction signals, Algorithm reflections), cron scheduling for routines, the **Life Dashboard** at `http://localhost:31337` (Next.js — 22 routes including Life, Health, Finances, Business, Telos, Goals, Knowledge, System Docs, Arbol), the wiki API, and optional integrations (Telegram bot, iMessage bridge). After install Pulse runs as a supervised macOS launchd service (`com.pai.pulse`) — leave it running.
+
+---
+
+### The DA — your AI gets a name (NEW in v5.0.0)
+
+Every PAI install picks a **DA identity**: name, voice, color, personality. This is your AI — the peer you work with daily. Two files own it:
+
+| File | What it owns |
+|------|--------------|
+| `PAI/USER/PRINCIPAL_IDENTITY.md` | Who **you** are — name, role, location, worldview, preferences, work patterns |
+| `PAI/USER/DA_IDENTITY.md` | Who your **DA** is — name, voice ID, personality, writing style, what they love, what they dislike |
+
+Both load at session start so the DA always has them in context. **Run `/interview` after install** and your DA will guide you through naming itself, picking a voice, and capturing your TELOS.
+
+---
+
+### The Algorithm v6.3.0 — Current State → Ideal State (formalized in v5.0.0)
+
+`PAI/ALGORITHM/v6.3.0.md` is doctrine. Every non-trivial task runs through the seven phases: **OBSERVE → THINK → PLAN → BUILD → EXECUTE → VERIFY → LEARN**. The Algorithm is the centerpiece of PAI — everything else feeds it.
+
+What's new in v6.x:
+
+- **Mode classifier** — a Sonnet-backed `UserPromptSubmit` hook decides MINIMAL / NATIVE / ALGORITHM and tier (E1–E5) for every prompt. The executor obeys the classifier; no regex layer, no model judgment.
+- **Closed-list thinking capabilities** — IterativeDepth, ApertureOscillation, FirstPrinciples, SystemsThinking, RootCauseAnalysis, Council, RedTeam, Science, BeCreative, Ideate, BitterPillEngineering, Evals, WorldThreatModel, Fabric patterns, ContextSearch, ISA, Advisor, ReReadCheck, FeedbackMemoryConsult. Phantom capabilities (anything outside this list) are a CRITICAL FAILURE.
+- **Effort tiers** — E1 (<90s) through E5 (<2h+). Time budget is the hard constraint; thinking-floor and ISC-count are tier-graded.
+- **Voice phase announcements** — every phase transition narrates over Pulse so you can follow long tasks audibly.
+- **Verification doctrine** — live-probe required for user-facing artifacts, advisor calls at commitment boundaries, cross-vendor audit at E4/E5, conflict surfacing on advisor/empirical contradictions.
+
+---
+
+### The ISA — the universal "ideal state" primitive (NEW in v5.0.0)
+
+The **Ideal State Artifact** is a single document that articulates "done" for any thing whose ideal state we're pursuing — a project, an application, a library, a work session, an art piece, a strategic decision. It serves five identities at once: ideal state articulation, test harness, build verification, done condition, system of record.
+
+Twelve fixed sections: `Problem` → `Vision` → `Out of Scope` → `Principles` → `Constraints` → `Goal` → `Criteria` → `Test Strategy` → `Features` → `Decisions` → `Changelog` → `Verification`.
+
+The **ISA skill** at `skills/ISA/` owns six workflows (Scaffold, Interview, CheckCompleteness, Reconcile, Seed, Append) with a dozen reference examples spanning E1–E5 across code, art, design, ops, marketplace, and enterprise.
 
 ---
 
@@ -291,6 +355,12 @@ Defines system and user-level security policies by default. You don't have to ru
 
 ---
 
+### Containment + Release Tooling (NEW in v5.0.0)
+
+Privacy is **structural**, not stylistic. `hooks/lib/containment-zones.ts` is a TypeScript module declaring every directory's privacy zone — single source of truth. The `ContainmentGuard` PreToolUse hook blocks any Write/Edit/MultiEdit that would land sensitive content outside its zone. Public releases run **12 security gates** (zone deletion, identity grep, secret scan via trufflehog, .env strays, private tokens, reference integrity, private skill refs, username paths, staging boot, dashboard leak, template-only USER/MEMORY) — build fails closed if any gate trips. Two-stage release: stage to a local build directory with all gates, then publish to GitHub. The two never auto-chain.
+
+---
+
 <p align="center">
   <img src="./images/pai-component-4-ai-installation.png" alt="AI-Based Installation" width="700">
 </p>
@@ -334,58 +404,82 @@ Rich tab titles and pane management. Dynamic status lines show learning signals,
 ## 🚀 Installation
 
 > [!CAUTION]
-> **Project in Active Development** — PAI is evolving rapidly. Expect breaking changes, restructuring, and frequent updates. We are working on stable and development branches, but currently it's all combined.
+> **Project in Active Development** — PAI is evolving rapidly. Expect breaking changes, restructuring, and frequent updates.
 
-### Fresh Install
+### One-line install (recommended)
 
 ```bash
-# Clone the repo
-git clone https://github.com/danielmiessler/Personal_AI_Infrastructure.git
-cd Personal_AI_Infrastructure/Releases/v4.0.3
+curl -sSL https://ourpai.ai/install.sh | bash
+```
 
-# Copy the release and run the installer
-cp -r .claude ~/ && cd ~/.claude && bash install.sh
+That's it. The installer wizard handles Bun, Git, and Claude Code verification, ElevenLabs key (optional), DA identity setup, voice picker, Pulse launchd registration, and validation. An existing `~/.claude/` is auto-backed-up to `~/.claude.backup-{TIMESTAMP}` before anything is overwritten.
+
+**Prefer to inspect first?** [Read the script](https://ourpai.ai/install.sh) before piping it.
+
+### Manual install (clone + run)
+
+```bash
+git clone https://github.com/danielmiessler/Personal_AI_Infrastructure.git
+cd Personal_AI_Infrastructure/Releases/v5.0.0
+cp -R .claude ~/
+cd ~/.claude && ./install.sh
 ```
 
 **The installer will:**
-- Detect your system and install prerequisites (Bun, Git, Claude Code)
-- Ask for your name, AI assistant name, timezone, and temperature unit preference
-- Clone/configure the PAI repository into `~/.claude/`
-- Set up voice features with ElevenLabs (optional)
-- Configure your shell alias and verify the installation
+- Verify Bun, Git, and Claude Code are installed
+- Prompt for your ElevenLabs API key (skippable — voice falls back to desktop notifications)
+- Launch the DA identity wizard (name + voice + personality)
+- Set up Pulse as a launchd service (`com.pai.pulse`)
+- Run validation
 
-**After installation:** Run `source ~/.zshrc && pai` to launch PAI.
-
-### Upgrading from a Previous Version
+### After install
 
 ```bash
-# 1. Back up your current installation
-cp -r ~/.claude ~/.claude-backup-$(date +%Y%m%d)
-
-# 2. Clone and copy the new release over your installation
-git clone https://github.com/danielmiessler/Personal_AI_Infrastructure.git
-cd Personal_AI_Infrastructure/Releases/v4.0.3
-cp -r .claude ~/
-
-# 3. Run the installer (detects existing installation, preserves your data)
-cd ~/.claude && bash install.sh
-
-# 4. Rebuild your CLAUDE.md
-bun ~/.claude/PAI/Tools/BuildCLAUDE.ts
+open http://localhost:31337    # the Life Dashboard
 ```
 
-> [!TIP]
-> The installer **auto-detects** existing installations. It preserves your `USER/` files, merges `settings.json` (only updating installer-managed fields like identity and version), and never overwrites your hooks, statusline, or custom configuration.
+Then run `/interview` in Claude Code. Your DA will guide you through:
+
+1. **Phase 1 — TELOS:** Mission, Goals, Beliefs, Wisdom, Challenges, Books, Mental models, Narratives
+2. **Phase 2 — IDEAL_STATE:** What does success look like for you?
+3. **Phase 3 — Preferences:** Tools, conventions, working style
+4. **Phase 4 — Identity:** Final DA personality tuning
+
+This is the most important step. **Without TELOS, your DA has nothing to optimize against.**
+
+### Upgrading from v4.x
+
+> [!IMPORTANT]
+> v5.0.0 is a different system, not a patch. Read the **[full migration guide](Releases/v5.0.0/README.md#migration-guide-from-v4x)** before installing.
+
+Quick path:
+
+```bash
+# 1. Back up your existing installation
+cp -R ~/.claude ~/.claude.backup-$(date +%Y%m%d)
+
+# 2. Install v5.0.0 (one-liner above) or via manual clone
+curl -sSL https://ourpai.ai/install.sh | bash
+
+# 3. Open the Life Dashboard and run the interview
+open http://localhost:31337
+```
+
+If you had personal content in v4.x (notes, project state, custom rules), tell your DA: *"Help me migrate my old content into the PAI/USER/ structure."* The **Migrate** skill intakes from `.md`/`.markdown`/`.txt`, Obsidian, Notion, Apple Notes — classifies each chunk against the v5 taxonomy (TELOS, KNOWLEDGE, PROJECTS, FEED, etc.) and commits with provenance.
 
 **Post-upgrade checklist:**
-- [ ] Verify your identity in `settings.json` (name, AI name, timezone)
-- [ ] Confirm the statusline displays correctly
-- [ ] Test voice notifications (if enabled)
-- [ ] Run a simple prompt to confirm PAI responds correctly
+- [ ] Pulse is alive: `curl -s http://localhost:31337/api/pulse/health | jq`
+- [ ] Voice announces: `curl -s -X POST http://localhost:31337/notify -H "Content-Type: application/json" -d '{"message": "Hello from your DA"}'`
+- [ ] Dashboard renders: `open http://localhost:31337`
+- [ ] DA identity populated in `PAI/USER/DA_IDENTITY.md`
+- [ ] TELOS captured under `PAI/USER/TELOS/`
 
 ---
 
 ## 📦 PAI Packs
+
+> [!NOTE]
+> **v5.0.0 ships skills directly** — 45 skills and 171 workflows are part of the base install. **Packs** below remain available as standalone, AI-installable capabilities for users who want a specific capability without installing all of PAI.
 
 Don't want to install all of PAI? **Packs** are standalone, AI-installable capabilities you can add one at a time. Each pack is self-contained — your AI reads the install guide and sets everything up for you. No PAI installation required.
 
@@ -557,6 +651,17 @@ MIT License - see [LICENSE](LICENSE) for details.
 <summary><strong>📜 Update History</strong></summary>
 
 <br/>
+
+**v5.0.0 (2026-04-30) — Life Operating System**
+- **Pulse** — unified daemon (port 31337): voice, hooks, observability, cron, Life Dashboard (22 routes), wiki API, optional Telegram/iMessage bridges. Replaces every previous loose service.
+- **The DA** — Digital Assistant identity layer. PRINCIPAL_IDENTITY + DA_IDENTITY pair, loaded at session start. `/interview` walks you through naming your DA, picking a voice, capturing TELOS.
+- **Algorithm v6.3.0** — seven-phase loop (OBSERVE → THINK → PLAN → BUILD → EXECUTE → VERIFY → LEARN). Sonnet-backed mode classifier picks MINIMAL/NATIVE/ALGORITHM and tier (E1–E5) per prompt. Closed-list thinking capabilities. Voice phase announcements. Verification doctrine (live-probe, advisor calls at commitment boundaries, cross-vendor audit at E4/E5).
+- **The ISA** — Ideal State Artifact primitive. One document, twelve sections (Problem → Vision → Out of Scope → Principles → Constraints → Goal → Criteria → Test Strategy → Features → Decisions → Changelog → Verification), five identities (articulation, test harness, build verification, done condition, system of record). Owned by the **ISA skill** (Scaffold, Interview, CheckCompleteness, Reconcile, Seed, Append) with a dozen reference examples spanning E1–E5.
+- **Containment + release tooling** — privacy is structural. `containment-zones.ts` declares every directory's privacy zone; `ContainmentGuard` PreToolUse hook blocks cross-zone leaks; 12 security gates run on every public release; two-stage release (stage → publish) never auto-chains.
+- **Memory v7.6** — structured by purpose: WORK (active task ISAs), KNOWLEDGE (typed graph: People, Companies, Ideas, Research, Blogs), LEARNING (meta-patterns), RELATIONSHIP (DA-Principal notes), OBSERVABILITY (every tool call + hook firing + satisfaction signal), STATE (session registry).
+- **45 public skills, 171 workflows, 37 hooks** — skills are self-activating composable domain units; hooks fire across SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SubagentStop, PreCompact, SessionEnd.
+- **One-line installer** — `curl -sSL https://ourpai.ai/install.sh | bash`. Auto-backs-up existing `~/.claude/`, runs the DA identity wizard, registers Pulse as a launchd service, validates.
+- [Full release notes + migration guide](Releases/v5.0.0/README.md)
 
 **v4.0.3 (2026-03-01) — Community PR Patch**
 - JSON array parsing fix in Inference.ts

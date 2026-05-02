@@ -47,7 +47,7 @@
 
 <br/>
 
-**Overview:** [Purpose](#the-purpose-of-this-project) · [What is PAI?](#what-is-pai) · [New to AI?](#new-to-this-start-here) · [Principles](#the-pai-principles) · [Primitives](#pai-primitives)
+**Overview:** [What PAI Is](#what-pai-is) · [Principles](#principles) · [Features](#features)
 
 **Get Started:** [Installation](#-installation) · [Releases](Releases/) · [Packs](Packs/)
 
@@ -78,326 +78,86 @@
 
 </div>
 
-## The Purpose of This Project
+## What PAI Is
 
-**PAI exists to solve what I believe is the [P0 problem](https://danielmiessler.com/telos) in the world:**
+PAI is a Life Operating System. It captures who you are, what you care about, and where you're trying to go — and then helps you get there using AI that knows you. Three layers stack on top of each other:
 
-### Only a tiny fraction of humanity's creative potential is activated on Earth.
+- **PAI** — the OS itself. Skills, memory, the Algorithm, your Telos, your identity files.
+- **Pulse** — the Life Dashboard at `localhost:31337`. Where you actually see your state, goals, and work.
+- **The DA** — your Digital Assistant. The voice and personality you talk to.
 
-Most people don't believe they have valuable contributions to make. They think there are "special" people—and they aren't one of them. They've never asked who they are, what they're about, and have never articulated or written it down. This makes them catastrophically vulnerable to AI displacement. Without activation, there is no high-agency.
-
-So our goal with PAI is to activate people.
-
-**PAI's mission is twofold:**
-
-1. **Activate as many people as possible** — Help people identify, articulate, and pursue their own purpose in life through AI-augmented self-discovery
-2. **Make the best AI available in the world accessible to everyone** — Ensure this quality of AI infrastructure isn't reserved for just the rich or technical elite.
-
-That's why this is an open-source project instead of private.
+It's designed for individuals first, but the same architecture works for teams, companies, or any entity that wants to articulate what it's trying to be and move toward it.
 
 ---
 
-## New to This? Start Here
+## Principles
 
-You've probably used ChatGPT or Claude. Type a question, get an answer. Simple.
+### Humans first, tech second
 
-You can think of AI systems as **three levels**:
+PAI puts the human at the center, not the tooling. The tech exists to improve people's lives, not the other way around. Every design decision starts from one question: what does this do for the person running it?
 
-<p align="center">
-  <img src="./images/pai-eli5-diagram.png" alt="The AI Evolution - From chatbots to your personal AI system" width="800">
-</p>
+### A Life OS, not an agent harness
 
-### Chatbots
+PAI captures what you care about — goals, work, relationships, health, finances — and helps you pursue your ideal state across all of it. It writes code and runs agents and does the things people associate with AI tooling, but those are capabilities in service of the larger goal. The point is your life, not the tools.
 
-ChatGPT, Claude, Gemini—you ask something, it answers, and then it forgets everything. Next conversation starts fresh. No memory of you, your preferences, or what you talked about yesterday.
+### Ideal State drives everything
 
-**The pattern:** Ask → Answer → Forget
+The biggest unsolved problem with AI is that nobody can define what "good" or "done" actually means for a given task. PAI is built around the concept of Ideal State — specifically the transition from your current state to your ideal state — and it's woven through every layer.
 
-### Agentic Platforms
+The primary expression is the **ISA** (Ideal State Artifact). An ISA is similar to a software PRD: it captures what done looks like so you can build toward it. The difference is that an ISA is general — it works for any creative task, from design to art to philosophy to engineering to strategy. The system decomposes the ideal state into discrete **ISCs** (Ideal State Criteria), which populate the document and double as verification items. That's how PAI hill-climbs toward ideal state on any kind of work.
 
-Tools like Claude Code. The AI can actually *do* things—write code, browse the web, edit files, run commands.
+### A single Digital Assistant will be everyone's interface to AI
 
-**The pattern:** Ask → Use tools → Get result
+I wrote about this in 2016 in [The Real Internet of Things](https://danielmiessler.com/blog/the-real-internet-of-things), and I'm more convinced now than I was then. The trajectory is clear: chatbots → agents → assistants. We're all building the same thing, and the endpoint is one DA per person.
 
-More capable, but it still doesn't know *you*—your goals, your preferences, your history.
+TRIOT had four core ideas that PAI is built on:
 
-### PAI (Personal AI Infrastructure)
+- **Digital Assistants** — one DA per person, your primary interface to all AI
+- **Everything gets an API** — every product, service, person, and place becomes addressable
+- **Your DA dynamically creates your interfaces** — no more apps and dashboards; the DA assembles whatever you need in the moment
+- **You define your ideal state, AI helps you get there** — the whole system points at your Telos
 
-Now your DA **learns and improves**:
-- **Captures every signal** — Ratings, sentiment, verification outcomes
-- **Learns from mistakes** — Failures get analyzed and fixed
-- **Gets better over time** — Success patterns get reinforced
-- **Upgrades itself** — Skills, workflows, even the core behavior evolves
-
-Plus it knows:
-- **Your goals** — What you're working toward
-- **Your preferences** — How you like things done
-- **Your history** — Past decisions and learnings
-
-**The pattern:** Observe → Think → Plan → Execute → Verify → **Learn** → Improve
-
-The key difference: **PAI learns from feedback**. Every interaction makes it better at helping *you* specifically.
+This is what PAI is reaching for.
 
 ---
 
-## What is PAI?
+## Features
 
-**PAI is a Life Operating System.**
+### Text over opaque storage
 
-Like a computer OS manages files, processes, memory, and interfaces, PAI manages **your life** — your goals, relationships, work, health, finances, creative output, time. It turns AI from a chatbot you talk to into a system that *runs your life* — knowing your current state, your ideal state, and continuously hill-climbing you from one to the other.
+Heavy bias toward plain text and Markdown. PAI avoids SQLite, Postgres, and other opaque stores wherever possible. Everything should be transparent and parsable — by you, by your DA, by `rg`, by anything else. If you can't read it with `cat`, we don't want it.
 
-Three layers, top to bottom:
+### Context scaffolding > model
 
-```
-┌─────────────────────────────────────────────────┐
-│  THE DA — your Digital Assistant                │  ← Primary interface
-│  (the voice / personality you interact with)    │
-├─────────────────────────────────────────────────┤
-│  PULSE — the Life Dashboard + daemon            │  ← Visible surface
-│  (where you SEE your state, goals, work)        │
-├─────────────────────────────────────────────────┤
-│  PAI — the Life Operating System                │  ← The OS itself
-│  (skills, memory, algorithm, telos, identity)   │
-└─────────────────────────────────────────────────┘
-```
+The mistake most people make with AI is failing to feed it the big picture. PAI is fundamentally a system for handing the smartest models the right context — about you, about what you're trying to accomplish, about the tools they have — so they can actually help you reach your ideal state. The model matters less than what surrounds it.
 
-It's designed for humans most of all, but can be used by teams, companies, or Federations of Planets desiring to be better versions of themselves. The scale of the entity doesn't matter: it's a system for understanding, articulating, and realizing its principal's goals using a full-featured agentic AI platform.
+### Bitter-pilled engineering
 
-### Who is PAI for?
+The flip side of context scaffolding: as models get stronger, they need fewer instructions on how to do the work. We constantly audit PAI to remove overly prescriptive direction in places where the model can do better with just the right context and tools. The system gets smaller as the models get bigger.
 
-**Everyone, full stop.** It's the anti-gatekeeping AI project.
+### Filesystem as context, no RAG
 
-- **Small business owners** who aren't technical but want AI to handle invoicing, scheduling, customer follow-ups, and marketing
-- **Companies** who want to understand their data, optimize operations, and make better decisions
-- **Managers** who want to run their teams more effectively—tracking projects, preparing for reviews, and communicating clearly
-- **Artists and creatives** who want to find local events, galleries, and opportunities to showcase their work
-- **Everyday people** who want to improve their lives—better fitness routines, stronger social connections, personal finance, or just getting organized
-- **Developers** using AI coding assistants who want persistent memory and custom workflows
-- **Power users** who want their AI to know their goals, preferences, and context
-- **Teams** building shared AI infrastructure with consistent capabilities
-- **Experimenters** interested in AI system design and personal AI patterns
+PAI has avoided RAG since June 2025. Rich text with cross-references, plus fast search like ripgrep, gives us everything people normally want from RAG — without the embedding complexity, the retrieval flakiness, or the loss of fidelity. Your filesystem is the index.
 
-### What makes PAI different?
+### Memory that compounds
 
-The first thing people ask is:
+A text-based memory system that captures what you've done, what you've learned, and what's worth keeping — and feeds it back as input to future work. Three tiers (WORK, KNOWLEDGE, LEARNING) plus a typed graph across people, companies, ideas, and research.
 
-> How is this different from Claude Code, or any of the other agentic systems?
+### Self-improvement loop
 
-Most agentic systems are built around tools with the user being an afterthought. They are also mostly task-based instead of being goal-based using all the context available to them. PAI is the opposite.
+PAI captures signals about what went well and what didn't — explicit ratings, sentiment, verification outcomes, satisfaction — and uses them to improve itself. The system that runs the work is also the system that gets better at running it.
 
-**Three core differentiators:**
+### The Algorithm
 
-1. **Goal Orientation** — PAI's primary focus is on the human running it and what they're trying to do in the world, not the tech. This is built into how the system executes all tasks.
+A custom algorithm that drives the current → ideal state transition through a seven-phase loop modeled on the scientific method, using Deutsch's framing of hard-to-vary explanations as the standard for "good." It's the gravitational center of PAI — every non-trivial task runs through it.
 
-2. **Pursuit of Optimal Output** — The system's outer loop and everything it does is trying to produce the exact right output given the current situation and all the contexts around it.
+### Skills as deterministic units
 
-3. **Continuous Learning** — The system constantly captures signals about what was done, what changes were made, what outputs were produced for each request, and then how you liked or disliked the results.
+A skill system biased toward deterministic code execution. The hierarchy is: code → CLI to run the code → workflows that prompt the CLI → a SKILL.md that routes between workflows. The skill is the container; SKILL.md is the front door; the actual work is real code wherever possible. Prompts wrap code; code doesn't wrap prompts.
 
----
+### Thinking skills
 
-## The PAI Principles
-
-These principles guide how PAI systems are designed and built. **[Full breakdown →](https://danielmiessler.com/blog/personal-ai-infrastructure)**
-
-| # | Principle | Summary |
-|---|-----------|---------|
-| 1 | **User Centricity** | PAI is built around you, not tooling. Your goals, preferences, and context come first—the infrastructure exists to serve them. |
-| 2 | **The Foundational Algorithm** | The scientific method as a universal problem-solving loop: Observe → Think → Plan → Build → Execute → Verify → Learn. Define the ideal state, iterate until you reach it. |
-| 3 | **Clear Thinking First** | Good prompts come from clear thinking. Clarify the problem before writing the prompt. |
-| 4 | **Scaffolding > Model** | System architecture matters more than which model you use. |
-| 5 | **Deterministic Infrastructure** | AI is probabilistic; your infrastructure shouldn't be. Use templates and patterns. |
-| 6 | **Code Before Prompts** | If you can solve it with a bash script, don't use AI. |
-| 7 | **Spec / Test / Evals First** | Write specifications and tests before building. Measure if the system works. |
-| 8 | **UNIX Philosophy** | Do one thing well. Make tools composable. Use text interfaces. |
-| 9 | **ENG / SRE Principles** | Treat AI infrastructure like production software: version control, automation, monitoring. |
-| 10 | **CLI as Interface** | Command-line interfaces are faster, more scriptable, and more reliable than GUIs. |
-| 11 | **Goal → Code → CLI → Prompts → Agents** | The decision hierarchy: clarify goal, then code, then CLI, then prompts, then agents. |
-| 12 | **Skill Management** | Modular capabilities that route intelligently based on context. |
-| 13 | **Memory System** | Everything worth knowing gets captured. History feeds future context. |
-| 14 | **Agent Personalities** | Different work needs different approaches. Specialized agents with unique voices. |
-| 15 | **Science as Meta-Loop** | Hypothesis → Experiment → Measure → Iterate. |
-| 16 | **Permission to Fail** | Explicit permission to say "I don't know" prevents hallucinations. |
-
----
-
-## PAI Primitives
-
-While the Principles describe the *philosophy* of PAI, the Primitives are the *architecture*—the core systems that make everything work.
-
-<p align="center">
-  <img src="./images/pai-unique-components-diagram.png" alt="PAI Primitives - A system that knows you, not a tool harness" width="800">
-</p>
-
-These primitives work together to create the experience of working with a system that understands and knows you—as opposed to a tool harness that just executes commands.
-
----
-
-### Pulse — the unified daemon (NEW in v5.0.0)
-
-**`PAI/PULSE/pulse.ts`** — one Bun process, one port (`localhost:31337`), one launchd plist, one log file. Pulse replaces every previous loose service. It runs voice notifications (ElevenLabs), the entire hook lifecycle (SessionStart, PreToolUse, PostToolUse, Stop, PreCompact, etc.), observability (tool activity, failures, satisfaction signals, Algorithm reflections), cron scheduling for routines, the **Life Dashboard** at `http://localhost:31337` (Next.js — 22 routes including Life, Health, Finances, Business, Telos, Goals, Knowledge, System Docs, Arbol), the wiki API, and optional integrations (Telegram bot, iMessage bridge). After install Pulse runs as a supervised macOS launchd service (`com.pai.pulse`) — leave it running.
-
----
-
-### The DA — your AI gets a name (NEW in v5.0.0)
-
-Every PAI install picks a **DA identity**: name, voice, color, personality. This is your AI — the peer you work with daily. Two files own it:
-
-| File | What it owns |
-|------|--------------|
-| `PAI/USER/PRINCIPAL_IDENTITY.md` | Who **you** are — name, role, location, worldview, preferences, work patterns |
-| `PAI/USER/DA_IDENTITY.md` | Who your **DA** is — name, voice ID, personality, writing style, what they love, what they dislike |
-
-Both load at session start so the DA always has them in context. **Run `/interview` after install** and your DA will guide you through naming itself, picking a voice, and capturing your TELOS.
-
----
-
-### The Algorithm v6.3.0 — Current State → Ideal State (formalized in v5.0.0)
-
-`PAI/ALGORITHM/v6.3.0.md` is doctrine. Every non-trivial task runs through the seven phases: **OBSERVE → THINK → PLAN → BUILD → EXECUTE → VERIFY → LEARN**. The Algorithm is the centerpiece of PAI — everything else feeds it.
-
-What's new in v6.x:
-
-- **Mode classifier** — a Sonnet-backed `UserPromptSubmit` hook decides MINIMAL / NATIVE / ALGORITHM and tier (E1–E5) for every prompt. The executor obeys the classifier; no regex layer, no model judgment.
-- **Closed-list thinking capabilities** — IterativeDepth, ApertureOscillation, FirstPrinciples, SystemsThinking, RootCauseAnalysis, Council, RedTeam, Science, BeCreative, Ideate, BitterPillEngineering, Evals, WorldThreatModel, Fabric patterns, ContextSearch, ISA, Advisor, ReReadCheck, FeedbackMemoryConsult. Phantom capabilities (anything outside this list) are a CRITICAL FAILURE.
-- **Effort tiers** — E1 (<90s) through E5 (<2h+). Time budget is the hard constraint; thinking-floor and ISC-count are tier-graded.
-- **Voice phase announcements** — every phase transition narrates over Pulse so you can follow long tasks audibly.
-- **Verification doctrine** — live-probe required for user-facing artifacts, advisor calls at commitment boundaries, cross-vendor audit at E4/E5, conflict surfacing on advisor/empirical contradictions.
-
----
-
-### The ISA — the universal "ideal state" primitive (NEW in v5.0.0)
-
-The **Ideal State Artifact** is a single document that articulates "done" for any thing whose ideal state we're pursuing — a project, an application, a library, a work session, an art piece, a strategic decision. It serves five identities at once: ideal state articulation, test harness, build verification, done condition, system of record.
-
-Twelve fixed sections: `Problem` → `Vision` → `Out of Scope` → `Principles` → `Constraints` → `Goal` → `Criteria` → `Test Strategy` → `Features` → `Decisions` → `Changelog` → `Verification`.
-
-The **ISA skill** at `skills/ISA/` owns six workflows (Scaffold, Interview, CheckCompleteness, Reconcile, Seed, Append) with a dozen reference examples spanning E1–E5 across code, art, design, ops, marketplace, and enterprise.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-1-assistant-vs-agent.png" alt="Assistant vs Agent-Based Interaction" width="700">
-</p>
-
-### Assistant vs. Agent-Based AI Interaction
-
-PAI treats AI as a [persistent assistant, friend, coach, and mentor](https://danielmiessler.com/blog/personal-ai-maturity-model) rather than a stateless agent that runs tasks. An assistant knows your goals, remembers your preferences, and improves over time. An agent executes commands and forgets.
-
----
-
-<p align="center">
-  <img src="./images/pai-primitive-telos.png" alt="TELOS - Deep Goal Understanding" width="700">
-</p>
-
-### TELOS (Deep Goal Understanding)
-
-10 files that capture who you are: MISSION.md, GOALS.md, PROJECTS.md, BELIEFS.md, MODELS.md, STRATEGIES.md, NARRATIVES.md, LEARNED.md, CHALLENGES.md, IDEAS.md. Your DA knows what you're working toward because it's all documented.
-
----
-
-<p align="center">
-  <img src="./images/pai-primitive-user-system-separation.png" alt="User/System Separation" width="700">
-</p>
-
-### User/System Separation
-
-Your customizations live in USER/. PAI infrastructure lives in SYSTEM/. When PAI upgrades, your files are untouched. Portable identity, upgrade-safe.
-
----
-
-<p align="center">
-  <img src="./images/pai-primitive-customization.png" alt="Granular Customization" width="700">
-</p>
-
-### Granular Customization
-
-Six layers of customization: Identity (name, voice, personality), Preferences (tech stack, tools), Workflows (how skills execute), Skills (what capabilities exist), Hooks (how events are handled), and Memory (what gets captured). Start with defaults, customize when needed.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-2-skill-system.png" alt="Skill System" width="700">
-</p>
-
-### Skill System
-
-Highly focused on consistent results. It has a structure that puts *deterministic outcomes first* by going from CODE -> CLI-BASED-TOOL -> PROMPT -> SKILL instead of a haphazard structure.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-3-memory-system.png" alt="Memory System" width="700">
-</p>
-
-### Memory System
-
-Focused on continuous learning. Every interaction generates signals—ratings, sentiment, successes, failures—that feed back into improving the system. Three-tier architecture (hot/warm/cold) with phase-based learning directories.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-6-hook-system.png" alt="Hook System" width="700">
-</p>
-
-### Hook System
-
-Responds to lifecycle events—session start, tool use, task completion, and more. 8 event types enable voice notifications, automatic context loading, session capture, security validation, and observability.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-5-security-system.png" alt="Security System" width="700">
-</p>
-
-### Security System
-
-Defines system and user-level security policies by default. You don't have to run with `--dangerously-skip-permissions` to have an uninterrupted experience. PAI's security hooks validate commands before execution, blocking dangerous operations while allowing normal workflows to proceed smoothly.
-
----
-
-### Containment + Release Tooling (NEW in v5.0.0)
-
-Privacy is **structural**, not stylistic. `hooks/lib/containment-zones.ts` is a TypeScript module declaring every directory's privacy zone — single source of truth. The `ContainmentGuard` PreToolUse hook blocks any Write/Edit/MultiEdit that would land sensitive content outside its zone. Public releases run **12 security gates** (zone deletion, identity grep, secret scan via trufflehog, .env strays, private tokens, reference integrity, private skill refs, username paths, staging boot, dashboard leak, template-only USER/MEMORY) — build fails closed if any gate trips. Two-stage release: stage to a local build directory with all gates, then publish to GitHub. The two never auto-chain.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-4-ai-installation.png" alt="AI-Based Installation" width="700">
-</p>
-
-### AI-Based Installation
-
-The GUI installer handles everything—prerequisites, configuration, and setup. No manual configuration, no guessing.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-8-notification-system.png" alt="Notification System" width="700">
-</p>
-
-### Notification System
-
-Keeps you informed without being intrusive. Push notifications via ntfy for mobile alerts, Discord integration for team updates, and duration-aware routing that escalates for long-running tasks. Fire-and-forget design means notifications never block your workflow.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-9-voice-system.png" alt="Voice System" width="700">
-</p>
-
-### Voice System
-
-Powered by ElevenLabs TTS. Hear task completions, session summaries, and important updates spoken aloud. Prosody enhancement makes speech sound natural. Your AI has a voice.
-
----
-
-<p align="center">
-  <img src="./images/pai-component-7-terminal-ui.png" alt="Terminal-Based UI" width="700">
-</p>
-
-### Terminal-Based UI
-
-Rich tab titles and pane management. Dynamic status lines show learning signals, context usage, and current task state. Your terminal is a command center.
+A meaningful library of custom thinking skills — first principles, council debates, red team, root cause, systems thinking, iterative depth, aperture oscillation, and more — that the Algorithm pulls from to raise the quality of decisions across the system.
 
 ---
 
@@ -405,6 +165,10 @@ Rich tab titles and pane management. Dynamic status lines show learning signals,
 
 > [!CAUTION]
 > **Project in Active Development** — PAI is evolving rapidly. Expect breaking changes, restructuring, and frequent updates.
+
+### Use your AI to install and run PAI
+
+We very much believe in AI-based installation and modification of PAI. Once you have a working install, point your AI at the system itself — upgrade versions, add skills, modify hooks, change settings, repair anything that breaks. The most important thing your AI can do for you up front is bring all of your existing custom context — notes, project state, preferences, identity, history — into the `PAI/USER/` directory so PAI knows who you are from day one. Tell your DA: *"Help me migrate my context into PAI/USER/."* The system was designed to be operated by AI; lean on it.
 
 ### One-line install (recommended)
 
@@ -478,37 +242,7 @@ If you had personal content in v4.x (notes, project state, custom rules), tell y
 
 ## 📦 PAI Packs
 
-> [!NOTE]
-> **v5.0.0 ships skills directly** — 45 skills and 171 workflows are part of the base install. **Packs** below remain available as standalone, AI-installable capabilities for users who want a specific capability without installing all of PAI.
-
-Don't want to install all of PAI? **Packs** are standalone, AI-installable capabilities you can add one at a time. Each pack is self-contained — your AI reads the install guide and sets everything up for you. No PAI installation required.
-
-Point your AI at any pack and say "install this":
-
-```
-"Install the Research pack from PAI/Packs/Research/"
-```
-
-Your AI walks through a 5-phase wizard: system analysis, user questions, backup, installation, verification.
-
-### Available Packs
-
-| Pack | What It Does |
-|------|-------------|
-| [ContextSearch](Packs/ContextSearch/) | `/context-search` and `/cs` — instant recall of prior work sessions |
-| [Agents](Packs/Agents/) | Custom agent composition from traits, voices, and personalities |
-| [ContentAnalysis](Packs/ContentAnalysis/) | Wisdom extraction from videos, podcasts, articles, and YouTube |
-| [Investigation](Packs/Investigation/) | OSINT and investigation — company intel, people search, domain lookup |
-| [Media](Packs/Media/) | AI image generation, diagrams, infographics, and Remotion video |
-| [Research](Packs/Research/) | Multi-agent research — quick, standard, extensive, and deep modes |
-| [Scraping](Packs/Scraping/) | Web scraping via Bright Data proxy and Apify social media actors |
-| [Security](Packs/Security/) | Recon, web app testing, prompt injection testing, security news |
-| [Telos](Packs/Telos/) | Life OS — goals, beliefs, wisdom, project dashboards, McKinsey reports |
-| [Thinking](Packs/Thinking/) | First principles, council debates, red team, brainstorming, science |
-| [USMetrics](Packs/USMetrics/) | 68 US economic indicators from FRED, EIA, Treasury, BLS, Census |
-| [Utilities](Packs/Utilities/) | CLI generation, skill scaffolding, Fabric patterns, Cloudflare, browser automation |
-
-Each pack works standalone — install one, install five, or install all of them. They're designed to give you PAI-level capabilities whether or not you run the full PAI system.
+Packs are standalone, AI-installable capabilities you can add to any AI coding harness without installing PAI. Each pack is a self-contained prompt your DA can read and execute — point it at the pack directory and say "install this," and it handles the rest.
 
 **[Browse all packs →](Packs/)**
 

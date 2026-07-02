@@ -158,6 +158,33 @@ A meaningful library of custom thinking skills — first principles, council deb
 
 ---
 
+## Core Components
+
+What actually makes LifeOS work, in two tiers. The **unique features** are the parts you won't find anywhere else. The **supporting components** are the subsystems underneath them.
+
+### The unique features
+
+- **Current State → Ideal State** — the whole idea. Name where you are, name where you want to be, then close the gap with steps you can check. Everything else serves this move.
+- **The Algorithm** — the centerpiece. A seven-phase engine (Observe → Think → Plan → Build → Execute → Verify → Learn) that turns a vague ask into a testable spec and climbs toward it, scaling its own effort to the work.
+- **The Skill System** — a growing library of self-activating, composable units of expertise. Deterministic code wrapped in a natural-language trigger, so the right capability fires the moment you describe the task.
+- **The Hook System** — deterministic lifecycle interception. Guardrails that are code, not good intentions: they fire at fixed points and enforce the rules a model can't be trusted to remember.
+- **The Router System** — every prompt gets classified and routed to the right effort and the right model. Quick asks stay cheap and fast; hard problems get the full engine.
+- **Pulse** — the Life Dashboard. The live surface where you watch the whole system run.
+- **Custom Spinner Verbs** — your own animated working-verb and rotating tips in the statusline. A small, personal touch most tools never bother with.
+- **Custom Tooltips** — the dashboard explains itself on hover, so the surface teaches you instead of sending you to a manual.
+
+### The supporting components
+
+- **Memory** — text-based memory that compounds across sessions (WORK, KNOWLEDGE, LEARNING) plus a typed graph.
+- **Agents** — parallel delegation to specialized researchers, builders, and adversarial reviewers.
+- **Voice** — spoken notifications in a voice you choose, so you stay in flow.
+- **Learning** — every run reflects on itself and feeds what it learned back into the next one.
+- **Security** — deterministic gates that keep private data private and block anything unsafe before it runs.
+
+Full docs for every component: **[docs.ourlifeos.ai](https://docs.ourlifeos.ai)**
+
+---
+
 ## 🚀 Installation
 
 > [!CAUTION]

@@ -38,6 +38,8 @@ That command lays down the entire system:
 - Pulse, your Life Dashboard, including the observability view
 - The statusline, the memory scaffold, and a USER template you fill in with your own goals and context
 
+See the two-tier **[Core Components](../../README.md#core-components)** overview for what each piece does and why it matters.
+
 ## What you need
 
 - Claude Code

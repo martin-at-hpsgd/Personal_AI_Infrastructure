@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="release-icon-v2.png" alt="PAI Releases" width="256">
+<img src="release-icon-v2.png" alt="LifeOS Releases" width="256">
 
-# PAI Releases
+# LifeOS Releases
 
 </div>
 
@@ -10,9 +10,9 @@
 
 ## What Are Releases?
 
-Releases are **complete `.claude/` directories** ready to drop into your home folder. Each release contains everything you need: skills, hooks, workflows, memory structure, and configuration.
+Each release is a complete, installable snapshot. From **v6.0.0** onward LifeOS ships as a single self-contained skill your AI installs for you; earlier releases ship as complete `.claude/` directories you copy into your home folder.
 
-This is the fastest way to get PAI running. Copy the directory, run the wizard, restart Claude Code.
+This is the fastest way to get LifeOS running.
 
 > **Note:** The `.claude` directory is hidden by default on macOS/Linux. Use `ls -la` to see it.
 
@@ -20,7 +20,28 @@ This is the fastest way to get PAI running. Copy the directory, run the wizard, 
 
 ## Available Releases
 
-### v4.0.3 — Community PR Patch (Current)
+### v6.0.0 — The Life Operating System (Current)
+
+LifeOS ships as a single self-contained skill, not a `.claude/` copy — the full framework installs through your AI.
+
+- Algorithm v6.23.0
+- Two-tier core components: Current→Ideal, the Algorithm, Skills, Hooks, Router, Pulse, custom spinner verbs, and custom tooltips, plus the supporting subsystems (Memory, Agents, Voice, Learning, Security)
+- Skill-only distribution via the LifeOS install skill
+- Full Pulse Life Dashboard + menu bar app
+
+**[Get v6.0.0 →](v6.0.0/)**
+
+---
+
+### v5.0.0 — Life Operating System
+
+The release that reframed the whole system as a Life Operating System built around the move from current state to ideal state.
+
+**[Get v5.0.0 →](v5.0.0/)**
+
+---
+
+### v4.0.3 — Community PR Patch
 
 4 community-contributed fixes from open PRs.
 
@@ -132,12 +153,12 @@ The release that introduced persistent learning and sentiment capture.
 ## Installation
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/danielmiessler/Personal_AI_Infrastructure.git
-cd Personal_AI_Infrastructure/Releases/v4.0.3
+# v6.0.0+ installs as a skill — let your AI do it:
+#   "install LifeOS"   (or)   curl -fsSL https://ourlifeos.ai/install.sh | bash
 
-# 2. Copy the release and run the installer
-cp -r .claude ~/ && cd ~/.claude && bash install.sh
+# Older releases (v2–v5) ship as a .claude/ directory:
+git clone https://github.com/danielmiessler/PAI.git
+cp -r PAI/Releases/v5.0.0/.claude ~/ && cd ~/.claude && bash install.sh
 ```
 
 The wizard asks for your name, AI name, timezone, temperature unit, and optional voice preferences.
@@ -154,4 +175,4 @@ See the [main README](../README.md#upgrading-from-a-previous-version) for upgrad
 
 ---
 
-**Questions?** See the main [PAI README](../README.md).
+**Questions?** See the main [LifeOS README](../README.md).

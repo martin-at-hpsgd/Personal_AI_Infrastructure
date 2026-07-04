@@ -8,8 +8,8 @@
 
 **The AI-Powered Life Operating System**
 
-[![Release](https://img.shields.io/github/v/release/danielmiessler/LifeOS?style=flat&color=8B5CF6)](Releases/v6.0.0/)
-[![Algorithm](https://img.shields.io/badge/Algorithm-v6.23.0-D97706?style=flat)](Releases/v6.0.0/README.md)
+[![Release](https://img.shields.io/github/v/release/danielmiessler/LifeOS?style=flat&color=8B5CF6)](Releases/v6.0.5/)
+[![Algorithm](https://img.shields.io/badge/Algorithm-v6.24.0-D97706?style=flat)](Releases/v6.0.5/README.md)
 [![Stars](https://img.shields.io/github/stars/danielmiessler/LifeOS?style=flat&color=F59E0B)](https://github.com/danielmiessler/LifeOS/stargazers)
 [![License](https://img.shields.io/github/license/danielmiessler/LifeOS?style=flat&color=60A5FA)](./LICENSE)
 
@@ -184,6 +184,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 <summary><strong>📜 Update History</strong></summary>
 
 <br/>
+
+**v6.0.5 (2026-07-04) — Rename in the Code, New Harvest Skill**
+- **PAI→LifeOS rename reaches the code** — code identifiers and doc prose now read LifeOS throughout; runtime-critical paths and regexes were left byte-identical on purpose, so the prose is clean and nothing breaks.
+- **New Harvest skill** — mine any URL, video, or article for what's genuinely useful to your LifeOS, ranked and mapped against your whole system. Report-only; adoption is a separate step.
+- **Algorithm v6.24.0** — motion verification: an ISC about animation, transition, or a multi-step flow closes on a frame-scrub gallery, never a single screenshot.
+- **Installer fix** — the bootstrap `install.sh` now fetches the version it advertises.
+- [Full release notes](Releases/v6.0.5/README.md)
 
 **v6.0.0 (2026-07-02) — One Skill, One Install**
 - **Skill-based distribution** — the whole system now ships as a single self-contained skill (`LifeOS/`): the orchestrator (SKILL.md + Workflows + Tools) plus a complete install payload (system prompt, Algorithm, 49 skills, hooks, agents, Pulse, statusline, USER + MEMORY scaffolds). One directory, one install.

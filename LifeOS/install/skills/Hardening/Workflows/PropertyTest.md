@@ -121,7 +121,7 @@ A successful PropertyTest landing adds:
 ## Cross-references
 
 - Testing Doctrine Rule #11 — fast-check as approved primitive (`LIFEOS/DOCUMENTATION/Testing/TestingDoctrine.md`)
-- IsaFormat.md ISC Type Vocabulary — `bun-property` schema (`LIFEOS/DOCUMENTATION/ISA/IsaFormat.md`)
+- IsaFormat.md ISC Type Vocabulary — `bun-property` schema (`LIFEOS/DOCUMENTATION/Isa/IsaFormat.md`)
 - Algorithm v6.10.0 candidate — VERIFY hardening gate, PropertyAudit capability (`LIFEOS/ALGORITHM/v6.10.0.md`)
 - fast-check documentation — <https://fast-check.dev/>
 - John Hughes original QuickCheck paper — <https://www.cs.tufts.edu/~nr/cs257/archive/john-hughes/quick.pdf>

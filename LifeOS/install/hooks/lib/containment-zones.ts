@@ -59,8 +59,8 @@ export const CONTAINMENT_ZONES: readonly ContainmentZone[] = [
     patterns: [
       "history.jsonl",
       "Plugins/**",
-      "plugins/installed_plugins.json",
-      "plugins/known_marketplaces.json",
+      "Plugins/installed_plugins.json",
+      "Plugins/known_marketplaces.json",
     ],
     description: "Claude Code runtime install state written by the harness",
   },
@@ -111,7 +111,7 @@ export const CONTAINMENT_ZONES: readonly ContainmentZone[] = [
 // minimal — these are tracked in the living appendix of CONTAINMENT_POLICY.md.
 export const PATTERN_ALLOWLIST_FILES: readonly string[] = [
   "hooks/lib/containment-zones.ts",
-  "skills/_LIFEOS/TOOLS/ShadowRelease.ts",
+  "skills/_LIFEOS/Tools/ShadowRelease.ts",
   "LIFEOS/DOCUMENTATION/Tools/Containment.md",
   // skills/Daemon/Docs/SecurityClassification.md REMOVED 2026-05-04 — the doc
   // was rewritten to use categorical descriptions only (no literal names /

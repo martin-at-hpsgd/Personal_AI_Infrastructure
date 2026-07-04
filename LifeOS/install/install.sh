@@ -23,7 +23,7 @@
 set -euo pipefail
 
 # ─── Pinned release ──────────────────────────────────────────────
-LIFEOS_VERSION="${LIFEOS_VERSION:-6.0.0}"
+LIFEOS_VERSION="${LIFEOS_VERSION:-6.0.2}"
 LIFEOS_TAG="v${LIFEOS_VERSION}"
 # Repo owner/name are parameterized — set at publish time, never hard-coded here.
 LIFEOS_REPO="${LIFEOS_REPO:-danielmiessler/LifeOS}"

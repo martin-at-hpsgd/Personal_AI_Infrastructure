@@ -73,9 +73,11 @@ function deploySkills(payloadInstall: string, configRoot: string, apply: boolean
   return r;
 }
 
-/** (b) runtime: install/LifeOS/<entry> → configRoot/LIFEOS/<entry>, skipping RUNTIME_SKIP. */
+/** (b) runtime: install/LIFEOS/<entry> → configRoot/LIFEOS/<entry>, skipping RUNTIME_SKIP. */
 function deployRuntime(payloadInstall: string, configRoot: string, apply: boolean): DeployResult {
-  const src = join(payloadInstall, "LifeOS");
+  // Prefer canonical all-caps LIFEOS (matches @LIFEOS/... imports on case-sensitive FS);
+  // fall back to the legacy mixed-case dir so pre-fix tarballs still install.
+  const src = existsSync(join(payloadInstall, "LIFEOS")) ? join(payloadInstall, "LIFEOS") : join(payloadInstall, "LifeOS");
   const dst = join(configRoot, "LIFEOS");
   const r: DeployResult = { what: "runtime", src, dst, present: existsSync(src), copied: 0, actions: [], blockers: [], failures: [] };
   if (!r.present) {

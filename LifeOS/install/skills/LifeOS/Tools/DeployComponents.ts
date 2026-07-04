@@ -46,7 +46,7 @@ type Component = (typeof KNOWN_COMPONENTS)[number];
 interface Ctx {
   configRoot: string;
   lifeosDir: string; // <configRoot>/LIFEOS — the live runtime root
-  payloadRoot: string; // <skillRoot>/install/LifeOS — the shipped runtime tree
+  payloadRoot: string; // <skillRoot>/install/LIFEOS — the shipped runtime tree
   installRoot: string; // <skillRoot>/install — settings.enhancements.json + agents/ live here
   home: string;
   launchAgents: string;
@@ -412,7 +412,9 @@ function main(): void {
   const ctx: Ctx = {
     configRoot,
     lifeosDir: resolveLifeosDir(configRoot),
-    payloadRoot: join(skillRoot, "install", "LifeOS"),
+    payloadRoot: existsSync(join(skillRoot, "install", "LIFEOS"))
+      ? join(skillRoot, "install", "LIFEOS")
+      : join(skillRoot, "install", "LifeOS"),
     installRoot: join(skillRoot, "install"),
     home,
     launchAgents: join(home, "Library", "LaunchAgents"),

@@ -219,6 +219,6 @@ The Algorithm doctrine spec at `~/.claude/LIFEOS/ALGORITHM/v6.2.0.md` (or LATEST
 
 ## Format spec cross-reference
 
-The full ISA format spec lives at `~/.claude/LIFEOS/DOCUMENTATION/ISA/IsaFormat.md`. This skill implements that spec; if there is ever a contradiction, the format spec wins and this skill is updated to match.
+The full ISA format spec lives at `~/.claude/LIFEOS/DOCUMENTATION/Isa/IsaFormat.md`. This skill implements that spec; if there is ever a contradiction, the format spec wins and this skill is updated to match.
 
-The system-architecture doc — five identities, three-guardrail taxonomy, twelve-section body, six workflows, two homes, subsystem relationships — lives at `~/.claude/LIFEOS/DOCUMENTATION/ISA/IsaSystem.md`. Read that for the conceptual frame; read this file (and `IsaFormat.md`) for the operational contract.
+The system-architecture doc — five identities, three-guardrail taxonomy, twelve-section body, six workflows, two homes, subsystem relationships — lives at `~/.claude/LIFEOS/DOCUMENTATION/Isa/IsaSystem.md`. Read that for the conceptual frame; read this file (and `IsaFormat.md`) for the operational contract.

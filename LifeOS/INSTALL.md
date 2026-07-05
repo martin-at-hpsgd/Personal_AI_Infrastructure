@@ -89,11 +89,46 @@ This is the one place harnesses genuinely differ. Show the exact change and get 
   2. Tell your human, plainly and honestly: *"On <harness>, the always-on hooks aren't wired yet. You get the skill, your USER data, Pulse, and context loading every session, and you run Setup and Interview on request. Full always-on behavior is on the roadmap for this harness."*
   3. **Do not** write Claude hook files or a Claude `settings.json` `hooks` block into a non-Claude harness — it would sit there inert and do nothing.
 
-### 7. Optional components (macOS, with permission)
+### 7. Wire the launch command — HOW LifeOS actually turns on (WITH PERMISSION)
 
-The Pulse dashboard and background services install as macOS `launchd` jobs. Offer them. Skip cleanly on Linux/Windows, or if your human declines.
+This is the step that makes LifeOS *load*. The constitutional layer — the mode banner, verification doctrine, security protocol, the whole operating contract — lives in `install/LIFEOS/LIFEOS_SYSTEM_PROMPT.md` and is **NOT** loaded by a plain `claude` session. It loads only when the harness is launched with that file appended to its system prompt. So installed LifeOS needs its own launch command; running vanilla `claude` gives you CLAUDE.md but **not** the constitution.
 
-### 8. Run Setup, then Interview
+The payload ships the launcher — `install/LIFEOS/TOOLS/lifeos.ts` — which spawns Claude with `--append-system-prompt-file <configRoot>/LIFEOS/LIFEOS_SYSTEM_PROMPT.md` (plus the banner and MCP-profile handling). Wire a `lifeos` command that calls it into your human's shell. **Show the exact line, back up the rc file first, wait for a yes.** Use the real `<configRoot>` from `DetectEnv` (e.g. `~/.claude`) — never hardcode a home path.
+
+- **Claude Code (zsh / bash)** — append to `~/.zshrc` (or `~/.bashrc`):
+  ```
+  alias lifeos='bun <configRoot>/LIFEOS/TOOLS/lifeos.ts -s <configRoot>/LIFEOS/LIFEOS_SYSTEM_PROMPT.md'
+  ```
+  fish: `alias lifeos "bun <configRoot>/LIFEOS/TOOLS/lifeos.ts -s <configRoot>/LIFEOS/LIFEOS_SYSTEM_PROMPT.md"; funcsave lifeos`. After this, **`lifeos` launches Claude WITH the constitution**; plain `claude` stays vanilla (which is fine — the user opts in by launching `lifeos`).
+
+- **Any other harness** — use that harness's own system-prompt flag against the same file. e.g. pi: `pi --append-system-prompt <configRoot>/LIFEOS/LIFEOS_SYSTEM_PROMPT.md`. If a harness has no system-prompt flag, load `LIFEOS_SYSTEM_PROMPT.md` through its context file (AGENTS.md / rules) as the closest equivalent, and tell your human plainly that the constitution is loading as context, not as a true system-prompt layer.
+
+If your human declines the shell edit, give them the one-line launch command to run by hand so the constitution still loads:
+```
+bun <configRoot>/LIFEOS/TOOLS/lifeos.ts -s <configRoot>/LIFEOS/LIFEOS_SYSTEM_PROMPT.md
+```
+
+### 8. Choose the components — install all, or pick a subset (WITH PERMISSION)
+
+LifeOS installs in **two tiers**, and you present them that way.
+
+**Core** (steps 4–7, always together) IS LifeOS: the skill + the full **~50-skill library** + the LIFEOS runtime (Algorithm, docs, tools, statusline binary, version) + the USER tree + the system prompt and its `lifeos` launch command. One consent installs all of Core; declining means not installing LifeOS.
+
+**Enhancements** are **à la carte** — offer them and let your human pick some, all, or none. Each is independently installed, idempotent, and reversible:
+
+| Component | What it adds | Default |
+|---|---|---|
+| **hooks** | mode routing, the memory loop, voice, per-turn context injection — most behavior needs these (this is step 6) | **recommended** |
+| **statusline** | the LifeOS status line in your prompt | optional |
+| **tooltips** | custom Claude Code spinner tips | optional |
+| **spinner verbs** | custom spinner verbs | optional |
+| **agents** | the named agent library | optional |
+| **Pulse** | the Life Dashboard — menu-bar app + `launchd` service on `:31337` | optional |
+| **worksweep / derivedsync** | background `launchd` jobs (work capture, derived-file sync) | optional |
+
+The `launchd` components (Pulse, worksweep, derivedsync) are macOS-only — skip them cleanly on Linux/Windows. Show your human this menu, take their picks, and deploy only those. The **Setup** workflow (step 9) drives the actual deployment of the chosen set and verifies each with real evidence (e.g. Pulse → `curl :31337/healthz` = 200). Everything ships in the payload; nothing activates without its matching yes.
+
+### 9. Run Setup, then Interview
 
 Run the **Setup** workflow (`Workflows/Setup.md`) to finish integration and verify with real evidence, then the **Interview** workflow (`Workflows/Interview.md`): name the assistant, capture identity and TELOS (current state → ideal state), pull in any sources your human offers, and seed Pulse. By the end, the config tree is populated and Pulse shows real data.
 
@@ -113,4 +148,5 @@ Run the **Setup** workflow (`Workflows/Setup.md`) to finish integration and veri
 - **Additive, never clobbering.** Only add what's missing; never overwrite or delete a populated dir or a file you didn't create.
 - **Permission before every mutation.** Show the exact change; back up `settings.json` before editing it; wait for a yes.
 - **Never write a harness's config that it won't read.** Honest degrade beats an inert install.
+- **The launch command loads the constitution — don't skip it.** A plain `claude` session gets CLAUDE.md but not `LIFEOS_SYSTEM_PROMPT.md`. The `lifeos` command (step 7), or the harness's system-prompt flag, is what turns the operating contract on. Wire it, or the install is missing its whole constitutional layer.
 - **Refuse to run inside the LifeOS source repo** (detected via source-repo markers). Never mutate a maintainer's live system.

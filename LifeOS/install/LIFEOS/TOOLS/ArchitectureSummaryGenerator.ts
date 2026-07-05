@@ -68,11 +68,22 @@ function detectMemoryVersion(): string {
   return match?.[1] ?? "unknown";
 }
 
-/** Detect LifeOS version from the first `# LifeOS X.Y.Z` heading in global CLAUDE.md */
-function detectPaiVersion(): string {
+/**
+ * Detect the LifeOS OS version from the canonical `LIFEOS/VERSION` file — the
+ * single source of truth (chain A). Falls back to the `# LifeOS X.Y.Z` heading
+ * in CLAUDE.md only if VERSION is missing/malformed, so a fresh tree still
+ * renders. This collapses the former two-chain drift (2026-07-04): previously
+ * this read the hand-typed CLAUDE.md header, which UpdateLifeosVersion never wrote.
+ */
+function detectLifeosVersion(): string {
+  const VERSION_FILE = path.join(LIFEOS_DIR, "VERSION");
+  if (fs.existsSync(VERSION_FILE)) {
+    const v = fs.readFileSync(VERSION_FILE, "utf-8").trim();
+    if (/^\d+\.\d+\.\d+$/.test(v)) return v;
+  }
   if (!fs.existsSync(CLAUDE_MD)) return "unknown";
   const content = fs.readFileSync(CLAUDE_MD, "utf-8");
-  const match = content.match(/^#\s*(?:LifeOS|LifeOS)\s+([\d.]+)/m);
+  const match = content.match(/^#\s*LifeOS\s+([\d.]+)/m);
   return match?.[1] ?? "unknown";
 }
 
@@ -233,7 +244,7 @@ function generate(): string {
   const subsystems = extractSubsystems();
   const principles = extractPrinciples(archContent);
   const topology = extractTopology(archContent);
-  const paiVersion = detectPaiVersion();
+  const paiVersion = detectLifeosVersion();
   const algorithmVersion = detectAlgorithmVersion();
   const memoryVersion = detectMemoryVersion();
 

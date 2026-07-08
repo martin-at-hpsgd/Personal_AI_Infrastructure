@@ -1,6 +1,6 @@
 <p align="center">
   <br />
-  <img src="./lifeos-logo-full.png" alt="LifeOS" width="460">
+  <img src="./images/lifeos-logo-full.png" alt="LifeOS" width="460">
   <br />
 </p>
 
@@ -41,7 +41,21 @@
 
 ---
 
-LifeOS is a Life Operating System. It captures who you are, what you care about, and where you're trying to go, then uses AI that knows you to help you get there. Everything runs on one loop: move from your current state to your ideal state through steps you can verify.
+**LifeOS** is a General Purpose AI Harness for doing anything you want to do in life and work with AI. It captures who you are, what you care about, and where you're trying to go, then uses AI that knows you to help you get there. 
+
+And because it has your full context, it makes everything you do more efficient and effective, from building apps, to starting a business, to creative projects…_basically anything_.
+
+The whole system works on one centeral concept: moving from your Current State to your Ideal State in pursuit of Euphoric Surprise.
+
+<div align="center">
+
+### ⭐ If LifeOS is useful to you, star the repo
+
+Stars help more people find the project and keep it moving. It takes one click.
+
+[![Star LifeOS on GitHub](https://img.shields.io/github/stars/danielmiessler/LifeOS?style=for-the-badge&logo=github&logoColor=white&label=Star%20LifeOS&color=8B5CF6)](https://github.com/danielmiessler/LifeOS)
+
+</div>
 
 ## Install
 

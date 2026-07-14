@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+// Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
+// in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
+for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
+  const __v = process.env[__k];
+  if (__v && /^\$\{?HOME\}?(\/|$)/.test(__v)) process.env[__k] = __v.replace(/^\$\{?HOME\}?/, process.env.HOME ?? "~");
+}
+
 /**
  * PangramScore.ts — score text for AI-detectability via the Pangram API.
  *
@@ -34,7 +41,7 @@ const ENV_PATH = `${process.env.HOME}/.claude/.env`;
 // WritingGate Stop hook reads this so its pass condition is "Pangram ran on
 // this content", not "a token string is present" (Forge audit 2026-07-01).
 const RUNS_PATH = join(
-  process.env.LIFEOS_DIR || `${process.env.HOME}/.claude/LifeOS`,
+  process.env.LIFEOS_DIR || `${process.env.HOME}/.claude/LIFEOS`,
   "MEMORY", "OBSERVABILITY", "pangram-runs.jsonl",
 );
 export function normalizeForHash(text: string): string {

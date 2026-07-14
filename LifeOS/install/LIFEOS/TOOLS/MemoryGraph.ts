@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+// Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
+// in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
+for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
+  const __v = process.env[__k];
+  if (__v && /^\$\{?HOME\}?(\/|$)/.test(__v)) process.env[__k] = __v.replace(/^\$\{?HOME\}?/, process.env.HOME ?? "~");
+}
+
 /**
  * MemoryGraph — a first-class graph layer over the WHOLE LifeOS memory system.
  *
@@ -202,7 +209,7 @@ function ingest(): Raw[] {
 // ============================================================================
 
 const STOP = new Set(("a an and are as at be by for from has have in into is it its of on or that the to with we our this " +
-  "you your i me my system build make want need use using via pai memory work isa kai daniel new add get set " +
+  "you your i me my system build make want need use using via pai memory work isa new add get set " +
   "not but all any can will should would they them then than over under about across into out up down").split(" "));
 
 function tokenize(text: string): Set<string> {
@@ -292,6 +299,14 @@ function buildGraph(raws: Raw[], layer: EdgeLayer = "declared"): { graph: Graph;
   // bare-slug -> id resolver (knowledge slug is bare; work id is "work:slug")
   const bareToId = new Map<string, string>();
   for (const { node } of raws) {
+    // First-wins on duplicate ids. graphology's addNode THROWS on a repeat id, so
+    // two KNOWLEDGE notes sharing a slug would crash the whole graph build. Keep
+    // the first, warn on the id→path collision so the duplicate is visible.
+    if (graph.hasNode(node.id)) {
+      const existingPath = graph.getNodeAttribute(node.id, "path");
+      console.warn(`[MemoryGraph] duplicate node id "${node.id}" — keeping ${existingPath}, ignoring ${node.path}`);
+      continue;
+    }
     graph.addNode(node.id, { ...node });
     const bare = node.id.startsWith("work:") ? node.id.slice(5) : node.id;
     if (!bareToId.has(bare)) bareToId.set(bare, node.id);

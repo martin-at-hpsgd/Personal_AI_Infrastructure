@@ -10,32 +10,13 @@
 
 [![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&weight=500&size=24&pause=1000&color=8B5CF6&center=true&vCenter=true&width=600&lines=Your+Life+Operating+System;Current+State+%E2%86%92+Ideal+State;Open+source.+Free.+Forever.)](https://github.com/danielmiessler/LifeOS)
 
-<!-- Social -->
-![Stars](https://img.shields.io/github/stars/danielmiessler/LifeOS?style=social)
-![Forks](https://img.shields.io/github/forks/danielmiessler/LifeOS?style=social)
-![Watchers](https://img.shields.io/github/watchers/danielmiessler/LifeOS?style=social)
-
-<!-- Status -->
-![Release](https://img.shields.io/github/v/release/danielmiessler/LifeOS?style=flat&logo=github&color=8B5CF6)
-![Last Commit](https://img.shields.io/github/last-commit/danielmiessler/LifeOS?style=flat&logo=git&color=22C55E)
-![Open Issues](https://img.shields.io/github/issues/danielmiessler/LifeOS?style=flat&logo=github&color=F97316)
-![Open PRs](https://img.shields.io/github/issues-pr/danielmiessler/LifeOS?style=flat&logo=githubaccessories&color=EC4899)
-![License](https://img.shields.io/github/license/danielmiessler/LifeOS?style=flat&color=60A5FA)
-
-<!-- Content -->
-[![Get Started](https://img.shields.io/badge/🚀_Get_Started-Install-22C55E?style=flat)](#install)
-[![Release](https://img.shields.io/badge/Release-v7.1.1-8B5CF6?style=flat)](https://github.com/danielmiessler/LifeOS/releases)
-[![Algorithm](https://img.shields.io/badge/Algorithm-v8.4.0-D97706?style=flat)](https://github.com/danielmiessler/LifeOS/releases)
-[![Pulse](https://img.shields.io/badge/Pulse-included-3B82F6?style=flat)](https://ourlifeos.ai)
+[![Stars](https://img.shields.io/github/stars/danielmiessler/LifeOS?style=flat&logo=github&label=Stars&color=8B5CF6)](https://github.com/danielmiessler/LifeOS/stargazers)
+[![Release](https://img.shields.io/github/v/release/danielmiessler/LifeOS?style=flat&logo=github&label=Release&color=22C55E)](https://github.com/danielmiessler/LifeOS/releases)
+[![License](https://img.shields.io/github/license/danielmiessler/LifeOS?style=flat&color=60A5FA)](./LICENSE)
 [![Contributors](https://img.shields.io/github/contributors/danielmiessler/LifeOS?style=flat&logo=githubsponsors&logoColor=white&label=Contributors&color=EC4899)](https://github.com/danielmiessler/LifeOS/graphs/contributors)
+[![Community](https://img.shields.io/badge/Community-Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/danielmiessler)
 
-<!-- Tech Stack -->
-[![Built with Claude](https://img.shields.io/badge/Built_with-Claude-D4A574?style=flat&logo=anthropic&logoColor=white)](https://claude.ai)
-[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Bun](https://img.shields.io/badge/Bun-000000?style=flat&logo=bun&logoColor=white)](https://bun.sh)
-[![Community](https://img.shields.io/badge/Community-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/danielmiessler)
-
-**[Visit the Website](https://ourlifeos.ai)** · **[Watch the walkthrough](https://youtu.be/Le0DLrn7ta0)**  ·  **[Releases](https://github.com/danielmiessler/LifeOS/releases)**  ·  **[Docs](https://docs.ourlifeos.ai)**
+**[Website](https://ourlifeos.ai)** · **[Install](#install)** · **[Walkthrough](https://youtu.be/Le0DLrn7ta0)** · **[Docs](https://docs.ourlifeos.ai)** · **[Releases](https://github.com/danielmiessler/LifeOS/releases)**
 
 </div>
 
@@ -47,7 +28,8 @@ https://github.com/user-attachments/assets/329897f5-828b-4c23-b607-1cf9c71cb4ec
 
 And because it has your full context, it makes everything you do more efficient and effective, from building apps, to starting a business, to creative projects…_basically anything_.
 
-The whole system works on one central concept: moving from your Current State to your Ideal State in pursuit of Euphoric Surprise.
+> [!NOTE]
+> The whole system works on one central concept: **moving from your Current State to your Ideal State** — in pursuit of Euphoric Surprise.
 
 <div align="center">
 
@@ -192,9 +174,23 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ### Contributors
 
+LifeOS is built in the open, and the community's pull requests, forensic bug reports, and fresh-install writeups directly shape every release. The public repo is generated from a private source tree, so community PRs are ported into source with credit rather than merged directly — same fix, durable across releases.
+
+[![Contributors](https://contrib.rocks/image?repo=danielmiessler/LifeOS&max=100&columns=16)](https://github.com/danielmiessler/LifeOS/graphs/contributors)
+
+<sup>Avatar grid by [contrib.rocks](https://contrib.rocks) — committers only, so the lists below carry everyone it can't see.</sup>
+
 **[fayerman-source](https://github.com/fayerman-source)** — Google Cloud TTS provider integration and Linux audio support for the voice system.
 
 **Matt Espinoza** — Extensive testing, ideas, and feedback, plus roadmap contributions.
+
+**Code contributions (merged or ported PRs):**
+adamlevoy · anikinsasha · asdf8675309 · atabisz · chrisglick · christauff · HotSauceHacker · imrathion · jbmml · jnpkr · justinkatz94-glitch · ksylvan · m4nt0de4 · MarvinDontPanic · maxolasersquad · Mutdogus · neilinger · neilsoult · pybe · qozle · salmanmkc · sauldataman · Seadubb · Spirotot · StarksLabs · thatsjet
+
+**Bug reports, fresh-install forensics, and design feedback:**
+badosanjos · bnkath2o · brycemagera · catchingknives · DAESA24 · deleyva · DennisTraub · docxology · DolphusCY · donovan-sec · DonovanJonesUK · eccentricnode · fjp-veo · harryf · hjbrandt · HyggeHacker · ichoosetoaccept · infinitelyloopy-bt · JElliottMiller · jdrolls · jlacour-git · jmmarkiewicz · karlwaldman · klausagnoletti · lexilexikon · lgangitano · luccomo · MHoroszowski · michaelaye · mygirleatsmayo · nbost130 · NodarDavituri · NorthwoodsSentinel · packetsherpa · ricklesgibson · rikitikitavi2012-debug · Riskjuggler · simeonzickert · Steffen025 · stratofax · tzioup · vanvonlj · virtualian · vpzed · waveman2020-sudo · wojteksbt · xmasyx
+
+<sup>Refreshed with each release. If your contribution is missing, open an issue — that's a bug too.</sup>
 
 ---
 
@@ -288,20 +284,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 - Modular architecture with independent skills, Claude Code native design
 
 </details>
-
----
-
-## Credits
-
-LifeOS is built in the open, and the community's pull requests, forensic bug reports, and fresh-install writeups directly shape every release. The public repo is generated from a private source tree, so community PRs are ported into source with credit rather than merged directly — same fix, durable across releases.
-
-**Code contributions (merged or ported PRs):**
-adamlevoy · anikinsasha · asdf8675309 · atabisz · chrisglick · christauff · HotSauceHacker · imrathion · jbmml · jnpkr · justinkatz94-glitch · ksylvan · m4nt0de4 · MarvinDontPanic · maxolasersquad · Mutdogus · neilinger · neilsoult · pybe · qozle · salmanmkc · sauldataman · Seadubb · Spirotot · StarksLabs · thatsjet
-
-**Bug reports, fresh-install forensics, and design feedback:**
-badosanjos · bnkath2o · brycemagera · catchingknives · DAESA24 · deleyva · DennisTraub · docxology · DolphusCY · donovan-sec · DonovanJonesUK · eccentricnode · fjp-veo · harryf · hjbrandt · HyggeHacker · ichoosetoaccept · infinitelyloopy-bt · JElliottMiller · jdrolls · jlacour-git · jmmarkiewicz · karlwaldman · klausagnoletti · lexilexikon · lgangitano · luccomo · MHoroszowski · michaelaye · mygirleatsmayo · nbost130 · NodarDavituri · NorthwoodsSentinel · packetsherpa · ricklesgibson · rikitikitavi2012-debug · Riskjuggler · simeonzickert · Steffen025 · stratofax · tzioup · vanvonlj · virtualian · vpzed · waveman2020-sudo · wojteksbt · xmasyx
-
-This list is refreshed with each release. If your contribution is missing, open an issue — that's a bug too.
 
 ---
 

@@ -11,9 +11,16 @@
 [![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&weight=500&size=24&pause=1000&color=8B5CF6&center=true&vCenter=true&width=600&lines=Your+Life+Operating+System;Current+State+%E2%86%92+Ideal+State;Open+source.+Free.+Forever.)](https://github.com/danielmiessler/LifeOS)
 
 [![Stars](https://img.shields.io/github/stars/danielmiessler/LifeOS?style=flat&logo=github&label=Stars&color=8B5CF6)](https://github.com/danielmiessler/LifeOS/stargazers)
+[![Forks](https://img.shields.io/github/forks/danielmiessler/LifeOS?style=flat&logo=github&label=Forks&color=6366F1)](https://github.com/danielmiessler/LifeOS/network/members)
 [![Release](https://img.shields.io/github/v/release/danielmiessler/LifeOS?style=flat&logo=github&label=Release&color=22C55E)](https://github.com/danielmiessler/LifeOS/releases)
-[![License](https://img.shields.io/github/license/danielmiessler/LifeOS?style=flat&color=60A5FA)](./LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/danielmiessler/LifeOS?style=flat&logo=git&logoColor=white&label=Updated&color=F97316)](https://github.com/danielmiessler/LifeOS/commits/main)
 [![Contributors](https://img.shields.io/github/contributors/danielmiessler/LifeOS?style=flat&logo=githubsponsors&logoColor=white&label=Contributors&color=EC4899)](https://github.com/danielmiessler/LifeOS/graphs/contributors)
+[![License](https://img.shields.io/github/license/danielmiessler/LifeOS?style=flat&label=License&color=60A5FA)](./LICENSE)
+
+[![Built with Claude](https://img.shields.io/badge/Built_with-Claude-D4A574?style=flat&logo=anthropic&logoColor=white)](https://claude.ai/code)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Bun](https://img.shields.io/badge/Bun-14151A?style=flat&logo=bun&logoColor=white)](https://bun.sh)
+[![Pulse](https://img.shields.io/badge/Pulse-included-06B6D4?style=flat&logo=activitypub&logoColor=white)](https://ourlifeos.ai)
 [![Community](https://img.shields.io/badge/Community-Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/danielmiessler)
 
 **[Website](https://ourlifeos.ai)** · **[Install](#install)** · **[Walkthrough](https://youtu.be/Le0DLrn7ta0)** · **[Docs](https://docs.ourlifeos.ai)** · **[Releases](https://github.com/danielmiessler/LifeOS/releases)**

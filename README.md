@@ -71,7 +71,7 @@ Either path needs a capable AI coding harness — we build and run on [Claude Co
 
 **The unique features** — the parts you won't find anywhere else, plus the subsystems underneath. See them live and click through on **[ourlifeos.ai](https://ourlifeos.ai)**.
 
-<a href="https://ourlifeos.ai"><img src="images/lifeos-core-components.png" width="100%" alt="LifeOS core components — Current→Ideal State, General Hill Climbing, Euphoric Surprise, TELOS, the Algorithm, the ISA, the Skill System, the Hook System, Pulse, custom spinner verbs and tooltips, plus the supporting subsystems: Memory, Agents, Voice, Learning, Security. Click to explore them live on ourlifeos.ai." /></a>
+<a href="https://ourlifeos.ai"><img src="images/lifeos-core-components.png" width="100%" alt="LifeOS core components — Current→Ideal State, Intent Engineering, General Hill Climbing, Euphoric Surprise, TELOS, the Algorithm, the ISA System, the Skill System, the Hook System, Pulse, Custom Spinner Verbs, and Custom Tooltips. Click to explore them live on ourlifeos.ai." /></a>
 
 ---
 
@@ -147,12 +147,11 @@ Recovery is straightforward:
 
 ### Star History
 
+<!-- Self-hosted chart: star-history.com's embed API 500s on repos this size
+     (10s timeout re-fetching ~17K stargazers per render). Regenerate at release:
+     bun LIFEOS/TOOLS/GenerateStarHistory.ts danielmiessler/LifeOS images/star-history.svg -->
 <a href="https://star-history.com/#danielmiessler/LifeOS&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=danielmiessler/LifeOS&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=danielmiessler/LifeOS&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=danielmiessler/LifeOS&type=Date" />
- </picture>
+ <img alt="Star History Chart" src="./images/star-history.svg" width="800" />
 </a>
 
 ---

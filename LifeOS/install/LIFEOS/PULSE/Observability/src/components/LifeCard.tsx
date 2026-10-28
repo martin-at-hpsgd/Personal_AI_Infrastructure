@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ApiError, useApi } from "@/lib/api";
 import { Sparkles, ArrowRight, Flame, Zap } from "lucide-react";
 
 interface LifeCardData {
@@ -22,18 +22,8 @@ interface LifeCardData {
 }
 
 export default function LifeCard() {
-  const [data, setData] = useState<LifeCardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/observability/life-card")
-      .then((r) => {
-        if (!r.ok) throw new Error(`${r.status}`);
-        return r.json();
-      })
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, []);
+  const { data = null, error: queryError } = useApi<LifeCardData>("/api/observability/life-card", { retry: false });
+  const error = queryError ? (queryError instanceof ApiError ? `${queryError.status}` : queryError.message) : null;
 
   if (error) {
     return (

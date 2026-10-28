@@ -1,0 +1,214 @@
+# Fabric EmailHeaders — SPF, DKIM, DMARC and ARC read from an email's headers.
+# The regex asserts pin the literal shape (title address, summary rows,
+# DOMAIN in the dig block); the judged asserts carry what code cannot: verdicts
+# taken from the trusted Authentication-Results, DMARC alignment, forwarding,
+# and concerns specific to the message.
+# Synthetic inline fixtures only: RFC 2606 domains, RFC 5737 addresses.
+name: fabric-emailheaders
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/EmailHeaders.md"
+cases:
+  - id: aligned_pass_relaxed_subdomain
+    prompt: |
+      analyze these email headers:
+
+      Return-Path: <bounce-7731@mail.example.com>
+      Delivered-To: dana@example.org
+      Received: from out.mail.example.com (out.mail.example.com [192.0.2.25]) by mx.example.org with ESMTPS id 4F2A1 for <dana@example.org>; Tue, 6 Oct 2026 09:14:03 -0700
+      Authentication-Results: mx.example.org; spf=pass (mx.example.org: domain of bounce-7731@mail.example.com designates 192.0.2.25 as permitted sender) smtp.mailfrom=bounce-7731@mail.example.com; dkim=pass header.d=example.com header.s=mk2026 header.b=Qx7pLm2a; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=example.com
+      DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=example.com; s=mk2026; h=from:to:subject:date:message-id; bh=4vB1aX0pQ2r8sT6uV9wY3zC5dE7fG1hJ2kL4mN6oP8q=; b=Qx7pLm2aR4tY6uI8oP0aS2dF4gH6jK8lZ1xC3vB5nM7qW9eR1tY3uI5oP7aS9dF=
+      From: Example Billing <billing@example.com>
+      To: dana@example.org
+      Subject: Your October invoice
+      Date: Tue, 6 Oct 2026 16:13:58 +0000
+      Message-ID: <inv-20261006-0042@example.com>
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#\s+Email Header Analysis\s+-\s+billing@example\.com\s*(?:\n|$)'
+      - type: regex
+        weight: 1
+        value: '\|\s*DMARC\s*\|\s*Pass\s*\|'
+      - type: regex
+        weight: 1
+        value: 'DOMAIN=["'']?example\.com["'']?\s*\n'
+      - type: contains
+        weight: 1
+        value: "mk2026._domainkey"
+      - type: llm-assert
+        weight: 3
+        value: [ "SPF, DKIM and DMARC are all reported as Pass, taken from the mx.example.org Authentication-Results header, and ARC as Not Present", "Domains Align is Pass and the analysis explains that SPF aligns only under relaxed alignment (mail.example.com shares the organizational domain example.com) while DKIM aligns on d=example.com", "The verdict calls the message authentic, and the security concerns either say no concerns were found or name only issues specific to these headers, with no generic phishing advice" ]
+        reference: "Full headers of an invoice from billing@example.com, all checks passing at mx.example.org, DKIM selector mk2026, envelope bounce-7731@mail.example.com."
+
+  - id: display_name_spoof_unaligned
+    prompt: |
+      is this legit? headers below
+
+      Return-Path: <ops@example.net>
+      Delivered-To: dana@example.org
+      Received: from smtp.example.net (smtp.example.net [203.0.113.77]) by mx.example.org with ESMTP id 9C1B0 for <dana@example.org>; Wed, 7 Oct 2026 02:41:19 -0700
+      Authentication-Results: mx.example.org; spf=pass (mx.example.org: domain of ops@example.net designates 203.0.113.77 as permitted sender) smtp.mailfrom=ops@example.net; dkim=pass header.d=example.net header.s=s1 header.b=Hh3kP9; dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=bank.example
+      DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=example.net; s=s1; h=from:reply-to:subject:date; bh=Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo=; b=Hh3kP9
+      From: "Bank Example Security Team" <alerts@bank.example>
+      Reply-To: verify-desk@example.net
+      To: dana@example.org
+      Subject: Unusual sign-in: confirm your account within 24 hours
+      Date: Wed, 7 Oct 2026 09:41:12 +0000
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#\s+Email Header Analysis\s+-\s+alerts@bank\.example\s*(?:\n|$)'
+      - type: regex
+        weight: 1
+        value: '\|\s*DMARC\s*\|\s*Fail\s*\|'
+      - type: regex
+        weight: 1
+        value: 'Domains Align:\s*Fail'
+      - type: regex
+        weight: 1
+        value: 'DOMAIN=["'']?bank\.example["'']?\s*\n'
+      - type: llm-assert
+        weight: 3
+        value: [ "The analysis explains that SPF and DKIM passed only for example.net, which does not align with the From domain bank.example, and that this is why DMARC failed", "It flags the Reply-To pointing at example.net as diverting replies away from the claimed sender", "It notes that bank.example publishes p=none, so the failed DMARC check did not stop delivery, and recommends the domain owner move to quarantine or reject", "The verdict is Spoofed or Suspicious, and each recommendation says whether the recipient or the domain owner acts" ]
+        reference: "Headers where From is alerts@bank.example with a security-team display name, SPF and DKIM pass for example.net, DMARC fails with p=NONE, Reply-To verify-desk@example.net."
+
+  - id: forged_lower_authentication_results
+    prompt: |
+      analyze_email_headers
+
+      Received: from relay.example.net (relay.example.net [198.51.100.40]) by mx.example.org with ESMTP id 77D3E for <dana@example.org>; Thu, 8 Oct 2026 11:05:44 -0700
+      Authentication-Results: mx.example.org; spf=fail (mx.example.org: domain of payroll@example.com does not designate 198.51.100.40 as permitted sender) smtp.mailfrom=payroll@example.com; dkim=none (message not signed); dmarc=fail (p=QUARANTINE sp=QUARANTINE dis=QUARANTINE) header.from=example.com
+      Authentication-Results: mx.example.com; spf=pass smtp.mailfrom=payroll@example.com; dkim=pass header.d=example.com; dmarc=pass header.from=example.com
+      Received: from [192.0.2.5] (unknown [198.51.100.40]) by relay.example.net with ESMTPSA; Thu, 8 Oct 2026 18:05:41 +0000
+      Return-Path: <payroll@example.com>
+      Delivered-To: dana@example.org
+      From: Payroll <payroll@example.com>
+      To: dana@example.org
+      Subject: Updated direct deposit form
+      Date: Thu, 8 Oct 2026 18:05:39 +0000
+    # SYNTHETIC ADVERSARIAL FIXTURE: the shape is perfect, but every verdict is
+    # read from the lower Authentication-Results the sender inserted (it names
+    # mx.example.com, not the receiving mx.example.org), so a spoof is called
+    # authentic.
+    adversarial_output: |
+      # Email Header Analysis - payroll@example.com
+
+      ## SUMMARY
+
+      | Header | Disposition |
+      |--------|-------------|
+      | SPF    | Pass        |
+      | DKIM   | Pass        |
+      | DMARC  | Pass        |
+      | ARC    | Not Present |
+
+      Header From: payroll@example.com
+      Envelope From: payroll@example.com
+      Domains Align: Pass (SPF aligned on example.com, DKIM aligned on d=example.com)
+      Verdict: Authentic. SPF, DKIM and DMARC all pass for example.com.
+
+      ## DETAILS
+
+      ### SPF (Sender Policy Framework)
+
+      `spf=pass smtp.mailfrom=payroll@example.com`: the sending server is authorised for example.com.
+
+      ### DKIM (DomainKeys Identified Mail)
+
+      `dkim=pass header.d=example.com`: the signature verified.
+
+      ### DMARC (Domain-based Message Authentication, Reporting, and Conformance)
+
+      `dmarc=pass header.from=example.com`: both identifiers align with the From domain.
+
+      ### ARC (Authenticated Received Chain)
+
+      No ARC headers; the message was not forwarded.
+
+      ### Security Concerns and Recommendations
+
+      No concerns found.
+
+      ### Dig Commands
+
+      ```bash
+      DOMAIN="example.com"
+      dig +short mx $DOMAIN
+      dig +short txt $DOMAIN | grep -i "spf"
+      dig +short txt selector1._domainkey.$DOMAIN
+      dig +short txt selector2._domainkey.$DOMAIN
+      dig +short txt google._domainkey.$DOMAIN
+      dig +short txt s1._domainkey.$DOMAIN
+      dig +short txt s2._domainkey.$DOMAIN
+      dig +short txt k1._domainkey.$DOMAIN
+      dig +short txt k2._domainkey.$DOMAIN
+      dig +short txt _dmarc.$DOMAIN
+      dig +short ns _dmarc.$DOMAIN
+      open "https://dmarcian.com/domain-checker/?domain=$DOMAIN"
+      open "https://domain-checker.valimail.com/dmarc/$DOMAIN"
+      ```
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#\s+Email Header Analysis\s+-\s+payroll@example\.com\s*(?:\n|$)'
+      - type: regex
+        weight: 1
+        value: '\|\s*SPF\s*\|\s*\w+[^|]*\|\s*\n\s*\|\s*DKIM\s*\|\s*\w+[^|]*\|\s*\n\s*\|\s*DMARC\s*\|\s*\w+[^|]*\|\s*\n\s*\|\s*ARC\s*\|\s*\w+[^|]*\|'
+      - type: contains
+        weight: 1
+        value: "selector1._domainkey"
+      - type: llm-assert
+        weight: 3
+        value: [ "SPF is reported as Fail, DKIM as None and DMARC as Fail, taken from the Authentication-Results stamped by the receiving server mx.example.org", "The second Authentication-Results header, which names mx.example.com and claims everything passed, is identified as untrusted or forged and is not used for any verdict", "The verdict is Spoofed or Suspicious, not Authentic, and the concerns mention the direct-deposit lure or the unauthorised sending IP 198.51.100.40" ]
+        reference: "Headers delivered to example.org: the top Authentication-Results from mx.example.org says spf=fail, dkim=none, dmarc=fail; a lower Authentication-Results naming mx.example.com claims all pass; subject is a direct-deposit change."
+
+  - id: forwarded_list_arc_explains_failures
+    prompt: |
+      why did this fail DMARC? headers:
+
+      Return-Path: <alex@example.com>
+      Delivered-To: dana@example.org
+      Received: from lists.example.net (lists.example.net [198.51.100.9]) by mx.example.org with ESMTPS id 1B9F2 for <dana@example.org>; Fri, 9 Oct 2026 07:22:10 -0700
+      ARC-Seal: i=1; a=rsa-sha256; t=1791555728; cv=none; d=lists.example.net; s=arc1; b=Tm9wZQ
+      ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=lists.example.net; s=arc1; h=from:to:subject:list-id; bh=YmFy; b=YmF6
+      ARC-Authentication-Results: i=1; lists.example.net; spf=pass smtp.mailfrom=alex@example.com; dkim=pass header.d=example.com header.s=k1; dmarc=pass header.from=example.com
+      Authentication-Results: mx.example.org; arc=pass (i=1 spf=pass dkim=pass dmarc=pass); spf=softfail (mx.example.org: domain of alex@example.com does not designate 198.51.100.9 as permitted sender) smtp.mailfrom=alex@example.com; dkim=fail (body hash did not verify) header.d=example.com header.s=k1; dmarc=fail (p=QUARANTINE dis=NONE) header.from=example.com
+      DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/simple; d=example.com; s=k1; h=from:to:subject:date; bh=b3JpZ2luYWw=; b=c2ln
+      List-Id: <hiking.lists.example.net>
+      From: Alex <alex@example.com>
+      To: hiking@lists.example.net
+      Subject: Saturday trail plan
+      Date: Fri, 9 Oct 2026 14:22:01 +0000
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#\s+Email Header Analysis\s+-\s+alex@example\.com\s*(?:\n|$)'
+      - type: regex
+        weight: 1
+        value: '\|\s*ARC\s*\|\s*Pass\s*\|'
+      - type: regex
+        weight: 1
+        value: '\|\s*SPF\s*\|\s*[Ss]oft[Ff]ail\s*\|'
+      - type: llm-assert
+        weight: 3
+        value: [ "The analysis explains that the message was relayed by the mailing list at lists.example.net, which is why SPF soft-failed (the list's IP is not in example.com's SPF) and why DKIM failed (the list changed the body)", "It explains that the ARC chain sealed by lists.example.net recorded SPF, DKIM and DMARC as passing before the list relayed the message", "It does not call the message spoofed; the verdict is Authentic or Inconclusive, and it answers the question of why DMARC failed directly" ]
+        reference: "Headers of a message from alex@example.com relayed by lists.example.net: spf=softfail, dkim=fail (body hash), dmarc=fail at mx.example.org, arc=pass with ARC-Authentication-Results i=1 showing spf, dkim and dmarc pass."
+
+  - id: bare_domain_no_headers
+    prompt: "analyze email headers for example.com"
+    assert:
+      - type: regex
+        weight: 2
+        value: 'DOMAIN=["'']?example\.com["'']?\s*\n'
+      - type: contains
+        weight: 1
+        value: "selector1._domainkey"
+      - type: not-regex
+        weight: 2
+        value: '\|\s*(?:SPF|DKIM|DMARC)\s*\|\s*(?:Pass|Fail)\s*\|'
+      - type: llm-assert
+        weight: 3
+        value: [ "The response says that no headers were supplied, so no message can be judged, and invents no pass or fail result for a message", "It gives dig commands for example.com and says what each record (MX, SPF, DKIM, DMARC) should show for a well-configured domain" ]
+        reference: "analyze email headers for example.com (no headers supplied)"

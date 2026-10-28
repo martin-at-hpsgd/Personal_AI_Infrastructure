@@ -17,8 +17,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  * serves them as JSON. Rendering happens in the Observability Next.js app at
  * /hypotheses (src/app/hypotheses/page.tsx).
  *
- * Doctrine constraint ({{PRINCIPAL_NAME}}, 2026-05-08): "Pulse always reads from clean
- * sources only — USER/ or MEMORY/, nothing hard-coded."
+ * Constraint on this module
  *
  *   - Zero string literals resembling hypothesis content live in this file.
  *   - Every byte served comes from a markdown file under HYPOTHESES_DIR.
@@ -166,13 +165,13 @@ function loadHypothesis(filename: string): Hypothesis | null {
 // ── Healing-fixture promotion (deriver v3 — no code path) ───────────────────
 // Graduating a healing-fixture hypothesis attempts to PROMOTE its pending
 // fixture into the blocking corpus — which only succeeds if the class is
-// already fixed (the fixture is green). It NEVER writes code: PromoteFixture
+// already fixed (the fixture is green). It NEVER writes code: the promoter
 // only moves a data-only fixture dir + records the registry row. A still-red
 // fixture stays pending (the fix hasn't been done yet). The HTTP response
 // carries the truth.
 
 // ASYNC, never sync (same class as modules/bunker.ts): execFileSync parked
-// Pulse's single-threaded event loop for the whole PromoteFixture run — up to
+// Pulse's single-threaded event loop for the whole promoter run — up to
 // the full 120s timeout — so /healthz, the dashboard and hook validation all
 // stalled behind one graduate POST, long enough for the supervisor to SIGKILL
 // the daemon. The kill timer bounds the child exactly as the old `timeout`
@@ -181,13 +180,15 @@ function loadHypothesis(filename: string): Hypothesis | null {
 // ported from public PR #1736, @elhoim
 const PROMOTE_TIMEOUT_MS = 120_000;
 
-async function runPromoteFixture(pendingSlug: string): Promise<{ promoted: boolean; detail: string }> {
+async function runPromoteFixture(pendingSlug: string): Promise<{ promoted: boolean; detail: string; unavailable?: boolean }> {
+  const promoter = join(LIFEOS_DIR, "TOOLS", "PromoteFixture.ts"); // maintainer-side; absent on a public install, guarded next
+  if (!existsSync(promoter)) return { promoted: false, unavailable: true, detail: "PromoteFixture.ts is maintainer-side; not in the public release; graduation is unavailable on this install" };
   const env = { ...process.env } as Record<string, string | undefined>;
   delete env.ANTHROPIC_API_KEY;
   delete env.ANTHROPIC_AUTH_TOKEN;
   delete env.CLAUDECODE;
   try {
-    const proc = Bun.spawn(["bun", join(LIFEOS_DIR, "TOOLS", "PromoteFixture.ts"), pendingSlug], {
+    const proc = Bun.spawn(["bun", promoter, pendingSlug], {
       stdin: "ignore", stdout: "pipe", stderr: "pipe", env,
     });
     const timer = setTimeout(() => { try { proc.kill(); } catch { /* already gone */ } }, PROMOTE_TIMEOUT_MS);
@@ -199,7 +200,7 @@ async function runPromoteFixture(pendingSlug: string): Promise<{ promoted: boole
     clearTimeout(timer);
     if (code !== 0) {
       const detail = (out + errTxt).trim().split("\n").slice(0, 3).join(" · ");
-      return { promoted: false, detail: detail || `PromoteFixture exited ${code}` };
+      return { promoted: false, detail: detail || `fixture promoter exited ${code}` };
     }
     return { promoted: true, detail: out.trim().split("\n")[0] ?? "promoted" };
   } catch (e: any) {
@@ -301,7 +302,7 @@ export async function graduateHypothesis(slug: string, note?: string): Promise<{
   if (!h) return { ok: false, reason: "not_found" };
   if (h.has_patch && h.pending_slug && h.enforcement_surface !== "context") {
     const promo = await runPromoteFixture(h.pending_slug);
-    if (!promo.promoted) return { ok: false, reason: "patch_still_red", detail: promo.detail };
+    if (!promo.promoted) return { ok: false, reason: promo.unavailable ? "promoter_unavailable" : "patch_still_red", detail: promo.detail };
     const result = archiveHypothesis(slug, "graduated", note);
     return result.ok ? { ok: true, detail: promo.detail } : { ok: false, reason: result.reason };
   }
@@ -377,7 +378,7 @@ export async function handleRequest(req: Request, pathname: string): Promise<Res
       // Deriver v3 routing: a healing-fixture hypothesis on a code surface
       // graduates by trying to PROMOTE its pending fixture — which succeeds only
       // if the class is already fixed (fixture is green). No code is ever
-      // written; PromoteFixture just moves a data fixture into the corpus. A
+      // written; the promoter just moves a data fixture into the corpus. A
       // still-red fixture stays pending as a task.
       if (h.has_patch && h.pending_slug && h.enforcement_surface !== "context") {
         const promo = await runPromoteFixture(h.pending_slug);
@@ -389,7 +390,7 @@ export async function handleRequest(req: Request, pathname: string): Promise<Res
           ok: true, slug,
           new_status: promo.promoted ? "graduated" : "hypothesis",
           enforcement_surface: h.enforcement_surface,
-          patch: promo.promoted ? "promoted" : "still-red-pending",
+          patch: promo.promoted ? "promoted" : promo.unavailable ? "promoter-unavailable" : "still-red-pending",
           patch_detail: promo.detail,
         });
       }

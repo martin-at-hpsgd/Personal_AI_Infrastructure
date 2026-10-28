@@ -1,4 +1,4 @@
-import { writeFileSync, renameSync, mkdirSync, rmSync } from "node:fs";
+import { writeFileSync, renameSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
 /**
@@ -19,13 +19,21 @@ import { dirname } from "node:path";
  */
 function atomicWrite(filePath: string, content: string, mode?: number): void {
   mkdirSync(dirname(filePath), { recursive: true });
+  // GHSA-mqwg-v87w-pggm (@elhoim): preserve existing permissions unless mode is explicit.
+  let effective = mode;
+  if (effective === undefined) {
+    try {
+      effective = statSync(filePath).mode & 0o777;
+    } catch {
+      // New target: keep the default umask behavior.
+    }
+  }
   const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   try {
     // `mode` is applied at CREATE time, not chmod-after-rename: a rename-then-chmod
     // leaves the file readable at the default 0644 for a window on every write,
-    // and re-creating drops whatever mode the previous file had. Callers writing
-    // restricted config (0600) must pass it here. (Max review, 2026-07-29.)
-    writeFileSync(tmp, content, mode === undefined ? { encoding: "utf8" } : { encoding: "utf8", mode });
+    // and re-creating drops whatever mode the previous file had. (Astra review, 2026-07-29.)
+    writeFileSync(tmp, content, effective === undefined ? { encoding: "utf8" } : { encoding: "utf8", mode: effective });
     renameSync(tmp, filePath);
   } catch (error) {
     // Best-effort cleanup — the original write failure is what the caller needs.

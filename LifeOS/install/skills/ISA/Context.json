@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "required": [
+    "intent-routing",
+    "format-spec-cross-reference"
+  ],
+  "sections": {
+    "what-it-does": {
+      "file": "References/CompleteGuide.md",
+      "heading": "What It Does"
+    },
+    "the-problem": {
+      "file": "References/CompleteGuide.md",
+      "heading": "The Problem"
+    },
+    "how-it-works": {
+      "file": "References/CompleteGuide.md",
+      "heading": "How It Works"
+    },
+    "three-guardrail-taxonomy-principles-vs-constraints-vs-anti-criteria": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Three-Guardrail Taxonomy (Principles vs Constraints vs Anti-criteria)"
+    },
+    "completeness-gate-substance-scaled-hard": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Completeness Gate (substance-scaled — HARD)"
+    },
+    "intent-routing": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Intent Routing"
+    },
+    "gotchas": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Gotchas"
+    },
+    "examples": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Examples"
+    },
+    "relationship-to-the-algorithm": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Relationship to the Algorithm"
+    },
+    "format-spec-cross-reference": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Format spec cross-reference"
+    },
+    "complete-guide": {
+      "file": "References/CompleteGuide.md"
+    },
+    "discussion-primitive": {
+      "file": "References/Discussion.md"
+    },
+    "canonical-example": {
+      "file": "Examples/canonical-isa.md"
+    },
+    "minimal-example": {
+      "file": "Examples/e1-minimal.md"
+    },
+    "deepest-example": {
+      "file": "Examples/e5-enterprise.md"
+    },
+    "intent-scaffold": {
+      "file": "Intents/Scaffold.md",
+      "requires": [
+        "current-contract",
+        "three-guardrail-taxonomy-principles-vs-constraints-vs-anti-criteria",
+        "completeness-gate-substance-scaled-hard",
+        "relationship-to-the-algorithm",
+        "discussion-primitive",
+        "intent-routing"
+      ]
+    },
+    "intent-check": {
+      "file": "Intents/CheckCompleteness.md",
+      "requires": [
+        "current-contract",
+        "three-guardrail-taxonomy-principles-vs-constraints-vs-anti-criteria",
+        "completeness-gate-substance-scaled-hard"
+      ]
+    },
+    "intent-discuss": {
+      "file": "Intents/Discuss.md",
+      "requires": [
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0",
+        "completeness-gate-substance-scaled-hard",
+        "discussion-primitive"
+      ]
+    },
+    "intent-interview": {
+      "file": "Intents/Interview.md",
+      "requires": [
+        "current-contract",
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0",
+        "completeness-gate-substance-scaled-hard",
+        "discussion-primitive"
+      ]
+    },
+    "intent-questionnaire": {
+      "file": "Intents/Questionnaire.md",
+      "requires": [
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0",
+        "completeness-gate-substance-scaled-hard",
+        "discussion-primitive"
+      ]
+    },
+    "intent-rate": {
+      "file": "Intents/Rate.md",
+      "requires": [
+        "current-contract",
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0",
+        "three-guardrail-taxonomy-principles-vs-constraints-vs-anti-criteria",
+        "completeness-gate-substance-scaled-hard"
+      ]
+    },
+    "intent-seed": {
+      "file": "Intents/Seed.md",
+      "requires": [
+        "current-contract",
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0",
+        "three-guardrail-taxonomy-principles-vs-constraints-vs-anti-criteria",
+        "completeness-gate-substance-scaled-hard",
+        "relationship-to-the-algorithm",
+        "examples",
+        "canonical-example"
+      ]
+    },
+    "intent-append": {
+      "file": "Intents/Append.md",
+      "requires": [
+        "current-contract",
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0"
+      ]
+    },
+    "intent-upgrade": {
+      "file": "Intents/Upgrade.md",
+      "requires": [
+        "current-contract",
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0"
+      ]
+    },
+    "render-command": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Intent Routing"
+    },
+    "current-contract": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Current Contract"
+    },
+    "gotchas-reference": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Gotchas"
+    },
+    "examples-reference": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Examples"
+    },
+    "intent-restate": {
+      "file": "Intents/Restate.md",
+      "requires": [
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0",
+        "three-guardrail-taxonomy-principles-vs-constraints-vs-anti-criteria",
+        "completeness-gate-substance-scaled-hard"
+      ]
+    },
+    "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0": {
+      "file": "References/CompleteGuide.md",
+      "heading": "The Twenty-One-Section Body (locked; spec v2.30.0, Algorithm v8.39.0)"
+    },
+    "intent-refine": {
+      "file": "Intents/Refine.md",
+      "requires": [
+        "current-contract",
+        "twenty-one-section-body-locked-spec-v2-30-0-algorithm-v8-39-0",
+        "discussion-primitive"
+      ]
+    }
+  },
+  "bundles": {
+    "scaffold": [
+      "intent-scaffold"
+    ],
+    "check": [
+      "intent-check"
+    ],
+    "discuss": [
+      "intent-discuss"
+    ],
+    "interview": [
+      "intent-interview"
+    ],
+    "questionnaire": [
+      "intent-questionnaire"
+    ],
+    "rate": [
+      "intent-rate"
+    ],
+    "seed": [
+      "intent-seed"
+    ],
+    "append": [
+      "intent-append"
+    ],
+    "upgrade": [
+      "intent-upgrade"
+    ],
+    "render": [
+      "render-command"
+    ],
+    "full": [
+      "complete-guide"
+    ],
+    "restate": [
+      "intent-restate"
+    ],
+    "refine": [
+      "intent-refine"
+    ]
+  }
+}

@@ -1,0 +1,91 @@
+# Fabric LogicalFallacies — the fallacies an argument actually commits, each as
+# `- Name: Type — "exact words" — short explanation`. The regex asserts pin the
+# literal shape (the one heading, the item line with a family type, the none
+# line, the common-form marker); the judged asserts carry what code cannot:
+# fallacies really committed, quotes verbatim, explanations specific to the
+# argument, sound reasoning left unflagged. Synthetic inline fixtures only.
+name: fabric-logicalfallacies
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/LogicalFallacies.md"
+cases:
+  - id: pasted_text_fallacies_found_and_quoted
+    prompt: 'find_logical_fallacies on this: "Principal Okafor says school uniforms cut bullying, but he went to a private school, so of course he would say that. Either we adopt uniforms this fall or our students will keep failing. Since the fictional Brookside district adopted uniforms in 2019, its test scores rose, so uniforms raise scores. Everyone in the parent group agrees, so it must be right."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: right heading, right line shape, real type
+    # names, but the quotes are paraphrases, the explanations are generic
+    # definitions, one says the conclusion is false because of the fallacy, a
+    # non-fallacy is flagged, and the post hoc and bandwagon moves are missed.
+    adversarial_output: |
+      ## Fallacies
+
+      - Ad hominem: Relevance — "the principal is biased because he is privileged" — Attacks the person instead of the argument, so uniforms do not cut bullying.
+      - False dilemma: Informal — "uniforms or failure" — Presents two options when more exist.
+      - Appeal to authority: Relevance — "Principal Okafor says school uniforms cut bullying" — Cites an authority figure instead of evidence.
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Fallacies[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)- [^:\n]+: (?:Formal|Propositional|Quantification|Syllogistic|Informal|Improper premise|Faulty generalization|Questionable cause|Statistical|Relevance|Red herring) — (?:Common form: )?["“][^\n]+["”] — [^\n]+'
+      - type: icontains
+        value: "false dilemma"
+        weight: 1
+      - type: not-regex
+        value: '\*\*'
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "Every quoted passage is copied word for word from the supplied text, not paraphrased", "The dismissal of the principal because he went to a private school is identified as an attack on the person or his circumstances", "The claim that Brookside's scores rose after uniforms, so uniforms raise scores, is identified as a causal fallacy such as post hoc", "Everyone in the parent group agrees, so it must be right, is identified as an appeal to popularity or bandwagon", "Each explanation says how this particular argument's reasoning fails rather than giving a generic definition of the fallacy", "No explanation claims the conclusion is false because the argument is fallacious" ]
+        reference: 'find_logical_fallacies on this: "Principal Okafor says school uniforms cut bullying, but he went to a private school, so of course he would say that. Either we adopt uniforms this fall or our students will keep failing. Since the fictional Brookside district adopted uniforms in 2019, its test scores rose, so uniforms raise scores. Everyone in the parent group agrees, so it must be right."'
+  - id: sound_argument_gets_none_found
+    prompt: 'find logical fallacies in this: "A fictional clinic tracked 1,200 patients for two years. Patients randomly assigned to reminder texts missed 18% of appointments; the control group missed 27%. The gap held in every age group, so the clinic will keep sending reminders, though it has not tested whether the effect lasts beyond two years."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Fallacies[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)(?:- )?None found: \S'
+      - type: llm-assert
+        weight: 3
+        value: [ "No fallacy is listed; the response does not invent flaws in a sound argument to look thorough", "The none line gives a reason specific to this argument, such as the random assignment, the control group, or the conclusion limited to what was tested" ]
+        reference: 'find logical fallacies in this: "A fictional clinic tracked 1,200 patients for two years. Patients randomly assigned to reminder texts missed 18% of appointments; the control group missed 27%. The gap held in every age group, so the clinic will keep sending reminders, though it has not tested whether the effect lasts beyond two years."'
+  - id: bare_topic_uses_common_form
+    prompt: "find logical fallacies in common arguments for astrology"
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Fallacies[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)- [^:\n]+: (?:Formal|Propositional|Quantification|Syllogistic|Informal|Improper premise|Faulty generalization|Questionable cause|Statistical|Relevance|Red herring) — Common form: ["“][^\n]+["”] — [^\n]+'
+      - type: llm-assert
+        weight: 3
+        value: [ "The items are arguments people actually make for astrology, such as that it has lasted thousands of years, that a reading fit them, or that many people believe it", "Each argument is marked as its common form rather than presented as a quote from a particular source", "Each named fallacy is one the argument genuinely commits, and each explanation is specific to astrology rather than a generic definition" ]
+        reference: "find logical fallacies in common arguments for astrology"
+  - id: single_argument_slippery_slope
+    prompt: 'logical fallacies: "If we let students retake one exam, soon nobody will ever study and diplomas will mean nothing."'
+    assert:
+      - type: icontains
+        value: "slippery slope"
+        weight: 2
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)- [^:\n]+: (?:Formal|Propositional|Quantification|Syllogistic|Informal|Improper premise|Faulty generalization|Questionable cause|Statistical|Relevance|Red herring) — ["“][^\n]+["”] — [^\n]+'
+      - type: llm-assert
+        weight: 3
+        value: [ "The slippery slope is pinned to words copied exactly from the sentence", "The explanation names the unsupported jump from one retake to nobody studying or diplomas meaning nothing", "No fallacy is listed that the sentence does not commit" ]
+        reference: 'logical fallacies: "If we let students retake one exam, soon nobody will ever study and diplomas will mean nothing."'
+  - id: definition_question_answered_directly
+    negative: true
+    prompt: "What is a straw man fallacy?"
+    assert:
+      - type: not-regex
+        value: '(?:^|\n)## Fallacies'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The response explains what a straw man fallacy is directly instead of producing a list of fallacies found in the question" ]
+        reference: "What is a straw man fallacy?"

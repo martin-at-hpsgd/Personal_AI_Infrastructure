@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useApi } from "@/lib/api";
 import {
   Boxes,
   Car,
@@ -81,17 +82,11 @@ const matches = (needle: string, ...fields: (string | undefined)[]) =>
   fields.some((f) => f?.toLowerCase().includes(needle));
 
 export default function GearPage() {
-  const [data, setData] = useState<AssetsData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const assets = useApi<AssetsData>("/api/assets");
+  const data = assets.data ?? null;
+  const error = assets.error ? String(assets.error) : null;
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("All");
-
-  useEffect(() => {
-    fetch("/api/assets", { cache: "no-store" })
-      .then((r) => r.json())
-      .then(setData)
-      .catch((e) => setError(String(e)));
-  }, []);
 
   // Sections worth showing: anything with items or open TODOs (pure prose
   // sections like maintenance instructions stay in the file, off the page).

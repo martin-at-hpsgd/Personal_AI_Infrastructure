@@ -2,7 +2,7 @@
 status: RETIRED 2026-07-11 — historical doctrine. Modes/tiers were abolished with Algorithm v8 and system prompt v3.0.0 (one adaptive format). Kept as record only; nothing routes here.
 last_updated: 2026-05-13
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 mode: optimize
 ---
 
@@ -19,7 +19,7 @@ Algorithm OBSERVE detects the trigger phrase `optimize [target]`. The target can
 ## Pulse surface
 
 - Tab: **Optimize**
-- Dashboard: `OptimizeDashboard` (`LIFEOS/PULSE/Observability/src/components/activity/OptimizeDashboard.tsx`)
+- Dashboard: `OptimizeDashboard` (`LIFEOS/PULSE/Observability/src/components/activity/OptimizeDashboard.tsx` (not in the public release))
 - Filter: `algorithmStates.filter(s => s.mode === "optimize")`
 
 ## Two Evaluation Modes
@@ -31,7 +31,7 @@ Algorithm OBSERVE detects the trigger phrase `optimize [target]`. The target can
 | **Scoring** | Single numeric value (lower/higher is better) | `passes / (eval_criteria × runs)` as percentage |
 | **ISC role** | Guard rails (invariant assertions) | Guard rails (same) |
 | **Eval criteria** | N/A — `metric_command` is the signal | 3-6 binary yes/no questions judged by LLM |
-| **Sandbox** | Git branch `optimize/{metric_name}` | Directory copy in `MEMORY/WORK/{slug}/sandbox/` |
+| **Sandbox** | Git branch `optimize/{metric_name}` | Directory copy in `LIFEOS/MEMORY/WORK/{slug}/sandbox/` |
 
 **Mode detection:**
 
@@ -75,7 +75,7 @@ algorithm_config:
   metric_command: "bun test --reporter json"   # metric mode only
   eval_criteria:                                # eval mode only
     - "Output is under 200 tokens"
-    - "Output uses {{PRINCIPAL_NAME}}'s voice (per WRITINGSTYLE.md)"
+    - "Output uses the principal's voice (per WRITINGSTYLE.md)"
     - "Output contains zero AI-isms (per AIWritingPatterns.md)"
   params:
     stepSize: 0.15
@@ -129,5 +129,5 @@ ISCs are **guard rails** — invariant assertions that must hold regardless of s
 - Parameter schema: [`../parameter-schema.md`](../parameter-schema.md)
 - Eval-mode guide: [`../../eval-guide.md`](../../eval-guide.md)
 - Target types: [`../target-types.md`](../target-types.md)
-- Optimize skill (router): `~/.claude/skills/Optimize/SKILL.md`
+- Optimize skill (router): retired 2026-10-01, absorbed by the HillClimb skill (`skills/HillClimb/SKILL.md`)
 - Current Algorithm doctrine: `../../v6.5.0.md`

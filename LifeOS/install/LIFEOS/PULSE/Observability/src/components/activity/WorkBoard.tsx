@@ -6,6 +6,7 @@ import { useAlgorithmState } from "@/hooks/useAlgorithmState";
 import type { AlgorithmState, AlgorithmCriterion, ActivityClass } from "@/types/algorithm";
 import { deriveLifecycle, LIFECYCLE_META, LIFECYCLE_ORDER, formatElapsed, formatAgo, type Lifecycle } from "@/lib/lifecycle";
 import ClimbChart from "./ClimbChart";
+import { fmtClock } from "@/lib/time";
 import QuickPulseStrip from "./QuickPulseStrip";
 import EmptyStateGuide from "@/components/EmptyStateGuide";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,7 +30,7 @@ import {
 //
 // Replaces UnifiedWorkDashboard (2026-07-14 redesign). No modes, no effort
 // tiers, no phase stations. Two kinds of rows:
-//   TRACKED  — an ISA backs the session: claims, evidence, the climb.
+//   TRACKED  — an ISA backs the session: criteria, evidence, the climb.
 //   UNTRACKED — a live session with no ISA: liveness + what it's doing.
 // Lifecycle is derived from data (lib/lifecycle.ts), never declared.
 
@@ -43,7 +44,7 @@ const FILTERS: { value: BoardFilter; label: string }[] = [
 
 // ─── ISA badge — marks a tracked run, carries the ISC count ───
 
-/** Claim counts with a legacy fallback: rows written before the progress
+/** Criterion counts with a legacy fallback: rows written before the progress
  *  normalization can carry 0/0 while their criteria[] are fully populated. */
 export function claimCounts(s: AlgorithmState): { done: number; total: number } {
   if ((s.progress?.total ?? 0) > 0) return s.progress;
@@ -58,7 +59,7 @@ function NoISAChip({ size = "sm" }: { size?: "sm" | "xs" }) {
       className={`inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.02] text-ink-3 shrink-0 ${
         size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-1.5 py-px text-[10px]"
       } font-medium tracking-wide`}
-      title="Untracked session — no ISA, no claims; liveness only"
+      title="Untracked session — no ISA, no criteria; liveness only"
     >
       NO ISA
     </span>
@@ -86,7 +87,7 @@ function ActivityChip({ s, size = "sm" }: { s: AlgorithmState; size?: "sm" | "xs
   if (!s.active || !a?.state || !a.lastTs || Date.now() - a.lastTs > ACTIVITY_FRESH_MS) return null;
   // A completed run is closed — residual tool calls in the same terminal are
   // post-run chatter, not run work. Done cards never advertise live activity
-  // ({{PRINCIPAL_NAME}}, 2026-07-22: "Done shouldn't have anything with working").
+  // (principal directive, 2026-07-22).
   // A run in the learn wrap-up (phase not yet COMPLETE) keeps the chip: wrap-up
   // is real work. (Was "Summit keeps the chip" — summit folded into cairn 2026-07-30.)
   if (s.currentPhase === "COMPLETE") return null;
@@ -124,7 +125,7 @@ function ISABadge({ s, size = "sm" }: { s: AlgorithmState; size?: "sm" | "xs" })
       className={`inline-flex items-center gap-1 rounded-full border border-sky-500/25 bg-sky-500/[0.08] text-sky-300 shrink-0 ${
         size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-1.5 py-px text-[10px]"
       } font-semibold tracking-wide`}
-      title={`ISA-tracked — ${done}/${total} claims verified`}
+      title={`ISA-tracked — ${done}/${total} criteria verified`}
     >
       <Mountain className={size === "sm" ? "w-3 h-3" : "w-2.5 h-2.5"} />
       ISA{total > 0 ? ` ${done}/${total}` : ""}
@@ -132,7 +133,7 @@ function ISABadge({ s, size = "sm" }: { s: AlgorithmState; size?: "sm" | "xs" })
   );
 }
 
-// ─── Claims Kanban — columns are claim STATES, the thing that actually moves ───
+// ─── Criteria Kanban — columns are criterion STATES, the thing that actually moves ───
 //
 // The old kanban's columns were phases (retired — nothing walked them). These
 // columns are real: every card sits where its verification status puts it,
@@ -213,7 +214,7 @@ function ClaimsKanban({ s }: { s: AlgorithmState }) {
   );
 }
 
-// ─── Claim row (expanded view) ───
+// ─── Criterion row (expanded view) ───
 
 function ClaimRow({ c }: { c: AlgorithmCriterion }) {
   const isAnti = c.type === "anti-criterion";
@@ -227,7 +228,7 @@ function ClaimRow({ c }: { c: AlgorithmCriterion }) {
     );
 
   // Evidence is embedded in descriptions as "Evidence: …" — split it out so
-  // the claim reads clean and the proof reads quiet.
+  // the criterion reads clean and the proof reads quiet.
   const [claimText, evidenceText] = useMemo(() => {
     const m = c.description.match(/^([\s\S]*?)(?:\s*\*{0,2}Evidence:?\*{0,2}\s*)([\s\S]+)$/i);
     if (m) return [m[1].trim(), m[2].trim()];
@@ -257,7 +258,7 @@ function ClaimRow({ c }: { c: AlgorithmCriterion }) {
 //
 // Everything work.json knows about a session with no ISA: the opening ask,
 // timing, liveness. Exists because "I don't know anything about them"
-// ({{PRINCIPAL_NAME}}, 2026-07-15) — every card must open into whatever we do know.
+// (principal, 2026-07-15) — every card must open into whatever we do know.
 
 function SessionExpanded({ s, bare = false }: { s: AlgorithmState; bare?: boolean }) {
   // bare: plain always-open panel for the spotlight — see ClimbExpanded.
@@ -285,7 +286,7 @@ function SessionExpanded({ s, bare = false }: { s: AlgorithmState; bare?: boolea
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-[13px] text-ink-2">
           <span>
             <span className="text-ink-3">started </span>
-            {new Date(s.algorithmStartedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {fmtClock(s.algorithmStartedAt)}
             <span className="text-ink-3"> · running </span>
             {formatElapsed(Date.now() - (s.algorithmStartedAt || Date.now()))}
           </span>
@@ -298,7 +299,7 @@ function SessionExpanded({ s, bare = false }: { s: AlgorithmState; bare?: boolea
           )}
         </div>
         <p className="text-[12px] text-ink-3 leading-snug">
-          Untracked session — no ISA, so no claims, no climb. If this becomes real work, the run writes an ISA and
+          Untracked session — no ISA, so no criteria, no climb. If this becomes real work, the run writes an ISA and
           this card graduates to a tracked climb automatically.
         </p>
       </div>
@@ -344,7 +345,7 @@ function ClimbExpanded({ s, bare = false }: { s: AlgorithmState; bare?: boolean 
             <div className="flex items-center gap-2 mb-1.5">
               <Target className="w-3.5 h-3.5 text-sky-400" />
               <span className="text-xs font-semibold uppercase tracking-wider text-ink-2">
-                Claims {claimCounts(s).done}/{claimCounts(s).total}
+                Criteria {claimCounts(s).done}/{claimCounts(s).total}
               </span>
               {s.iscDeltas && (s.iscDeltas.addedTotal > 0 || s.iscDeltas.closedTotal > 0) && (
                 <span className="text-[11px] font-mono text-ink-3">
@@ -500,22 +501,21 @@ function BoardRow({
 
 // Live sessions lead the board (2026-07-15): most real-time activity is
 // untracked quick work, and burying it in the last lane made an active
-// morning read as a dead board ("I'm doing work and I see nothing").
+// morning read as a dead board.
 //
 // 2026-07-22 hill-climb lanes (6-state fold 2026-07-30): the in-flight middle (Ascending/
 // Verifying) derives from the live tool stream, so cards migrate as the work's
 // character changes — the old Scoping/Climbing/Learning trio was static by
 // construction (see lib/lifecycle.ts). Left→right is the arc of a run.
 // Lane glyphs are the ascent-table emoji (LIFECYCLE_META.icon) — the EXACT
-// glyph the Kitty tab, status line, cmux pill, and ISA mirror show. The old
+// glyph the Kitty tab, status line, and ISA mirror show. The old
 // local lucide "twin" map drifted from the table by construction and was
-// deleted 2026-07-28 ({{PRINCIPAL_NAME}}: "a fully synched system") — an icon change in
+// deleted 2026-07-28 (principal directive) — an icon change in
 // ascent.ts now propagates here with no board edit.
 
 // Lane membership is TABLE POLICY (ascent.ts `board` field), never a list
 // spelled here — the local list drifted twice on 2026-07-28 alone. Columns are
-// STATIC ({{PRINCIPAL_NAME}}, 2026-07-30: "static columns. They never change… the same
-// columns that we have for the tab title, colors, names, and icons"): every
+// STATIC (principal directive, 2026-07-30): every
 // run state is a permanent column, populated or not; only 'hidden' (idle)
 // never renders. The conditional placements ('laneWhenPopulated', 'list') and
 // the separate Done ledger they produced are retired.
@@ -604,18 +604,25 @@ function SessionCard2({
   );
 }
 
+// Wall mode (2026-09-10, Pulse Dashboard): "lanes" fills its viewport with the six
+// lanes and no spotlight; "spotlight" renders only the spotlight panel, full height.
+// Both are the same board, sliced for an embedder that owns the surrounding layout.
+export type BoardWall = "lanes" | "spotlight";
+
 function BoardKanban({
   sessions,
   selectedId,
   onSelect,
+  wall,
 }: {
   sessions: AlgorithmState[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  wall?: BoardWall;
 }) {
   // Camped is tracked-only by construction (deriveLifecycle); untracked
   // quiet rows land in "idle", which the table marks 'hidden'.
-  // Static columns ({{PRINCIPAL_NAME}}, 2026-07-30): every lane renders every load —
+  // Static columns (principal, 2026-07-30): every lane renders every load —
   // no populated-only filter, no separate Done block. Cairn is a column.
   const byLane = LANE_STATES.map((lc) => ({
     lc,
@@ -632,8 +639,8 @@ function BoardKanban({
 
   const selected = sessions.find((s) => s.sessionId === selectedId) || null;
 
-  // The detail panel sits ABOVE the lanes and is always populated ({{PRINCIPAL_NAME}},
-  // 2026-07-22: "highlighting one of the active tasks being worked on").
+  // The detail panel sits ABOVE the lanes and is always populated, spotlighting one active task
+  // (principal directive, 2026-07-22).
   // Manual selection wins; otherwise auto-spotlight the most recently active
   // tracked run so the climb visualization is live by default.
   const autoSpotlight =
@@ -642,17 +649,41 @@ function BoardKanban({
       .sort((a, b) => (b.phaseStartedAt || 0) - (a.phaseStartedAt || 0))[0] || null;
   const displayed = selected || autoSpotlight;
 
+  if (wall === "spotlight") {
+    return (
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden" data-board="spotlight">
+        {displayed ? (
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="px-4 py-2 flex items-center gap-2 bg-surface-1 sticky top-0 backdrop-blur-sm z-10">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${displayed.active ? "bg-sky-400 animate-pulse" : "bg-ink-3"}`} />
+              <ISABadge s={displayed} />
+              <span className="text-sm text-ink-1 truncate">{displayed.taskDescription}</span>
+              {!selected && (
+                <span className="text-[11px] uppercase tracking-wider text-sky-400/60 ml-auto shrink-0">live spotlight</span>
+              )}
+            </div>
+            {displayed.tracked ? <ClimbExpanded s={displayed} bare /> : <SessionExpanded s={displayed} bare />}
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-ink-3 text-sm">No active climb to spotlight.</div>
+        )}
+      </div>
+    );
+  }
+
+  const lanesWall = wall === "lanes";
+
   return (
     // ONE scroll container (2026-07-28): the lanes are the highlight and own
     // the viewport. The spotlight rides the viewport bottom via sticky (still
     // never below the fold — the 2026-07-22 rule holds). The Done list is the
     // LOWEST block on the page, past the spotlight — scroll to reach it, and
     // it never steals height from the columns.
-    <div className="flex-1 min-h-0 overflow-y-auto">
+    <div className={lanesWall ? "flex-1 min-h-0 flex flex-col overflow-hidden" : "flex-1 min-h-0 overflow-y-auto"} data-board={lanesWall ? "lanes" : "board"}>
       {/* All lanes fit the viewport width — minmax(0,1fr) with no min floor, no
           horizontal scroll (2026-07-20). Cards clamp text so narrow lanes hold. */}
       <div
-        className="grid gap-2 p-3"
+        className={lanesWall ? "grid gap-2 p-3 flex-1 min-h-0" : "grid gap-2 p-3"}
         style={{ gridTemplateColumns: `repeat(${byLane.length}, minmax(0, 1fr))` }}
       >
         {byLane.map((lane) => {
@@ -660,7 +691,8 @@ function BoardKanban({
           return (
             <div
               key={lane.lc}
-              className="rounded-lg border min-h-[120px] min-w-0"
+              className={lanesWall ? "rounded-lg border min-w-0 min-h-0 flex flex-col" : "rounded-lg border min-h-[120px] min-w-0"}
+              data-lane={lane.lc}
               style={{ borderColor: `${meta.color}40`, backgroundColor: `${meta.color}14` }}
             >
               <div
@@ -679,10 +711,11 @@ function BoardKanban({
                 </span>
                 <span className="text-[11px] font-mono text-ink-3 ml-auto">{lane.items.length}</span>
               </div>
-              {/* Columns flex between ≈4 rows (floor) and ≈8 rows (ceiling),
-                  scrolling internally only past 8 (principal, 2026-07-28). Grid
-                  stretch keeps every lane the height of the tallest one. */}
-              <div className="p-1.5 space-y-1.5 min-h-[384px] max-h-[780px] overflow-y-auto">
+              {/* Columns fill the viewport down to the spotlight, scrolling
+                  internally past that (principal, 2026-09-28: the spotlight
+                  halved so the lanes get the room). Grid stretch keeps every
+                  lane the height of the tallest one. */}
+              <div className={lanesWall ? "p-1.5 space-y-1.5 flex-1 min-h-0 overflow-y-auto overflow-x-hidden" : "p-1.5 space-y-1.5 min-h-[max(384px,58vh)] max-h-[max(780px,58vh)] overflow-y-auto"} data-lane-cards>
                 {lane.items.map((s) => (
                   <SessionCard2
                     key={s.sessionId}
@@ -704,12 +737,13 @@ function BoardKanban({
           detail. Sticky bottom: rides the viewport while the lanes scroll,
           never below the fold. Auto-populates with the most recent active
           tracked run. */}
-      {displayed && (
+      {displayed && !lanesWall && (
         // sticky bottom: the live area rides the viewport — never below the
         // fold no matter the screen height or scroll position. Opaque ground
         // so lanes don't bleed through while scrolling behind it.
-        <div className="mx-3 mb-3 shrink-0 sticky bottom-3 z-20 rounded-lg border border-sky-500/30 bg-[rgba(13,20,40,0.96)] backdrop-blur-md shadow-2xl max-h-[42vh] overflow-y-auto">
-          <div className="px-4 py-2 flex items-center gap-2 bg-white/[0.015] sticky top-0 backdrop-blur-sm">
+        // Half height (principal, 2026-09-28): 42vh → 21vh; the lanes take the space.
+        <div className="mx-3 mb-3 shrink-0 sticky bottom-3 z-20 rounded-lg glass-raised max-h-[21vh] overflow-y-auto">
+          <div className="px-4 py-2 flex items-center gap-2 bg-surface-1 sticky top-0 backdrop-blur-sm">
             <span
               className={`w-2 h-2 rounded-full shrink-0 ${displayed.active ? "bg-sky-400 animate-pulse" : "bg-ink-3"}`}
             />
@@ -745,7 +779,7 @@ function SectionHeader({
   tone: string;
 }) {
   return (
-    <div className="px-4 py-1.5 flex items-center gap-2 border-b border-white/[0.05] bg-white/[0.015]">
+    <div className="px-4 py-1.5 flex items-center gap-2 border-b border-white/[0.05] bg-surface-1">
       {icon}
       <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: tone }}>
         {label}
@@ -757,14 +791,14 @@ function SectionHeader({
 
 // ─── Main board ───
 
-export default function WorkBoard() {
+export default function WorkBoard({ wall }: { wall?: BoardWall } = {}) {
   const { algorithmStates, pulseStrip, isLoading } = useAlgorithmState();
   const [filter, setFilter] = useState<BoardFilter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Key bumped to v2 (2026-07-20): kanban is the default, and stale "list"
   // prefs saved under the old key must not override it.
   const [view, setView] = useState<"list" | "kanban">(() => {
-    if (typeof window === "undefined") return "kanban";
+    if (wall || typeof window === "undefined") return "kanban";
     return (localStorage.getItem("workboard-view-v2") as "list" | "kanban") || "kanban";
   });
   const switchView = (v: "list" | "kanban") => {
@@ -828,7 +862,7 @@ export default function WorkBoard() {
       <div className="px-6 pt-5">
         <EmptyStateGuide
           section="Work"
-          description="Tracked runs land here as climbs — claims closing on evidence until the summit. Untracked sessions show as live activity. Start work in any session and the board fills in."
+          description="Tracked runs land here as climbs — criteria closing on evidence until the summit. Untracked sessions show as live activity. Start work in any session and the board fills in."
           hideInterview
           daPromptExample="run the Algorithm on my next task"
         />
@@ -843,10 +877,11 @@ export default function WorkBoard() {
   const closed1h = activeClimbs.reduce((n, s) => n + (s.iscDeltas?.closed1h ?? 0), 0);
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      <QuickPulseStrip pulses={pulses} />
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      {!wall && <QuickPulseStrip pulses={pulses} />}
 
-      {/* Summary + filter bar */}
+      {/* Summary + filter bar (hidden in spotlight wall: the embedder frames it) */}
+      {wall !== "spotlight" && (
       <div className="px-4 py-2 flex items-center gap-4 border-b border-white/[0.04]">
         <div className="flex items-center gap-1.5">
           {FILTERS.map((f) => (
@@ -856,7 +891,7 @@ export default function WorkBoard() {
               className={`px-3 py-1 rounded-full text-[13px] font-medium transition-colors border ${
                 filter === f.value
                   ? "bg-[rgba(125,207,255,0.12)] text-ink-1 border-[rgba(125,207,255,0.3)]"
-                  : "bg-[rgba(168,165,200,0.05)] text-ink-3 hover:text-ink-2 border-transparent"
+                  : "bg-surface-1 text-ink-3 hover:text-ink-2 border-transparent"
               }`}
             >
               {f.label}
@@ -868,7 +903,7 @@ export default function WorkBoard() {
           {totalClaims > 0 && (
             <div className="flex items-center gap-2 text-xs">
               <Target className="w-3.5 h-3.5 text-sky-400" />
-              <span className="text-ink-3">Claims</span>
+              <span className="text-ink-3">Criteria</span>
               <span className="font-mono text-ink-1">
                 {totalDone}/{totalClaims}
               </span>
@@ -881,6 +916,7 @@ export default function WorkBoard() {
               )}
             </div>
           )}
+          {!wall && (
           <div className="flex items-center rounded-full border border-white/[0.08] overflow-hidden">
             <button
               onClick={() => switchView("list")}
@@ -901,8 +937,10 @@ export default function WorkBoard() {
               <Columns3 className="w-3.5 h-3.5" /> Kanban
             </button>
           </div>
+          )}
         </div>
       </div>
+      )}
 
       {view === "kanban" && (
         <BoardKanban
@@ -911,6 +949,7 @@ export default function WorkBoard() {
           )}
           selectedId={expandedId}
           onSelect={setExpandedId}
+          wall={wall}
         />
       )}
 

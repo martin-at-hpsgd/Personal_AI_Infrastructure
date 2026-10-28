@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' pulse-asset:; connect-src pulse-asset:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Pulse Desktop</title><link rel="stylesheet" href="workspace.css"></head>
+<body><div id="backdrop" hidden aria-hidden="true"></div><svg width="0" height="0" aria-hidden="true" style="position:absolute"><filter id="kitty-tint" color-interpolation-filters="linearRGB" x="0" y="0" width="100%" height="100%"><feFlood id="kitty-tint-color" flood-color="#24283b" flood-opacity="1" result="tint"/><feComposite in="tint" in2="SourceGraphic" operator="over"/></filter></svg><aside aria-label="Workspace sidebar">
+<div class="brand"><img src="assets/icon.png" alt=""><span>PULSE</span><span class="desktop">DESKTOP</span></div>
+<div class="section-heading"><span>SESSIONS</span><span id="count">00</span></div>
+<div class="create"><button id="new" title="New terminal · ⌘T">＋ New terminal <kbd>⌘T</kbd></button><button id="folder" aria-label="New terminal in folder" title="Choose a working folder">⌁</button></div>
+<div class="session-scroll"><div id="sessions" aria-label="Terminal sessions"></div><p id="empty">Your shells stay running when you close Pulse.</p>
+</div>
+<footer><button id="commands" title="Commands and shortcuts · ⌘K">Commands & shortcuts <kbd>⌘K</kbd></button><div><span class="keys"><kbd>⌃H</kbd><kbd>⌃L</kbd></span><span>switch workspace</span></div><div><span class="keys"><kbd>⌘B</kbd></span><span>focus sidebar · j / k</span></div><span class="persist"><i></i> Sessions survive app close</span></footer>
+</aside><header><div><span id="kind">DASHBOARD</span><strong id="title">Pulse</strong><span id="detail">Your life, in view.</span></div><div class="actions"><button id="rename" hidden>Rename</button><button id="end" hidden>End session</button><span id="keyhint">j / k scroll · gg / G jump</span></div></header>
+<div id="page-tabs"><button id="pages-back" aria-label="Scroll pages left">‹</button><nav aria-label="Pulse pages" id="pages"></nav><button id="pages-next" aria-label="Scroll pages right">›</button></div>
+<main id="terminal-host" aria-label="Interactive terminal"></main><div id="notice" role="status" hidden></div>
+<dialog id="rename-dialog"><form method="dialog"><label for="session-name">Session name</label><input id="session-name" maxlength="64" autocomplete="off"><div><button value="cancel">Cancel</button><button value="save" class="primary">Save name</button></div></form></dialog>
+<dialog id="command-dialog" aria-label="Commands and shortcuts">
+<div class="command-search"><span aria-hidden="true">⌘</span><input id="command-query" aria-label="Search commands, pages, sessions and shortcuts" placeholder="What would you like to do?" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="command-results" aria-autocomplete="list"><button id="command-dismiss" aria-label="Close command menu">esc</button></div>
+<div id="command-results" role="listbox" aria-label="Commands"></div>
+<div class="command-footer"><span id="command-count" role="status"></span><span><kbd>↑ ↓</kbd> select <kbd>↵</kbd> run <kbd>esc</kbd> close</span></div>
+</dialog>
+<script src="workspace.js"></script></body></html>

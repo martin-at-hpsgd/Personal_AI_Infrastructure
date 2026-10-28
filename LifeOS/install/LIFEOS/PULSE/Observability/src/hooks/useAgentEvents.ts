@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { localOnlyApiCall } from "@/lib/local-api";
+import { useState, useEffect, useRef } from "react";
+import { useApi } from "@/lib/api";
 
 // ─── Full HookEvent (matches Observability server payload) ───
 
@@ -48,60 +48,43 @@ export function useAgentEvents(maxEvents = 500) {
   const [events, setEvents] = useState<HookEvent[]>([]);
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const eventIdRef = useRef(0);
   const seenIdsRef = useRef(new Set<string>());
-
-  const poll = useCallback(async () => {
-    try {
-      const data = await localOnlyApiCall<{ events: Array<Record<string, any>> }>("/api/agents");
-      if (data.events?.length) {
-        const newEvents: HookEvent[] = [];
-        for (const e of data.events) {
-          const key = `${e.timestamp}|${e.session_id}|${e.hook_event_type}|${e.source_app}`;
-          if (!seenIdsRef.current.has(key)) {
-            seenIdsRef.current.add(key);
-            newEvents.push({
-              ...e,
-              id: eventIdRef.current++,
-              payload: e.payload || {},
-            } as HookEvent);
-          }
-        }
-
-        // Trim seen set
-        if (seenIdsRef.current.size > maxEvents * 2) {
-          seenIdsRef.current = new Set(
-            data.events.map((e: Record<string, any>) => `${e.timestamp}|${e.session_id}|${e.hook_event_type}|${e.source_app}`)
-          );
-        }
-
-        if (newEvents.length > 0) {
-          setEvents((prev) => [...prev, ...newEvents].slice(-maxEvents));
-        }
-        setIsConnected(true);
-      }
-    } catch {
-      setIsConnected(false);
-    }
-  }, [maxEvents]);
+  // Polls every 3 s; the query pauses while the browser tab is hidden.
+  const agents = useApi<{ events: Array<Record<string, any>> }>("/api/agents", { refetchInterval: 3_000, retry: false });
 
   useEffect(() => {
-    let active = true;
+    if (agents.errorUpdatedAt) setIsConnected(false);
+  }, [agents.errorUpdatedAt]);
 
-    const startPolling = async () => {
-      await poll();
-      if (active) {
-        pollTimerRef.current = setTimeout(startPolling, 3_000);
+  useEffect(() => {
+    const data = agents.data;
+    if (!data?.events?.length) return;
+    const newEvents: HookEvent[] = [];
+    for (const e of data.events) {
+      const key = `${e.timestamp}|${e.session_id}|${e.hook_event_type}|${e.source_app}`;
+      if (!seenIdsRef.current.has(key)) {
+        seenIdsRef.current.add(key);
+        newEvents.push({
+          ...e,
+          id: eventIdRef.current++,
+          payload: e.payload || {},
+        } as HookEvent);
       }
-    };
+    }
 
-    startPolling();
-    return () => {
-      active = false;
-      clearTimeout(pollTimerRef.current);
-    };
-  }, [poll]);
+    // Trim seen set
+    if (seenIdsRef.current.size > maxEvents * 2) {
+      seenIdsRef.current = new Set(
+        data.events.map((e: Record<string, any>) => `${e.timestamp}|${e.session_id}|${e.hook_event_type}|${e.source_app}`)
+      );
+    }
+
+    if (newEvents.length > 0) {
+      setEvents((prev) => [...prev, ...newEvents].slice(-maxEvents));
+    }
+    setIsConnected(true);
+  }, [agents.data, agents.dataUpdatedAt, maxEvents]);
 
   return { events, tasks, isConnected };
 }

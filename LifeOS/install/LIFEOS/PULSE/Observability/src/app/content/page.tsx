@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { apiSend, useApi, useApiMutation } from "@/lib/api";
 import { PageShell, PageHeader, Panel, Pill, dimStyle, type Dim } from "@/components/ui/chrome";
 
 // ── CONVEYOR: the live content board. Dense cards, SSE push, poll fallback. ──
@@ -17,11 +18,23 @@ interface Item {
   blocked?: boolean;
   attempt?: number;
   requested_run?: string;
+  /** Produce components from the type profile (typed intake); absent on older rows. */
+  steps?: Record<string, string>;
+  /** Named run for this type: regular | sponsored | podcast. */
+  run?: string;
   created: string;
+}
+interface TypeProfile {
+  label: string;
+  legs: string[];
+  steps: string[];
+  run: string;
+  color: Dim;
 }
 interface BoardData {
   columns: string[];
   legs: string[];
+  types?: Record<string, TypeProfile>;
   items: Item[];
   counts: Record<string, number>;
 }
@@ -42,28 +55,27 @@ export default function ContentPage() {
   const [data, setData] = useState<BoardData | null>(null);
   const [live, setLive] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Polling is only the fallback beside the SSE stream: it switches on when the stream is unavailable.
+  const [polling, setPolling] = useState(false);
+  const board = useApi<BoardData>("/api/content", { enabled: polling, refetchInterval: 2500 });
+
+  const deleteItem = useApiMutation((id: string) => apiSend(`/api/content/${id}`, "DELETE"), { invalidates: ["/api/content"] });
+  const setItemType = useApiMutation((v: { id: string; type: string }) => apiSend(`/api/content/${v.id}/type`, "POST", { type: v.type }), { invalidates: ["/api/content"] });
+  const runItem = useApiMutation((id: string) => apiSend(`/api/content/${id}/run`, "POST"), { invalidates: ["/api/content"] });
+
+  // Keep the last good frame when a poll fails; apply each successful poll.
+  useEffect(() => {
+    if (board.data) setData(board.data);
+  }, [board.data, board.dataUpdatedAt]);
 
   useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    const t = setInterval(() => setNowMs(Date.now()), 1000); // not-data: 1s clock tick for the elapsed-time labels
     return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
     let es: EventSource | null = null;
-    const startPoll = () => {
-      if (pollRef.current) return;
-      const load = async () => {
-        try {
-          const r = await fetch("/api/content", { cache: "no-store" });
-          if (r.ok) setData(await r.json());
-        } catch {
-          /* keep last frame */
-        }
-      };
-      load();
-      pollRef.current = setInterval(load, 2500);
-    };
+    const startPoll = () => setPolling(true);
     try {
       es = new EventSource("/api/content/stream");
       es.onmessage = (ev) => {
@@ -84,7 +96,6 @@ export default function ContentPage() {
     }
     return () => {
       es?.close();
-      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
@@ -105,7 +116,7 @@ export default function ContentPage() {
 
       <PageHeader
         title="Content"
-        subtitle="drop → transcribe → produce (edit+augment · clips 2–16 · social · omny · discord) → review → publish"
+        subtitle="drop → transcribe → make (the type decides the steps) → review → ship (the type decides the legs)"
         actions={
           <>
             <Pill dim={live ? "ok" : "neutral"}>
@@ -137,6 +148,12 @@ export default function ContentPage() {
                 const done = it.stage_status === "done";
                 const dot = `var(--${running ? "accent-blue" : failed ? "err" : done ? "ok" : "ink-3"})`;
                 const statusLabel = running ? "RUNNING" : failed ? "BLOCKED" : done ? "READY" : "IDLE";
+                const types = data?.types ?? {};
+                const profile = types[it.type];
+                const typed = Boolean(profile);
+                const typeColor: Dim = profile?.color ?? "neutral";
+                // The type is a free choice until produce starts; after that the branches are being worked.
+                const retypable = ["inbox", "prep"].includes(it.stage) && Object.keys(types).length > 0;
                 const border = running
                   ? "var(--accent-blue)"
                   : failed
@@ -164,7 +181,7 @@ export default function ContentPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (window.confirm(`Delete "${it.title}" and stop its tasks?`)) {
-                            fetch(`/api/content/${it.id}`, { method: "DELETE" });
+                            deleteItem.mutate(it.id);
                           }
                         }}
                         style={{ fontSize: 15, lineHeight: 1, padding: "0 2px", flex: "0 0 auto" }}
@@ -175,18 +192,40 @@ export default function ContentPage() {
 
                     {/* Meta row: type · status · elapsed */}
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", margin: "8px 0 2px", paddingLeft: 14 }}>
-                      <Pill dim="neutral" className="uppercase">{it.type}</Pill>
+                      {retypable ? (
+                        <select
+                          value={typed ? it.type : ""}
+                          title="Content type — decides which steps get made and which legs it ships on"
+                          aria-label={`Type for ${it.title}`}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setItemType.mutate({ id: it.id, type: e.target.value });
+                          }}
+                          className="rounded-full text-[11px] font-medium uppercase cursor-pointer"
+                          style={{ ...dimStyle(typeColor, true), padding: "1px 8px", fontFamily: "inherit", border: "none", appearance: "auto" }}
+                        >
+                          {!typed && <option value="">untyped · pick</option>}
+                          {Object.entries(types).map(([k, p]) => (
+                            <option key={k} value={k}>{p.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Pill dim={typeColor} className="uppercase" title={typed ? `${it.type} · ${it.run ?? profile?.run ?? "regular"} run` : "untyped"}>
+                          {profile?.label ?? it.type}
+                        </Pill>
+                      )}
                       <span style={{ fontSize: 9.5, letterSpacing: "0.08em", color: dot, fontWeight: 600 }}>{statusLabel}</span>
                       {it.requested_run ? (
-                        <Pill dim="blue">RUN QUEUED</Pill>
+                        <Pill dim="blue" title={`${it.requested_run} run queued`}>RUN QUEUED · {it.requested_run.toUpperCase()}</Pill>
                       ) : (
                         !["review", "publishing", "done"].includes(it.stage) && (
                           <button
                             type="button"
-                            title="Queue the regular run: edit → augment → clips → social (staged, never auto-published)"
+                            title={`Queue the ${it.run ?? profile?.run ?? "regular"} run for this type (staged, never auto-published)`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              fetch(`/api/content/${it.id}/run`, { method: "POST" });
+                              runItem.mutate(it.id);
                             }}
                             className="rounded-full text-[12px] font-medium cursor-pointer"
                             style={{ ...dimStyle("blue", true), padding: "1px 8px", fontFamily: "inherit" }}
@@ -213,18 +252,26 @@ export default function ContentPage() {
                     {/* Divider */}
                     <div className="bg-line-2" style={{ height: 1, margin: "9px 0 8px", marginLeft: 14 }} />
 
-                    {/* Per-leg labeled chips */}
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, paddingLeft: 14 }}>
-                      {Object.entries(it.legs ?? {}).map(([leg, status]) => {
-                        const d = legDim(status);
-                        return (
-                          <Pill key={leg} dim={d} title={`${leg}: ${status}`}>
-                            <span style={{ width: 5, height: 5, borderRadius: 999, background: `var(--${d === "blue" ? "accent-blue" : d === "neutral" ? "ink-3" : d})` }} />
-                            {leg}
-                          </Pill>
-                        );
-                      })}
-                    </div>
+                    {/* The branches: MAKE = produce steps from the type profile, SHIP = publish legs. */}
+                    {[
+                      { label: "MAKE", entries: Object.entries(it.steps ?? {}) },
+                      { label: "SHIP", entries: Object.entries(it.legs ?? {}) },
+                    ]
+                      .filter((row) => row.entries.length > 0)
+                      .map((row) => (
+                        <div key={row.label} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4, paddingLeft: 14, marginBottom: 4 }}>
+                          <span className="text-ink-3" style={{ fontSize: 8.5, letterSpacing: "0.16em", width: 30, flex: "0 0 auto" }}>{row.label}</span>
+                          {row.entries.map(([name, status]) => {
+                            const d = legDim(status);
+                            return (
+                              <Pill key={name} dim={d} title={`${name}: ${status}`}>
+                                <span style={{ width: 5, height: 5, borderRadius: 999, background: `var(--${d === "blue" ? "accent-blue" : d === "neutral" ? "ink-3" : d})` }} />
+                                {name}
+                              </Pill>
+                            );
+                          })}
+                        </div>
+                      ))}
                   </Panel>
                 );
               })}

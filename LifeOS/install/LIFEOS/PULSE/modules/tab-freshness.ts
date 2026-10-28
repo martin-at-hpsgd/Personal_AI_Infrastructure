@@ -1,3 +1,4 @@
+import { PRIVATE_SKILL_NAMES } from "../../TOOLS/CodeDataBoundary.ts";
 /**
  * Pulse Tab Freshness Module
  *
@@ -27,8 +28,9 @@
  */
 
 import { existsSync, statSync, readdirSync, readFileSync } from "fs"
-import { join } from "path"
+import { join, relative } from "path"
 import { homedir } from "node:os";
+import { businessSourcePaths } from "../lib/business-sources.ts"
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir()
 const LIFEOS_DIR = join(HOME, ".claude", "LIFEOS")
@@ -51,7 +53,12 @@ interface SourceSpec {
   expand?: boolean
 }
 
-const REGISTRY: Record<string, SourceSpec[]> = {
+/** A tab whose sources move at runtime (the active company dir) registers a resolver instead of a fixed list. */
+type SourceEntry = SourceSpec[] | (() => SourceSpec[])
+
+const BUSINESS_DIR = join(USER_DIR, "WORK", "YOUR_COMPANIES")
+
+const REGISTRY: Record<string, SourceEntry> = {
   telos: [
     { name: "TELOS.md", path: join(TELOS_DIR, "TELOS.md") },
     { name: "PRINCIPAL_TELOS.md", path: join(TELOS_DIR, "PRINCIPAL_TELOS.md") },
@@ -64,6 +71,12 @@ const REGISTRY: Record<string, SourceSpec[]> = {
     { name: "WORK/config.yaml", path: join(USER_DIR, "WORK", "config.yaml") },
     { name: "PROJECTS.md", path: join(USER_DIR, "PROJECTS.md") },
   ],
+  today: [
+    { name: "HEALTH/current.json", path: join(USER_DIR, "HEALTH", "current.json") },
+    { name: "STATE/log.jsonl", path: join(USER_DIR, "STATE", "log.jsonl") },
+    { name: "prioritize/latest.json", path: join(LIFEOS_DIR, "MEMORY", "STATE", "prioritize", "latest.json") },
+    { name: "STATE/work.json", path: join(LIFEOS_DIR, "MEMORY", "STATE", "work.json") },
+  ],
   health: [
     { name: "HEALTH/", path: join(USER_DIR, "HEALTH"), expand: true },
     { name: "IDEAL_STATE/HEALTH.md", path: join(TELOS_DIR, "IDEAL_STATE", "HEALTH.md") },
@@ -72,11 +85,13 @@ const REGISTRY: Record<string, SourceSpec[]> = {
     { name: "FINANCES/", path: join(USER_DIR, "FINANCES"), expand: true },
     { name: "IDEAL_STATE/MONEY.md", path: join(TELOS_DIR, "IDEAL_STATE", "MONEY.md") },
   ],
-  business: [
-    { name: "BUSINESS/", path: join(USER_DIR, "BUSINESS"), expand: true },
-  ],
+  // public PR #2104, @pai-scaffolde: Business data lives under WORK/YOUR_COMPANIES/ in the
+  // shipped USER scaffold; the scaffold ships no USER/BUSINESS. The pill dates exactly the files
+  // /api/life/business reads (ISC-19.1): expanding the directory saw only the scaffold README.
+  business: () => businessSourcePaths(BUSINESS_DIR).map((path) => ({ name: relative(BUSINESS_DIR, path), path })),
   local: [
-    { name: "LOCAL/", path: join(USER_DIR, "LOCAL"), expand: true },
+    // public PR #2208, @pai-scaffolde: USER/LOCAL/ does not exist; the local digest is written here.
+    { name: "LocalIntelligence/latest.json", path: join(USER_DIR, "CUSTOMIZATIONS", "SKILLS", PRIVATE_SKILL_NAMES.localintelligence, "latest.json") },
     { name: "PRINCIPAL_IDENTITY.md", path: join(USER_DIR, "PRINCIPAL", "PRINCIPAL_IDENTITY.md") },
   ],
   knowledge: [
@@ -90,7 +105,7 @@ const REGISTRY: Record<string, SourceSpec[]> = {
     { name: "ALGORITHM/", path: join(LIFEOS_DIR, "ALGORITHM"), expand: true },
     { name: "RULES/", path: join(LIFEOS_DIR, "RULES"), expand: true },
     { name: "LIFEOS_SYSTEM_PROMPT.md", path: join(LIFEOS_DIR, "LIFEOS_SYSTEM_PROMPT.md") },
-    { name: "OPERATIONAL_RULES.md", path: join(USER_DIR, "CONFIG", "OPERATIONAL_RULES.md") },
+    { name: "OPERATIONAL_PREFERENCES.md", path: join(USER_DIR, "CONFIG", "OPERATIONAL_PREFERENCES.md") },
   ],
   skills: [
     { name: "skills/", path: join(HOME, ".claude", "skills"), expand: true },
@@ -101,8 +116,8 @@ const REGISTRY: Record<string, SourceSpec[]> = {
   docs: [
     { name: "DOCUMENTATION/", path: join(LIFEOS_DIR, "DOCUMENTATION"), expand: true },
   ],
-  arbol: [
-    { name: "USER/CUSTOMIZATIONS/ARBOL/", path: join(USER_DIR, "CUSTOMIZATIONS", "ARBOL"), expand: true },
+  workflows: [
+    { name: "USER/CUSTOMIZATIONS/WORKFLOWS/", path: join(USER_DIR, "CUSTOMIZATIONS", "WORKFLOWS"), expand: true },
   ],
   security: [
     { name: "USER/SECURITY/", path: join(USER_DIR, "SECURITY"), expand: true },
@@ -112,7 +127,7 @@ const REGISTRY: Record<string, SourceSpec[]> = {
   ],
   synapse: [
     { name: "KNOWLEDGE/Ideas/", path: join(LIFEOS_DIR, "MEMORY", "KNOWLEDGE", "Ideas"), expand: true },
-    { name: "_X/State/", path: join(HOME, ".claude", "skills", "_X", "State") },
+    { name: `${PRIVATE_SKILL_NAMES.social}/State/`, path: join(HOME, ".claude", "skills", PRIVATE_SKILL_NAMES.social, "State") },
   ],
   ledger: [
     { name: "SYSTEMUPDATES/index.json", path: join(LIFEOS_DIR, "MEMORY", "SYSTEMUPDATES", "index.json") },
@@ -249,8 +264,8 @@ interface FreshnessPayload {
 }
 
 function computeTabFreshness(tabId: string): FreshnessPayload {
-  const specs = REGISTRY[tabId]
-  if (!specs) {
+  const entry = REGISTRY[tabId]
+  if (!entry) {
     return {
       tabId,
       dataDate: null,
@@ -260,6 +275,7 @@ function computeTabFreshness(tabId: string): FreshnessPayload {
       perFile: [],
     }
   }
+  const specs = typeof entry === "function" ? entry() : entry
   const resolved = specs.flatMap((s) => resolveSpec(s))
   const perFile: FreshnessFilePayload[] = []
   let mostRecent: Date | null = null

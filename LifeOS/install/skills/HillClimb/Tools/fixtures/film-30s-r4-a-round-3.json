@@ -1,0 +1,132 @@
+{
+ "artifactSha256": "8c0cd5bf00e577451e0642573674d848c6ca53218f67b36290871192b2b57f46",
+ "bar": 8.5,
+ "judges": [
+  {
+   "vendor": "openai",
+   "model": "gpt-6.1-sol"
+  }
+ ],
+ "sampleSeed": null,
+ "round": 3,
+ "median": 7.6,
+ "samples": [
+  {
+   "id": "frame-01",
+   "t": 0.6,
+   "scores": {
+    "openai": {
+     "overall": 7.2
+    }
+   }
+  },
+  {
+   "id": "frame-02",
+   "t": 3.2181818181818183,
+   "scores": {
+    "openai": {
+     "overall": 7.6
+    }
+   }
+  },
+  {
+   "id": "frame-03",
+   "t": 5.836363636363636,
+   "scores": {
+    "openai": {
+     "overall": 7.8
+    }
+   }
+  },
+  {
+   "id": "frame-04",
+   "t": 8.454545454545453,
+   "scores": {
+    "openai": {
+     "overall": 7.4
+    }
+   }
+  },
+  {
+   "id": "frame-05",
+   "t": 11.072727272727272,
+   "scores": {
+    "openai": {
+     "overall": 7.7
+    }
+   }
+  },
+  {
+   "id": "frame-06",
+   "t": 13.690909090909091,
+   "scores": {
+    "openai": {
+     "overall": 7.7
+    }
+   }
+  },
+  {
+   "id": "frame-07",
+   "t": 16.30909090909091,
+   "scores": {
+    "openai": {
+     "overall": 7.6
+    }
+   }
+  },
+  {
+   "id": "frame-08",
+   "t": 18.927272727272726,
+   "scores": {
+    "openai": {
+     "overall": 7.3
+    }
+   }
+  },
+  {
+   "id": "frame-09",
+   "t": 21.545454545454543,
+   "scores": {
+    "openai": {
+     "overall": 7.8
+    }
+   }
+  },
+  {
+   "id": "frame-10",
+   "t": 24.163636363636368,
+   "scores": {
+    "openai": {
+     "overall": 7.5
+    }
+   }
+  },
+  {
+   "id": "frame-11",
+   "t": 26.78181818181818,
+   "scores": {
+    "openai": {
+     "overall": 7.2
+    }
+   }
+  },
+  {
+   "id": "frame-12",
+   "t": 29.399999999999995,
+   "scores": {
+    "openai": {
+     "overall": 7.6
+    }
+   }
+  },
+  {
+   "id": "contact-strip",
+   "t": null,
+   "scores": {
+    "openai": {
+     "overall": 7.5
+    }
+   }
+  }
+ ]
+}

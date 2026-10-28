@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.0.1
+ */
 import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";

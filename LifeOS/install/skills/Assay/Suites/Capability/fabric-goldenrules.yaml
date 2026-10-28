@@ -1,0 +1,269 @@
+# Fabric GoldenRules — the few non-negotiable rules for a codebase, practice or
+# domain, ranked Critical / Important / Guideline, each with Rule, Why, Do,
+# Don't and Test, plus a Quick Reference table and a checklist that cites them.
+# The code asserts pin what is literal (title, required sections, Basis lines on
+# source inputs, checklist citations, no copied secret, no tier boilerplate);
+# the judged asserts carry what code cannot: the inferred read, fidelity to the
+# source, specificity, ruthless ranking and checkable tests.
+# Synthetic inline fixtures only.
+name: fabric-goldenrules
+type: capability
+pass_threshold: 0.75
+trials: 3
+# A full rule set with code examples on a bare topic runs past the 90 s default.
+subject_timeout_ms: 240000
+system_prompt_file: "~/.claude/skills/Fabric/Intents/GoldenRules.md"
+cases:
+  - id: code_and_guide_source
+    prompt: |
+      create golden rules from this:
+
+      CONTRIBUTING.md (excerpt), a fictional service called Tidewater Orders
+      - All timestamps cross the API as UTC ISO-8601 strings.
+      - Route handlers never touch the database directly; they call a function in src/repo/.
+
+      src/routes/orders.ts
+      ```ts
+      export async function getOrder(req: Req) {
+        const user = requireAuth(req);
+        const log = logger.child({ reqId: req.id });
+        const order = await repo.orders.byId(req.params.id, user.tenantId);
+        log.info("order.read", { id: order.id });
+        return json({ ...order, createdAt: order.createdAt.toISOString() });
+      }
+      ```
+
+      src/routes/refunds.ts
+      ```ts
+      export async function createRefund(req: Req) {
+        const user = requireAuth(req);
+        const log = logger.child({ reqId: req.id });
+        const body = RefundBody.parse(await req.json());
+        const row = await db.query("insert into refunds (order_id, cents, tenant_id) values ($1, $2, $3) returning *", [body.orderId, body.cents, user.tenantId]);
+        log.info("refund.create", { id: row.id });
+        return json(row);
+      }
+      ```
+    # SYNTHETIC ADVERSARIAL FIXTURE: right title, sections, Basis lines and
+    # checklist citations, but every rule is generic advice the code does not
+    # show, the Basis lines cite nothing specific, and it calls the
+    # repository-layer rule followed although refunds.ts queries the database.
+    adversarial_output: |
+      # Golden Rules: Tidewater Orders
+
+      ## Critical Rules
+
+      ### 1. Write clean readable code
+
+      **Rule**: Keep code clean, readable and well organized at all times.
+
+      **Why**: Messy code is hard to maintain.
+
+      **Basis**: Observed in the codebase, which follows this everywhere.
+
+      **Do**: Write clear functions.
+
+      **Don't**: Write confusing functions.
+
+      **Test**: Code review.
+
+      ### 2. Use the repository layer
+
+      **Rule**: Handlers go through src/repo/, as every handler in the codebase already does.
+
+      **Why**: It keeps things consistent.
+
+      **Basis**: Observed in src/routes/orders.ts and src/routes/refunds.ts, which both use the repo.
+
+      **Do**: Use the repo.
+
+      **Don't**: Skip the repo.
+
+      **Test**: Check it in review.
+
+      ## Guidelines
+
+      ### 3. Follow best practices
+
+      **Rule**: Follow industry best practices for TypeScript.
+
+      **Why**: Best practices prevent bugs.
+
+      **Basis**: Observed in the codebase.
+
+      **Do**: Use best practices.
+
+      **Don't**: Ignore best practices.
+
+      **Test**: Ask a senior engineer.
+
+      ## Quick Reference
+
+      | # | Category | Rule | Priority |
+      |---|----------|------|----------|
+      | 1 | Style | Write clean code | Critical |
+      | 2 | Architecture | Use the repo layer | Critical |
+      | 3 | General | Follow best practices | Guideline |
+
+      ## Checklist
+
+      - [ ] Code is clean and readable (#1)
+      - [ ] Handlers use the repo layer (#2)
+      - [ ] Best practices are followed (#3)
+    assert:
+      - type: starts-with
+        value: "# Golden Rules: "
+        weight: 2
+      - type: contains-all
+        value: [ "## Critical Rules", "## Quick Reference", "## Checklist", "**Rule**:", "**Why**:", "**Do**:", "**Don't**:", "**Test**:" ]
+        weight: 2
+      - type: regex
+        value: '\*\*Basis\*\*:[ \t]*(?:Stated|Observed) in'
+        weight: 2
+      - type: regex
+        value: '(?:^|\n)- \[ \] [^\n]*\(#\d+(?:,[ \t]*#\d+)*\)[ \t]*(?:\n|$)'
+        weight: 1
+      - type: not-icontains
+        value: "These MUST be followed"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The rules come from this input: the two stated CONTRIBUTING rules (UTC ISO-8601 timestamps, handlers call src/repo/ instead of the database) and conventions both handlers show, such as calling requireAuth first, a request-scoped logger child with reqId, or scoping data by the user's tenantId", "Every Basis line cites a specific place in the input (CONTRIBUTING.md or a named file) that actually states or shows the rule, and an Observed rule cites both handlers or another real second place", "No rule or Basis line claims the code follows the repository-layer rule; refunds.ts calls db.query directly, so that rule is either flagged as broken there or cited as Stated only", "No rule is generic advice that would fit any codebase, such as writing clean code or following best practices", "Each Test names a concrete check (a lint rule, a grep, a test, a CI gate, or a yes-or-no review question about the diff), not just 'code review'" ]
+        reference: "A fictional two-handler TypeScript service whose contributing guide states UTC ISO-8601 timestamps and a repo-layer rule; refunds.ts breaks the repo rule; both handlers call requireAuth first, make a reqId logger child and scope by tenantId."
+  - id: bare_topic_practitioner_rules
+    prompt: "golden rules for database schema migrations"
+    # SYNTHETIC ADVERSARIAL FIXTURE: right title, sections, fields and
+    # citations, no Basis lines, but every rule is a platitude no migration
+    # practitioner would recognize as the non-negotiables, the Do and Don't
+    # teach nothing, and a style preference is ranked Critical.
+    adversarial_output: |
+      # Golden Rules: Database Schema Migrations, Practitioner Consensus
+
+      ## Critical Rules
+
+      ### 1. Name migration files nicely
+
+      **Rule**: Give every migration file a nice descriptive name.
+
+      **Why**: Good names make the folder easier to browse.
+
+      **Do**: `add_users_table.sql`
+
+      **Don't**: `stuff.sql`
+
+      **Test**: Look at the file name.
+
+      ### 2. Be careful with migrations
+
+      **Rule**: Always be careful when changing the database.
+
+      **Why**: Mistakes can cause problems.
+
+      **Do**: Think before migrating.
+
+      **Don't**: Migrate carelessly.
+
+      **Test**: Ask whether you were careful.
+
+      ## Important Rules
+
+      ### 3. Communicate with the team
+
+      **Rule**: Tell the team when you run a migration.
+
+      **Why**: Communication helps everyone.
+
+      **Do**: Post in the team channel.
+
+      **Don't**: Stay silent.
+
+      **Test**: Check the channel.
+
+      ## Quick Reference
+
+      | # | Category | Rule | Priority |
+      |---|----------|------|----------|
+      | 1 | Style | Name files nicely | Critical |
+      | 2 | Process | Be careful | Critical |
+      | 3 | Process | Communicate | Important |
+
+      ## Checklist
+
+      - [ ] The migration file has a nice name (#1)
+      - [ ] You were careful (#2)
+      - [ ] The team was told (#3)
+    assert:
+      - type: starts-with
+        value: "# Golden Rules: "
+        weight: 2
+      - type: contains-all
+        value: [ "## Critical Rules", "## Quick Reference", "## Checklist", "**Rule**:", "**Why**:", "**Test**:" ]
+        weight: 2
+      - type: not-contains
+        value: "**Basis**:"
+        weight: 1
+      - type: regex
+        value: '(?:^|\n)- \[ \] [^\n]*\(#\d+(?:,[ \t]*#\d+)*\)[ \t]*(?:\n|$)'
+        weight: 1
+      - type: not-regex
+        value: '(?:^|\n)###[ \t]+6\.[\s\S]*## Important Rules'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The Critical rules are ones experienced migration practitioners actually hold as non-negotiable, such as never editing a migration that has already been applied, keeping each migration compatible with the code version still running (expand then contract), not taking long locks on large tables in production, or having a tested rollback or restore path", "No style preference such as file naming is ranked Critical", "Every rule is specific to schema migrations and would not fit most other engineering topics as well; none is a platitude such as being careful or communicating", "Each Do and Don't pair shows the actual difference the rule makes, for example SQL or a migration sequence, not 'do it well' versus 'do it badly'", "No rule is attributed to a named authority or carries an invented statistic" ]
+        reference: "golden rules for database schema migrations"
+  - id: postmortem_rules_that_prevent_it
+    prompt: |
+      golden rules from this incident:
+
+      Incident record, a fictional retailer called Brightwell, checkout outage, 41 minutes. An engineer changed the payment-provider timeout in the production config from 5 seconds to 500 milliseconds to "make checkout snappier". Config changes skip the canary stage that code deploys go through, so the change reached every region at once. Payment calls began timing out under normal load and checkout failed for all users. Rollback took 26 of the 41 minutes because the previous config value was not stored anywhere; the team reconstructed it from an old chat message. The change had no reviewer because the config repo allows direct pushes to main.
+    assert:
+      - type: starts-with
+        value: "# Golden Rules: "
+        weight: 2
+      - type: contains-all
+        value: [ "## Critical Rules", "## Quick Reference", "## Checklist" ]
+        weight: 2
+      - type: regex
+        value: '\*\*Basis\*\*:[ \t]*(?:Stated|Observed) in'
+        weight: 2
+      - type: not-icontains
+        value: "These MUST be followed"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The Critical rules would each have prevented or shortened this outage: config changes go through the same canary or staged rollout as code, every config value is versioned so rollback is one step, and config changes to production need a reviewer (no direct pushes to main)", "Each rule's Why ties to what happened here (all regions at once, the 26-minute rollback, the unreviewed change), not a general consequence", "No rule recommends a tool, vendor or practice the incident gives no reason for", "Each Test names a concrete check, such as a branch protection setting, a CI check that config changes ride the canary, or a rollback drill" ]
+        reference: "A fictional checkout outage caused by an unreviewed production config change that skipped the canary and could not be rolled back quickly because the old value was not versioned."
+  - id: hint_security_only_no_secret_copied
+    prompt: |
+      golden rules, security only, from this file:
+
+      ```js
+      // fictional internal admin tool
+      const STRIPE_KEY = "sk_live_FAKE";
+      app.get("/admin/user", async (req, res) => {
+        const rows = await db.query("select * from users where email = '" + req.query.email + "'");
+        res.send(`<h1>${rows[0].name}</h1>`);
+      });
+      app.listen(8080);
+      ```
+    assert:
+      - type: starts-with
+        value: "# Golden Rules: "
+        weight: 2
+      - type: not-contains
+        value: "sk_live_FAKE"
+        weight: 3
+      - type: contains-all
+        value: [ "## Critical Rules", "## Quick Reference", "## Checklist" ]
+        weight: 1
+      - type: regex
+        value: '\*\*Basis\*\*:[ \t]*(?:Stated|Observed) in'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "Every rule is about security; none is about style, naming, formatting or performance", "The rules cover what this file actually shows: the hardcoded live key (secrets come from the environment or a secret store), the SQL built by string concatenation (parameterized queries), the unescaped name written into HTML (output encoding), and the admin route with no authentication check", "Any example of the hardcoded key uses an obvious placeholder, never the key from the input" ]
+        reference: "A fictional Express admin route with a hardcoded live API key, SQL string concatenation, unescaped HTML output and no auth check, with the hint 'security only'."

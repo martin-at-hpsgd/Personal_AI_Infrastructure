@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // ported from public PR #1794, @xmasyx
 /**
+ * @version 1.0.2
  * PurgeArchives.ts — delete expired archived versions inside an archive directory.
  *
  * POLICY. A manual archive is a grace window, not forever. A file older than N days
@@ -60,7 +61,7 @@ if (!dirName) {
 // Dereference symlinks BEFORE the basename check. resolve() is lexical, but
 // readdir/stat/unlink all follow links — so `ln -s live_dir _archive` passed a
 // `basename(resolve(...))` guard while the purge ran against the live target
-// (Forge cross-vendor audit 2026-08-10). realpathSync canonicalizes the whole
+// (cross-vendor audit 2026-08-10). realpathSync canonicalizes the whole
 // path, so the check sees the real final component's name.
 let abs: string;
 try {

@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.0.10
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -23,7 +26,11 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  * Usage:
  *   bun InterviewDue.ts               Verdict from existing caches + write cache
  *   bun InterviewDue.ts --refresh     Regenerate evidence + freshness first (cron entrypoint)
- *   bun InterviewDue.ts --mark-done   Record an interview, then recompute
+ *   bun InterviewDue.ts --mark-done   Record an interview — REFUSED (exit 2) while overdue
+ *                                     files or state claims still make one due; the
+ *                                     interview's job is to review exactly those
+ *   bun InterviewDue.ts --mark-done --partial   Record a stopped interview anyway
+ *                                     (the principal said stop); prints what remains
  */
 
 import { readFileSync, existsSync, writeFileSync, renameSync, mkdirSync } from "fs";
@@ -33,6 +40,8 @@ import * as Freshness from "./TelosFreshness";
 import { readContextFreshness } from "./TelosFreshness";
 import type { ContextFreshness } from "./TelosFreshness";
 import { gatherEvidence, writeEvidenceCache, readEvidenceCache, type Evidence } from "./StateEvidence";
+import { getPrincipalName } from "../../hooks/lib/identity";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -41,7 +50,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const CACHE_PATH = join(LIFEOS_DIR, "USER", "CACHE", "interview-due.json");
 const INTERVIEW_STATE = join(LIFEOS_DIR, "MEMORY", "STATE", "interview.json");
 
@@ -55,13 +64,22 @@ export const INTERVIEW_CADENCE_DAYS = 14;
 /** Statusline budget. */
 export const HEADLINE_MAX = 60;
 
-/** Which CURRENT_STATE claim file speaks for each evidence domain. Work has none. */
-export const DOMAIN_CLAIM_SLUGS: Record<string, string | null> = {
-  health: "current_state_health",
-  activity: "current_state_activity",
-  money: "current_state_financial",
+/** Candidate CURRENT_STATE claim slugs per evidence domain; work has none. The
+ *  shipped template names the money file MONEY.md, older installs carry
+ *  FINANCIAL.md (public issue #2202, @bak3r). */
+export const DOMAIN_CLAIM_SLUGS: Record<string, readonly string[] | null> = {
+  health: ["current_state_health"],
+  activity: ["current_state_activity"],
+  money: ["current_state_money", "current_state_financial"],
   work: null,
 };
+
+/** Pure: the claim file that speaks for a domain, matched against every candidate slug. */
+export function claimFileFor<T extends { slug: string }>(files: readonly T[] | undefined, domain: string): T | null {
+  const slugs = DOMAIN_CLAIM_SLUGS[domain];
+  if (!slugs || !files) return null;
+  return files.find((f) => slugs.includes(f.slug)) ?? null;
+}
 
 /** Which evidence source's liveness gates each domain's skew condition. */
 const DOMAIN_SOURCE_IDS: Record<string, string> = {
@@ -172,7 +190,7 @@ export function computeVerdict(inputs: VerdictInputs, now: Date = new Date()): V
   }
 
   // State-file staleness fires on its own so the ideal-state half of the
-  // goal has a nudge beyond the generic cadence (Max review 2026-08-11,
+  // goal has a nudge beyond the generic cadence (Astra review 2026-08-11,
   // finding 5 — stale_state was carried in inputs but inert).
   const stateFired = inputs.stale_state >= STATE_STALE_THRESHOLD;
   if (stateFired) {
@@ -268,6 +286,31 @@ function readStateFreshnessSafe(): ContextFreshness | null {
   }
 }
 
+/** Review stamps written by the principal (an interview ratification), never by automation: the generic labels, or the configured principal’s name. */
+function principalReviewers(): Set<string> {
+  const name = getPrincipalName().trim().toLowerCase();
+  return new Set(["user", "principal", ...(name ? [name, name.split(/\s+/)[0]] : [])]);
+}
+
+/** The newest review stamp the principal put on any file in this freshness set. */
+export function newestPrincipalReview(f: ContextFreshness | null): string | null {
+  const reviewers = principalReviewers();
+  const stamps = (f?.files ?? [])
+    .filter((x) => typeof x.reviewed_by === "string" && reviewers.has(x.reviewed_by.toLowerCase()))
+    .map((x) => x.reviewed ?? null);
+  return latestIso(stamps);
+}
+
+/** The latest parseable ISO timestamp, or null when none parse. */
+export function latestIso(values: Array<string | Date | null | undefined>): string | null {
+  let best: number | null = null;
+  for (const v of values) {
+    const t = v instanceof Date ? v.getTime() : v ? Date.parse(v) : NaN;
+    if (!Number.isNaN(t) && (best === null || t > best)) best = t;
+  }
+  return best === null ? null : new Date(best).toISOString();
+}
+
 function safeContextFreshness(): ContextFreshness | null {
   try {
     return readContextFreshness();
@@ -287,14 +330,14 @@ export function buildInputs(evidence: Evidence | null, now: Date = new Date()): 
   const state = readStateFreshnessSafe();
 
   const domains: DomainSkew[] = [];
-  for (const [domain, slug] of Object.entries(DOMAIN_CLAIM_SLUGS)) {
-    if (!slug) continue; // work has no claim file to contradict
-    const claim = state?.files.find((f) => f.slug === slug) ?? null;
+  for (const [domain, slugs] of Object.entries(DOMAIN_CLAIM_SLUGS)) {
+    if (!slugs) continue; // work has no claim file to contradict
+    const claim = claimFileFor(state?.files, domain);
     // Claim file absent from the registry (e.g. retired via the interview's
     // ratify-or-retire flow): there is no claim to contradict, so the domain
     // contributes no skew. never_reviewed means exists-but-unreviewed, never
     // "file gone" — otherwise retiring a file makes the chip permanently due
-    // (Max review 2026-08-11, finding 2).
+    // (Astra review 2026-08-11, finding 2).
     if (!claim && state !== null) continue;
     const reviewed = claim?.effective_reviewed ?? claim?.reviewed ?? null;
     const reviewedIso = reviewed ? new Date(reviewed).toISOString() : null;
@@ -307,7 +350,7 @@ export function buildInputs(evidence: Evidence | null, now: Date = new Date()): 
     // Never reviewed: nothing has ever been examined, so the whole 30d window counts.
     // Date strings arrive from evidence caches verbatim — guard the parse; an
     // Invalid Date would make toISOString throw INSIDE the daily cron and freeze
-    // the verdict cache (Max review 2026-08-11, finding 3).
+    // the verdict cache (Astra review 2026-08-11, finding 3).
     const newestParsed = newest ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(newest) ? `${newest}T00:00:00` : newest) : null;
     const newestIso = newestParsed && !isNaN(newestParsed.getTime()) ? newestParsed.toISOString() : null;
     const skew = neverReviewed
@@ -330,14 +373,27 @@ export function buildInputs(evidence: Evidence | null, now: Date = new Date()): 
   }
 
   const last = readJson<{ last_interview?: string }>(INTERVIEW_STATE);
+  // The last interview is the later of the explicit mark and the newest principal review
+  // stamp on a file the interview covers: a review that happened is the evidence, so a
+  // wrap that never reached --mark-done cannot leave the chip saying "no interview".
+  const lastIso = latestIso([last?.last_interview ?? null, newestPrincipalReview(context), newestPrincipalReview(state)]);
 
   return {
     domains,
     stale_constitutional: context?.stale_count ?? 0,
     stale_state: state?.stale_count ?? 0,
-    days_since_last_interview: daysSinceIso(last?.last_interview, now),
+    days_since_last_interview: daysSinceIso(lastIso ?? undefined, now),
     evidence_available: evidence !== null,
   };
+}
+
+/**
+ * The reasons an interview must still address before --mark-done records it. The
+ * plain-cadence reason ("no interview in Nd", "no interview on record") is the one
+ * the mark itself clears; every review reason, stale state files included, remains.
+ */
+export function remainingAfterInterview(reasons: string[]): string[] {
+  return reasons.filter((r) => !/^no interview (on record|in \d+d)$/.test(r) && !/^state evidence unavailable\b/.test(r));
 }
 
 export function writeVerdictCache(verdict: Verdict, path: string = CACHE_PATH): boolean {
@@ -357,10 +413,11 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const now = new Date();
 
-  if (args.includes("--mark-done")) markInterviewDone(now);
-
   let evidence: Evidence | null;
   if (args.includes("--refresh")) {
+    // --refresh writes only CACHE/STATE files (Interview ISA ISC-22). The MRR
+    // snapshot (#915), which writes USER/FINANCES/stripe-mrr.json, runs just
+    // before this in the delta-daily workflow's evidence step, not from here.
     evidence = gatherEvidence(now);
     writeEvidenceCache(evidence);
     try {
@@ -371,6 +428,20 @@ if (import.meta.main) {
     }
   } else {
     evidence = readEvidenceCache();
+  }
+
+  if (args.includes("--mark-done")) {
+    // The chip means "review these files". An interview that leaves them
+    // unreviewed is not done, whatever ran.
+    const before = computeVerdict(buildInputs(evidence, now), now);
+    const remaining = remainingAfterInterview(before.reasons);
+    if (remaining.length > 0 && !args.includes("--partial")) {
+      writeVerdictCache(before);
+      console.error(`INTERVIEW INCOMPLETE — not marked done. Still due:\n  ${remaining.join("\n  ")}\nReview those items (the intent's agenda), or pass --partial if the principal said stop.`);
+      process.exit(2);
+    }
+    markInterviewDone(now);
+    if (remaining.length > 0) console.error(`Marked done (partial). Still due:\n  ${remaining.join("\n  ")}`);
   }
 
   const verdict = computeVerdict(buildInputs(evidence, now), now);

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.3
  * NotifyPrincipal — send a short SMS to the PRINCIPAL, and no one else, ever.
  *
  * The destination is not a parameter. It is read from `TWILIO_TO_NUMBER` in the
@@ -19,10 +20,11 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { append } from "../STATVS/index.ts";
 
-const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+const CLAUDE_DIR = getClaudeDir();
 const ENV_FILE = join(CLAUDE_DIR, ".env");
 const LOG_DIR = join(CLAUDE_DIR, "LIFEOS", "MEMORY", "OBSERVABILITY");
 const LOG_FILE = join(LOG_DIR, "notify-principal.jsonl");
@@ -81,7 +83,7 @@ async function main(): Promise<number> {
   if (!from) {
     const nums = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${sid}/IncomingPhoneNumbers.json?PageSize=1`,
-      { headers: { Authorization: auth } },
+      { headers: { Authorization: auth }, signal: AbortSignal.timeout(15_000) },
     );
     const list = (await nums.json().catch(() => ({}))) as {
       incoming_phone_numbers?: Array<{ phone_number?: string }>;
@@ -101,6 +103,7 @@ async function main(): Promise<number> {
     method: "POST",
     headers: { Authorization: auth, "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ From: from, To: to, Body: body }),
+    signal: AbortSignal.timeout(15_000),
   });
   const json = (await res.json().catch(() => ({}))) as { sid?: string; message?: string };
 
@@ -120,6 +123,7 @@ async function main(): Promise<number> {
   } catch {
     /* the send matters more than the log line */
   }
+  recordAlert({ type, text: body, ok: Boolean(json.sid), sid: json.sid ?? null, error: json.sid ? null : (json.message ?? `http ${res.status}`) });
 
   if (json.sid) {
     console.log(`✅ sent to principal — ${json.sid}`);
@@ -129,4 +133,16 @@ async function main(): Promise<number> {
   return 1;
 }
 
-process.exit(await main());
+/** Relay F33 ISC-416: one STATVS row per alert text, with its words and what Twilio said. Never throws. */
+export function recordAlert(
+  r: { type: string; text: string; ok: boolean; sid: string | null; error: string | null },
+  write: (row: { writer: string; stream: string; class: "personal"; data: Record<string, unknown> }) => unknown = (row) => append(row),
+): void {
+  try {
+    write({ writer: "tool:NotifyPrincipal", stream: "relay", class: "personal", data: { event: "alert_text", via: "twilio-sms", ...r } });
+  } catch {
+    /* the record never changes a send */
+  }
+}
+
+if (import.meta.main) process.exit(await main());

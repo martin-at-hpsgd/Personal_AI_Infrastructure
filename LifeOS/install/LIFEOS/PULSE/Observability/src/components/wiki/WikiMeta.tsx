@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { wikiPageUrl } from "@/lib/wiki-links";
+import { fmtDateParts, fmtDayKeyParts } from "@/lib/time";
 import {
   ArrowLeft,
   Clock,
@@ -25,7 +26,11 @@ interface WikiMetaProps {
   title: string;
   category: string;
   tags?: string[];
-  quality?: number;
+  quality?: number | null;
+  /** true when `quality` is a backfilled band, not a human rating */
+  qualityInferred?: boolean;
+  /** the principal's own stated rating (frontmatter `principal_rating`) */
+  rating?: number;
   lastModified?: string;
   wordCount?: number;
   backlinks?: Backlink[];
@@ -63,6 +68,8 @@ export default function WikiMeta({
   category,
   tags,
   quality,
+  qualityInferred,
+  rating,
   lastModified,
   wordCount,
   backlinks,
@@ -139,33 +146,57 @@ export default function WikiMeta({
             <Calendar className="w-3 h-3" />
             <span>
               {(() => {
-                // Parse YYYY-MM-DD as local date, not UTC, to avoid timezone shift.
-                const m = postDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
-                const d = m
-                  ? new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10))
-                  : new Date(postDate);
-                return d.toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                });
+                // A YYYY-MM-DD day has no zone: fmtDayKeyParts draws it in UTC so the principal's zone never shifts the day.
+                const opts = { year: "numeric", month: "long", day: "numeric" } as const;
+                return /^\d{4}-\d{2}-\d{2}/.test(postDate)
+                  ? fmtDayKeyParts(postDate, opts, postDate)
+                  : fmtDateParts(postDate, opts, postDate);
               })()}
             </span>
           </div>
         </div>
       )}
 
-      {/* Quality (knowledge notes only) */}
-      {quality !== undefined && (
+      {/* The principal's own rating — only when the note carries one */}
+      {rating !== undefined && (
         <div>
           <div className="text-[13px] text-ink-3 uppercase tracking-wider mb-1.5" style={{ fontFamily: "'advocate-c14', sans-serif" }}>
-            Quality
+            Your rating
           </div>
           <div className="flex items-center gap-2">
-            <Star className={`w-3.5 h-3.5 ${qualityColor(quality)}`} />
-            <span className={`text-sm font-semibold ${qualityColor(quality)}`} style={{ fontFamily: "'concourse-t3', sans-serif" }}>
-              {quality}/10
+            <Star className={`w-3.5 h-3.5 ${qualityColor(rating)}`} />
+            <span className={`text-sm font-semibold ${qualityColor(rating)}`} style={{ fontFamily: "'concourse-t3', sans-serif" }}>
+              {rating}/10
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Quality (knowledge notes only). Inferred = a backfilled band, drawn muted so it never reads as a human rating. */}
+      {quality != null && rating === undefined && (
+        <div>
+          <div className="text-[13px] text-ink-3 uppercase tracking-wider mb-1.5" style={{ fontFamily: "'advocate-c14', sans-serif" }}>
+            {qualityInferred ? "Quality · inferred" : "Quality"}
+          </div>
+          <div className="flex items-center gap-2" title={qualityInferred ? "Estimated by the archive, not your rating" : undefined}>
+            {qualityInferred ? (
+              <>
+                <Star className="w-3.5 h-3.5 text-ink-3 opacity-60" />
+                <span className="text-sm text-ink-3" style={{ fontFamily: "'concourse-t3', sans-serif" }}>
+                  ~{quality}/10
+                </span>
+                <span className="text-[11px] text-ink-3 opacity-70 uppercase tracking-wider" style={{ fontFamily: "'advocate-c14', sans-serif" }}>
+                  est.
+                </span>
+              </>
+            ) : (
+              <>
+                <Star className={`w-3.5 h-3.5 ${qualityColor(quality)}`} />
+                <span className={`text-sm font-semibold ${qualityColor(quality)}`} style={{ fontFamily: "'concourse-t3', sans-serif" }}>
+                  {quality}/10
+                </span>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -194,7 +225,7 @@ export default function WikiMeta({
             Updated
           </div>
           <div className="text-xs text-ink-2" style={{ fontFamily: "'concourse-t3', sans-serif" }}>
-            {new Date(lastModified).toLocaleDateString("en-US", {
+            {fmtDateParts(lastModified, {
               year: "numeric",
               month: "short",
               day: "numeric",

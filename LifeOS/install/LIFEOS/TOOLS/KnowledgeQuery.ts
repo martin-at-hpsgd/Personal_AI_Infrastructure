@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.3
  * KnowledgeQuery — the `kb query` surface over the Knowledge Archive.
  *
  * This is the payoff of the kb-v3 migration: now that
@@ -38,10 +39,10 @@
 
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { resolve as pathResolve, join as pathJoin } from "node:path";
-import { homedir } from "node:os";
 import { parseNote, slugFromPath, ALL_DIRS, type ParsedNote } from "./KnowledgeSchema";
+import { getClaudeDir } from "./Paths"; // public issue #1665 @rogdex24 — aliased resolve sites missed by the 09-03 sweep
 
-const KNOWLEDGE_DIR = pathResolve(homedir(), ".claude/LIFEOS/MEMORY/KNOWLEDGE");
+const KNOWLEDGE_DIR = pathResolve(getClaudeDir(), "LIFEOS/MEMORY/KNOWLEDGE");
 const DIRS = ALL_DIRS;
 
 interface Rec {

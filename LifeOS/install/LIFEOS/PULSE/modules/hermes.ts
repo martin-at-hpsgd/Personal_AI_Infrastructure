@@ -287,7 +287,7 @@ const CORE_FILES: readonly CoreFile[] = [
     plane: "code",
     path: join(HERMES_DIR, "ISA.md"),
     language: "markdown",
-    role: "State of record for the sidecar — the claims, their falsifiers, and the evidence that closed them.",
+    role: "State of record for the sidecar — the criteria, their falsifiers, and the evidence that closed them.",
   },
 ];
 

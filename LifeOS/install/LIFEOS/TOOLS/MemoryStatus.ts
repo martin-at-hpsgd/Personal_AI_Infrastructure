@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.2.7
  * MemoryStatus — read-only viewer for LifeOS's memory subsystem.
  *
  * F10 of the autonomic memory subsystem.
@@ -24,9 +25,9 @@
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { getDAName } from "../../hooks/lib/identity"
+import { getClaudeDir } from "./Paths"; // public issue #1665 @rogdex24, #1584 @ramazanpolat — aliased resolve sites missed by the 09-03 sweep
 
 import { join as pathJoin, resolve as pathResolve } from "node:path";
-import { homedir } from "node:os";
 import {
   PRINCIPAL_MEMORY_PATH,
   DA_MEMORY_PATH,
@@ -34,7 +35,7 @@ import {
 } from "./MemoryTypes";
 import { read as readMemory } from "./MemoryWriter";
 
-const CLAUDE_ROOT = pathResolve(homedir(), ".claude");
+const CLAUDE_ROOT = getClaudeDir();
 const LIFEOS_DIR = pathJoin(CLAUDE_ROOT, "LIFEOS");
 const IDEAS_DIR = pathJoin(LIFEOS_DIR, "MEMORY", "IDEAS");
 const KNOWLEDGE_DIR = pathJoin(LIFEOS_DIR, "MEMORY", "KNOWLEDGE");

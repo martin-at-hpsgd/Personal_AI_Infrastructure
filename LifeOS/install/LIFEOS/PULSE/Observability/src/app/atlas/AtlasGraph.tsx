@@ -26,6 +26,15 @@ const KIND_COLOR: Record<string, string> = {
   r2_bucket: "#f472b6",
   kv_namespace: "#f472b6",
   device: "var(--ink-3)",
+  // Model estate: models and the code and tools that use them.
+  model: "#facc15",
+  code: "#94a3b8",
+  tool: "#38bdf8",
+  // Trust-boundary kinds: where untrusted text gets in, what it can borrow,
+  // and what stands in between. Warm = exposure, cool = control.
+  ingest: "#fb923c",
+  capability: "#f43f5e",
+  control: "#34d399",
 };
 const colorFor = (k: string) => KIND_COLOR[k] ?? "var(--ink-3)";
 

@@ -18,14 +18,14 @@
  * matches the `@LIFEOS/...` imports in CLAUDE.md (NOT mixed-case `LifeOS`).
  *
  * Usage:
- *   bun DeployCore.ts [--config-root <dir>] [--skill-root <dir>] [--apply] [--allow-dev]
+ *   bun DeployCore.ts [--config-root <dir>] [--config-dir <dir>] [--skill-root <dir>] [--apply] [--allow-dev]
  *   (dry-run by default — reports the plan per target without writing)
  */
 
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { copyMissing, detectDevTree } from "./InstallEngine";
+import { copyMissing, refuseDevInstallWrites } from "./InstallEngine";
 
 // Runtime top-level entries this tool does NOT deploy:
 //  - USER           shipped separately as a scaffold (ScaffoldUser) + symlinked (LinkUser)
@@ -35,7 +35,7 @@ import { copyMissing, detectDevTree } from "./InstallEngine";
 //  - node_modules / .git  never deploy
 // copyMissing's own SKIP_DIRS covers MEMORY when nested, but these
 // are TOP-LEVEL entries of the runtime payload, so we filter them here explicitly.
-const RUNTIME_SKIP = new Set(["USER", "MEMORY", "node_modules", ".git"]);
+export const RUNTIME_SKIP = new Set(["USER", "MEMORY", "node_modules", ".git"]);
 
 function arg(a: string[], flag: string): string | undefined {
   const i = a.indexOf(flag);
@@ -157,9 +157,23 @@ function deployRuntime(payloadInstall: string, configRoot: string, apply: boolea
 // makes EmitSkill's "MEMORY scaffolded fresh at setup" claim actually true.
 const MEMORY_SUBDIRS = ["WORK", "KNOWLEDGE", "LEARNING", "STATE", "OBSERVABILITY", "SKILLS"];
 
-/** (c) MEMORY scaffold: create the empty per-install state dirs (never overwrites). */
-function scaffoldMemory(configRoot: string, apply: boolean): DeployResult {
-  const dst = join(configRoot, "LIFEOS", "MEMORY");
+/**
+ * (c) MEMORY scaffold: create the empty per-install state dirs (never overwrites).
+ *
+ * The dirs are created in the DATA home (`<configDir>/USER/MEMORY/...`) and
+ * `<configRoot>/LIFEOS/MEMORY` is linked to them, because that is what
+ * `SystemUserBoundary.md` says MEMORY is. mkdir-ing a real directory in the
+ * harness tree here (the prior behaviour) silently created a second, unsanctioned
+ * personal-data root that LinkUser then had to migrate out from under a running
+ * install (public issue #1882, @jacobo-ortiz, @CarbonRaven, @xg-gh-25).
+ *
+ * Never-overwrite semantics are unchanged: an existing subdir is left alone, and
+ * the link is created ONLY when nothing occupies `<configRoot>/LIFEOS/MEMORY` —
+ * a pre-existing real dir from an older install is left for LinkUser to migrate.
+ */
+function scaffoldMemory(configRoot: string, configDir: string, apply: boolean): DeployResult {
+  const dst = join(configDir, "USER", "MEMORY");
+  const link = join(configRoot, "LIFEOS", "MEMORY");
   const r: DeployResult = { what: "memory", src: "(scaffold — not shipped)", dst, present: true, copied: 0, actions: [], blockers: [], failures: [] };
   for (const sub of MEMORY_SUBDIRS) {
     const d = join(dst, sub);
@@ -170,6 +184,24 @@ function scaffoldMemory(configRoot: string, apply: boolean): DeployResult {
       r.copied++;
     } catch (err) {
       r.failures.push(`mkdir ${d}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  // lstat, not existsSync: a DANGLING link occupies the path but reads as absent,
+  // and symlinking over it would EEXIST.
+  const occupied = lstatSync(link, { throwIfNoEntry: false }) !== undefined;
+  if (!occupied) {
+    if (!apply) {
+      r.actions.push(`symlink ${link} → ${dst}`);
+    } else {
+      try {
+        mkdirSync(dirname(link), { recursive: true });
+        // "junction" lets Windows link a dir without elevation; ignored on POSIX
+        // (public issue #1730, @umair-a11y).
+        symlinkSync(dst, link, "junction");
+        r.copied++;
+      } catch (err) {
+        r.failures.push(`symlink ${link} → ${dst}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
   // Generate KNOWLEDGE/_schema.md so the Cortex skill's documented contract
@@ -183,8 +215,21 @@ function scaffoldMemory(configRoot: string, apply: boolean): DeployResult {
   if (!existsSync(schemaDoc) && existsSync(generator)) {
     if (!apply) {
       r.actions.push(`bun ${generator}`);
+    // The generator once imported hooks/lib (path resolution) and hooks land at a
+    // later step, so a fresh install failed here (2026-09-03, first headless install). Root fix:
+    // the resolver now lives in LIFEOS/TOOLS/Paths.ts and hooks/lib/paths.ts
+    // re-exports it, so TOOLS never depends on the hooks tree and this step runs
+    // first-time. (public issues #1974 @sabo961, #1955 @pybe)
     } else {
-      const proc = Bun.spawnSync(["bun", generator], { stdout: "pipe", stderr: "pipe" });
+      // Thread configRoot through: the generator resolves its own output, and
+      // without this a scratch-root install spawns it with the ambient env and
+      // writes into the real home profile
+      // (discussion #1900 finding 2, @Patrickraveaux).
+      const proc = Bun.spawnSync(["bun", generator], {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, CLAUDE_CONFIG_DIR: configRoot },
+      });
       if (proc.exitCode === 0) r.copied++;
       else r.failures.push(`GenerateKnowledgeSchemaDoc exited ${proc.exitCode}: ${proc.stderr.toString().trim()}`);
     }
@@ -260,7 +305,7 @@ function findNestedDependencyDirs(runtimeDst: string, skip: Set<string> = new Se
   return found.sort();
 }
 
-function deployNestedDependencies(payloadInstall: string, configRoot: string, apply: boolean): DeployResult {
+export function deployNestedDependencies(payloadInstall: string, configRoot: string, apply: boolean): DeployResult {
   const runtimeDst = join(configRoot, "LIFEOS");
   const skillsDst = join(configRoot, "skills");
   const r: DeployResult = {
@@ -270,7 +315,7 @@ function deployNestedDependencies(payloadInstall: string, configRoot: string, ap
   if (!r.present) return r; // runtime not deployed yet — deployRuntime() already reports that blocker
 
   // Walk skills/ alongside LIFEOS/ — skills ship nested package.json manifests
-  // too (Apify, Evals, Prompting templates, Art/Remotion tools), and installing
+  // too (Assay, Prompting templates, Art tools), and installing
   // only the runtime tree left them import-broken. Public issue #1605, @cristbc.
   //
   // Scoped to the skills THIS payload ships, per skill dir (ported from public
@@ -280,9 +325,8 @@ function deployNestedDependencies(payloadInstall: string, configRoot: string, ap
   // deploy. Skills we skipped on a case-insensitive collision are excluded for
   // the same reason (not in the payload-name → deployed-dir set we created).
   const payloadSkills = join(payloadInstall, "skills");
-  // The deployed LifeOS skill carries a second full copy of this very payload
-  // under <skill>/install — walking it re-installs every payload skill a second
-  // time, into a tree nothing imports from.
+  // The deployed LifeOS skill's <skill>/install contains bootstrap files only;
+  // it is not part of the installed skills library and has no dependencies to walk.
   const nestedPayload = join(skillsDst, basename(dirname(payloadInstall)), "install");
   const ownSkillDirs = existsSync(payloadSkills)
     ? readdirSync(payloadSkills, { withFileTypes: true })
@@ -329,24 +373,20 @@ function main(): void {
   const a = process.argv.slice(2);
   const home = process.env.HOME || homedir();
   const configRoot = arg(a, "--config-root") || process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+  // Same precedence as LinkUser/ScaffoldUser — the private data home MEMORY and
+  // USER both live in (public issue #1882).
+  const configDir = arg(a, "--config-dir") || process.env.LIFEOS_CONFIG_DIR || join(home, ".config", "LIFEOS");
   const skillRoot = arg(a, "--skill-root") || join(import.meta.dir, "..");
   const payloadInstall = join(skillRoot, "install");
   const apply = a.includes("--apply");
   const allowDev = a.includes("--allow-dev");
 
-  if (detectDevTree(configRoot) && !allowDev) {
-    console.log(JSON.stringify({
-      ok: false,
-      refused: "dev-tree",
-      detail: `${configRoot} is a LifeOS source tree (dev-tree marker present) — refusing to deploy core. Use --allow-dev only in a sandbox.`,
-    }, null, 2));
-    process.exit(2);
-  }
+  refuseDevInstallWrites(configRoot, [join(configRoot, "skills"), join(configRoot, "LIFEOS"), join(configDir, "USER", "MEMORY"), configDir], allowDev);
 
   const results = [
     deploySkills(payloadInstall, configRoot, apply),
     deployRuntime(payloadInstall, configRoot, apply),
-    scaffoldMemory(configRoot, apply),
+    scaffoldMemory(configRoot, configDir, apply),
     deployDependencies(payloadInstall, configRoot, apply),
     deployNestedDependencies(payloadInstall, configRoot, apply),
   ];
@@ -371,6 +411,7 @@ function main(): void {
     ok,
     dryRun: !apply,
     configRoot,
+    configDir,
     payloadInstall,
     skillsDst: join(configRoot, "skills"),
     runtimeDst: join(configRoot, "LIFEOS"),
@@ -385,4 +426,7 @@ function main(): void {
   process.exit(ok ? 0 : 1);
 }
 
-main();
+// Guarded like Services.ts: OverlaySystem imports deployNestedDependencies() so
+// the update path installs nested manifests too (public issue #1873,
+// @GRyndStone) — an unguarded main() would run a full deploy on import.
+if (import.meta.main) main();

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.4.15
  * DocCheck.ts — Documentation integrity verifier
  *
  * Extracts path references from markdown docs, verifies they exist on disk,
@@ -17,11 +18,12 @@
 
 import { readFileSync, statSync, existsSync, readdirSync } from 'fs';
 import { join, resolve, dirname, relative } from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { homedir } from "node:os";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const CLAUDE_DIR = join(HOME, '.claude');
+const CLAUDE_DIR = getClaudeDir();
 const LIFEOS_DIR = join(CLAUDE_DIR, 'LIFEOS');
 const HOOKS_DIR = join(CLAUDE_DIR, 'hooks');
 
@@ -32,17 +34,21 @@ const quiet = args.includes('--quiet');
 
 // ── Path Reference Extraction ──
 
+// The tree is LIFEOS/, case-sensitive; the LifeOS/ alternation alone matched
+// nothing, so backticked LIFEOS/ refs and every @-import went unchecked. Both
+// casings stay: a legacy LifeOS/ ref is itself broken and should be reported.
+// public PR #2198 (issue #2191), @Bowlerjim
 const PATH_PATTERNS = [
-  // Backtick-quoted paths: `LIFEOS/DOCUMENTATION/Hooks/HookSystem.md`, `hooks/PromptInjection.hook.ts`
-  /`((?:LifeOS|hooks|skills|agents|Pulse|USER|MEMORY|Components|Algorithm|Tools)\/[\w/.@-]+\.\w+)`/g,
+  // Backtick-quoted paths, e.g. `LIFEOS/DOCUMENTATION/Hooks/HookSystem.md` or `hooks/StopGates.hook.ts`
+  /`((?:LIFEOS|LifeOS|hooks|skills|agents|Pulse|USER|MEMORY|Components|Algorithm|Tools)\/[\w/.@-]+\.\w+)`/g,
   // Backtick-quoted paths with ~/.claude/ prefix
   /`~\/\.claude\/([\w/.@-]+\.\w+)`/g,
   // Backtick-quoted paths with $HOME/.claude/ prefix
   /`\$HOME\/\.claude\/([\w/.@-]+\.\w+)`/g,
   // @-imports: @LIFEOS/USER/FILE.md
-  /^@(LifeOS\/[\w/.@-]+\.md)/gm,
+  /^@((?:LIFEOS|LifeOS)\/[\w/.@-]+\.md)/gm,
   // Table cell paths: | `path` | or | path |
-  /\|\s*`?((?:LifeOS|hooks|skills|Pulse|USER)\/[\w/.@-]+\.\w+)`?\s*\|/g,
+  /\|\s*`?((?:LIFEOS|LifeOS|hooks|skills|Pulse|USER)\/[\w/.@-]+\.\w+)`?\s*\|/g,
   // Arrow notation in TOPOLOGY.md: → file: `path`
   /→\s+[\w\s]+:\s+`([\w/.@-]+\.\w+)`/g,
 ];
@@ -114,9 +120,9 @@ function extractPathRefs(content: string, docPath: string): PathRef[] {
       // referrer-dir relative.
       let resolved = resolve(CLAUDE_DIR, raw);
       if (!existsSync(resolved)) {
-        const paiResolved = resolve(LIFEOS_DIR, raw);
-        if (existsSync(paiResolved)) {
-          resolved = paiResolved;
+        const lifeosResolved = resolve(LIFEOS_DIR, raw);
+        if (existsSync(lifeosResolved)) {
+          resolved = lifeosResolved;
         } else {
           const sectionRoot = getSectionRootAt(sectionRoots, match.index);
           if (sectionRoot) {
@@ -143,32 +149,45 @@ function extractPathRefs(content: string, docPath: string): PathRef[] {
 
 // ── File Discovery ──
 
+/**
+ * Everything that stopped a check from running. A non-empty list means "all
+ * references valid" can no longer be claimed, and the exit code says so.
+ */
+const incomplete: string[] = [];
+
+/** List a directory. ENOENT on an optional dir is a legitimate absence; any other failure removes checks and is recorded. */
+function listDir(dir: string, optional: boolean): string[] {
+  try {
+    return readdirSync(dir);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (!(optional && code === 'ENOENT')) {
+      incomplete.push(`cannot list ${relative(CLAUDE_DIR, dir) || dir}: ${code ?? (e as Error).message}`);
+    }
+    return [];
+  }
+}
+
 function findDocs(): string[] {
   const docs: string[] = [];
 
   // LifeOS system docs (LIFEOS_SYSTEM_PROMPT.md still lives at LifeOS root)
-  try {
-    for (const f of readdirSync(LIFEOS_DIR)) {
-      if (f.endsWith('.md')) docs.push(join(LIFEOS_DIR, f));
-    }
-  } catch { /* */ }
+  for (const f of listDir(LIFEOS_DIR, false)) {
+    if (f.endsWith('.md')) docs.push(join(LIFEOS_DIR, f));
+  }
 
   // LifeOS documentation subsystem docs (relocated from LifeOS root in v5)
   const docsDir = join(LIFEOS_DIR, 'DOCUMENTATION');
-  try {
-    for (const f of readdirSync(docsDir)) {
-      if (f.endsWith('.md')) docs.push(join(docsDir, f));
-    }
-  } catch { /* */ }
+  for (const f of listDir(docsDir, true)) {
+    if (f.endsWith('.md')) docs.push(join(docsDir, f));
+  }
 
   // Security docs
   const secDir = join(LIFEOS_DIR, 'USER', 'SECURITY');
-  try {
-    for (const f of readdirSync(secDir)) {
-      // ported from public PR #1741, @elhoim — `.yml` is as valid a YAML suffix as `.yaml`
-      if (f.endsWith('.md') || f.endsWith('.yaml') || f.endsWith('.yml')) docs.push(join(secDir, f));
-    }
-  } catch { /* */ }
+  for (const f of listDir(secDir, true)) {
+    // ported from public PR #1741, @elhoim — `.yml` is as valid a YAML suffix as `.yaml`
+    if (f.endsWith('.md') || f.endsWith('.yaml') || f.endsWith('.yml')) docs.push(join(secDir, f));
+  }
 
   // hooks README
   const hooksReadme = join(HOOKS_DIR, 'README.md');
@@ -181,14 +200,20 @@ function findDocs(): string[] {
   return docs;
 }
 
-function getChangedFiles(): Set<string> {
+/**
+ * Git-dirty files, or null when git could not answer. null is NOT "nothing
+ * changed": the caller falls back to a full scan and records the gap.
+ */
+function getChangedFiles(): Set<string> | null {
   try {
-    const diff = execSync('git diff --name-only HEAD 2>/dev/null; git diff --cached --name-only 2>/dev/null', {
-      cwd: CLAUDE_DIR, encoding: 'utf-8',
-    });
-    return new Set(diff.split('\n').filter(Boolean).map(f => resolve(CLAUDE_DIR, f)));
-  } catch {
-    return new Set();
+    const out: string[] = [];
+    for (const gitArgs of [['diff', '--name-only', 'HEAD'], ['diff', '--cached', '--name-only']]) {
+      out.push(execFileSync('git', gitArgs, { cwd: CLAUDE_DIR, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }));
+    }
+    return new Set(out.join('\n').split('\n').filter(Boolean).map(f => resolve(CLAUDE_DIR, f)));
+  } catch (e) {
+    incomplete.push(`--changed: git could not list changed files (${(e as Error).message.split('\n')[0]}); scanned every doc instead`);
+    return null;
   }
 }
 
@@ -218,7 +243,7 @@ const docsToCheck = changedFiles
         const content = readFileSync(doc, 'utf-8');
         const refs = extractPathRefs(content, doc);
         return refs.some(r => changedFiles.has(r.resolved));
-      } catch { return false; }
+      } catch { return true; } // unreadable: keep it so the main loop reports the failure
     })
   : allDocs;
 
@@ -227,13 +252,19 @@ for (const docPath of docsToCheck) {
   let content: string;
   try {
     content = readFileSync(docPath, 'utf-8');
-  } catch { continue; }
+  } catch (e) {
+    incomplete.push(`cannot read ${relative(CLAUDE_DIR, docPath)}: ${(e as NodeJS.ErrnoException).code ?? (e as Error).message}`);
+    continue;
+  }
 
   const refs = extractPathRefs(content, docPath);
   let docMtime: number;
   try {
     docMtime = statSync(docPath).mtimeMs;
-  } catch { continue; }
+  } catch (e) {
+    incomplete.push(`cannot stat ${relative(CLAUDE_DIR, docPath)}: ${(e as NodeJS.ErrnoException).code ?? (e as Error).message}`);
+    continue;
+  }
 
   for (const ref of refs) {
     refsChecked++;
@@ -262,14 +293,16 @@ for (const docPath of docsToCheck) {
           detail: `ref modified ${daysStale}d after doc`,
         });
       }
-    } catch { /* stat failed, skip freshness check */ }
+    } catch (e) {
+      incomplete.push(`cannot stat ${ref.raw} (referenced from ${relative(CLAUDE_DIR, docPath)}:${ref.line}): ${(e as NodeJS.ErrnoException).code ?? (e as Error).message}`);
+    }
   }
 }
 
 // ── Output ──
 
 if (jsonOutput) {
-  console.log(JSON.stringify({ docsChecked, refsChecked, findings }, null, 2));
+  console.log(JSON.stringify({ docsChecked, refsChecked, findings, incomplete }, null, 2));
 } else {
   const missing = findings.filter(f => f.type === 'missing');
   const stale = findings.filter(f => f.type === 'stale');
@@ -292,9 +325,15 @@ if (jsonOutput) {
     console.error(`\nDocCheck: ${docsChecked} docs, ${refsChecked} refs, ${missing.length} missing, ${stale.length} stale`);
   }
 
-  if (findings.length === 0 && !quiet) {
+  if (incomplete.length > 0) {
+    console.error(`\n🚫 INCOMPLETE CHECK (${incomplete.length}) — some references could not be inspected:`);
+    for (const m of incomplete) console.error(`  ${m}`);
+  }
+
+  if (findings.length === 0 && incomplete.length === 0 && !quiet) {
     console.error('✅ All references valid and fresh.');
   }
 }
 
-process.exit(findings.filter(f => f.type === 'missing').length > 0 ? 1 : 0);
+// 1 = a reference is missing; 2 = nothing proven missing but some checks could not run.
+process.exit(findings.filter(f => f.type === 'missing').length > 0 ? 1 : incomplete.length > 0 ? 2 : 0);

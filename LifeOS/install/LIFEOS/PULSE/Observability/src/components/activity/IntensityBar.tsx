@@ -38,7 +38,7 @@ export default function IntensityBar({
       </div>
 
       {/* Intensity bar */}
-      <div className="relative flex-1 h-1 bg-[var(--ground)] overflow-hidden rounded-sm">
+      <div className="relative flex-1 h-1 bg-surface-1 overflow-hidden rounded-sm">
         <div
           className="absolute top-0 left-0 h-full rounded-sm transition-all duration-500 ease-out"
           style={{
@@ -66,7 +66,7 @@ export default function IntensityBar({
               key={range}
               onClick={() => onSetTimeRange(range)}
               className={`px-3 py-1 text-sm font-bold rounded cursor-pointer transition-all ${
-                timeRange === range ? "shadow-md" : "bg-transparent text-[var(--ink-3)] hover:text-[var(--ink-2)] hover:bg-[var(--ground)]"
+                timeRange === range ? "shadow-md" : "bg-transparent text-[var(--ink-3)] hover:text-[var(--ink-2)] hover:bg-surface-3"
               }`}
               style={
                 timeRange === range

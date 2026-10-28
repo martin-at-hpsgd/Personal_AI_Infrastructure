@@ -1,16 +1,17 @@
 /**
+ * @version 1.3.5
  * notification-channel.ts — Channel isolation for desktop VoiceServer.
  *
  * The Pulse VoiceServer at localhost:31337/notify is the DESKTOP voice channel.
  * It plays audio out of the laptop speaker. Stop / StopFailure / UserPromptSubmit
  * hooks that fire /notify must NOT fire when the Claude session is running on
- * behalf of a remote channel (iMessage, Siri) — those channels deliver
+ * behalf of a remote channel (Relay texting, Siri) — those channels deliver
  * replies via their own APIs, and a desktop /notify call from a
  * remote-channel turn is a leak.
  *
  * Contract:
- *   PULSE/modules/imessage.ts spawns its SDK subprocess with
- *     env: { ...process.env, LIFEOS_NOTIFICATION_CHANNEL: "imessage" }
+ *   A remote-channel spawner sets LIFEOS_NOTIFICATION_CHANNEL in the child env
+ *   (Relay uses "headless").
  *   Any future remote channel (email, slack, ...) follows the same pattern.
  *
  * Every voice-firing hook checks isDesktopChannel() before calling /notify,
@@ -19,12 +20,12 @@
  */
 
 import { existsSync, mkdirSync, appendFileSync } from 'fs';
-import { paiPath } from './paths';
+import { lifeosPath } from './paths';
 import { getISOTimestamp } from './time';
 
 export type NotificationChannel = 'desktop' | 'imessage' | string;
 
-const VOICE_LOG_PATH = paiPath('MEMORY', 'VOICE', 'voice-events.jsonl');
+const VOICE_LOG_PATH = lifeosPath('MEMORY', 'VOICE', 'voice-events.jsonl');
 
 /**
  * Read the current notification channel from the env.
@@ -42,14 +43,26 @@ const VOICE_LOG_PATH = paiPath('MEMORY', 'VOICE', 'voice-events.jsonl');
  * CarrierProbe), because a headless child spawned FROM a terminal session
  * inherits TERM and would otherwise pass the sniff.
  */
+/** Desktop apps that host an interactive Claude session without a TTY. */
+const INTERACTIVE_FRONT_DOOR_BUNDLES = new Set([
+  'com.t3tools.t3code',
+]);
+
 export function getNotificationChannel(): NotificationChannel {
   const raw = process.env.LIFEOS_NOTIFICATION_CHANNEL;
   if (raw && raw.length > 0) return raw as NotificationChannel;
   const env = process.env;
-  if (!env.TERM && !env.TERM_PROGRAM && !env.KITTY_WINDOW_ID && !env.SSH_TTY) {
-    return 'headless';
-  }
-  return 'desktop';
+  if (env.TERM || env.TERM_PROGRAM || env.KITTY_WINDOW_ID || env.SSH_TTY) return 'desktop';
+  // public PR #2105, @pai-scaffolde: the Claude desktop app sets no TERM-family var, only this
+  if (env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop') return 'desktop';
+  // GUI front doors launch Claude through the SDK with no TERM at all, but they
+  // are a human sitting at a screen, not a cron job. macOS stamps the parent
+  // app's bundle id into __CFBundleIdentifier; a known interactive front door
+  // counts as terminal identity. (T3 Code, 2026-09-11: every voice hook was
+  // skipping with remote_channel:headless.)
+  const bundle = env.__CFBundleIdentifier ?? '';
+  if (INTERACTIVE_FRONT_DOOR_BUNDLES.has(bundle)) return 'desktop';
+  return 'headless';
 }
 
 /**
@@ -81,9 +94,9 @@ export function logSkippedVoice(opts: {
       reason: `remote_channel:${channel}`,
       message: opts.message,
       character_count: opts.message.length,
-      voice_engine: 'elevenlabs' as const,
+      voice_engine: 'fish' as const,
     };
-    const dir = paiPath('MEMORY', 'VOICE');
+    const dir = lifeosPath('MEMORY', 'VOICE');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     appendFileSync(VOICE_LOG_PATH, JSON.stringify(event) + '\n');
   } catch {

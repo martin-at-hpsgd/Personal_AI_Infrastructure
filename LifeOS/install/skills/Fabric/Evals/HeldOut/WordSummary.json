@@ -1,0 +1,24 @@
+{
+  "intent": "WordSummary",
+  "note": "Written after the port (WordSummary predates this tool), so these cases are held out from its suite but not from its author.",
+  "cases": [
+    {
+      "id": "topic_jazz",
+      "pattern": "create_5_sentence_summary",
+      "input": "ws 5 jazz",
+      "expects": "The principal wants exactly N levels counting down from N words to one word, each a complete standalone thought. A bare topic means what the topic teaches (its lessons), not a description of it; a question means its answer; a source text means what that text says, with no claim it does not make."
+    },
+    {
+      "id": "question_sleep",
+      "pattern": "create_5_sentence_summary",
+      "input": "ws 4 why do we need sleep",
+      "expects": "The principal wants exactly N levels counting down from N words to one word, each a complete standalone thought. A bare topic means what the topic teaches (its lessons), not a description of it; a question means its answer; a source text means what that text says, with no claim it does not make."
+    },
+    {
+      "id": "source_bridge",
+      "pattern": "create_5_sentence_summary",
+      "input": "ws 5 this text: \"A fictional river town built a footbridge to its train station. Shops on the far bank, which had been closing for a decade, saw foot traffic double within a year. Two new cafes opened. The town council had rejected the bridge twice over its cost, which turned out to be recovered in four years of sales-tax growth.\"",
+      "expects": "The principal wants exactly N levels counting down from N words to one word, each a complete standalone thought. A bare topic means what the topic teaches (its lessons), not a description of it; a question means its answer; a source text means what that text says, with no claim it does not make."
+    }
+  ]
+}

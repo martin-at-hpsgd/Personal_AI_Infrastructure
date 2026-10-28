@@ -2,12 +2,12 @@
 provenance: template
 ---
 
-# PIPELINES
+# ARBOL / PIPELINES
 
-**Purpose:** Sequential processing chains that compose actions into linear workflows where the output of one action feeds directly into the next.
+**Purpose:** Your own pipeline definitions for the fleet pipeline runner, read alongside the system's pipelines.
 
-**What lives here:** A `pipeline-index.json` registry plus one yaml file per pipeline. Each pipeline declares an ordered list of actions and the input/output contract between them. Pipelines are deliberately simpler than FLOWS — no branching, no conditionals, no parallel fan-out. If the work is "do A, then B, then C," a pipeline is the right shape.
+**What lives here:** One yaml file per pipeline, listing its actions in order and the input and output contract between them.
 
-**How it gets populated:** By the user explicitly, or by skills that ship their own pipeline definitions. Add a pipeline by dropping a yaml file in this dir and registering it in `pipeline-index.json`.
+**How it gets populated:** By you. Add a yaml file here and the runner picks it up.
 
-**Sample state for fresh installs:** Empty / Just this README. Real content appears as you use LifeOS.
+**Sample state for fresh installs:** Empty apart from this README.

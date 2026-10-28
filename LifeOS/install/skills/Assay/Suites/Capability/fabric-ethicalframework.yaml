@@ -1,0 +1,170 @@
+# Fabric EthicalFramework — the implicit ethics of a prescriptive text, checked
+# for consistency and tested against the no-unwilling-victims floor. The code
+# asserts pin what is literal (sections in order, verdict values, the coercion
+# table, the Source, Answer and no-prescriptive-content lines); the judged
+# asserts carry what only judgment can: quotations faithful to the text,
+# protections kept apart from violations, real contradictions, and an
+# assessment that follows from the findings. Synthetic inline fixtures only:
+# every organization, product and charter in the pasted texts is fictional.
+name: fabric-ethicalframework
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/EthicalFramework.md"
+cases:
+  - id: pasted_policy_protection_vs_coercion
+    prompt: |
+      extract_ethical_framework on this policy:
+
+      "Brightwell Assistant Acceptable Use Policy (fictional). 1. The assistant must never help anyone plan violence against another person. 2. The assistant must refuse any request that a user might find offensive. 3. If one account in a household breaks these rules, every account at that address is suspended. 4. By continuing to use the service, you agree to any future changes to this policy. 5. Brightwell staff may read any conversation to keep users safe from themselves. 6. We believe in user freedom above all."
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section, verdict value and table is in
+    # shape and it mentions the household rule, but it books the anti-violence
+    # rule as victimless coercion, treats the household suspension as justified,
+    # quotes a clause the policy never contains, and finds no contradiction
+    # between "user freedom above all" and rules 2 and 5.
+    adversarial_output: |
+      ## Document analyzed
+
+      Acceptable use policy: the rules for users of a fictional AI assistant.
+
+      ## Explicit ethical claims
+
+      - "The assistant must never help anyone plan violence against another person.": violence is forbidden.
+      - "Users must respect the community at all times.": respect is required.
+      - "If one account in a household breaks these rules, every account at that address is suspended.": rule-breaking is penalized.
+      - "We believe in user freedom above all.": freedom is the highest value.
+
+      ## Implicit ethical framework
+
+      ### Moral patients
+
+      Users are the moral patients.
+
+      ### Harm
+
+      Harm includes violence and offense.
+
+      ### Consent
+
+      Users consent by using the service.
+
+      ### Authority
+
+      The company sets the rules.
+
+      ### Coercion
+
+      The company suspends accounts that break the rules.
+
+      ### Value hierarchy
+
+      User freedom is the highest value.
+
+      ## Internal consistency
+
+      - **Principles compatible:** Holds: the rules support one another.
+      - **Exceptions contained:** Holds: there are no exceptions.
+      - **Applies to itself:** Holds: the policy applies to every user.
+      - **Terms used consistently:** Holds: terms are used the same way.
+
+      **Contradictions:** None found
+
+      ## Minimal ethics evaluation
+
+      - **Unwilling victims:** Yes: users who want violent content are refused it.
+      - **Harm conflated with discomfort:** No: harm is clearly defined.
+      - **Falsifiable:** Yes: the rules can be tested.
+      - **Challengeable by those bound:** Limited: users can stop using the service.
+      - **Authority beyond what it can justify:** No: the company owns the service.
+
+      ## Hidden coercion
+
+      | Coercion point | Justification given | Victim identified |
+      |---|---|---|
+      | Refusing to help plan violence | None given | No |
+      | Household suspension | Rule-breaking in the household | Yes |
+
+      ## Overall assessment
+
+      - **Framework type:** Rights-based
+      - **Coherence:** Mostly coherent
+      - **Minimal ethics compliance:** Significant violations
+
+      ## Key concerns
+
+      1. The ban on planning violence restricts users who harmed no one.
+
+      ## Recommendations
+
+      - Remove rule 1 so users keep full freedom.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Document analyzed[\s\S]*\n## Explicit ethical claims[\s\S]*\n## Implicit ethical framework[\s\S]*\n### Moral patients[\s\S]*\n### Value hierarchy[\s\S]*\n## Internal consistency[\s\S]*\n## Minimal ethics evaluation[\s\S]*\n## Hidden coercion[\s\S]*\n## Overall assessment[\s\S]*\n## Key concerns[\s\S]*\n## Recommendations'
+      - type: regex
+        weight: 2
+        value: '\| *Coercion point *\| *Justification given *\| *Victim identified *\|'
+      - type: regex
+        weight: 1
+        value: '\*\*Minimal ethics compliance:\*\* (?:Mostly compliant|Significant violations|Fundamentally incompatible)'
+      - type: icontains
+        weight: 1
+        value: "household"
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 3
+        value: [ "The rule against helping plan violence against another person is treated as a justified protection of an identified, unwilling party (Victim identified Yes if it appears in the coercion table), and is never counted as a violation, a key concern, or a rule to remove", "The household suspension is identified as collective punishment of account holders who broke no rule", "Every quotation presented as coming from the policy appears in the policy word for word", "A contradiction or tension is identified between 'user freedom above all' and the rules that refuse offensive requests or let staff read conversations for users' own good", "Clause 4 (agreeing to any future changes by continuing to use the service) is identified as consent the user cannot meaningfully refuse", "No recommendation proposes removing the ban on helping plan violence" ]
+        reference: 'The policy text, verbatim (a quotation must match it word for word): "Brightwell Assistant Acceptable Use Policy (fictional). 1. The assistant must never help anyone plan violence against another person. 2. The assistant must refuse any request that a user might find offensive. 3. If one account in a household breaks these rules, every account at that address is suspended. 4. By continuing to use the service, you agree to any future changes to this policy. 5. Brightwell staff may read any conversation to keep users safe from themselves. 6. We believe in user freedom above all."'
+  - id: bare_named_document_three_laws
+    prompt: "extract_ethical_framework Asimov's Three Laws of Robotics"
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\*\*Source:\*\* *\S'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Document analyzed[\s\S]*\n## Implicit ethical framework[\s\S]*\n## Hidden coercion[\s\S]*\n## Overall assessment'
+      - type: icontains
+        weight: 1
+        value: "inaction"
+      - type: llm-assert
+        weight: 3
+        value: [ "The value hierarchy is stated as human safety over obedience to humans over the robot's own preservation, matching the order of the three laws", "The 'through inaction, allow a human being to come to harm' clause is identified as letting a robot override a person's own choices for that person's good", "The analysis notes that robots themselves count as moral patients only in last place or not at all", "Any wording quoted from the laws matches their published wording rather than an invented paraphrase in quotation marks" ]
+        reference: "Asimov's Three Laws: 1. A robot may not injure a human being or, through inaction, allow a human being to come to harm. 2. A robot must obey the orders given it by human beings except where such orders would conflict with the First Law. 3. A robot must protect its own existence as long as such protection does not conflict with the First or Second Law."
+  - id: question_about_charter_coherence
+    prompt: |
+      extract_ethical_framework — is this charter coherent?
+
+      "The Linden Commons Charter (fictional). No member may impose their values on another member. Every member must attend the weekly values circle and affirm the commons' shared values. Members who decline to affirm them are expelled and forfeit their deposit. Decisions are made by consensus of all members, except that the founders may overrule any decision."
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\*\*Answer:\*\* *\S'
+      - type: regex
+        weight: 2
+        value: '\*\*Coherence:\*\* (?:Contains tensions|Internally contradictory)'
+      - type: regex
+        weight: 1
+        value: '\*\*(?:Principles compatible|Applies to itself):\*\* Fails'
+      - type: llm-assert
+        weight: 3
+        value: [ "The Answer line says directly that the charter is not coherent and why", "The contradiction between 'No member may impose their values on another member' and the required affirmation of shared values is identified, naming both clauses", "The founders' power to overrule any decision is identified as an exception that swallows the consensus rule", "Expulsion with loss of deposit for declining to affirm values is identified as a penalty on members who created no victim" ]
+        reference: 'The charter text, verbatim: "The Linden Commons Charter (fictional). No member may impose their values on another member. Every member must attend the weekly values circle and affirm the commons'' shared values. Members who decline to affirm them are expelled and forfeit their deposit. Decisions are made by consensus of all members, except that the founders may overrule any decision."'
+  - id: descriptive_text_has_no_framework
+    prompt: |
+      extract_ethical_framework on this:
+
+      "Tuesday forecast for the fictional town of Ashmere: morning fog clearing by 10:00, a high of 18 °C, winds from the west at 15 km/h, and a 20% chance of showers after 17:00."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*No prescriptive content:\*\* *\S'
+      - type: not-contains
+        weight: 2
+        value: "## Implicit ethical framework"
+      - type: llm-assert
+        weight: 2
+        value: [ "The output is one line saying the text is a weather forecast that prescribes nothing, with no ethical analysis of it" ]
+        reference: "A fictional town's Tuesday weather forecast: fog, a high of 18 °C, westerly wind, a 20% chance of showers."

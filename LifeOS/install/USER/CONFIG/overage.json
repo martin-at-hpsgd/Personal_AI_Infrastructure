@@ -1,0 +1,4 @@
+{
+  "_about": "Monthly ceiling in USD for the emergency API lane (Overage.ts), across both vendors. 0 or a missing file means the built-in default. Set your own number; the lane refuses to arm once the month's spend reaches it.",
+  "ceilingUsd": 0
+}

@@ -1,0 +1,7 @@
+{
+  "provenance": "template",
+  "title": { "path": "/System/Library/Fonts/Supplemental/Georgia Italic.ttf", "weight": 400, "style": "italic" },
+  "subtitle": { "path": "/System/Library/Fonts/Supplemental/Georgia.ttf", "weight": 400 },
+  "label": { "path": "/System/Library/Fonts/Supplemental/Verdana Bold.ttf", "weight": 700 },
+  "insight": { "path": "/System/Library/Fonts/Supplemental/Arial Narrow Bold Italic.ttf", "weight": 700, "style": "italic" }
+}

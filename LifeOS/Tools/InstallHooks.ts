@@ -6,22 +6,23 @@
  * touching foreign entries. Backs up settings.json before writing. REFUSES on a
  * dev tree (the author's live source) unless --allow-dev.
  *
- * The skill's Setup workflow shows the user the exact change (from the dry-run
+ * The skill's Setup intent shows the user the exact change (from the dry-run
  * counts) and gets explicit permission BEFORE calling this with --apply.
  *
  * Usage:
- *   bun InstallHooks.ts [--config-root <dir>] [--skill-root <dir>] [--apply] [--allow-dev]
+ *   bun InstallHooks.ts [--config-root <dir>] [--skill-root <dir>] [--harness claude-code] [--apply] [--allow-dev]
  *   (dry-run by default — reports added/skipped without writing)
  */
 
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { detectDevTree, mergeHooks } from "./InstallEngine";
+import { mergeHooks, pruneRetiredHooks, refuseDevInstallWrites, repointHookRoots, rewriteHookRoots } from "./InstallEngine";
+import { detectEnv } from "./DetectEnv";
 import { atomicWriteText } from "./lib/atomic-write";
 
-interface Args { configRoot: string; skillRoot: string; apply: boolean; allowDev: boolean; }
+interface Args { configRoot: string; skillRoot: string; harness?: string; apply: boolean; allowDev: boolean; }
 
 function parseArgs(): Args {
   const a = process.argv.slice(2);
@@ -31,8 +32,9 @@ function parseArgs(): Args {
   };
   const home = process.env.HOME || homedir(); // public issue #1729, @umair-a11y
   return {
-    configRoot: get("--config-root") || process.env.CLAUDE_CONFIG_DIR || join(home, ".claude"),
+    configRoot: resolve(get("--config-root") || process.env.CLAUDE_CONFIG_DIR || join(home, ".claude")),
     skillRoot: get("--skill-root") || join(import.meta.dir, ".."),
+    harness: get("--harness"),
     apply: a.includes("--apply"),
     allowDev: a.includes("--allow-dev"),
   };
@@ -49,20 +51,55 @@ function countFilesRec(dir: string): number {
   return n;
 }
 
-function main(): void {
-  const { configRoot, skillRoot, apply, allowDev } = parseArgs();
-
-  if (detectDevTree(configRoot) && !allowDev) {
-    console.log(JSON.stringify({ ok: false, refused: "dev-tree", detail: `${configRoot} is a LifeOS source tree (dev-tree marker present) — refusing to mutate. Use --allow-dev only in a sandbox.` }, null, 2));
-    process.exit(2);
+/** Config-root registrations whose executed hook file is absent after the copy. */
+export function wiredButMissingHooks(hooks: Record<string, unknown>, configRoot: string): string[] {
+  const root = `${resolve(configRoot)}/hooks/`;
+  const missing = new Set<string>();
+  for (const groups of Object.values(hooks)) {
+    if (!Array.isArray(groups)) continue;
+    for (const group of groups) {
+      if (!Array.isArray(group?.hooks)) continue;
+      for (const hook of group.hooks) {
+        if (typeof hook?.command !== "string") continue;
+        const tokens = hook.command.match(/(?:"[^"]*"|'[^']*'|\S+)/g) ?? [];
+        const first = tokens[0]?.replace(/^["']|["']$/g, "") ?? "";
+        const script = (/^(?:bun|node|bash|sh)$/.test(first) ? tokens[1] : tokens[0])?.replace(/^["']|["']$/g, "") ?? "";
+        if (script.startsWith(root) && /\.hook\.(?:ts|sh)$/.test(script) && !existsSync(script)) missing.add(script.slice(root.length));
+      }
+    }
   }
+  return [...missing].sort();
+}
+
+function main(): void {
+  const { configRoot, skillRoot, harness, apply, allowDev } = parseArgs();
+
+  const detectedHarness = detectEnv().harness.name;
+  const effectiveHarness = harness ?? detectedHarness;
+  if (effectiveHarness !== "claude-code") {
+    console.log(JSON.stringify({
+      ok: false,
+      refused: "non-claude-code-harness",
+      apply,
+      harness: detectedHarness,
+      detail: "LifeOS hooks are Claude Code only. See INSTALL.md § Harness integration; non-Claude harnesses must not receive Claude hook files or settings registrations.",
+    }, null, 2));
+    process.exit(1);
+  }
+
+  refuseDevInstallWrites(configRoot, [join(configRoot, "hooks"), join(configRoot, "settings.json")], allowDev);
 
   const hooksJsonPath = join(skillRoot, "install", "hooks", "hooks.json");
   if (!existsSync(hooksJsonPath)) {
     console.log(JSON.stringify({ ok: false, error: `payload hooks.json not found at ${hooksJsonPath}` }, null, 2));
     process.exit(1);
   }
-  const incoming = JSON.parse(readFileSync(hooksJsonPath, "utf-8"))?.hooks ?? {};
+  const rawIncoming = JSON.parse(readFileSync(hooksJsonPath, "utf-8"))?.hooks ?? {};
+  // Resolve the payload's $HOME/.claude literals to THIS install's root before
+  // merging — without it, an isolated profile's settings.json wires commands
+  // that expand to the default profile at fire time
+  // (discussion #1900 finding 1, @Patrickraveaux).
+  const incoming = rewriteHookRoots(rawIncoming, configRoot);
 
   // The hook SCRIPTS (*.hook.ts|sh + lib/**) live beside hooks.json in the payload.
   // Merging hooks.json into settings.json wires commands that point at these files,
@@ -93,9 +130,17 @@ function main(): void {
   }
   const existingHooks = (settings.hooks && typeof settings.hooks === "object" ? settings.hooks : {}) as Record<string, never>;
 
-  const { merged, added, skipped } = mergeHooks(existingHooks as never, incoming);
+  const retirementsPath = join(skillRoot, "install", "RETIREMENTS.json");
+  const retirements = existsSync(retirementsPath)
+    ? (JSON.parse(readFileSync(retirementsPath, "utf-8")).retirements ?? []).map((entry: { path: string }) => entry.path)
+    : [];
+  const { hooks: retainedHooks, pruned } = pruneRetiredHooks(existingHooks as never, retirements, configRoot);
+  // A custom-root profile installed before rewriteHookRoots still carries `$HOME/.claude` commands; the
+  // dedup would keep them, so repoint our own entries at this root before merging.
+  const { hooks: repairedHooks, repointed } = repointHookRoots(retainedHooks, incoming, configRoot, process.env.HOME || homedir());
+  const { merged, added, skipped } = mergeHooks(repairedHooks, incoming, configRoot);
 
-  const report = { ok: true, apply, settingsPath, added, skipped, events: Object.keys(merged).length, hooksDestDir, hookFiles };
+  const report = { ok: true, apply, settingsPath, added, skipped, pruned, repointed, events: Object.keys(merged).length, hooksDestDir, hookFiles };
 
   if (!apply) {
     console.log(JSON.stringify({ ...report, dryRun: true, note: "no changes written; re-run with --apply after permission" }, null, 2));
@@ -145,7 +190,8 @@ function main(): void {
         encoding: "utf-8",
         env: { ...process.env, CLAUDE_CONFIG_DIR: configRoot },
       });
-      unwired = JSON.parse(out).unwired ?? [];
+      const reconciled = JSON.parse(out);
+      unwired = reconciled.unwired ?? [];
     } catch (err) {
       reconcile = `reconciler failed: ${err instanceof Error ? err.message : String(err)}`;
     }
@@ -153,8 +199,15 @@ function main(): void {
     reconcile = `Doctor.ts not found at ${doctorPath} — hooks copied but not reconciled`;
   }
 
-  console.log(JSON.stringify({ ...report, written: true, backup, hookFilesCopied, skippedExisting, unwired, reconcile }, null, 2));
-  process.exit(0);
+  const missing = wiredButMissingHooks(merged, configRoot);
+  // A registration this payload ships whose script is still absent after the copy means the payload is
+  // incomplete and the install is broken, so it fails and InstallAll stops. A registration the user already
+  // had that points at a missing file is theirs: it is reported in `missing` and does not fail the step.
+  const shippedMissing = wiredButMissingHooks(incoming, configRoot);
+  const ok = shippedMissing.length === 0;
+  const failure = ok ? {} : { shippedMissing, error: `payload hooks.json wires ${shippedMissing.length} hook file(s) the payload did not provide: ${shippedMissing.join(", ")}` };
+  console.log(JSON.stringify({ ...report, ok, written: true, backup, hookFilesCopied, skippedExisting, unwired, missing, reconcile, ...failure }, null, 2));
+  process.exit(ok ? 0 : 1);
 }
 
-main();
+if (import.meta.main) main();

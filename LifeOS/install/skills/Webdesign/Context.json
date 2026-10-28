@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "required": [
+    "site-launch",
+    "integration-aware-operation",
+    "customization",
+    "intent-routing",
+    "prerequisites-preflight",
+    "gotchas"
+  ],
+  "sections": {
+    "site-launch": {
+      "file": "References/SiteLaunch.md"
+    },
+    "what-it-does": {
+      "file": "References/CompleteGuide.md",
+      "heading": "What It Does"
+    },
+    "the-problem": {
+      "file": "References/CompleteGuide.md",
+      "heading": "The Problem"
+    },
+    "how-it-works": {
+      "file": "References/CompleteGuide.md",
+      "heading": "How It Works"
+    },
+    "path-1-directdesign-default-workhorse-the-da-writes-the-design-inline": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Path 1 — DirectDesign (default workhorse; the DA writes the design inline)"
+    },
+    "path-2-nativedesign-first-party-artboards-design-system-sync": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Path 2 — NativeDesign (first-party artboards + design-system sync)"
+    },
+    "routing-rule": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Routing rule"
+    },
+    "integration-aware-operation": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Integration-Aware Operation"
+    },
+    "customization": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Customization"
+    },
+    "intent-routing": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Intent Routing"
+    },
+    "prerequisites-preflight": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Prerequisites (PREFLIGHT)"
+    },
+    "gotchas": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Gotchas"
+    },
+    "examples": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Examples"
+    },
+    "complete-guide": {
+      "file": "References/CompleteGuide.md"
+    },
+    "direct-workflow": {
+      "file": "Intents/DirectDesign.md",
+      "requires": [
+        "aesthetic-reference"
+      ]
+    },
+    "aesthetic-reference": {
+      "file": "References/FrontendDesignPhilosophy.md",
+      "requires": []
+    },
+    "native-workflow": {
+      "file": "Intents/NativeDesign.md",
+      "requires": [
+        "input-formats",
+        "native-capabilities"
+      ]
+    },
+    "input-formats": {
+      "file": "References/InputFormats.md",
+      "requires": []
+    },
+    "native-capabilities": {
+      "file": "References/ClaudeDesignCapabilities.md",
+      "requires": []
+    }
+  },
+  "bundles": {
+    "direct": [
+      "direct-workflow"
+    ],
+    "native": [
+      "native-workflow"
+    ],
+    "full": [
+      "complete-guide",
+      "direct-workflow",
+      "native-workflow"
+    ]
+  }
+}

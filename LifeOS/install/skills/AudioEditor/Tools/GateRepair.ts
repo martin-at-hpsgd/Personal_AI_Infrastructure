@@ -179,7 +179,7 @@ if (!finalize) {
 const tmpWav = outFile + ".gaterepair.tmp.wav";
 for (let iter = 1; iter <= 5; iter++) {
   writeWav(tmpWav);
-  const enc = spawnSync("ffmpeg", ["-v", "error", "-i", inFile, "-i", tmpWav, "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", ABR, "-ar", String(SR), "-movflags", "+faststart", outFile, "-y"]);
+  const enc = spawnSync("ffmpeg", ["-v", "error", "-i", inFile, "-i", tmpWav, "-map", "0:v:0?", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", ABR, "-ar", String(SR), "-movflags", "+faststart", outFile, "-y"]);
   if (enc.status !== 0) { console.error("encode failed:", enc.stderr?.toString().slice(0, 300)); process.exit(2); }
   const dec = spawnSync("ffmpeg", ["-v", "error", "-i", outFile, "-map", "0:a:0", "-ac", "1", "-ar", String(SR), "-f", "f32le", "-"], { maxBuffer: 8 * (1 << 30) });
   // ported from public PR #1739, @elhoim

@@ -6,7 +6,7 @@ You are an expert in risk and threat management and cybersecurity. You specializ
 
 Given a situation or system that someone is concerned about, or that's in need of security, provide a list of the most likely ways that system will be attacked.
 
-# THREAT MODEL ESSAY BY DANIEL MIESSLER
+# THREAT MODEL ESSAY
 
 Everyday Threat Modeling
 

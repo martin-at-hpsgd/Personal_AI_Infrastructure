@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.18
  * LifeosConfig.ts — typed user-config loader.
  *
  * The INTERFACE between SYSTEM code (this file ships in every LifeOS release) and
@@ -18,8 +19,10 @@
  */
 
 import { existsSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { getLifeosDir } from "./Paths";   // the one resolver for install roots (public issue #1665, @rogdex24)
 import { homedir } from "node:os";
+import { invariant } from "./Invariant";
 
 // Expand leading `~` (and `~/`) to the user's home directory. node:fs APIs do
 // not expand tildes, so any path returned from this loader must be absolute.
@@ -43,17 +46,32 @@ export interface LifeosPrincipal {
   // need no edit.
   // ported from public PR #1777, @takanorinishida
   currency?: string;
+  /** [principal.voice]: the one synthesis profile for the principal's voice clone. The voice id lives in env, never here. */
+  voice?: LifeosPrincipalVoice;
+}
+
+/** Every field is required once the table exists: a partial profile is exactly the per-tool drift it replaces. */
+export interface LifeosPrincipalVoice {
+  modelId: string;
+  stability: number;
+  similarityBoost: number;
+  style: number;
+  useSpeakerBoost: boolean;
+  /** ElevenLabs `seed`: an integer in [0, 4294967295] for best-effort deterministic sampling. */
+  seed: number;
+  /** Candidate takes per clone read (`takes`, default 3): each on its own seed, the steadiest kept. An integer in [1, 10]. */
+  takes: number;
 }
 
 export interface LifeosVoiceSettings {
-  voiceId: string;
+  /** The profile's key (`voice_id`): callers pass it to pick this voice, and Fish resolvers match on it. It is never sent to a vendor. Optional: a profile may carry only `fish_reference_id`. */
+  voiceId?: string;
   voiceName?: string;
-  stability?: number;
-  similarityBoost?: number;
-  style?: number;
-  speed?: number;
-  useSpeakerBoost?: boolean;
   volume?: number;
+  /** Fish Audio voice model id (`fish_reference_id`). The voice server speaks this profile on Fish Drama 3; a profile without one is silent. */
+  fishReferenceId?: string;
+  /** Fish prosody speed multiplier (`fish_speed`, 0.5–2.0); unset means 1.0. */
+  fishSpeed?: number;
 }
 
 export interface LifeosDa {
@@ -61,9 +79,8 @@ export interface LifeosDa {
   fullName?: string;
   displayName?: string;
   color?: string;
-  voices: {
-    main: LifeosVoiceSettings;
-  };
+  /** Every [da.voices.*] section, normalized. `main` is required; other profiles (presenter, …) are optional. */
+  voices: { main: LifeosVoiceSettings } & Record<string, LifeosVoiceSettings | undefined>;
 }
 
 export interface LifeosIntegrations {
@@ -132,10 +149,10 @@ export function clearLifeosConfigCache(): void {
 /**
  * Convenience helper for the most common consumer pattern: "give me the user
  * directory, fall back to the conventional location on fresh installs."
- * Used by Banner tools, HealthSnapshot, hooks/lib/identity, and any other
+ * Used by Banner tools, hooks/lib/identity, and any other
  * system module that needs to compose paths under the user zone.
  */
-export function paiUserDir(): string {
+export function lifeosUserDir(): string {
   try {
     return loadLifeosConfig().paths.userDir;
   } catch {
@@ -164,8 +181,12 @@ function validateAndNormalize(raw: unknown, path: string): LifeosConfig {
     throw new Error(`LifeosConfig: [da] requires a non-empty name — see ${path}`);
   }
   const daVoices = da.voices ?? {};
-  if (!daVoices.main || typeof (daVoices.main.voice_id ?? daVoices.main.voiceId) !== "string") {
-    throw new Error(`LifeosConfig: [da.voices.main] requires a voice_id — see ${path}`);
+  // Fish is the only voice engine. The main voice needs its profile key (voice_id) or its Fish clone (fish_reference_id).
+  const mainVoice = daVoices.main;
+  const hasId = (v: unknown) => typeof v === "string" && v.length > 0;
+  if (!mainVoice || typeof mainVoice !== "object" ||
+      !(typeof (mainVoice.voice_id ?? mainVoice.voiceId) === "string" || hasId(mainVoice.fish_reference_id ?? mainVoice.fishReferenceId))) {
+    throw new Error(`LifeosConfig: [da.voices.main] requires a fish_reference_id (Fish Audio) or a voice_id (the profile key) — see ${path}`);
   }
 
   return {
@@ -176,6 +197,7 @@ function validateAndNormalize(raw: unknown, path: string): LifeosConfig {
       hometown: principal.hometown,
       voiceCloneId: principal.voice_clone_id ?? principal.voiceCloneId,
       currency: principal.currency,
+      voice: principal.voice === undefined ? undefined : normalizePrincipalVoice(principal.voice, path),
     },
     da: {
       name: da.name,
@@ -183,6 +205,11 @@ function validateAndNormalize(raw: unknown, path: string): LifeosConfig {
       displayName: da.display_name ?? da.displayName,
       color: da.color,
       voices: {
+        ...Object.fromEntries(
+          Object.entries(daVoices)
+            .filter(([, v]) => v && typeof v === "object")
+            .map(([k, v]) => [k, normalizeVoice(v)]),
+        ),
         main: normalizeVoice(daVoices.main),
       },
     },
@@ -201,8 +228,21 @@ function validateAndNormalize(raw: unknown, path: string): LifeosConfig {
       cloudflare: root.integrations?.cloudflare,
     },
     paths: {
+      // public issue #1665, @rogdex24: respect CLAUDE_CONFIG_DIR and LIFEOS_SKILLS_DIR overrides
+      // before falling back to TOML values or hardcoded defaults. This allows project-scoped installs
+      // to keep their data isolated from the global ~/.claude tree.
+      //
+      // The derivation itself lives in ONE place: Paths.ts getLifeosDir(), which
+      // already orders CLAUDE_CONFIG_DIR above LIFEOS_SKILLS_DIR above LIFEOS_DIR
+      // and returns <configRoot>/LIFEOS. Re-deriving it here disagreed with that
+      // resolver on both counts — it read LIFEOS_SKILLS_DIR as the USER parent
+      // (<skills>/USER instead of <configRoot>/LIFEOS/USER) and preferred it over
+      // CLAUDE_CONFIG_DIR — so the two halves of an isolated install pointed at
+      // different USER trees.
       userDir: expandHome(
-        root.paths?.userDir ?? root.paths?.user_dir ?? resolve(DEFAULT_HOME, ".claude/LIFEOS/USER"),
+        process.env.CLAUDE_CONFIG_DIR || process.env.LIFEOS_SKILLS_DIR
+          ? join(getLifeosDir(), "USER")
+          : root.paths?.userDir ?? root.paths?.user_dir ?? resolve(DEFAULT_HOME, ".claude/LIFEOS/USER"),
       ),
       projectsDir: expandHome(
         root.paths?.projectsDir ?? root.paths?.projects_dir ?? resolve(DEFAULT_HOME, "Projects"),
@@ -211,16 +251,39 @@ function validateAndNormalize(raw: unknown, path: string): LifeosConfig {
   };
 }
 
+export const PRINCIPAL_VOICE_DEFAULT_TAKES = 3;
+/** Ten takes of a 10,000-character post is 100,000 characters; anything past that is a typo, not a choice. */
+export const PRINCIPAL_VOICE_MAX_TAKES = 10;
+
+/** [principal.voice] → typed profile. Fails loud on a missing or out-of-range field; the voice id is refused outright. */
+export function normalizePrincipalVoice(v: unknown, path: string): LifeosPrincipalVoice {
+  invariant(v !== null && typeof v === "object" && !Array.isArray(v), `[principal.voice] must be a table — see ${path}`);
+  const t = v as Record<string, unknown>;
+  invariant(t.voice_id === undefined && t.voiceId === undefined, `[principal.voice] must not hold a voice_id; it lives in env as ELEVENLABS_PRINCIPAL_VOICE_ID — see ${path}`);
+  const unit = (key: string, camel: string): number => {
+    const n = t[key] ?? t[camel];
+    invariant(typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1, `[principal.voice] ${key} must be a number in [0, 1] — see ${path}`);
+    return n;
+  };
+  const modelId = t.model_id ?? t.modelId;
+  invariant(typeof modelId === "string" && modelId.trim().length > 0, `[principal.voice] requires a model_id — see ${path}`);
+  const useSpeakerBoost = t.use_speaker_boost ?? t.useSpeakerBoost;
+  invariant(typeof useSpeakerBoost === "boolean", `[principal.voice] use_speaker_boost must be true or false — see ${path}`);
+  const seed = t.seed;
+  invariant(typeof seed === "number" && Number.isInteger(seed) && seed >= 0 && seed <= 4294967295, `[principal.voice] seed must be an integer in [0, 4294967295] — see ${path}`);
+  // The one optional field: how many candidate takes to buy is a cost dial, not part of the voice, so absent means the default.
+  const takes = t.takes ?? PRINCIPAL_VOICE_DEFAULT_TAKES;
+  invariant(typeof takes === "number" && Number.isInteger(takes) && takes >= 1 && takes <= PRINCIPAL_VOICE_MAX_TAKES, `[principal.voice] takes must be an integer in [1, ${PRINCIPAL_VOICE_MAX_TAKES}] — see ${path}`);
+  return { modelId, stability: unit("stability", "stability"), similarityBoost: unit("similarity_boost", "similarityBoost"), style: unit("style", "style"), useSpeakerBoost, seed, takes };
+}
+
 function normalizeVoice(v: any): LifeosVoiceSettings {
   return {
     voiceId: v.voice_id ?? v.voiceId,
     voiceName: v.voice_name ?? v.voiceName,
-    stability: v.stability,
-    similarityBoost: v.similarity_boost ?? v.similarityBoost,
-    style: v.style,
-    speed: v.speed,
-    useSpeakerBoost: v.use_speaker_boost ?? v.useSpeakerBoost,
     volume: v.volume,
+    fishReferenceId: v.fish_reference_id ?? v.fishReferenceId,
+    fishSpeed: v.fish_speed ?? v.fishSpeed,
   };
 }
 

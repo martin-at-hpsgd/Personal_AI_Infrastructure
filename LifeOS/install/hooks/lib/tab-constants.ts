@@ -1,9 +1,10 @@
 /**
- * tab-constants.ts - Tab title colors and states for Kitty/cmux.
+ * @version 1.5.9
+ * tab-constants.ts - Tab title colors and states for Kitty.
  *
  * Algorithm run states (icon, label, color, tab background) are NOT defined
  * here — they live in `LIFEOS/TOOLS/ascent.ts`, the one table every surface
- * reads (Kitty, cmux, work.json, the status line, Pulse, the ISA mirror).
+ * reads (Kitty, work.json, the status line, Pulse, the ISA mirror).
  * This file owns only the non-Algorithm tab states: the plain working/thinking/
  * question colors used before a run has an ISA behind it.
  */
@@ -14,7 +15,7 @@ import { ASCENT, ASCENT_STATES, type AscentState } from '../../LIFEOS/TOOLS/asce
 // use light gray text (#A0A0A0); light/bright backgrounds need dark text or the
 // gray washes out (the native-orange case — gray on #C2660A was ~1.5:1).
 // Since 2026-08-12 every LIVE stamp routes through setAscentTab, so painted
-// tabs only ever wear the six run-state colors from the ascent table ({{PRINCIPAL_NAME}}:
+// tabs only ever wear the six run-state colors from the ascent table (the principal:
 // "tab colors the same as the color of the task in the phase list"). The
 // thinking/working/native/question/blocked entries below are RETIRED from all
 // hook paths — kept only so setTabState stays total over TabState for any

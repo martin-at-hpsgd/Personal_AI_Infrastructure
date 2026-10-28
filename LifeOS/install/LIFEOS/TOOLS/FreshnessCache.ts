@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.3.9
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -24,6 +27,7 @@ import { writeFileSync, renameSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { readContextFreshness } from "./TelosFreshness";
 import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -33,12 +37,14 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const CACHE_DIR = join(LIFEOS_DIR, "USER", "CACHE");
 const CACHE_PATH = join(CACHE_DIR, "freshness.json");
 
 export interface FreshnessCachePayload {
   total: number;
+  /** Files that count toward the grade (auto-generated derivatives excluded; public issue #2203). */
+  graded_total: number;
   fresh_count: number;
   stale_count: number;
   overall_pct: number;
@@ -71,6 +77,7 @@ export function buildFreshnessPayload(): FreshnessCachePayload {
   const c = readContextFreshness();
   return {
     total: c.total,
+    graded_total: c.graded_total,
     fresh_count: c.fresh_count,
     stale_count: c.stale_count,
     overall_pct: c.overall_pct,

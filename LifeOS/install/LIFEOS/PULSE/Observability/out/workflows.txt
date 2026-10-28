@@ -1,0 +1,43 @@
+1:"$Sreact.fragment"
+3:I[56402,["7802","static/chunks/7802-76834193b2189374.js","4909","static/chunks/4909-d57647cbd6d0f92f.js","2619","static/chunks/2619-04bc32f026a0d946.js","4702","static/chunks/4702-a4d446d12fdcfc20.js","6993","static/chunks/6993-468b5f1903171e72.js","7177","static/chunks/app/layout-de62d8e4d2d2fb88.js"],"Providers"]
+4:I[64030,["7802","static/chunks/7802-76834193b2189374.js","4909","static/chunks/4909-d57647cbd6d0f92f.js","2619","static/chunks/2619-04bc32f026a0d946.js","4702","static/chunks/4702-a4d446d12fdcfc20.js","6993","static/chunks/6993-468b5f1903171e72.js","7177","static/chunks/app/layout-de62d8e4d2d2fb88.js"],"default"]
+5:I[2777,["7802","static/chunks/7802-76834193b2189374.js","4909","static/chunks/4909-d57647cbd6d0f92f.js","2619","static/chunks/2619-04bc32f026a0d946.js","4702","static/chunks/4702-a4d446d12fdcfc20.js","6993","static/chunks/6993-468b5f1903171e72.js","7177","static/chunks/app/layout-de62d8e4d2d2fb88.js"],"default"]
+6:I[98581,["7802","static/chunks/7802-76834193b2189374.js","4909","static/chunks/4909-d57647cbd6d0f92f.js","2619","static/chunks/2619-04bc32f026a0d946.js","4702","static/chunks/4702-a4d446d12fdcfc20.js","6993","static/chunks/6993-468b5f1903171e72.js","7177","static/chunks/app/layout-de62d8e4d2d2fb88.js"],"default"]
+7:I[34366,["7802","static/chunks/7802-76834193b2189374.js","4909","static/chunks/4909-d57647cbd6d0f92f.js","2619","static/chunks/2619-04bc32f026a0d946.js","4702","static/chunks/4702-a4d446d12fdcfc20.js","6993","static/chunks/6993-468b5f1903171e72.js","7177","static/chunks/app/layout-de62d8e4d2d2fb88.js"],"default"]
+8:I[74276,["7802","static/chunks/7802-76834193b2189374.js","4909","static/chunks/4909-d57647cbd6d0f92f.js","2619","static/chunks/2619-04bc32f026a0d946.js","4702","static/chunks/4702-a4d446d12fdcfc20.js","6993","static/chunks/6993-468b5f1903171e72.js","7177","static/chunks/app/layout-de62d8e4d2d2fb88.js"],"default"]
+9:I[9766,[],""]
+a:I[98924,[],""]
+d:I[57150,[],""]
+:HL["/_next/static/media/0b78ff376f6b9734-s.p.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/723e11e5093b8e80.p.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/css/6e08742c73bab2fe.css","style"]
+:HL["/_next/static/css/a543aa355651937f.css","style"]
+:HL["/_next/static/css/6ada1421df91d770.css","style"]
+2:T594,(function(){try{
+var on=localStorage.getItem("pulse-observer-mode")==="1";
+try{var x=new XMLHttpRequest();x.open("GET","/api/obfuscate",false);x.send();if(x.status===200){var r=JSON.parse(x.responseText);if(typeof r.on==="boolean"){on=r.on;localStorage.setItem("pulse-observer-mode",on?"1":"0");}}}catch(e){}
+var m={"/":"full","/telos":"fine","/finances":"fine","/health":"fine","/work":"fine","/agents":"fine","/skills":"fine","/system":"fine","/telos/item":"full","/life":"full","/today":"full","/business":"full","/growth":"full","/gear":"full","/books":"full","/local":"full","/air":"full","/conduit":"full","/memory":"full","/memory/graph":"full","/memory/knowledge":"full","/knowledge":"full","/knowledge/graph":"full","/assistant":"full","/content":"full","/security":"full","/atlas":"full","/velocity":"full","/assets":"full","/bunker":"full","/usage":"full","/performance":"full","/synapse":"full","/system/graph":"full","/projects":"full","/hypotheses":"full","/algorithm":"open","/hooks":"open","/ledger":"open","/prioritize":"full","/review":"full","/docs":"open"};
+var p=location.pathname.replace(/\/+$/,"")||"/";
+var s=m[p];
+if(!s){var seg=p.split("/").filter(Boolean);for(var i=seg.length-1;i>0;i--){var pre="/"+seg.slice(0,i).join("/");if(m[pre]){s=m[pre];break;}}}
+if(!s)s="full";
+var d=document.documentElement;
+if(on)d.classList.add("observer-active");
+d.setAttribute("data-observer-scope",s);
+}catch(e){}})()0:{"P":null,"b":"release-f8ced2d7c1dd01d763600678","p":"","c":["","workflows"],"i":false,"f":[[["",{"children":["workflows",{"children":["__PAGE__",{}]}]},"$undefined","$undefined",true],["",["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/css/6e08742c73bab2fe.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/css/a543aa355651937f.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}]],["$","html",null,{"lang":"en","className":"dark","suppressHydrationWarning":true,"children":[["$","head",null,{"children":[["$","link",null,{"rel":"stylesheet","href":"/pulse-typography.css?v=20260909"}],["$","script",null,{"dangerouslySetInnerHTML":{"__html":"$2"}}]]}],["$","body",null,{"className":"__variable_8adcd2 __variable_46451f font-sans","children":["$","$L3",null,{"children":[["$","$L4",null,{}],["$","$L5",null,{}],["$","$L6",null,{}],["$","$L7",null,{}],["$","$L8",null,{}],["$","main",null,{"className":"min-h-screen max-w-[1920px] mx-auto w-full overflow-x-hidden relative","children":["$","$L9",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$La",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":[[["$","title",null,{"children":"404: This page could not be found."}],["$","div",null,{"style":{"fontFamily":"system-ui,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\"","height":"100vh","textAlign":"center","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center"},"children":["$","div",null,{"children":[["$","style",null,{"dangerouslySetInnerHTML":{"__html":"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}"}}],["$","h1",null,{"className":"next-error-h1","style":{"display":"inline-block","margin":"0 20px 0 0","padding":"0 23px 0 0","fontSize":24,"fontWeight":500,"verticalAlign":"top","lineHeight":"49px"},"children":404}],["$","div",null,{"style":{"display":"inline-block"},"children":["$","h2",null,{"style":{"fontSize":14,"fontWeight":400,"lineHeight":"49px","margin":0},"children":"This page could not be found."}]}]]}]}]],[]],"forbidden":"$undefined","unauthorized":"$undefined"}]}]]}]}]]}]]}],{"children":["workflows",["$","$1","c",{"children":[null,["$","$L9",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$La",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":"$undefined","forbidden":"$undefined","unauthorized":"$undefined"}]]}],{"children":["__PAGE__","$Lb",{},null,false]},null,false]},null,false],"$Lc",false]],"m":"$undefined","G":["$d",[]],"s":false,"S":true}
+e:I[81959,[],"ClientPageRoot"]
+f:I[63705,["3862","static/chunks/1a258343-673a5dd2fa216e2a.js","7802","static/chunks/7802-76834193b2189374.js","4909","static/chunks/4909-d57647cbd6d0f92f.js","2619","static/chunks/2619-04bc32f026a0d946.js","9456","static/chunks/9456-c4c2a4a1e00b45e7.js","7031","static/chunks/7031-caaecdcc36b03ca1.js","4209","static/chunks/4209-6973cc5ce14bc982.js","2401","static/chunks/2401-cd976205aebe32d5.js","7143","static/chunks/app/workflows/page-8310f971b3fdc3a5.js"],"default"]
+12:I[24431,[],"OutletBoundary"]
+14:I[15278,[],"AsyncMetadataOutlet"]
+16:I[24431,[],"ViewportBoundary"]
+18:I[24431,[],"MetadataBoundary"]
+19:"$Sreact.suspense"
+b:["$","$1","c",{"children":[["$","$Le",null,{"Component":"$f","searchParams":{},"params":{},"promises":["$@10","$@11"]}],[["$","link","0",{"rel":"stylesheet","href":"/_next/static/css/6ada1421df91d770.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}]],["$","$L12",null,{"children":["$L13",["$","$L14",null,{"promise":"$@15"}]]}]]}]
+c:["$","$1","h",{"children":[null,[["$","$L16",null,{"children":"$L17"}],["$","meta",null,{"name":"next-size-adjust","content":""}]],["$","$L18",null,{"children":["$","div",null,{"hidden":true,"children":["$","$19",null,{"fallback":null,"children":"$L1a"}]}]}]]}]
+10:{}
+11:"$b:props:children:0:props:params"
+17:[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]
+13:null
+1b:I[80622,[],"IconMark"]
+15:{"metadata":[["$","title","0",{"children":"Pulse | Home"}],["$","meta","1",{"name":"description","content":"LifeOS Observability Dashboard"}],["$","link","2",{"rel":"icon","href":"/lifeos-logo.svg"}],["$","$L1b","3",{}]],"error":null,"digest":"$undefined"}
+1a:"$15:metadata"

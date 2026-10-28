@@ -81,11 +81,14 @@ export function PageShell({
   className?: string;
 }) {
   if (fullBleed) {
-    return <div className={cn("flex flex-col flex-1 min-h-0", className)}>{children}</div>;
+    return <div className={cn("flex flex-col flex-1 min-h-0 page-enter", className)}>{children}</div>;
   }
+  // Shared blue dashboard frame; all routes inherit the same material.
   return (
-    <div className={cn("max-w-[1600px] mx-auto w-full px-4 sm:px-6 py-6 flex flex-col gap-6", className)}>
-      {children}
+    <div className="max-w-[1680px] mx-auto w-full px-3 sm:px-6 pt-3 pb-10 page-enter">
+      <div className={cn("glass-sheet pulse-page rounded-xl px-4 sm:px-8 py-7 flex flex-col gap-6", className)}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -106,13 +109,19 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-end justify-between gap-x-6 gap-y-3", className)}>
+    <div className={cn("pulse-page-header flex flex-wrap items-end justify-between gap-x-6 gap-y-3", className)}>
       <div className="min-w-0">
         <h1 className="flex items-center gap-3 text-ink-1">
           {Icon && <Icon className="w-6 h-6 text-ink-3 shrink-0" />}
           {title}
         </h1>
-        {subtitle && <p className="mt-0.5 text-sm text-ink-2">{subtitle}</p>}
+        {/* The warm hairline — the ember note under every page title. */}
+        <div
+          aria-hidden
+          className="mt-2 h-px w-14"
+          style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-soft) 70%, transparent)" }}
+        />
+        {subtitle && <p className="mt-1.5 text-sm text-ink-2">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
     </div>
@@ -153,8 +162,8 @@ export function Panel({
   return (
     <Tag
       className={cn(
-        "bg-surface-2 border border-line-2 rounded-xl p-5",
-        hover && "transition-colors duration-200 hover:bg-surface-3 hover:border-line-3",
+        "glass rounded-lg p-5",
+        (hover || onClick) && "glass-hover",
         onClick && "cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--accent-blue)]",
         className
       )}
@@ -183,7 +192,7 @@ export function PanelHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-2 mb-3", className)}>
+    <div className={cn("pulse-section-header flex items-center gap-2 mb-3", className)}>
       {Icon && <Icon className="w-4 h-4 text-ink-3 shrink-0" />}
       <span
         className="text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-3"
@@ -207,6 +216,8 @@ export function StatTile({
   dim,
   sub,
   className,
+  onClick,
+  active,
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -216,16 +227,20 @@ export function StatTile({
   dim?: Dim;
   sub?: ReactNode;
   className?: string;
+  /** When set, the tile becomes a clickable filter toggle (cursor, hover, keyboard, active ring). */
+  onClick?: () => void;
+  /** Highlights the tile as the currently-applied filter. */
+  active?: boolean;
 }) {
-  return (
+  const tile = (
     <Panel className={cn("p-4 flex flex-col gap-1.5", className)}>
       <div className="flex items-center gap-2">
         {Icon && <Icon className="w-4 h-4 text-ink-3 shrink-0" />}
-        <span className="text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-3">{label}</span>
+        <span className="pulse-stat-label text-[12px] font-semibold uppercase tracking-[0.12em] text-ink-3">{label}</span>
       </div>
       <div className="flex items-baseline gap-1.5">
         <span
-          className="text-[28px] leading-none font-semibold mono"
+          className="pulse-stat-value leading-none"
           style={dim ? { color: DIM_COLOR[dim] } : { color: "var(--ink-1)" }}
         >
           {value}
@@ -234,6 +249,31 @@ export function StatTile({
       </div>
       {sub && <div className="text-[12px] text-ink-3">{sub}</div>}
     </Panel>
+  );
+
+  if (!onClick) return tile;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={!!active}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      style={{
+        cursor: "pointer",
+        borderRadius: 12,
+        outline: active ? "1px solid rgba(125,211,252,0.85)" : "1px solid transparent",
+        transition: "outline-color 120ms",
+      }}
+    >
+      {tile}
+    </div>
   );
 }
 
@@ -271,10 +311,12 @@ export function TabBar<T extends string>({
             key={id}
             type="button"
             onClick={() => onChange(id)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-colors duration-150 whitespace-nowrap"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[13px] font-medium cursor-pointer transition-all duration-150 whitespace-nowrap backdrop-blur-sm"
             style={{
               ...dimStyle(dim, isActive),
-              ...(isActive ? { color: "var(--ink-1)" } : {}),
+              ...(isActive
+                ? { color: "var(--ink-1)", boxShadow: "inset 0 1px 0 var(--glass-edge)" }
+                : {}),
             }}
           >
             {Icon && <Icon className="w-4 h-4 shrink-0" />}
@@ -304,8 +346,8 @@ export function Pill({
   return (
     <span
       title={title}
-      className={cn("inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-medium whitespace-nowrap", className)}
-      style={dimStyle(dim, true)}
+      className={cn("inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-medium whitespace-nowrap backdrop-blur-sm", className)}
+      style={{ ...dimStyle(dim, true), boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)" }}
     >
       {children}
     </span>

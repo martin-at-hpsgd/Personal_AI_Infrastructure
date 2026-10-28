@@ -1,982 +1,438 @@
 ---
-last_updated: 2026-06-21
+last_updated: 2026-10-10T12:00:00.000Z
 last_updated_by: da
 last_reviewed: 2026-07-02
 last_reviewed_by: da
-convention: pai-freshness-v1
-version: 1.6.3
+convention: lifeos-freshness-v1
+version: 1.11.0
 ---
 
 # Custom Skill System
 
-> Skills are the Life OS's action surface. The thesis (`LIFEOS/DOCUMENTATION/LifeOs/LifeOsThesis.md`) puts it directly: "Skills expand so the DA can take more actions to close the gap." Every skill added is a new class of move the DA can make in the current→ideal-state hill-climb; the structure rules below exist so those moves stay discoverable, composable, and safe to ship.
+> Skills are the Life OS's action surface. The thesis (`LIFEOS/DOCUMENTATION/LifeOs/LifeOsThesis.md`) puts it directly: "Skills expand so the DA can take more actions to close the gap." Every skill added is a new class of move the DA can make in the current→ideal-state hill-climb; the rules below keep those moves discoverable, composable, and safe to ship.
 
-**This document is the authoritative definition of the required structure for every LifeOS skill; all skill creation — including CreateSkill's — conforms to it. "Canonicalize a skill" = restructure to match this exact format, including TitleCase naming. A skill that doesn't follow it is not properly configured and will not work correctly.**
+This document is the authoritative definition of a LifeOS skill, and all skill creation, CreateSkill's included, conforms to it. A skill is a folder. Its `SKILL.md` routes a request to one of its intents, each intent states the outcome it delivers, and its tools do the deterministic work.
+
+The model running a skill is told what done is, what must never happen, and the facts it could not work out for itself. It is not told how to think. § Intent anatomy is that standard; the rest of this document is the structure around it. Paths are relative to the LifeOS install root.
 
 ---
 
-## Naming Convention — Public vs Private (MANDATORY)
+## Naming Convention — Public vs Private
 
-**A skill's name encodes its public/private status. There are exactly two valid forms; the canonical statement of the rule lives in `skills/CreateSkill/SKILL.md` § "Naming Convention — Public vs Private".**
+A skill's name encodes whether it ships publicly. There are exactly two valid forms, and `skills/CreateSkill/References/Conventions.md` § Naming — public vs private states the same rule.
 
 | Skill type | Directory format | Example | Allowed content |
 |------------|------------------|---------|-----------------|
-| **Public** | `TitleCase` | `Blogging`, `Daemon`, `CreateSkill` | Templated, safe, generic, ready for public release |
-| **Private** | `_ALLCAPS` (underscore prefix, all uppercase) | `_MYFINANCES`, `_HOMELAB`, `_CLIENTWORK` | Anything personal, identity-bound, customer-bound, or environment-specific |
+| Public | `TitleCase` | `Research`, `Daemon`, `CreateSkill` | Templated, safe, generic, ready for public release |
+| Private | `_ALLCAPS` (underscore prefix, all uppercase) | `_MYFINANCES`, `_HOMELAB`, `_CLIENTWORK` | Skills whose core job cannot move into `Config.md` (§ Public vs Private Skills) |
 
-**The leading underscore is the public-release boundary.** Release tooling (`hooks/lib/containment-zones.ts:47` → `skills/_*/**`) excludes every `_*` skill from the public release. Public skills are mirrored as-is into the public LifeOS repo and MUST contain only generic, templated content — no real names, no real domains, no real customers, no credentials, no identity-bound preferences.
+The leading underscore is the public-release boundary. Release tooling excludes every `_*` skill: `hooks/lib/containment-zones.ts` maps `skills/_*/**` to the `private-skills` zone. Public skills are mirrored as-is into the public LifeOS repo.
 
-**Sub-file naming (both public and private skills):**
+Sub-files follow TitleCase in both kinds of skill:
 
 | Component | Wrong | Correct |
 |-----------|-------|---------|
-| Workflow files | `create.md`, `update-info.md`, `SYNC_REPO.md` | `Create.md`, `UpdateInfo.md`, `SyncRepo.md` |
+| Intent files | `create.md`, `update-info.md`, `SYNC_REPO.md` | `Create.md`, `UpdateInfo.md`, `SyncRepo.md` |
 | Reference docs | `prosody-guide.md`, `API_REFERENCE.md` | `ProsodyGuide.md`, `ApiReference.md` |
 | Tool files | `manage-server.ts`, `MANAGE_SERVER.ts` | `ManageServer.ts` |
 | Help files | `manage-server.help.md` | `ManageServer.help.md` |
-| YAML `name:` | `name: create-skill` | `name: CreateSkill` (public) or `name: _CREATESKILL` (private) — must match dir name exactly |
+| YAML `name:` | `name: create-skill` | `name: CreateSkill` (public) or `name: _CREATESKILL` (private), matching the directory exactly |
 
-**TitleCase rules** (apply to public skill dirs and ALL sub-files): first letter of each word capitalized; no hyphens, underscores, or spaces; single words capitalize first letter (`Blogging`, `Daemon`); multi-word concatenate with each capitalized (`UpdateDaemonInfo`).
-
-**`_ALLCAPS` rules** (apply to private skill dirs only): leading underscore + uppercase letters; internal underscores tolerated for compound names (`_CLIENT_PROJECT`, `_DATA_PIPELINE`).
-
-**Exception:** `SKILL.md` is always uppercase (convention for the main skill file in every skill).
+TitleCase means each word capitalized and concatenated, with no hyphens, underscores, or spaces (`Blogging`, `UpdateDaemonInfo`). Private skill directories are a leading underscore plus uppercase letters; internal underscores are allowed for compound names. `SKILL.md` is always uppercase.
 
 ---
 
-## Public vs Private Skills (CRITICAL)
+## Public vs Private Skills
 
-**Skills are classified into two categories by the leading character of their directory name:**
+Public skills (`TitleCase`) hold only generic, templated content any LifeOS user could run: placeholder values, public API references, and a pointer to per-user customizations (§ Skill Customization System). A public skill never contains:
 
-### Public skills (`TitleCase`) — ship in the LifeOS public release
-- ONLY templated, safe, public, ready content
-- Generic instructions any LifeOS user could follow; placeholder values, public API references
-- Can reference `~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/<SkillName>/` at runtime for per-user tweaks
-- Exported to the public LifeOS repository as-is
+- real names of people, products, companies, or customers
+- real domains, hostnames, IPs, or internal URLs
+- API keys, tokens, or credentials, even example-looking ones
+- private repo paths or references
+- customer data or customer-specific intents
+- first-person war stories tied to a specific incident
+- user-specific filesystem paths (`/Users/<name>/...`)
+- identity-bound preferences (DA name, principal name, partner name, financial figures)
 
-**Forbidden in public skills:**
-- Real names (people, products, companies, customers)
-- Real domains, hostnames, IPs, internal URLs
-- API keys, tokens, credentials (even example-looking ones)
-- Private repo paths or references
-- Customer data, customer-specific workflows
-- First-person war stories tied to a specific incident
-- User-specific filesystem paths (`/Users/<name>/...`)
-- Identity-bound preferences (DA name, principal name, partner name, financial figures)
+Private skills (`_ALLCAPS`) never leave the local install. The test is one question: could a stranger drop this skill into their `skills/` directory, fill in their own `Config.md`, and have it work? A skill is private only when its data or behavior cannot move into `Config.md`. Names, accounts, domains, figures, tastes, exemplars and keys can always move, so none of them makes a skill private on its own. Any of these forces an `_ALLCAPS` name:
 
-### Private skills (`_ALLCAPS`) — never leave the local repo
-- Anything goes: real names, real domains, real customers, real internal infra
-- The underscore IS the safety boundary; release tooling skips them
-- The decision rule: *"Could this skill be dropped, as-is, into a stranger's `~/.claude/skills/` and just work?"* If no, it must be `_ALLCAPS`
-
-**Decision test — these triggers FORCE `_ALLCAPS` naming:**
-
-| If the skill mentions… | Skill must be |
+| If the skill's core job depends on… | Skill must be |
 |------------------------|---------------|
-| A specific person's name (yours, your team's, a customer's) | `_ALLCAPS` |
-| A specific product you own or sell | `_ALLCAPS` |
-| A specific customer or client | `_ALLCAPS` |
-| A specific paid API account, billing realm, subscription | `_ALLCAPS` |
-| A specific private domain, hostname, internal IP, VPN | `_ALLCAPS` |
-| A specific private repo, dotfile location, local infra | `_ALLCAPS` |
-| A specific business process tied to your company | `_ALLCAPS` |
-| A specific financial, health, security, or legal context | `_ALLCAPS` |
-| A specific incident or one-off war story | `_ALLCAPS` |
+| A product or business you own or sell (its admin, customers, operations) | `_ALLCAPS` |
+| A specific customer, client, or engagement | `_ALLCAPS` |
+| Your own content corpus, persona, or record, with no general version | `_ALLCAPS` |
+| Offensive security, incident response, your vulnerability stack, home security, or surveillance | `_ALLCAPS` |
+| Infrastructure whose shape discloses your security posture | `_ALLCAPS` |
+| The release machinery itself | `_ALLCAPS` |
 
-**When in doubt, build it private first (`_ALLCAPS`).** Promoting `_FOO` → `Foo` later is easy. Discovering a public skill leaks identity is permanent.
+When in doubt, build it private first. Promoting a private skill to public later is easy; discovering that a shipped public skill leaked identity is permanent.
 
-**Listing skills by category:**
-```bash
-ls -1 ~/.claude/skills/ | grep -v '^_'   # Public (TitleCase)
-ls -1 ~/.claude/skills/ | grep '^_'      # Private (_ALLCAPS)
+The underscore decides where a skill ships, not what its files may contain. Since 2026-07-23 private skills are held to the same file hygiene as public ones. Names, domains, figures, and other identity data live under `LIFEOS/USER/` (usually `LIFEOS/USER/CUSTOMIZATIONS/SKILLS/<SkillName>/Config.md`), and SKILL.md points at them under `## Data & Config`.
+
+`bun LIFEOS/TOOLS/SkillHygieneGate.ts --skill <SkillName>` checks a skill against the deny-list, the release scrub patterns, home-path shapes, and a gate-scoped name-literal set (`LIFEOS/USER/SECURITY/SkillNamePatterns.txt`, which catches a plain full-name literal the release deny-list leaves out on purpose). It also fails on vendored dependencies tracked in git (a committed `node_modules/` under the skill). A new skill is not done while it reports violations. For a private skill it is the only check, because the write-time guard exempts the private zone. A skill bundled for sale passes three more gates, listed in `skills/CreateSkill/References/Conventions.md` § Sellable bundles.
+
+A worked fork: a skill that converts units (Celsius to Fahrenheit, kilograms to pounds) holds nothing personal, so it is `UnitConverter` and ships publicly (§ Canonical example). Make it call a paid currency-rate API and it stays public: the key goes in the user's own `.env` and its Setup.md says which account to open. Make it price conversions from your company's internal rate service instead and its core job depends on your business, so it is private and release tooling skips it.
+
+```mermaid
+flowchart TD
+    A[New skill] --> B{Can its data and behavior move into Config.md?}
+    B -->|no| C[_ALLCAPS name]
+    B -->|yes| D[TitleCase name]
+    C --> E[Release tooling skips it: stays local]
+    D --> F[Mirrored into the public repo as-is]
+    F --> G{Body holds only generic, templated content?}
+    G -->|no| H[Move private bits to USER customizations, or rename _ALLCAPS]
+    G -->|yes| I[Ships public]
 ```
 
-**Pattern for per-user layering in public skills:**
-A public skill can be templated to load runtime customizations from `~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/<SkillName>/PREFERENCES.md`. The skill body stays generic; the customization file overlays per-instance context. **Do not use CUSTOMIZATIONS/SKILLS to smuggle private content into a public skill** — if the skill *requires* private context to function, it must be renamed `_ALLCAPS`.
+### Promoting a private skill
 
-**NEVER hardcode personal data in public skills.**
+A private skill that passes the test above becomes public by promotion, never by a release-time scrub. It is promoted when all of these hold:
+
+- Every name, account, domain, figure, taste, and exemplar sits in `LIFEOS/USER/CUSTOMIZATIONS/SKILLS/<Name>/Config.md`, with a made-up template under `private-maintenance-tooling-not-included/RELEASE_TEMPLATES/USER/CUSTOMIZATIONS/SKILLS/<Name>/`.
+- `skills/<Name>/Setup.md` carries the four parts SetupInventory checks (What it does, Fill in, Accounts and secrets, Prove it works). It walks a first-time user to your working setup with made-up values, and SKILL.md's `## Data & Config` links it. Where the skill is extended with the user's own pieces (an adapter, a monitor, a scheduled workflow, a policy, a source), Setup.md also gives one generic worked example of each, made-up values only, for the reader to copy as the start of their own; your real ones stay in USER (2026-10-11). Its proof runs shipped code (a read-only command, a `--dry-run` or `--help`), never `bun test`: test files do not ship.
+- Setup.md teaches; it never ships the backend (2026-10-12). When the skill needs a service behind it (a Worker, a database, a scheduled pipeline), Setup.md explains how to build one: the parts, the endpoints, the auth split, what goes in `Config.md`, and the proof. The reader's own DA builds theirs from that. The working package (service source, wrangler config, migrations, deploy scripts) stays under `LIFEOS/USER/CUSTOMIZATIONS/SKILLS/<Name>/`, and promotion never packages a deployable template. SkillHygieneGate fails any tracked deployable package inside `skills/` (`shipped-backend`).
+- The directory and frontmatter `name:` are TitleCase, every live caller uses the new name, and history records keep the old one.
+- SkillHygieneGate passes, and a fresh agent from another vendor reads the skill as a stranger would and finds nothing that identifies you or your setup. The September 2026 friend-build audits found leaks no string gate sees (a card roster, a worldview, a mail classifier's sender rules), so the stranger read is required.
+- The release owner has classified the new directory public.
+
+Listing skills by kind, from the install root:
+
+```bash
+ls -1 skills/ | grep -v '^_'   # Public (TitleCase)
+ls -1 skills/ | grep '^_'      # Private (_ALLCAPS)
+```
 
 ---
 
 ## Skill Customization System
 
-**System skills (TitleCase) check for user customizations before executing.**
-
-**Personal skills (_ALLCAPS) do NOT use this system** - they already contain personal data directly and are never shared.
-
-### The Pattern
-
-All skills include this standard instruction block after the YAML frontmatter:
+Public skills stay generic by reading per-user data and tweaks from outside the skill. A skill's customizations live at `LIFEOS/USER/CUSTOMIZATIONS/SKILLS/<SkillName>/`, and a skill that reads them says so under `## Data & Config` in its SKILL.md. The block `Tools/Scaffold.ts --data-config` writes (template `data-config` in `skills/CreateSkill/References/IntentTemplate.md`) reads:
 
 ```markdown
-## Customization
+## Data & Config
 
-**Before executing, check for user customizations at:**
-`~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/{SkillName}/`
-
-If this directory exists, load and apply:
-- `PREFERENCES.md` - User preferences and configuration
-- Additional files specific to the skill
-
-These define user-specific preferences. If the directory does not exist, proceed with skill defaults.
+Personal data and config for this skill live in `LIFEOS/USER/CUSTOMIZATIONS/SKILLS/<SkillName>/` (or the canonical USER home that already owns them), read at run time. The skill body names env var names, never values.
 ```
 
-### Directory Structure
+The skill then names what it actually reads there (which files, what each holds) and what happens when the directory is absent; usually the skill's defaults stand. A customization never carries private content a skill needs in order to function at all. A skill like that is `_ALLCAPS`.
 
-```
-~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/
-├── README.md                    # Documentation for this system
-├── Art/                         # Art skill customizations
-│   ├── EXTEND.yaml              # Extension manifest
-│   ├── PREFERENCES.md           # Aesthetic preferences
-│   ├── CharacterSpecs.md        # Character design specs
-│   └── SceneConstruction.md     # Scene building guidelines
-├── Agents/                      # Agents skill customizations
-│   ├── EXTEND.yaml              # Extension manifest
-│   ├── PREFERENCES.md           # Named agent summary
-│   └── VoiceConfig.json         # ElevenLabs voice mappings
-├── Webdesign/                   # Webdesign customizations
-│   ├── EXTEND.yaml              # Extension manifest
-│   └── PREFERENCES.md           # Design tokens, palette
-└── [SkillName]/                 # Any skill can have customizations
-    ├── EXTEND.yaml              # Required manifest
-    └── [config-files]           # Skill-specific configs
-```
+What a customization directory holds:
 
-### EXTEND.yaml Manifest
+| Content | Location | Example |
+|---------|----------|---------|
+| A skill's identity data and config | `CUSTOMIZATIONS/SKILLS/<Skill>/Config.md` | Accounts, domains, people, endpoints |
+| User preferences | `CUSTOMIZATIONS/SKILLS/<Skill>/PREFERENCES.md` | Art style, color palette |
+| Named configurations | `CUSTOMIZATIONS/SKILLS/<Skill>/<Name>.md` | Character specs, voice configs |
+| A merge manifest for a JSON config (optional) | `CUSTOMIZATIONS/SKILLS/<Skill>/EXTEND.yaml` | See below |
+| Skill logic | `skills/<Skill>/` | Generic, shareable intents and tools |
 
-Every customization directory requires an EXTEND.yaml manifest:
+### EXTEND.yaml (optional)
+
+`EXTEND.yaml` matters only to a skill whose tool loads a JSON config through `LIFEOS/TOOLS/LoadSkillConfig.ts`. That loader merges the skill's base config with the same-named file in the customization directory, when the manifest lists that file:
 
 ```yaml
-# EXTEND.yaml - Extension manifest
----
-skill: SkillName                   # Must match skill name exactly
-extends:
-  - PREFERENCES.md                 # Files to load
-  - OtherConfig.md
-merge_strategy: override           # append | override | deep_merge
-enabled: true                      # Toggle customizations on/off
+skill: SkillName                   # required; matches the skill name exactly
+extends:                           # required; the config files that have a customization
+  - config.json
+merge_strategy: deep_merge         # append (default) | override | deep_merge
+enabled: true                      # defaults to true; false turns the customization off without deleting it
 description: "What this customization adds"
 ```
 
-### Merge Strategies
-
 | Strategy | Behavior |
 |----------|----------|
-| `append` | Add items to existing config (default) |
-| `override` | Replace default behavior entirely |
-| `deep_merge` | Recursive merge of objects |
+| `append` | Top-level arrays are concatenated; other keys are added or overridden (the default) |
+| `override` | The customization replaces the base config entirely |
+| `deep_merge` | Objects merge recursively; arrays are concatenated |
 
-### What Goes Where
-
-| Content Type | Location | Example |
-|--------------|----------|---------|
-| User preferences | `CUSTOMIZATIONS/SKILLS/{Skill}/PREFERENCES.md` | Art style, color palette |
-| Named configurations | `CUSTOMIZATIONS/SKILLS/{Skill}/[name].md` | Character specs, voice configs |
-| Skill logic | `skills/{Skill}/SKILL.md` | Generic, shareable skill code |
-
-### Creating a Customization
-
-1. **Create directory**: `mkdir -p ~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/SkillName`
-2. **Create EXTEND.yaml**: Define what files to load and merge strategy
-3. **Create PREFERENCES.md**: User preferences for this skill
-4. **Add additional files**: Any skill-specific configurations
-
-### Benefits
-
-- **Shareable Skills**: Skill files contain no personal data
-- **Centralized Preferences**: All customizations in one location
-- **Discoverable**: Easy to see which skills have customizations
-- **Toggleable**: Set `enabled: false` to disable customizations temporarily
+A customization file can set its own strategy with a `_customization.merge_strategy` key. A skill that reads its customizations by path, through `Config.md` or `PREFERENCES.md` as most do, needs no manifest.
 
 ---
 
-## Authoring Standard — Ideal-State Prompting (WHAT, not HOW)
+## Intent anatomy — the standard every intent is written to
 
-**A skill body and its workflows articulate the ideal state, not the procedure.** Say WHAT a done deliverable looks like (as testable outcomes), the CONSTRAINTS, and the TOOLS available — then trust the model to find HOW. Numbered step-lists that choreograph the model's reasoning for open-ended cognitive work ("first analyze, then consider, then decide") are BPE-violating scaffolding: they cap a capable model and rot as models improve. The test for any procedural line: *would a smarter model make this rule unnecessary?* Yes → cut it; No → it's one of the four keep-classes below.
+**An intent is a small ISA.** It says what done is and what must never happen, then carries only the how that a smarter model still could not know. Numbered steps that choreograph the model's reasoning ("first analyze, then consider, then decide") are scaffolding: they cap a capable model and rot as models improve. The test for any procedural line: *would a smarter model make this line unnecessary?* Yes → cut it. No → it belongs in one of the sections below. Grounding: `LIFEOS/RULES/Philosophy.md` § Ideal-State Prompting. `LIFEOS/TOOLS/IntentLint.ts` enforces this section; `CreateSkill` scaffolds, validates and canonicalizes to it.
 
-**Four keep-classes are legitimate HOW — keep them:** safety-gates (confirmation, destructive-op guards, approvals), verified-gotchas (documented non-obvious failures — this is what the `## Gotchas` section is FOR), tool-contracts (exact CLI/API/path recipes — Workflows carrying deterministic invocation are correct), and output-format-contracts (the required deliverable shape). Deterministic Tools (`*.ts`) are exempt entirely. Everything else that reads as methodology is a candidate to cut. Full doctrine: `LIFEOS/RULES/Philosophy.md` § Ideal-State Prompting; authoring standard: `skills/Prompting/Standards.md` § Ideal-State Prompting.
+```markdown
+---
+contract:                 # optional — LIFEOS/TOOLS/IntentContract.ts
+  requires: [...]         # intermediate outputs that must exist before the deliverable
+---
+# IntentName
 
-This is the default for every new skill and workflow, and the standard `CreateSkill` writes to and audits against.
+One line: what this intent produces.
 
-## The Required Structure
+## Ideal State
 
-Every SKILL.md has two parts:
+- A testable outcome, specific enough that a reader could show it failed.
+- At least two bullets. They describe the deliverable and its qualities, never the steps.
 
-### 1. YAML Frontmatter (Single-Line Description)
+## Anti-criteria
+
+- What must never happen: the wrong output, the forbidden side effect, the shortcut that looks like success.
+
+## Evals
+
+- compiled: Assay checks every output against the Ideal State and Anti-criteria above.
+- library: video          # optional, one bullet per shared eval set the output must also pass
+
+## Inputs | Safety gates | Tool contract | Gotchas | Output format | Examples | References
+```
+
+**The two required sections come first.** `## Ideal State` is the first H2 and `## Anti-criteria` follows it. Assay reads both: Proof checks a run's output against them (`Proof.ts run --intent`), and a skill's eval suite builds its rubric from them, so the definition of done the model reads is the same one its output is graded on. A miss the principal catches sharpens these bullets.
+
+**Everything after them is one of eight allowed sections, used only when needed:**
+
+| Section | Holds | Keep-class |
+|---|---|---|
+| `## Evals` | The Assay eval set the output must pass: `compiled`, plus `library: <name>` / `suite: <name>` bullets | eval-set |
+| `## Inputs` | What the intent takes and where it comes from | declarative fact |
+| `## Safety gates` | Confirmations, approvals, destructive-op guards, permission rows | safety-gate |
+| `## Tool contract` | Exact commands, flags, API parameters, paths, exit codes | tool-contract |
+| `## Gotchas` | Documented non-obvious failures, dated when known | verified-gotcha |
+| `## Output format` | The required shape of the deliverable | output-format-contract |
+| `## Examples` | Worked examples of input and output | declarative fact |
+| `## References` | Pointers to docs, config and context files loaded on demand | declarative fact |
+
+A sub-heading (`###`) inside an allowed section is fine. An H2 outside the set is a lint warning: either it belongs in one of the eight, or it is choreography to cut.
+
+**Every intent names its eval set (principal directive, 2026-10-24).** Assay always compiles checks from an intent's Ideal State and Anti-criteria. `## Evals` makes the rest explicit: `- compiled: …` says those compiled checks are the whole set, `- library: <name>` inherits a shared code-check library from `skills/Assay/Libraries/` (a rendered video inherits `library: video`, whose checks include no frozen frames), and `- suite: <name>` a suite under `skills/Assay/Suites/`. The scaffold gives every new intent the `compiled` line, and a single-intent SKILL.md the same; an older intent without the section is read as `compiled` and is not flagged. A deliverable that leaves through a gated door must carry a fresh passing Assay receipt for its exact bytes: `ArtDirection/Tools/Deliver.ts` and `LIFEOS/TOOLS/YouTubeUpload.ts` (upload, thumbnail, publish) read it through `LIFEOS/TOOLS/lib/ProofReceipt.ts` and print the `Proof.ts run` command that writes it.
+
+**Required intermediate outputs are outcomes, not steps.** When the deliverable depends on something produced first (the CSE before the essay, the storyboard before the render, the scope map before the recommendation), say so as an Ideal State bullet ("the storyboard existed and was checked before any render") and, when the output is a file, declare it in `contract.requires`. That keeps the reason an order mattered without scripting the model.
+
+**Ordered sequences survive only as tool contracts.** A deterministic recipe whose order the tools require (build, then deploy, then probe) lives under `## Tool contract`. A list of thinking moves does not survive anywhere. IntentLint's check for this is narrower than the rule: it warns (`numbered-list`) on a numbered list of five or more items outside a fence, `## Tool contract` and `## Output format`, so a shorter list, or one in either of those two sections, is left to review.
+
+**No voice block.** The intent voice (`hooks/lib/intent-voice.ts`, run from `hooks/EventLogger.hook.ts`) announces "Running the X intent in the Y skill" when an intent file is read during a skill's execution. Intents and SKILL.md carry no `## Voice Notification` section, no curl and no "Running the..." line.
+
+**What IntentLint checks in an intent.** Errors: `ideal-state-missing`, `ideal-state-not-first`, `ideal-state-bullets`, `anti-criteria-missing`, `anti-criteria-not-second`, `anti-criteria-bullets`, `voice-section`, `voice-curl`, `running-line`, `done-heading`, `contents-missing` and `contents-stale`. Errors on an `## Evals` section: `evals-empty`, `evals-unknown-entry` (a bullet that is not `compiled`, `library:` or `suite:`) and `evals-missing-suite` (a named library or suite that does not exist). `ideal-state-uncompilable` (no Ideal State bullet Assay can compile, meaning no claim of three or more words) is an error for an intent born with `## Evals` and a warning for an older one. Warnings, which fail only under `--strict`: `extra-section` and `numbered-list` (both above) and `no-h1`, raised when the file has no `# IntentName` title. A voice or done heading is reported as its error, never also as `extra-section`. The order of the eight optional sections is convention and unenforced.
+
+**SKILL.md** carries the frontmatter, a one-paragraph purpose and any declarative facts its intents share, then opens its body with a skill-level `## Ideal State` (what a good use of the skill delivers across its intents), followed by `## Intent Routing`, `## Data & Config` when the skill reads USER data, `## Gotchas` that span intents, and `## Examples`. Each intent owns the Ideal State of its own deliverable. A skill with no `Intents/` directory is its own single intent: its SKILL.md carries `## Anti-criteria` directly after `## Ideal State`. § SKILL.md anatomy has the detail and says which parts the lint checks.
+
+**Deterministic Tools (`*.ts`) are exempt.** They do one fixed thing by design.
+
+---
+
+## SKILL.md anatomy
+
+### Frontmatter
 
 ```yaml
 ---
 name: SkillName
-version: 1.0.0                    # per-skill semver — new skills scaffold at 1.0.0
-description: [What it does]. USE WHEN [intent triggers using OR]. [Additional capabilities].
-implements: Science              # Optional: declares Science Protocol compliance
-science_cycle_time: meso         # Optional: micro | meso | macro
+version: 1.0.0                    # per-skill semver; new skills scaffold at 1.0.0
+description: <What it does>. USE WHEN <triggers>. NOT FOR <neighbor> (<OtherSkill>).
+metadata:
+  short-description: "<One plain sentence: what the skill does.>"   # required; at most 170 characters
+evals:                            # how the skill is verified (§ Verification and evals)
+  deterministic:
+    - command: "bun test ./skills/<SkillName>"
+      falsifier: "a test fails when the contract is broken"
+argument-hint: "[add|find]"       # optional, descriptive: the argument shape shown with the skill
+license: private                  # optional, descriptive
 ---
 ```
 
-**Per-skill versioning.** Every skill carries its own `version:` — always three levels, **`Major.Feature.Patch`** (system-wide rule; see `Ledger/LedgerSystem.md` § The scheme) — independent of the OS version (`LIFEOS/VERSION`) and of every other skill — the same umbrella model the Algorithm and Memory lines use. A new skill scaffolds at `1.0.0` (CreateSkill stamps it). Bumps are NOT hand-applied; at private-sync time the release pipeline's version-bump flow runs `BumpSkillVersions.ts`, which scopes `ClassifyChange --path skills/<name>` per changed skill and bumps its `version:` (patch/feature/major, major human-gated), recording each in the SYSTEMUPDATES registry. A skill edit rolls up into the OS version too. Public skills inherit the private `version:` at release/emit time — there is no separate public version line.
+- `name` matches the directory exactly: TitleCase for public skills, `_ALLCAPS` for private ones.
+- `description` is a single line, never a multi-line `|` block, and must contain `USE WHEN`. Claude Code reads it to decide when the skill activates.
+- The form is `<What it does>. USE WHEN <triggers>. NOT FOR <neighbor> (<OtherSkill>).` Triggers describe intent, not exact strings: "user mentions their blog, including things like update, proofread, publish, or headers" covers the domain conceptually. Combine conditions with `OR`. The trailing `NOT FOR` clause, naming the neighboring skill that should take the request instead, is added when a neighbor shares vocabulary; it keeps similar skills from stealing each other's requests.
+- There are no separate `triggers:`, `workflows:` or `intents:` arrays.
+- `metadata.short-description` is required on every SKILL.md: one plain sentence saying what the skill does, drawn from the description and purpose paragraph, with no trigger list and no marketing words. The Codex front door reads it (`LIFEOS/CODEX/SkillCatalog.ts`): its generated skill view puts the summary in place of the full description, its eager catalog shows the first 72 characters, and the full description moves into the view's body. So the routing cue goes first. The cap is `SUMMARY_MAX_CHARS` in that file, 170 characters counted as code points, and the summary must be nonempty, single-line and trimmed, or the view renderer refuses the file. It also refuses (`renderSkillView` throws) when the summary is present but `description` is missing, empty, or not a top-level YAML field. IntentLint enforces all of it on every SKILL.md (`summary-missing`, `summary-too-long`, `summary-malformed`, and `frontmatter-invalid` when the YAML does not parse), importing the cap rather than restating it. `skills/CreateSkill/Tools/Scaffold.ts` writes the field on every new skill, from `--summary` or else from the description's first sentence before `USE WHEN`. Before this rule was linted, 29 skills had drifted out of compliance, and the Codex catalog tests failed until they were fixed (2026-10-10).
+- IntentLint checks neither `name` nor `description`. `skills/CreateSkill/Tools/Scaffold.ts` enforces the name form, the single line, `USE WHEN` and the 1024 cap when it creates a skill (it names the directory after `name`, so the two match at birth); after creation a missing or empty `name:` or `description:` is a blocking `/ic` `skills` finding, while a format error (two lines, no `USE WHEN`, over the cap, a name that no longer matches the directory) is caught only by CreateSkill's ValidateSkill.
+- Keep the description under 500 characters where possible; 1024 is the ceiling, and `skills/CreateSkill/Tools/Scaffold.ts` refuses a longer one. The real limit is a shared budget, not a per-skill one: Claude Code reserves a fraction of the context window for all skill descriptions combined (`skillListingBudgetFraction`). The shipped `settings.system.json` sets 0.15. An install may lower it in its user settings. When the combined descriptions do not fit, skills drop to name-only entries in the listing, which leaves the model only the name to route on: with a large skill set, a fraction as low as 0.08 has left dozens of skills listed by name only. That is an observation of the listing; the cut-off rule inside Claude Code was not traced.
+- No gate checks the 500-character target, so descriptions drift past it. Every description costs context on every turn, so keep it to a brief summary plus trigger keywords and put detail in the body.
 
-**Rules:**
-- `name` uses **TitleCase**
-- `description` is a **single line** (not multi-line with `|`)
-- `USE WHEN` keyword is **MANDATORY** (Claude Code parses this for skill activation)
-- Use intent-based triggers with `OR` for multiple conditions
-- **Max 500 characters recommended, 650 hard ceiling.** Claude Code has a total character budget for all skill descriptions combined. In practice, descriptions over ~650 chars cause skills to be silently dropped from the session listing — the skill becomes invisible and unroutable. Keep descriptions tight: brief prose summary + USE WHEN trigger keywords. Move detailed explanations to the SKILL.md body, not the YAML description.
-- **NO separate `triggers:` or `workflows:` arrays in YAML**
+Every skill carries its own `version:`, always three levels, `Major.Feature.Patch` (the system-wide scheme in `LIFEOS/DOCUMENTATION/Ledger/LedgerSystem.md` § The scheme). This is unenforced: no lint checks the field, and `BumpSkillVersions.ts` reads only a three-level `version:`, so it lists a changed skill whose line is missing or malformed as having no version and skips the bump without failing. It is independent of the OS version (`LIFEOS/VERSION`) and of every other skill. CreateSkill stamps `1.0.0` on a new skill. Bumps are never hand-applied where the maintainer flow exists: at private-sync time the release pipeline runs `BumpSkillVersions.ts`, which classifies each changed skill with `ClassifyChange --path skills/<name>`, bumps its `version:` (patch, feature, or major, with major human-gated), and records each bump in the SYSTEMUPDATES registry. On an install without that flow (no `BumpSkillVersions.ts`), the editor hand-bumps `version:` by the rubric in `skills/CreateSkill/References/Conventions.md` § Versioning as part of the edit and leaves `LIFEOS/VERSION` alone. A skill edit also rolls up into the OS version. Public skills inherit the private `version:` at release time; there is no separate public version line.
 
-**Execution-context fields — `context` and `background`** (public PR #1570, @elhoim):
+Every skill runs the same way: inline, through the Skill tool, in the conversation that invoked it. No skill gets a special execution mode (2026-10-11). The frontmatter keys are `name`, `description`, `version`, `metadata` and `evals`, plus `argument-hint` and `license`, which only describe the skill and change nothing about how it runs. Sub-agent work a skill needs is launched from that invoking conversation, and the skill's body describes plain skill behavior, never "you are a forked subagent" or "return your result to the parent".
 
-| Field | Values | Meaning |
-|-------|--------|---------|
-| `context` | `fork` (or absent) | `fork` runs the skill in a forked subagent context instead of inline in the main thread |
-| `background` | `true` / `false` | Whether a `context: fork` skill runs as a background subagent (result arrives as a task notification) or blocks and returns inline |
+`disallowed-tools` is the one sanctioned control key. It is used only to hold an analysis skill read-only, and today that means CriticalAnalysis and BiasCheck (`disallowed-tools: Edit, Write, NotebookEdit`). Removing it would weaken a control, so it stays.
 
-**The 2.1.218 gotcha:** Claude Code 2.1.218 changed the default — `context: fork` skills now run as **background subagents by default** where they previously blocked the main thread. A backgrounded skill's answer does not arrive in the invoking turn. The test for which way to set it: if the user expects the answer *in that turn* (interactive lookups like Knowledge), set `background: false` explicitly; long-running deliberation skills (Council, Research, Ideate) are better left on the background default — detaching them is the point.
+These harness keys are banned because each makes one skill run differently from the rest: `context`, `background`, `disable-model-invocation`, `allowed-tools`, `effort`, `model`, `user-invocable` and `hooks`. The same goes for any other key that changes how the harness runs a skill. A model choice belongs to the agent or tool a skill calls, through the registry in `LIFEOS/TOOLS/models.ts`, never to the skill's frontmatter.
 
-### Science Protocol Compliance (Optional)
+`LIFEOS/TOOLS/SkillHygieneGate.ts` enforces this as an allowlist: any top-level SKILL.md key outside the permitted list fails as `frontmatter-key` (exit 1), and `disallowed-tools` passes only while it denies `Edit` and `Write`. The class is "not on the list", so a key the harness adds tomorrow fails the same way. No allowlist entry suppresses it. `/ic` runs the gate over every skill, and `skills/CreateSkill/Tools/Scaffold.ts` writes only permitted keys, which its tests check.
 
-Skills that involve systematic investigation, iteration, or evidence-based improvement can declare Science Protocol compliance:
+`implements` and `science_cycle_time` are not SKILL.md keys. They were optional markers for following the Science protocol, no skill declares them (measured 2026-10-11), and the gate fails them like any key off the list. A skill that follows the protocol says so in its body; the protocol is `skills/Science/Protocol.md`.
 
-```yaml
-implements: Science
-science_cycle_time: meso
-```
-
-**What This Means:**
-- The skill embodies the scientific method: Goal → Observe → Hypothesize → Experiment → Measure → Analyze → Iterate
-- This is documentation of the mapping, not runtime coupling
-- Skills implement Science like classes implement interfaces—they follow the pattern independently
-
-**Cycle Time Options:**
-| Level | Cycle Time | Formality | Example Skills |
-|-------|------------|-----------|----------------|
-| `micro` | Seconds-Minutes | Implicit (internalized) | Most skills |
-| `meso` | Hours-Days | Explicit when stuck | Evals, Research, Development |
-| `macro` | Weeks-Months | Formal documentation | Major architecture work |
-
-**Skills That Implement Science:**
-- **Development** - TDD is Science (test = goal, code = experiment, pass/fail = analysis)
-- **Evals** - Prompt optimization through systematic experimentation
-- **Research** - Investigation through hypotheses and evidence gathering
-- **Council** - Debate as parallel hypothesis testing
-
-**See:** `~/.claude/skills/Science/Protocol.md` for the full protocol interface
-
-### 2. Markdown Body (Workflow Routing + Examples + Documentation)
+### Body
 
 ```markdown
 # SkillName
 
-[Brief description of what the skill does]
+One paragraph: what the skill does, plus the declarative facts its intents share.
 
-## Voice Notification
+## Ideal State
 
-**When executing a workflow, do BOTH:**
+- What a good use of the skill delivers, as a testable outcome across its intents.
+- The quality bar every output of the skill meets.
 
-1. **Send voice notification**:
-   ```bash
-   curl -s -X POST http://localhost:31337/notify \
-     -H "Content-Type: application/json" \
-     -d '{"message": "Running the WORKFLOWNAME workflow in the SKILLNAME skill to ACTION"}' \
-     > /dev/null 2>&1 &
-   ```
+## Intent Routing
 
-2. **Output text notification**:
-   ```
-   Running the **WorkflowName** workflow in the **SkillName** skill to ACTION...
-   ```
+| Intent | Trigger | File |
+|--------|---------|------|
+| **IntentOne** | "trigger phrase" | `Intents/IntentOne.md` |
+| **IntentTwo** | "another trigger" | `Intents/IntentTwo.md` |
 
-**Full documentation:** `~/.claude/LIFEOS/DOCUMENTATION/Notifications/NotificationSystem.md`
+| File | Read when |
+|------|-----------|
+| `References/ApiShapes.md` | calling the API |
+| `StyleGuide.md` | writing any output |
+| `Templates/` | filling a template |
 
-## Workflow Routing
+## Data & Config
+<!-- when the skill reads USER data or customizations -->
 
-The notification announces workflow execution. The routing table tells Claude which workflow to execute:
-
-| Workflow | Trigger | File |
-|----------|---------|------|
-| **WorkflowOne** | "trigger phrase" | `Workflows/WorkflowOne.md` |
-| **WorkflowTwo** | "another trigger" | `Workflows/WorkflowTwo.md` |
+## Gotchas
+<!-- required: failures that span intents, each with provenance; a placeholder line until the first one -->
 
 ## Examples
-
-**Example 1: [Common use case]**
-```
-User: "[Typical user request]"
-→ Invokes WorkflowOne workflow
-→ [What skill does]
-→ [What user gets back]
 ```
 
-**Example 2: [Another use case]**
-```
-User: "[Another typical request]"
-→ [Process]
-→ [Output]
-```
+- **The front door comes first.** After the purpose paragraph, the first H2 is `## Ideal State`: at least two testable bullets for what a good use of the skill delivers. The next H2 is `## Intent Routing` (a skill with no `Intents/` puts `## Anti-criteria` between them). A model that reads only the top of SKILL.md therefore knows what done looks like and where every file is.
+- **Every file is one hop from SKILL.md.** The intents table has Intent, Trigger, and File columns; intent names are TitleCase and match their file names exactly, and every file in `Intents/` has a row. A second table (File, Read when) names every `References/` file and every `.md` at the skill root. Other directories that hold `.md` files (templates, examples, pattern libraries) are named once as `Dir/`. A reference file may point at another, but the second one is also in the table, so nothing is two links deep: Claude often previews a nested file with `head` and misses the rest (Anthropic skill authoring guidance, re-raised 2026-10-09). The lint checks presence, not shape: each path (or `Dir/`) must appear somewhere in the routing section, and every `Intents/` or `References/` path named there must exist. The two-table shape, one row per intent and the TitleCase name match are unenforced.
+- **Long files open with a contents line.** Any SKILL.md, intent, `References/` file or `.md` at the skill root over 100 lines with two or more H2s carries `**Contents:** A · B · C` (every H2, in order) between its H1 and its first H2, so a partial read still shows everything the file covers. Files inside a directory routed as `Dir/` are exempt: neither IntentLint nor `SkillContents.ts` reads them. `bun LIFEOS/TOOLS/SkillContents.ts --write skills/<Skill>` writes and refreshes it; never type it by hand.
+- `bun LIFEOS/TOOLS/IntentLint.ts skills/<Skill>` checks SKILL.md with these error rules: `ideal-state-missing`, `ideal-state-not-first` and `ideal-state-bullets`; `anti-criteria-missing`, `anti-criteria-not-second` and `anti-criteria-bullets` (skills with no `Intents/`); `routing-missing`, `routing-not-early`, `unrouted-file`, `dead-route` and `nested-intent`; `contents-missing` and `contents-stale`; the frontmatter summary rules `summary-missing`, `summary-too-long`, `summary-malformed` and `frontmatter-invalid` (§ Frontmatter); and the retired-voice rules `voice-section`, `voice-curl`, `running-line` and `done-heading`; and, in a single-intent SKILL.md that carries `## Evals`, the `evals-*` rules and `ideal-state-uncompilable` as for an intent (§ Intent anatomy). It checks no other SKILL.md section: `## Data & Config`, `## Gotchas` and `## Examples` are required by this document and judged by CreateSkill's ValidateSkill, not linted, and an extra H2 in SKILL.md raises nothing.
+- `/ic` runs the same lint over every skill as its `intent-lint` check, and it blocks: with `INTENT_LINT_BLOCKING` set to `true` in `LIFEOS/TOOLS/IntegrityCheck.ts` (since 2026-10-10), every file with a lint error is its own blocking finding. Warnings never block.
+- Shared facts (the stack, key paths, defaults) can sit in the purpose paragraph or under a short heading of their own. Long reference moves into context files (§ Directory structure).
+- A gotcha needs provenance: a dated incident, a failing test, or a reproduction. Without one it is methodology, and it is cut (`LIFEOS/RULES/Philosophy.md` § Ideal-State Prompting).
+- A skill with no `Intents/` directory is its own single intent. After the purpose paragraph come `## Ideal State` and `## Anti-criteria`, then `## Intent Routing` when it has reference files to name, then `## Data & Config` when it reads USER data, `## Gotchas` and `## Examples`, the order `Tools/Scaffold.ts --single` writes. Only the first two, the routing position and `## Evals` are linted.
+- `## Gotchas` is required in every SKILL.md, with a placeholder line until the first reproduced failure. This is unenforced: no lint checks it.
+- A skill with intents keeps two levels of done: the SKILL.md Ideal State says what the skill delivers across its intents, and each intent's Ideal State says what that one deliverable must be. Neither restates the other.
+- There is no voice block and no "Running the..." line, in SKILL.md or anywhere else in a skill (§ Intent anatomy). IntentLint raises `voice-section`, `voice-curl` and `running-line` in SKILL.md and in every intent; a `References/` or root `.md` file is linted only for its contents line, so a voice block there is left to ValidateSkill.
+
+Every skill carries an `## Examples` section with two or three realistic requests, showing the intent each one routes to and what the user gets back. Descriptions tell the model when to activate a skill, and examples show the whole request-to-result pattern. This is unenforced: no lint checks it, so a skill can lack `## Examples` without any gate noticing. Each example states the outcome, never a procedure:
 
-## [Additional Sections]
-
-[Documentation, quick reference, critical paths, etc.]
-```
-
-**Workflow routing format:** Table with Workflow, Trigger, File columns
-- Workflow names in **TitleCase** matching file names
-- Simple trigger description
-- File path in backticks
-
-**When to show the workflow message:**
-- ONLY output the message when actually loading and executing a workflow file
-- If the skill handles the request directly without calling a workflow, do NOT show the message
-- The message indicates "I'm reading and following instructions from a workflow file"
-
----
-
-## Dynamic Loading Pattern (Recommended for Large Skills)
-
-**Purpose:** Reduce context on skill invocation by keeping SKILL.md minimal and loading additional context files only when needed.
-
-### How Loading Works
-
-**Session Startup:**
-- Only frontmatter (YAML) loads from all SKILL.md files for routing
-
-**Skill Invocation:**
-- Full SKILL.md body loads when skill is invoked
-- Additional .md context files load when referenced by workflows or called directly
-
-**Benefit:** Most skill invocations don't need all documentation - load only what workflows actually use.
-
-### The Pattern
-
-**SKILL.md** = Minimal routing + quick reference (30-50 lines)
-**Additional .md files** = Context files - SOPs for specific aspects (loaded on-demand)
-
-### Structure
-
-```
-skills/SkillName/
-├── SKILL.md                    # Minimal routing - loads on invocation
-├── Aesthetic.md                # Context file - SOP for aesthetic handling
-├── Examples.md                 # Context file - SOP for examples
-├── ApiReference.md             # Context file - SOP for API usage
-├── Tools.md                    # Context file - SOP for tool usage
-├── Workflows/                  # Workflow execution files
-│   ├── Create.md
-│   └── Update.md
-└── Tools/                      # Actual CLI tools
-    └── Generate.ts
-```
-
-### 🚨 CRITICAL: NO Context/ Subdirectory 🚨
-
-**NEVER create a Context/ or Docs/ subdirectory.**
-
-The additional .md files ARE the context files. They live **directly in the skill root directory** alongside SKILL.md.
-
-**WRONG (DO NOT DO THIS):**
-```
-skills/SkillName/
-├── SKILL.md
-└── Context/              ❌ NEVER CREATE THIS DIRECTORY
-    ├── Aesthetic.md
-    └── Examples.md
-```
-
-**CORRECT:**
-```
-skills/SkillName/
-├── SKILL.md
-├── Aesthetic.md          ✅ Context file in skill root
-└── Examples.md           ✅ Context file in skill root
-```
-
-**The skill directory itself IS the context.** Additional .md files are context files that provide SOPs for specific aspects of the skill's operation.
-
-### What Goes In SKILL.md (Minimal)
-
-Keep only these in SKILL.md:
-- ✅ YAML frontmatter with triggers
-- ✅ Brief description (1-2 lines)
-- ✅ Workflow routing table
-- ✅ Quick reference (3-5 bullet points)
-- ✅ Pointers to detailed docs via SkillSearch
-
-### What Goes In Additional .md Context Files (Loaded On-Demand)
-
-These are **additional SOPs** (Standard Operating Procedures) for specific aspects. They live in skill root and can reference Workflows/, Tools/, etc.
-
-Move these to separate context files in skill root:
-- ❌ Extended documentation → `Documentation.md`
-- ❌ API reference → `ApiReference.md`
-- ❌ Detailed examples → `Examples.md`
-- ❌ Tool documentation → `Tools.md`
-- ❌ Aesthetic guides → `Aesthetic.md`
-- ❌ Configuration details → `Configuration.md`
-
-**These are SOPs, not just docs.** They provide specific handling instructions for workflows to reference.
-
-### Example: Minimal SKILL.md
-
-```markdown
----
-name: Art
-description: Visual content system. USE WHEN art, header images, visualizations, diagrams.
----
-
-# Art Skill
-
-Complete visual content system using **charcoal architectural sketch** aesthetic.
-
-## Workflow Routing
-
-| Trigger | Workflow |
-|---------|----------|
-| Blog header/editorial | `Workflows/Essay.md` |
-| Technical diagram | `Workflows/TechnicalDiagrams.md` |
-| Mermaid flowchart | `Workflows/Mermaid.md` |
-
-## Quick Reference
-
-**Aesthetic:** Charcoal architectural sketch
-**Model:** nano-banana-pro
-**Output:** Always $LIFEOS_DOWNLOADS_DIR (default ~/Downloads/ when unset) first
-
-**Full Documentation:**
-- Aesthetic guide: `SkillSearch('art aesthetic')` → loads Aesthetic.md
-- Examples: `SkillSearch('art examples')` → loads Examples.md
-- Tools: `SkillSearch('art tools')` → loads Tools.md
-```
-
-### Loading Additional Context Files
-
-Workflows call SkillSearch to load context files as needed:
-
-```bash
-# In workflow files or SKILL.md
-SkillSearch('art aesthetic')    # Loads Aesthetic.md from skill root
-SkillSearch('art examples')     # Loads Examples.md from skill root
-SkillSearch('art tools')        # Loads Tools.md from skill root
-```
-
-Or reference them directly:
-```bash
-# Read specific context file
-Read ~/.claude/skills/Art/Aesthetic.md
-```
-
-Context files can reference workflows and tools:
-```markdown
-# Aesthetic.md (context file)
-
-Use the Essay workflow for blog headers: `Workflows/Essay.md`
-Generate images with: `bun Tools/Generate.ts`
-```
-
-### Benefits
-
-**Token Savings on Skill Invocation:**
-- Before: 150+ lines load when skill invoked
-- After: 40-50 lines load when skill invoked
-- Additional context loads only if workflows need it
-- Reduction: 70%+ token savings per invocation (when full docs not needed)
-
-**Improved Organization:**
-- SKILL.md = clean routing layer
-- Context files = SOPs for specific aspects
-- Workflows load only what they need
-- Easier to maintain and update
-
-### When To Use
-
-Use dynamic loading for skills with:
-- ✅ SKILL.md > 100 lines
-- ✅ Multiple documentation sections
-- ✅ Extensive API reference
-- ✅ Detailed examples
-- ✅ Tool documentation
-
-Don't bother for:
-- ❌ Simple skills (< 50 lines total)
-- ❌ Pure utility wrappers (use LIFEOS/DOCUMENTATION/Tools/Tools.md instead)
-- ❌ Skills that are already minimal
-
----
-
-## Canonicalization
-
-**"Canonicalize a skill"** means restructuring it to match this document exactly.
-
-### When to Canonicalize
-
-- Skill has old YAML format (separate `triggers:` or `workflows:` arrays)
-- Skill uses non-TitleCase naming
-- Skill is missing `USE WHEN` in description
-- Skill lacks `## Examples` section
-- Skill has `backups/` inside its directory
-- Workflow routing uses old format
-
-### Canonicalization Checklist
-
-#### Naming (TitleCase)
-- [ ] Skill directory uses TitleCase
-- [ ] All workflow files use TitleCase
-- [ ] All reference docs use TitleCase
-- [ ] All tool files use TitleCase
-- [ ] Routing table names match file names exactly
-- [ ] YAML `name:` uses TitleCase
-
-#### YAML Frontmatter
-- [ ] Single-line `description` with embedded `USE WHEN`
-- [ ] No separate `triggers:` or `workflows:` arrays
-- [ ] Description uses intent-based language
-- [ ] Description under 1024 characters
-
-#### Markdown Body
-- [ ] `## Workflow Routing` section with table format
-- [ ] All workflow files have routing entries
-- [ ] `## Examples` section with 2-3 concrete patterns
-
-#### Structure
-- [ ] `tools/` directory exists (even if empty)
-- [ ] No `backups/` directory inside skill
-- [ ] Reference docs at skill root (not in Workflows/)
-- [ ] Workflows contain ONLY execution procedures
-
-### How to Canonicalize
-
-Use the CreateSkill skill's CanonicalizeSkill workflow:
-```
-~/.claude/skills/CreateSkill/Workflows/CanonicalizeSkill.md
-```
-
-Or manually:
-1. Rename files to TitleCase
-2. Update YAML frontmatter to single-line description
-3. Add `## Workflow Routing` table
-4. Add `## Examples` section
-5. Move backups to `~/.claude/LIFEOS/MEMORY/Backups/`
-6. Verify against checklist
-
-### How to Test Effectiveness
-
-After creating or canonicalizing a skill, verify it actually improves outcomes:
-```
-~/.claude/skills/CreateSkill/Workflows/TestSkill.md
-```
-
-This runs the skill against real prompts with a no-skill baseline comparison. If the skill underperforms, use `ImproveSkill.md` to iterate. If the description doesn't trigger reliably, use `OptimizeDescription.md` to test and refine trigger accuracy.
-
----
-
-## Examples Section (REQUIRED)
-
-**Every skill MUST have an `## Examples` section** showing 2-3 concrete usage patterns.
-
-**Why Examples Matter:**
-- Anthropic research shows examples improve tool selection accuracy from 72% to 90%
-- Descriptions tell Claude WHEN to activate; examples show HOW the skill works
-- Claude learns the full input→behavior→output pattern, not just trigger keywords
-
-**Example Format:**
-```markdown
-## Examples
-
-**Example 1: [Use case name]**
-```
-User: "[Actual user request]"
-→ Invokes WorkflowName workflow
-→ [What the skill does - action 1]
-→ [What user receives back]
-```
-
-**Example 2: [Another use case]**
-```
-User: "[Different request pattern]"
-→ [Process steps]
-→ [Output/result]
-```
-```
-
-**Guidelines:**
-- Use 2-3 examples per skill (not more)
-- Show realistic user requests (natural language)
-- Include the workflow or action taken (TitleCase)
-- Show what output/result the user gets
-- Cover the most common use cases
-
----
-
-## Intent Matching, Not String Matching
-
-We use **intent matching**, not exact phrase matching.
-
-**Example description:**
-```yaml
-description: Complete blog workflow. USE WHEN user mentions doing anything with their blog, website, site, including things like update, proofread, write, edit, publish, preview, blog posts, articles, headers, or website pages, etc.
-```
-
-**Key Principles:**
-- Use intent language: "user mentions", "user wants to", "including things like"
-- Don't list exact phrases in quotes
-- Cover the domain conceptually
-- Use `OR` to combine multiple trigger conditions
-
----
-
-## Complete Canonical Example: a personal blogging skill
-
-**Reference:** any well-formed skill in `~/.claude/skills/` follows the same pattern; private personal skills use the `_NAME/` form below.
-
-```yaml
----
-name: Blogging
-description: Complete blog workflow. USE WHEN user mentions doing anything with their blog, website, site, including things like update, proofread, write, edit, publish, preview, blog posts, articles, headers, or website pages, etc.
----
-
-# Blogging
-
-Complete blog workflow.
-
-## Voice Notification
-
-**When executing a workflow, do BOTH:**
-
-1. **Send voice notification**:
-   ```bash
-   curl -s -X POST http://localhost:31337/notify \
-     -H "Content-Type: application/json" \
-     -d '{"message": "Running WORKFLOWNAME in Blogging"}' \
-     > /dev/null 2>&1 &
-   ```
-
-2. **Output text notification**:
-   ```
-   Running the **WorkflowName** workflow in the **Blogging** skill to ACTION...
-   ```
-
-**Full documentation:** `~/.claude/LIFEOS/DOCUMENTATION/Notifications/NotificationSystem.md`
-
-## Core Paths
-
-- **Blog posts:** `~/Projects/Website/cms/blog/`
-- **CMS root:** `~/Projects/Website/cms/`
-- **Images:** `~/Projects/Website/cms/public/images/`
-
-## Workflow Routing
-
-**When executing a workflow, also output this text:**
-
-```
-Running the **WorkflowName** workflow in the **Blogging** skill to ACTION...
-```
-
-| Workflow | Trigger | File |
-|----------|---------|------|
-| **Create** | "write a post", "new article" | `Workflows/Create.md` |
-| **Rewrite** | "rewrite this post" | `Workflows/Rewrite.md` |
-| **Publish** | "publish", "deploy" | `Workflows/Publish.md` |
-| **Open** | "preview", "open in browser" | `Workflows/Open.md` |
-| **Header** | "create header image" | `Workflows/Header.md` |
-
-## Examples
-
-**Example 1: Write new content**
-```
-User: "Write a post about AI agents for the blog"
-→ Invokes Create workflow
-→ Drafts content in scratchpad/
-→ Opens dev server preview at localhost:5173
-```
-
-**Example 2: Publish**
 ```
 User: "Publish the AI agents post"
-→ Invokes Publish workflow
-→ Runs build validation
-→ Deploys to Cloudflare Pages
+→ Publish intent
+→ The post is live at its URL, and the deploy was verified
 ```
 
-## Quick Reference
+### How a skill loads and runs
 
-- **Tech Stack:** VitePress + bun + Cloudflare Pages
-- **Package Manager:** bun (NEVER npm)
-- **Dev Server:** `http://localhost:5173`
-- **Live Site:** `https://example.com`
-```
+At session start only the frontmatter of every SKILL.md loads, for routing. When a skill is invoked, its full SKILL.md body loads whole (so a SKILL.md stays short, a few hundred lines at most), and the routing table points at one intent. The model reads that intent and works until the output meets its Ideal State without tripping an Anti-criterion. It reads context files only when the intent or the work calls for them. The Examples show what a correct run produces; they are not a script.
 
 ---
 
-## Directory Structure
+## Verification and evals
 
-Every skill follows this structure:
+Every skill names its verification in frontmatter when it is created or updated. A judged suite is useful when quality needs a judge, and optional when deterministic evidence already proves the result:
 
+```yaml
+evals:
+  suites: [my-skill-core]                    # runnable suite names, resolved USER-first
+# OR
+evals:
+  deterministic:
+    - command: "bun LIFEOS/TOOLS/MyCheck.ts --check"
+      falsifier: "the command exits nonzero when the contract is broken"
+# OR
+evals:
+  manual:
+    reason: "a human must judge the visual composition"
+    falsifier: "the named reviewer rejects the recorded artifact"
+# OR, while real evidence is being prepared
+evals:
+  pending: "awaiting a real failure case for the suite"
 ```
-SkillName/                    # TitleCase directory name
-├── SKILL.md                  # Main skill file (always uppercase)
-├── QuickStartGuide.md        # Context/reference files in root (TitleCase)
-├── DefenseMechanisms.md      # Context/reference files in root (TitleCase)
-├── Examples.md               # Context/reference files in root (TitleCase)
-├── Tools/                    # CLI tools (ALWAYS present, even if empty)
-│   ├── ToolName.ts           # TypeScript CLI tool (TitleCase)
-│   └── ToolName.help.md      # Tool documentation (TitleCase)
-└── Workflows/                # Work execution workflows (TitleCase)
-    ├── Create.md             # Workflow file
-    ├── UpdateInfo.md         # Workflow file
-    └── SyncRepo.md           # Workflow file
-```
 
-- **SKILL.md** - Contains single-line description in YAML, workflow routing and documentation in body
-- **Context files (in root)** - Documentation, guides, reference materials live in skill root, NOT in subdirectories (TitleCase names)
-- **Tools/** - CLI tools for automation (ALWAYS present directory, even if empty)
-- **Workflows/** - Contains work execution workflows ONLY (TitleCase names)
-- **NO Resources/ or Docs/ subdirectories** - Context files go in skill root
+Every accepted form names what verifies the skill and how failure is recognized. A `pending` disposition stays pending and never counts as coverage. The former `declined:` form remains an advisory legacy record until the skill is touched, so the backlog does not become a breaking guard.
+
+Suites live only in the Assay runner's roots: the Assay skill's `Suites/` for generic suites, `LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Assay/Suites/` for identity-bound ones, never in per-skill directories. Suites seed from real usage, never from invented cases. The source is the deterministic run ledger (`MEMORY/SKILLS/execution.jsonl`, one line per Skill-tool call with session, turn and run id, written by `hooks/EventLogger.hook.ts`), turned into cases by the Assay skill's FailureToCase tool.
+
+An intent's `## Ideal State` and `## Anti-criteria` are the criteria Assay checks. `Proof.ts run --intent <path>` checks one run's output against them, and a skill's eval suite builds its rubric from them. The definition of done the model reads is the same one its output is graded on. When the principal catches a miss that the bullets let through, the fix is a sharper Ideal State or Anti-criteria bullet, and every later Proof run and suite inherits it. Mechanics live in `skills/Assay`.
+
+CreateSkill records the disposition when it creates or updates a skill, and its ValidateSkill intent checks it. The retired `/ic` `eval-coverage` check no longer lists dispositions; output-coverage measures receipted outputs instead. Skills that predate the contract migrate on their next CreateSkill touch.
+
+Beyond the declared evals, CreateSkill's TestSkill intent runs a skill against real prompts beside a no-skill baseline. ImproveSkill iterates on a skill that underperforms, and OptimizeDescription tests and tunes a description that does not trigger reliably. A live skill that keeps drawing complaints or failing its suite is climbed with the HillClimb skill's Skill intent (`skills/HillClimb/Intents/Skill.md`): a measured baseline, held-out experiments, a standing check for each miss, and a later check that the complaints fell.
 
 ---
 
-## Flat Folder Structure (MANDATORY)
-
-**CRITICAL: Keep folder structure FLAT - maximum 2 levels deep.**
-
-### The Rule
-
-Skills use a **flat hierarchy** - no deep nesting of subdirectories.
-
-**Maximum depth:** `skills/SkillName/Category/`
-
-### ✅ ALLOWED (2 levels max)
+## Directory structure
 
 ```
-skills/OSINT/SKILL.md                                         # Skill root
-skills/OSINT/Workflows/CompanyDueDiligence.md                 # Workflow - one level deep
-skills/OSINT/Tools/Analyze.ts                                 # Tool - one level deep
-skills/OSINT/Methodology.md                                   # Context file - in root
-skills/OSINT/EthicalFramework.md                              # Context file - in root
-skills/Prompting/BeCreative.md                                # Templates in Prompting root
-skills/Prompting/StoryExplanation.md                          # Templates in Prompting root
-skills/PromptInjection/DefenseMechanisms.md                   # Context file - in root
-skills/PromptInjection/QuickStartGuide.md                     # Context file - in root
+SkillName/                    # TitleCase (public) or _ALLCAPS (private)
+├── SKILL.md                  # Frontmatter, purpose, routing, examples
+├── ApiReference.md           # Context file in the root, loaded on demand
+├── Intents/                  # One file per outcome, no subfolders
+│   ├── Create.md
+│   └── Publish.md
+├── Tools/                    # Executables and their help files
+│   ├── Publish.ts
+│   └── Publish.help.md
+└── References/               # Optional: extended reference for large skills
+    └── CompleteGuide.md
 ```
 
-### ❌ FORBIDDEN (Too deep OR wrong location)
+Skills are flat. Three subdirectories have fixed meanings:
+
+- `Intents/` holds intents only, each directly inside it. An `.md` in a subdirectory of `Intents/` is an IntentLint error (`nested-intent`), because the lint cannot check it as an intent.
+- `Tools/` holds executable tools and their `.help.md` files, and exists when the skill has tools. The routing and contents checks never look inside it: `SkillContents.ts`, whose file list IntentLint's `unrouted-file` and contents rules use, skips any directory named `Tools` or `node_modules` and every dot-named file or directory, and IntentLint also skips any path with a `node_modules` or `LIFEOS_RELEASES` segment. A `.md` under `Tools/` needs no route and no contents line.
+- `References/` holds extended reference material, each file routed by name from SKILL.md.
+
+A single guide, specification, schema or example sits in the skill root or in `References/`. Any other directory is allowed when SKILL.md's routing section names it once as `Dir/`, except `Workflows/` and `Procedures/`, which `/ic` blocks at skill level because routines live in `Intents/` (IntentLint `unrouted-file` otherwise), so a group of files of one kind can share a folder: Prompting keeps its Handlebars templates in `Templates/`, and several skills keep pattern libraries in `Patterns/`. A catch-all folder (`Docs/`, `Resources/`, `Context/`) is avoided in new skills, because its files belong in the root or `References/`; no gate checks this.
 
 ```
-skills/OSINT/Resources/Examples.md                            # Context files go in root, NOT Resources/
-skills/OSINT/Docs/Methodology.md                              # Context files go in root, NOT Docs/
-skills/OSINT/Templates/Primitives/Extract.md                  # THREE levels - NO
-skills/OSINT/Workflows/Company/DueDiligence.md                # THREE levels - NO (use CompanyDueDiligence.md instead)
-skills/Prompting/Templates/BeCreative.md                      # Templates in root, NOT Templates/ subdirectory
-skills/Research/Workflows/Analysis/Deep.md                    # THREE levels - NO
+skills/SkillName/Intents/Create.md                # allowed
+skills/SkillName/Tools/Generate.ts                # allowed
+skills/SkillName/StyleGuide.md                    # allowed: context file in the root, routed by name
+skills/SkillName/Templates/Report.md              # allowed: routed once as Templates/
+skills/SkillName/Intents/Create/Outline.md        # IntentLint error: nested-intent
+skills/SkillName/backups/SKILL.md                 # forbidden by this document; not linted
 ```
 
-### Why Flat Structure
+Two levels, `skills/SkillName/<Subdirectory>/<file>`, is the target, and only the nested-intent case is enforced. A deeper folder elsewhere (Prompting's `Templates/Primitives/`) raises nothing; it is routed by its top-level `Dir/`. When a skill is canonicalized, a nested intent is flattened to a clearer name (`CompanyDueDiligence.md` rather than `Company/DueDiligence.md`) and every reference to it is updated. A skill never keeps a `backups/` directory; backups go in the install's `BACKUPS/` directory.
 
-1. **Discoverability** - Easy to find files with simple `ls` or `grep`
-2. **Simplicity** - Less cognitive overhead navigating directories
-3. **Speed** - Faster file operations without deep traversal
-4. **Maintainability** - Harder to create organizational complexity
-5. **Consistency** - Every skill follows same simple pattern
+An intent is one outcome the skill delivers (create, update, deploy, sync), named as a TitleCase verb: `Create.md`, `SyncRepo.md`, `UpdateDaemonInfo.md`. A reference doc is information to read (a guide, a specification, a schema, background), named descriptively: `ProsodyGuide.md`, `SchemaSpec.md`, `ApiReference.md`. Reference docs live in the root or `References/`, never in `Intents/`.
 
-### Allowed Subdirectories
+### Context files load on demand
 
-**ONLY these subdirectories are allowed:**
+On invocation only SKILL.md and the routed intent load. Context files load when the intent or the model reads them by path. That is why SKILL.md stays lean: routing, shared facts, and pointers. SKILL.md stays under 500 lines, a limit no lint counts (unenforced). Long reference moves into context files well before that, so invocations stop paying for documentation most runs never read. A short skill or a pure utility wrapper needs no context files; utility wrappers belong in `LIFEOS/DOCUMENTATION/Tools/Tools.md`.
 
-1. **Workflows/** - Execution workflows ONLY
-   - All workflows go directly in `Workflows/`, NO subcategories
+Context files hold declarative reference: API shapes, style guides, domain facts, worked examples. The keep-class test applies to them as it does to intents. A context file is not somewhere to park the choreography cut from an intent.
 
-2. **Tools/** - Executable scripts/tools ONLY
-   - CLI tools, automation scripts
-
-**Templates (Prompting skill only):**
-- Templates live in `skills/Prompting/` root, NOT nested
-
-### Context/Resource Files Go in Skill Root
-
-**CRITICAL RULE: Documentation, guides, reference materials, and context files live in the skill ROOT directory, NOT in subdirectories.**
-
-❌ **WRONG** - Don't create subdirectories for context files:
-```
-skills/SkillName/Resources/Guide.md          # NO - no Resources/ subdirectory
-skills/SkillName/Docs/Reference.md           # NO - no Docs/ subdirectory
-skills/SkillName/Guides/QuickStart.md        # NO - no Guides/ subdirectory
-```
-
-✅ **CORRECT** - Put context files directly in skill root:
-```
-skills/SkillName/Guide.md                    # YES - in root
-skills/SkillName/Reference.md                # YES - in root
-skills/SkillName/QuickStart.md               # YES - in root
-skills/SkillName/DefenseMechanisms.md        # YES - in root
-skills/SkillName/ApiDocumentation.md         # YES - in root
-```
-
-**Exceptions:** Workflows/ and Tools/ subdirectories only. Everything else goes in the root.
-
-### Migration Rule
-
-If you encounter nested structures deeper than 2 levels:
-1. Flatten immediately
-2. Move files up to proper level
-3. Rename files for clarity if needed (e.g., `CompanyDueDiligence.md` instead of `Company/DueDiligence.md`)
-4. Update all references
+A skill with a `Context.json` manifest loads section bundles instead of whole files. `bun LIFEOS/TOOLS/ContextLoad.ts <Skill> list` shows its bundles, and `LIFEOS/DOCUMENTATION/Skills/ProgressiveContext.md` describes the mechanism.
 
 ---
 
-## Workflow-to-Tool Integration
+## Intent contracts
 
-**Workflows should map user intent to tool flags, not hardcode single invocation patterns.**
+An intent can declare in its YAML frontmatter what must exist before its tool runs. The contract is typed and checked by code, so a required intermediate output (§ Intent anatomy) is enforced at run time rather than resting on prose.
 
-When a workflow calls a CLI tool, it should:
-1. **Interpret user intent** from the request
-2. **Consult flag mapping tables** to determine appropriate flags
-3. **Construct the CLI command** with selected flags
-4. **Execute and handle results**
-
-### Intent-to-Flag Mapping Tables
-
-Workflows should include tables that map natural language intent to CLI flags:
-
-```markdown
-## Model Selection
-
-| User Says | Flag | Use Case |
-|-----------|------|----------|
-| "fast", "quick" | `--model haiku` | Speed priority |
-| "best", "highest quality" | `--model opus` | Quality priority |
-| (default) | `--model sonnet` | Balanced default |
-
-## Output Options
-
-| User Says | Flag | Effect |
-|-----------|------|--------|
-| "JSON output" | `--format json` | Machine-readable |
-| "detailed" | `--verbose` | Extra information |
-| "just the result" | `--quiet` | Minimal output |
+```yaml
+---
+contract:
+  requires:
+    - id: cse-24                                  # stable name used in failure messages
+      path: scratchpad/art/{slug}/cse.md          # {slug} is bound from the tool's --slug
+      fields: [NARRATIVE 1, NARRATIVE 2]          # Markdown headings, or JSON/YAML keys, that must be non-empty
+      produce: '/cse … save to {path}'            # shown to the agent on refusal, never executed
+  bans:
+    - '/\bcrowds?\b/i'                             # /regex/flags, or a plain case-insensitive substring
+---
 ```
 
-### Command Construction Pattern
-
-```markdown
-## Execute Tool
-
-Based on the user's request, construct the CLI command:
-
-\`\`\`bash
-bun ToolName.ts \
-  [FLAGS_FROM_INTENT_MAPPING] \
-  --required-param "value" \
-  --output /path/to/output
-\`\`\`
-```
-
-**See:** `~/.claude/LIFEOS/DOCUMENTATION/Tools/CliFirstArchitecture.md` (Workflow-to-Tool Integration section)
+- `LIFEOS/TOOLS/IntentContract.ts` exports `loadContract(intentPath)` and `verify(contract, { slug, cwd, promptText })`. An intent with no `contract:` key keeps legacy behavior; a malformed contract fails closed.
+- The consuming tool calls `verify` before it loads credentials or spends money, and refuses with each missing artifact plus its `produce` command. First adopter: `skills/Art/Tools/Generate.ts` for the Art Essay intent (`--slug`, `--dry-run`).
+- `/ic` runs `intent-contract-drift`, which counts intents whose MUST/NEVER/MANDATORY/REQUIRED lines have neither a contract nor an identical SKILL.md line. It is an advisory census, never blocking: one info line, marked GROWING when the count passes the baseline in `IntegrityCheck.ts` (`INTENT_DRIFT_BASELINE`). The match is textual, so ordinary doctrine edits trip it; enforcement lives in the contract the tool verifies at run time. Lower the baseline as intents migrate.
 
 ---
 
-## Workflows vs Reference Documentation
+## CLI tools
 
-**CRITICAL DISTINCTION:**
+Tools live in a skill's `Tools/` directory and do the deterministic work: server management (start, stop, restart, status), state queries, operations an intent runs often, and multi-step automation worth encapsulating. Intents call tools; tools hold the complexity. That keeps intents short and tools reusable, and it is why tools are exempt from § Intent anatomy.
 
-### Workflows (`Workflows/` directory)
-Workflows are **work execution procedures** - step-by-step instructions for DOING something.
+Every CLI tool:
 
-**Workflows ARE:**
-- Operational procedures (create, update, delete, deploy, sync)
-- Step-by-step execution instructions
-- Actions that change state or produce output
-- Things you "run" or "execute"
+- is TypeScript with a `#!/usr/bin/env bun` shebang
+- uses a TitleCase file name (`ToolName.ts`, not `tool-name.ts`)
+- has a `ToolName.help.md` with full documentation and answers `--help` (unenforced; test and declaration files are exempt)
+- uses ANSI color for terminal feedback
+- fails with a clear message and a meaningful exit code
+- exposes its configuration as flags rather than hardcoded values
 
-**Workflows are NOT:**
-- Reference guides
-- Documentation
-- Specifications
-- Context or background information
-
-**Workflow naming:** TitleCase verbs (e.g., `Create.md`, `SyncRepo.md`, `UpdateDaemonInfo.md`)
-
-### Reference Documentation (skill root)
-Reference docs are **information to read** - context, guides, specifications.
-
-**Reference docs ARE:**
-- Guides and how-to documentation
-- Specifications and schemas
-- Background context
-- Information you "read" or "reference"
-
-**Reference docs are NOT:**
-- Executable procedures
-- Step-by-step workflows
-- Things you "run"
-
-**Reference naming:** TitleCase descriptive (e.g., `ProsodyGuide.md`, `SchemaSpec.md`, `ApiReference.md`)
-
----
-
-## CLI Tools (`tools/` directory)
-
-**Every skill MUST have a `tools/` directory**, even if empty. CLI tools automate repetitive tasks and manage stateful resources.
-
-### When to Create a CLI Tool
-
-Create CLI tools for:
-- **Server management** - start, stop, restart, status
-- **State queries** - check if running, get configuration
-- **Repeated operations** - tasks executed frequently by workflows
-- **Complex automation** - multi-step processes that benefit from encapsulation
-
-### Tool Requirements
-
-Every CLI tool must:
-1. **Be TypeScript** - Use `#!/usr/bin/env bun` shebang
-2. **Use TitleCase naming** - `ToolName.ts`, not `tool-name.ts`
-3. **Have a help file** - `ToolName.help.md` with full documentation
-4. **Support `--help`** - Display usage information
-5. **Use colored output** - ANSI colors for terminal feedback
-6. **Handle errors gracefully** - Clear error messages, appropriate exit codes
-7. **Expose configuration via flags** - Enable behavioral control (see below)
-
-### Configuration Flags Standard
-
-**Tools should expose configuration through CLI flags, not hardcoded values.**
-
-This pattern (inspired by indydevdan's variable-centric approach) enables workflows to adapt tool behavior based on user intent without code changes.
-
-**Standard Flag Categories:**
-
-| Category | Examples | Purpose |
-|----------|----------|---------|
-| **Mode flags** | `--fast`, `--thorough`, `--dry-run` | Execution behavior |
-| **Output flags** | `--format json`, `--quiet`, `--verbose` | Output control |
-| **Resource flags** | `--model haiku`, `--model opus` | Model/resource selection |
-| **Post-process flags** | `--thumbnail`, `--remove-bg` | Additional processing |
-
-**Example: Well-Configured Tool**
-
-```bash
-# Minimal invocation (sensible defaults)
-bun Generate.ts --prompt "..." --output /tmp/image.png
-
-# Full configuration
-bun Generate.ts \
-  --model nano-banana-pro \    # Resource selection
-  --prompt "..." \
-  --size 2K \                  # Output configuration
-  --aspect-ratio 16:9 \
-  --thumbnail \                # Post-processing
-  --remove-bg \
-  --output /tmp/header.png
-```
-
-**Flag Design Principles:**
-1. **Defaults first**: Tool works without flags for common case
-2. **Explicit overrides**: Flags modify default behavior
-3. **Boolean flags**: `--flag` enables (no `--no-flag` needed)
-4. **Value flags**: `--flag <value>` for choices
-5. **Composable**: Flags should combine logically
-
-**See:** `~/.claude/LIFEOS/DOCUMENTATION/Tools/CliFirstArchitecture.md` (Configuration Flags section) for full documentation
-
-### Tool Structure
+Only two of these are checked, both by CreateSkill's ValidateSkill rather than a lint: the TitleCase file name (its naming check) and the flags (judged from the tool's `--help`). The shebang, the colour, the clear failure and exit code, and the `.help.md` are unenforced.
 
 ```typescript
 #!/usr/bin/env bun
@@ -984,7 +440,7 @@ bun Generate.ts \
  * ToolName.ts - Brief description
  *
  * Usage:
- *   bun ~/.claude/skills/SkillName/Tools/ToolName.ts <command> [options]
+ *   bun skills/SkillName/Tools/ToolName.ts <command> [options]
  *
  * Commands:
  *   start     Start the thing
@@ -996,144 +452,184 @@ bun Generate.ts \
  */
 ```
 
-**Principle:** Workflows call tools; tools encapsulate complexity. This keeps workflows simple and tools reusable.
+### Configuration flags
 
----
+Flags let an intent adapt a tool to the request without code changes (a pattern inspired by indydevdan's variable-centric approach).
 
-## How It Works
+| Category | Examples | Purpose |
+|----------|----------|---------|
+| Mode flags | `--fast`, `--thorough`, `--dry-run` | Execution behavior |
+| Output flags | `--format json`, `--quiet`, `--verbose` | Output control |
+| Resource flags | `--model <name>` | Model or resource selection |
+| Post-process flags | `--thumbnail`, `--remove-bg` | Additional processing |
 
-1. **Skill Activation**: Claude Code reads skill descriptions at startup. The `USE WHEN` clause in the description determines when the skill activates based on user intent.
+```bash
+# Minimal invocation (sensible defaults)
+bun Generate.ts --prompt "..." --output /tmp/image.png
 
-2. **Workflow Routing**: Once the skill is active, the `## Workflow Routing` section determines which workflow file to execute.
-
-3. **Workflow Execution**: Follow the workflow file instructions step-by-step.
-
----
-
-## Skills Are Scripts to Follow
-
-When a skill is invoked, follow the SKILL.md instructions step-by-step rather than analyzing the skill structure.
-
-**The pattern:**
-1. Execute voice notification (if present)
-2. Use the routing table to find the right workflow
-3. Follow the workflow instructions in order
-4. Your behavior should match the Examples section
-
-Think of SKILL.md as a script - it already encodes "how to do X" so you can follow it directly.
-
----
-
-## Output Requirements (Recommended Section)
-
-**For skills with variable output quality, add explicit output specifications:**
-
-```markdown
-## Output Requirements
-
-- **Format:** [markdown list | JSON | prose | code | table]
-- **Length:** [under X words | exactly N items | concise | comprehensive]
-- **Tone:** [professional | casual | technical | friendly]
-- **Must Include:** [specific required elements]
-- **Must Avoid:** [corporate fluff | hedging language | filler]
+# Full configuration
+bun Generate.ts \
+  --model nano-banana-pro \
+  --prompt "..." \
+  --size 2K \
+  --aspect-ratio 16:9 \
+  --thumbnail \
+  --remove-bg \
+  --output /tmp/header.png
 ```
 
-**Why This Matters:**
-Explicit output specs reduce variability and increase actionability.
+A tool works without flags for the common case, and flags override the defaults. Boolean flags enable with `--flag`. A `--no-<x>` flag exists only to opt out of something the tool does by default (`Scaffold.ts --no-route` prints the routing row instead of inserting it; `SkillHygieneGate.ts --no-deny-list` declares an install with no deny-list instead of failing). Value flags take `--flag <value>`, and flags combine logically.
 
-**When to Add Output Requirements:**
-- Content generation skills (blogging, xpost, newsletter)
-- Analysis skills (research, upgrade, OSINT)
-- Code generation skills (development, createcli)
-- Any skill where output format matters
+### The flag space is a tool contract
 
----
+An intent that calls a tool carries the tool's flag space under `## Tool contract`, so the model maps the request onto flags instead of repeating one hardcoded invocation. The form is a `### Intent-to-Flag Mapping` sub-heading holding a User says → Flag → Effect table:
 
-## Complete Checklist
+```markdown
+## Tool contract
 
-Before a skill is complete:
+`bun Tools/Generate.ts --prompt "<text>" --output <path> [flags]`
 
-### Naming (TitleCase)
-- [ ] Skill directory uses TitleCase (e.g., `Blogging`, `Daemon`)
-- [ ] YAML `name:` uses TitleCase
-- [ ] All workflow files use TitleCase (e.g., `Create.md`, `UpdateInfo.md`)
-- [ ] All reference docs use TitleCase (e.g., `ProsodyGuide.md`)
-- [ ] All tool files use TitleCase (e.g., `ManageServer.ts`)
-- [ ] Routing table workflow names match file names exactly
+### Intent-to-Flag Mapping
 
-### YAML Frontmatter
-- [ ] Single-line `description` with embedded `USE WHEN` clause
-- [ ] No separate `triggers:` or `workflows:` arrays
-- [ ] Description uses intent-based language
-- [ ] Description under 1024 characters
+| User says | Flag | Effect |
+|-----------|------|--------|
+| "fast", "quick" | `--model <fast-model>` | Speed over quality |
+| "best", "highest quality" | `--model <best-model>` | Quality over speed |
+| (default) | `--model <default-model>` | Balanced |
+| "transparent background" | `--remove-bg` | Removes the background after generation |
+```
 
-### Markdown Body
-- [ ] `## Workflow Routing` section with table format
-- [ ] All workflow files have routing entries
-- [ ] **`## Examples` section with 2-3 concrete usage patterns** (REQUIRED)
-
-### Structure
-- [ ] `tools/` directory exists (even if empty)
-- [ ] No `backups/` directory inside skill
-- [ ] Workflows contain ONLY work execution procedures
-- [ ] Reference docs live at skill root (not in Workflows/)
-- [ ] Each CLI tool has a corresponding `.help.md` documentation file
-- [ ] (Recommended) Output Requirements section for variable-output skills
+`LIFEOS/DOCUMENTATION/Tools/CliFirstArchitecture.md` has the full CLI-first rationale and flag guidance.
 
 ---
 
-## Summary
+## Canonicalization
 
-| Component | Purpose | Naming |
-|-----------|---------|--------|
-| **Skill directory** | Contains all skill files | TitleCase (e.g., `Blogging`) |
-| **SKILL.md** | Main skill file | Always uppercase |
-| **Workflow files** | Execution procedures | TitleCase (e.g., `Create.md`) |
-| **Reference docs** | Information to read | TitleCase (e.g., `ApiReference.md`) |
-| **Tool files** | CLI automation | TitleCase (e.g., `ManageServer.ts`) |
+A canonical skill meets this whole document:
 
-This system ensures:
-1. Skills invoke properly based on intent (USE WHEN in description)
-2. Specific functionality executes accurately (Workflow Routing in body)
-3. All skills have consistent, predictable structure
-4. **All naming follows TitleCase convention**
+- TitleCase or `_ALLCAPS` naming on the directory, the `name:`, and every sub-file, with routing-table names matching file names exactly.
+- A single-line description with `USE WHEN`, no `triggers:`, `workflows:` or `intents:` arrays, and an `evals:` disposition (judged by ValidateSkill; IntentLint checks none of these, § Frontmatter).
+- A flat layout: no `backups/` directory, no `.md` nested inside `Intents/`, and every other directory that holds `.md` files routed as `Dir/` (a directory beyond `Intents/`, `Tools/` and `References/` with no `.md`, such as `Data/` or `Fixtures/` of JSON, needs no route).
+- A SKILL.md that opens with a skill-level `## Ideal State` followed by `## Intent Routing`, and every intent written to § Intent anatomy. A skill without `Intents/` carries `## Anti-criteria` between the two.
+- No voice block anywhere, and customizations declared under `## Data & Config`.
+- `SkillHygieneGate.ts` clean.
+
+A skill needs canonicalizing when any of these is missing: an old YAML format, non-TitleCase names, no `USE WHEN`, no `## Examples`, a `backups/` directory, an intent that opens on numbered steps instead of an Ideal State, or a leftover voice block.
+
+Two tools prove the result. `bun LIFEOS/TOOLS/IntentLint.ts <skill>` checks every intent against § Intent anatomy and must report zero errors, with every remaining warning listed alongside the reason it is kept; only a newly scaffolded skill must also be clean under `--strict`, which fails on warnings too. `bun LIFEOS/TOOLS/IntentPreserve.ts --base <rev> <skill>` compares the skill against its state at `<rev>` and fails when any tool contract, path, flag, or code line present before is gone after. Canonicalizing changes the form of a skill, never what it does.
+
+`Skill("CreateSkill")` Canonicalize runs both. Structural skill work (creating a skill, adding, removing or renaming intents, tools or references, editing frontmatter, validating, canonicalizing) goes through CreateSkill rather than hand edits. The exceptions are the NOT-triggers in `skills/CLAUDE.md`: a typo fix in one intent, a new Gotchas entry in the SKILL.md body, and a new entry in an existing `References/` file stay direct edits.
 
 ---
+
+## Canonical example
+
+A complete small public skill written to this standard: no identity, no home paths, nothing personal. It has one SKILL.md and one intent.
+
+Its SKILL.md:
+
+````markdown
+---
+name: UnitConverter
+version: 1.0.0
+description: Converts quantities between units of temperature, mass, length and volume using exact factors. USE WHEN convert units, Celsius to Fahrenheit, kilograms to pounds, kilometers to miles, metric to imperial, how many X in a Y. NOT FOR currency conversion.
+metadata:
+  short-description: "Converts quantities between temperature, mass, length and volume units with exact factors."
+evals:
+  deterministic:
+    - command: "bun test ./skills/UnitConverter"   # worked example; this skill is not shipped
+      falsifier: "a conversion in the fixture table comes back wrong, or an unknown unit exits 0"
+---
+
+# UnitConverter
+
+Converts a quantity from one unit to another with `Tools/Convert.ts`, which holds the factor table, so every answer uses exact factors instead of recalled ones. Temperature conversions are offsets as well as ratios; every other dimension is a pure ratio.
+
+## Ideal State
+
+- Every conversion the user asked for comes back with a value the tool computed, in the unit the user asked for.
+- A request the tool cannot answer, such as an unknown unit or incompatible dimensions, is refused with the reason instead of answered with a guess.
+
+## Intent Routing
+
+| Intent | Trigger | File |
+|--------|---------|------|
+| **Convert** | "convert 30 C to F", "how many pounds is 70 kg" | `Intents/Convert.md` |
+
+## Gotchas
+
+_No gotchas documented yet. Add each failure here, dated, once it has been reproduced._
 
 ## Examples
 
-### Building one generic skill, end to end
-
-Someone wants a skill that converts between units — Celsius/Fahrenheit, kg/lb, km/mi. Nothing about it is personal, so it is **public**, and that one fact settles everything downstream:
-
-- **Name:** `UnitConverter` — TitleCase, no leading underscore. The missing underscore is exactly what tells release tooling to ship it in the public repo.
-- **Description:** a single line ending in a `USE WHEN` clause of intent triggers ("convert units, Celsius to Fahrenheit, kg to pounds, metric to imperial") — under the character ceiling, so it is never silently dropped from the session listing.
-- **Body:** a `## Workflow Routing` table pointing at a `Convert` workflow under `Workflows/`, plus a `## Examples` section with two or three real request-to-result patterns.
-- **Structure:** `SKILL.md` at the root, a `Tools/` directory (present even though a converter is simple), and any context files like `ConversionTables.md` in the root — never in a `Docs/` or `Resources/` subdirectory.
-
-Because it holds only generic logic, it drops into any stranger's `~/.claude/skills/` and just works — which is the whole test for whether a skill is allowed to be public.
-
-### The fork: what forces a private name
-
-Same converter, one change: it now calls a specific paid currency-rate API tied to one account's key. That single fact trips a decision-test trigger ("a specific paid API account"), and the skill must be renamed `_UNITCONVERTER` — `_ALLCAPS`, private, excluded from release. The rule runs one way only: promoting `_Foo` to `Foo` later is easy; discovering a shipped public skill leaked an account key is permanent. When unsure, build it private first.
-
-```mermaid
-flowchart TD
-    A[New skill] --> B{Touches a real person, customer, paid account, private infra, or incident?}
-    B -->|yes| C[_ALLCAPS name]
-    B -->|no| D[TitleCase name]
-    C --> E[Release tooling skips it: stays local]
-    D --> F[Mirrored into the public repo as-is]
-    F --> G{Body holds only generic, templated content?}
-    G -->|no| H[Move private bits to USER customizations, or rename _ALLCAPS]
-    G -->|yes| I[Ships public]
+**Example 1: one quantity**
+```
+User: "What's 21 °C in Fahrenheit?"
+→ Convert intent
+→ "21 °C = 69.8 °F"
 ```
 
-The diagram is the naming convention as a gate: the leading underscore is the public-release boundary, and every "does this touch something identity-bound?" answer routes the skill to exactly one side of it.
+**Example 2: several quantities**
+```
+User: "Convert these to metric: 5 mi, 12 oz, 6 ft"
+→ Convert intent
+→ A three-row table of input, result and factor used
+```
+````
+
+Its one intent, Convert.md:
+
+````markdown
+# Convert
+
+Converts one or more quantities between units and reports each result.
+
+## Ideal State
+
+- Every result comes from `Tools/Convert.ts` output, never from mental arithmetic, and matches it to the precision shown.
+- Each result names the input value and unit and the output value and unit, rounded to four significant figures unless the user asked for more.
+- An ambiguous unit ("ton", "gallon", "ounce") is resolved in the answer itself, by the system the user named or by stating the assumption.
+
+## Anti-criteria
+
+- A number is returned for a conversion between incompatible dimensions, such as kilograms to meters.
+- A result is given for a unit the tool does not know.
+
+## Tool contract
+
+```bash
+bun skills/UnitConverter/Tools/Convert.ts --value <n> --from <unit> --to <unit>
+bun skills/UnitConverter/Tools/Convert.ts --value <n> --from <unit> --to <unit> --format json
+bun skills/UnitConverter/Tools/Convert.ts --list-units
+```
+
+Exit 0 prints the result. Exit 2 means an unknown unit; exit 3 means incompatible dimensions.
+
+### Intent-to-Flag Mapping
+
+| User says | Flag | Effect |
+|-----------|------|--------|
+| "exact", "full precision" | `--precision 10` | Ten significant figures |
+| (default) | `--precision 4` | Four significant figures |
+| several quantities at once | `--format json` | Machine-readable result, one call per quantity |
+
+## Output format
+
+One line per quantity: `<value> <unit> = <value> <unit>`. Three or more quantities render as a table with input, result and factor columns.
+````
+
+The intent never says how to approach a conversion. It says what a correct answer looks like, what must never come back, and the one thing the model cannot know on its own, the tool's interface. The order of work is left to the model.
 
 ---
 
 ## Related Systems
 
-- **Master Architecture:** `~/.claude/LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md` — authoritative system-of-systems reference
-- **Knowledge Archive:** `~/.claude/LIFEOS/MEMORY/KNOWLEDGE/` — entity-based archive with 4 types (People, Companies, Ideas, Research), managed by Algorithm LEARN phase (direct writes), `LIFEOS/TOOLS/KnowledgeHarvester.ts` (validation/maintenance), and the `/knowledge` skill. Topic is a tag, not a domain. Skills that perform research or analysis can query the archive for accumulated knowledge.
+- `LIFEOS/RULES/Philosophy.md` § Ideal-State Prompting: why intents state outcomes and which kinds of how survive.
+- `skills/Prompting/Standards.md`: the same standard for every prompt, with the four keep-classes.
+- `skills/CreateSkill/SKILL.md`: scaffolds, validates, canonicalizes, and tests skills to this document.
+- `skills/Assay`: Proof and eval suites, which grade outputs against intent criteria.
+- `LIFEOS/DOCUMENTATION/Notifications/NotificationSystem.md`: voice, including the hook that announces intents.
+- `LIFEOS/DOCUMENTATION/Tools/CliFirstArchitecture.md`: CLI-first design for skill tools.
+- `LIFEOS/DOCUMENTATION/Skills/ProgressiveContext.md`: section-level context loading.
+- `LIFEOS/DOCUMENTATION/Memory/MemorySystem.md`: the knowledge archive (`LIFEOS/MEMORY/KNOWLEDGE/`), which research and analysis skills can query through the Cortex skill.
+- `LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md`: the system-of-systems reference.

@@ -1,0 +1,164 @@
+onboarding = false
+
+# The LifeOS terminal's herdr config. install.sh copies it to ~/.config/herdr/config.toml when you have none,
+# and never overwrites one you already have. It is a starting point; edit your copy freely.
+#
+# Key mirror: the same chords Helm (kitty) uses, driving herdr instead. kitty passes these
+# through only while the window carries the user var in_herdr=1, which the `herdr` zsh
+# wrapper sets for the life of the client (Terminal/zsh/lifeos.zsh, Helm.md § Herdr inside Helm).
+# Change a chord here and change its passthrough map in kitty.conf too.
+[keys]
+prefix = "ctrl+b"
+
+# Jump picker: cmd+k opens herdr's goto (any workspace, tab or agent). It takes cmd+k from
+# the pane mirror, so focus-up inside herdr is prefix+k (herdr's default).
+goto = ["cmd+k", "prefix+g"]
+
+# Panes (Helm: cmd+h/j/l focus, ctrl+cmd+h/j/k/l resize)
+focus_pane_left = "cmd+h"
+focus_pane_down = "cmd+j"
+focus_pane_up = "prefix+k"
+focus_pane_right = "cmd+l"
+resize_pane_left = "ctrl+cmd+h"
+resize_pane_down = "ctrl+cmd+j"
+resize_pane_up = "ctrl+cmd+k"
+resize_pane_right = "ctrl+cmd+l"
+
+# Splits (Helm: cmd+shift+l side by side, cmd+shift+j stacked)
+split_vertical = "cmd+shift+l"
+split_horizontal = "cmd+shift+j"
+
+# Tabs (Helm: cmd+n / cmd+w, cmd+shift+[ / cmd+shift+] switch, ctrl+k also previous,
+# ctrl+shift+h/l reorder)
+new_tab = "cmd+n"
+close_tab = "cmd+w"
+previous_tab = ["ctrl+k", "cmd+shift+["]
+next_tab = "cmd+shift+]"
+move_tab_previous = "ctrl+shift+h"
+move_tab_next = "ctrl+shift+l"
+
+# Sessions = herdr workspaces (the sidebar). Same shape as the tab row, one level up:
+# cmd+t new, cmd+shift+w close, ctrl+h / ctrl+l previous / next. Rename stays prefix+shift+w.
+new_workspace = "cmd+t"
+close_workspace = "cmd+shift+w"
+next_workspace = "ctrl+l"
+previous_workspace = "ctrl+h"
+
+# herdr's own sidebar stays on its default: prefix+b toggles it.
+toggle_sidebar = "prefix+b"
+
+[ui]
+# The terminal's cmd+n opens a tab immediately; no name prompt (rename with prefix+shift+t).
+prompt_new_tab_name = false
+status_indicators = "symbols"
+# Agents list in the same order as the spaces above them, so a row needs no session name to
+# be matched to its space. ("priority" floats blocked agents up but breaks that pairing.)
+agent_panel_sort = "spaces"
+# Session labels are long (`{glyph} {SESSION LABEL}`); let the sidebar grow to fit them.
+# hooks/lib/fit-name.ts reads sidebar_width to break session names, so keep it the same on
+# every machine that runs herdr clients and LifeOS hooks.
+sidebar_width = 34
+sidebar_max_width = 44
+accent = "#3B82F6"
+
+# Sidebar rows. The tab painter (hooks/lib/herdr-tabs.ts) puts `{glyph} {SESSION LABEL}` on
+# the workspace and the description on the tab, so line 1 is the session and line 2 is
+# what it is doing. One blank row between agent entries, none between spaces.
+# Spaces = the WORK (one row per session). Agents = the WORKER (one row per agent).
+# `$name` tokens are reported by LifeOS hooks through `herdr workspace|pane report-metadata`;
+# an unreported token, and a row with nothing in it, simply disappears.
+[ui.sidebar.agents]
+row_gap = 1
+rows = [
+  # Herdr draws agent rows in the theme's muted colour by default, which is unreadable on
+  # The terminal's translucent background. Every token gets an explicit fg: tokyo-night text for the
+  # lines you read, its comment blue for the small meta. No `dim`, which darkens it further.
+  # An agent row says who, what it is doing this second, and how full its context is.
+  # `$session` is reported only for a second session sharing a workspace.
+  ["state_icon", { token = "agent", bold = true, fg = "#c0caf5" }, { token = "$model", fg = "#828bb8" }],
+  # Amber, straight under the name: a finished agent that left questions for you.
+  # Cleared by the next prompt.
+  [{ token = "$open", fg = "#e0af68", bold = true }],
+  [{ token = "$session", fg = "#c0caf5" }],
+  [{ token = "$doing", fg = "#c0caf5" }],
+  # `$workers` names background codex legs (`→ Sol ×2`), which Claude Code's agent display
+  # never lists because they are shell processes.
+  [{ token = "$workers", fg = "#9ece6a" }],
+  # `state_text` shows the label LifeOS hooks report for each state ("working since 21:19",
+  # "needs you · Push to origin"). Blocked is amber and bold: it is the row that needs you.
+  # `$ctx` is reported only past 60%, so a healthy context takes no room.
+  [{ token = "state_text", fg = "#828bb8", rules = [{ starts_with = "needs you", fg = "#e0af68", bold = true }, { equals = "blocked", fg = "#e0af68", bold = true }] }, { token = "$ctx", fg = "#828bb8", rules = [{ contains = "nearly full", fg = "#e0af68", bold = true }, { contains = "filling", fg = "#7dcfff" }] }],
+]
+
+# Codex panes run no LifeOS hooks, so none of the `$` tokens above reach them.
+# Their own terminal title says what they are working on.
+[ui.sidebar.agents.rows_by_agent]
+codex = [
+  ["state_icon", { token = "agent", bold = true, fg = "#c0caf5" }],
+  [{ token = "terminal_title_stripped", fg = "#c0caf5" }],
+  [{ token = "state_text", fg = "#828bb8", rules = [{ equals = "blocked", fg = "#e0af68", bold = true }] }],
+]
+
+[ui.sidebar.spaces]
+# Herdr's gap is whole rows, so the choice is 0 or 1. Zero reads cramped under two-line titles.
+row_gap = 1
+rows = [
+  # Line one: the kind-of-work symbol and the session name, as ONE token (2026-10-16). Herdr puts
+  # ` · ` between any two text tokens on a row and has no setting to drop it, so the symbol
+  # (hooks/lib/work-kind.ts, a Nerd Font glyph) leads the workspace label itself and shares
+  # its colour. Herdr's state_icon already says working, blocked or done.
+  ["state_icon",
+    { token = "workspace", fg = "#c0caf5" },
+  ],
+  # Line two of the session name. A herdr row never wraps, so the tab painter puts the first
+  # line on the workspace and the rest on `$name2`. A short name reports no line two.
+  [{ token = "$name2", fg = "#c0caf5" }],
+  # Work state: every space says whether it is working, waiting on you, or done. Exactly one
+  # token is ever set (hooks/lib/herdr-tabs.ts stateTokens): `● Working: 05:04 (12m)` (elapsed moves each minute),
+  # `◐ Still running 05:04` (background work, nothing asked), `✓ Done 05:04`,
+  # `✗ Stopped 05:04`, or a wait (`⏳ needs you 6m`, `⏳ question now`, `⏳ 2 open 12m`,
+  # `⏳ your call 3m`) whose colour warms with the wait: amber, then orange, red after 15m.
+  [
+    { token = "$st_working", fg = "#7aa2f7", bold = true },
+    { token = "$st_bg", fg = "#7dcfff" },
+    { token = "$st_done", fg = "#9ece6a", bold = true },
+    { token = "$st_failed", fg = "#f7768e", bold = true },
+    { token = "$wait_new", fg = "#e0af68", bold = true },
+    { token = "$wait", fg = "#ff9e64", bold = true },
+    { token = "$wait_late", fg = "#f7768e", bold = true },
+  ],
+  # `$due` is the deadline a time suffix set, `$landed` the last commit the session made.
+  [
+    { token = "$due", fg = "#7dcfff" },
+    { token = "$landed", fg = "#9ece6a" },
+  ],
+  [
+    # ISA progress: `✓ ▰▰▰▰▰▰▰▰ 11/11` once finished, `▰▰▰▰▰▰▰▱ 133/144` while climbing.
+    { token = "$isa", fg = "#34d399", rules = [{ starts_with = "✓", fg = "#34d399", bold = true }] },
+    # The codebase this session is in, cleared for a session sitting in LifeOS or at home.
+    { token = "$project", fg = "#828bb8" },
+  ],
+]
+
+[ui.sound]
+enabled = false
+
+[ui.toast]
+delivery = "herdr"
+
+[theme]
+name = "tokyo-night"
+auto_switch = false
+
+# State colours follow the Helm ascent ramp (LIFEOS/TOOLS/ascent.ts) so a colour means
+# the same thing in the kitty tab bar, Pulse and here. Blocked is amber, as in Helm.
+[theme.custom]
+accent = "#3B82F6"
+# Sidebar highlights. tokyo-night's #283457 vanishes on the terminal's translucent background.
+# active_row_bg is the active space and focused agent; selection_bg is the Navigate-mode
+# cursor, kept a different hue so the two never blur.
+active_row_bg = "#34497e"
+selection_bg = "#4f3d7e"
+red = "#e0af68"      # blocked, needs input
+yellow = "#7dcfff"   # working (ascending)
+teal = "#34d399"     # done, not seen yet (cairn)

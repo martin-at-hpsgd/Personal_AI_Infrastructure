@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.6
  * MemoryInsights — `memory insights` CLI for autonomic memory delta view.
  *
  * Visual-freshness ISA, F4 (ISC-30 through ISC-38).
@@ -21,11 +22,16 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve as pathResolve } from "node:path";
-import { homedir } from "node:os";
 import { getDAName } from "../../hooks/lib/identity"
+import { getClaudeDir } from "./Paths"; // public issue #1665 @rogdex24, #1584 @ramazanpolat — aliased resolve sites missed by the 09-03 sweep
 
-const ROOT = pathResolve(homedir(), ".claude");
+const ROOT = getClaudeDir();
 const OBS = pathResolve(ROOT, "LIFEOS/MEMORY/OBSERVABILITY");
+const CORTEX_EVENTS = pathResolve(ROOT, "LIFEOS/MEMORY/LEDGER/cortex-events.jsonl");
+// The ledger interleaves non-write kinds (checkpoint, memory/restore, …) with the
+// write rows; only these two carry the counts growth is computed from. A row with
+// no kind is a legacy memory-writes.jsonl row.
+const WRITE_KINDS = new Set(["memory/set", "memory/rejected"]);
 const PRINCIPAL_MEM = pathResolve(ROOT, "LIFEOS/USER/PRINCIPAL/PRINCIPAL_MEMORY.md");
 const DA_MEM = pathResolve(ROOT, "LIFEOS/USER/DIGITAL_ASSISTANT/DA_MEMORY.md");
 
@@ -108,7 +114,8 @@ function main(): void {
   const now = Date.now();
   const sinceMs = now - days * 86400 * 1000;
 
-  const memoryWrites = readJsonlSince<any>(pathResolve(OBS, "memory-writes.jsonl"), sinceMs);
+  const memoryWrites = readJsonlSince<any>(CORTEX_EVENTS, sinceMs)
+    .filter((w) => w.kind === undefined || WRITE_KINDS.has(w.kind));
   const reviewerRuns = readJsonlSince<any>(pathResolve(OBS, "reviewer-runs.jsonl"), sinceMs);
   const proposals = readJsonlSince<any>(pathResolve(OBS, "pending-proposals.jsonl"), sinceMs);
   const healthRows = readJsonlSince<any>(pathResolve(OBS, "memory-health.jsonl"), sinceMs);

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.9
  * InstallConveyorRunner.ts — Materialize com.lifeos.conveyor-runner.plist.template and bootstrap it.
  *
  *   bun ~/.claude/LIFEOS/TOOLS/InstallConveyorRunner.ts             # install
@@ -18,11 +19,13 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "
 import { join } from "path";
 import * as systemd from "./lib/SystemdUser";
 import { homedir } from "node:os";
+import { getClaudeDir, lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { installVerb } from "./lib/InstallVerb";
 
 declare const Bun: { spawn: (cmd: string[], opts?: any) => any };
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const TEMPLATE_PATH = join(HOME, ".claude", "LIFEOS", "TOOLS", "com.lifeos.conveyor-runner.plist.template");
+const TEMPLATE_PATH = lifeosPath("TOOLS", "com.lifeos.conveyor-runner.plist.template");
 const LAUNCH_AGENTS_DIR = join(HOME, "Library", "LaunchAgents");
 const TARGET_PLIST = join(LAUNCH_AGENTS_DIR, "com.lifeos.conveyor-runner.plist");
 const LABEL = "com.lifeos.conveyor-runner";
@@ -122,9 +125,9 @@ async function linuxSpec(): Promise<systemd.UnitSpec> {
   return {
     label: LABEL,
     description: "LifeOS Conveyor stage engine",
-    exec: [bunPath, join(HOME, ".claude", "LIFEOS", "TOOLS", "Conveyor", "Runner.ts")],
-    logPath: join(HOME, ".claude", "LIFEOS", "MEMORY", "STATE", "com.lifeos.conveyor-runner.log"),
-    workingDirectory: join(HOME, ".claude"),
+    exec: [bunPath, lifeosPath("TOOLS", "Conveyor", "Runner.ts")],
+    logPath: lifeosPath("MEMORY", "STATE", "com.lifeos.conveyor-runner.log"),
+    workingDirectory: getClaudeDir(),
     schedule: { kind: "daemon", restartSec: 30 },
   };
 }
@@ -138,7 +141,7 @@ async function linuxMain(arg: string | undefined): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const arg = process.argv[2];
+  const arg = installVerb(process.argv, "InstallConveyorRunner");
   if (systemd.isLinux()) return linuxMain(arg);
   if (arg === "--uninstall") return uninstall();
   if (arg === "--status") return status();

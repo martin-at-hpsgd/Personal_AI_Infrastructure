@@ -1,0 +1,18 @@
+{
+  "recording": {
+    "key": { "intensity": 30, "sleep": false },
+    "fill": { "intensity": 40, "cct": 5000, "sleep": false }
+  },
+  "normal": {
+    "key": { "intensity": 70, "sleep": false },
+    "fill": { "intensity": 70, "cct": 5000, "sleep": false }
+  },
+  "full": {
+    "key": { "intensity": 100, "sleep": false },
+    "fill": { "intensity": 100, "cct": 5000, "sleep": false }
+  },
+  "off": {
+    "key": { "sleep": true },
+    "fill": { "sleep": true }
+  }
+}

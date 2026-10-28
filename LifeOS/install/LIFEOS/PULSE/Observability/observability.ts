@@ -1,3 +1,5 @@
+import { PRIVATE_SKILL_NAMES } from "../../TOOLS/CodeDataBoundary.ts";
+import { loadRecoverySummary } from "./recovery-summary.ts";
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -29,13 +31,35 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  */
 
 import { join, extname } from "path"
-import { readFileSync, readdirSync, existsSync, realpathSync, statSync, watch, openSync, readSync, closeSync, type FSWatcher } from "fs"
-import { spawnSync } from "child_process"
+import { readFileSync, readdirSync, existsSync, realpathSync, statSync, watch, openSync, readSync, closeSync, writeFileSync, renameSync, unlinkSync, chmodSync, type FSWatcher } from "fs"
+import { createHash } from "crypto"
+import { execFile, spawnSync } from "child_process"
 import { homedir } from "os"
 import YAML from "yaml"
 import { PULSE_BASE } from "../endpoint"
+import { handleCameraPreviews } from "./home-camera-previews"
 import { RUN_ACTIVITY } from "../../TOOLS/ascent"
 import { loadLifeosConfig } from "../../TOOLS/LifeosConfig"
+import { getSkillsDir } from "../../TOOLS/Paths"
+import { houseCommand, houseScript, type HouseActionBody } from "./house-skill"
+import { hasRealContent } from "../../TOOLS/GenerateTelosSummary"
+import { exciseRegions, parseRegions } from "../../TOOLS/TelosRegions"
+import { invariant, InvariantViolation } from "../../TOOLS/Invariant"
+import { TelosLockTimeout, withTelosLockAsync, type TelosLockHandle, type TelosLockOptions } from "../../TOOLS/TelosLock"
+import { workflowsConfigPath } from "../../TOOLS/WorkflowsConfig"
+import { retiredPageRedirect } from "./src/lib/observer"
+import { obfuscation, setMode, toggle } from "../../TOOLS/Obfuscate"
+import { resolveCompanyDir as resolveCompanyDirIn, latestRevenueFile } from "../lib/business-sources"
+// This install's private API routes live in PrivateRoutes.ts beside this file, which the release never ships. It is
+// loaded lazily behind an existsSync guard (a static import would crash the shipped Pulse server); an install without
+// it has no private routes, and a broken one fails loudly instead of quietly dropping its routes.
+const PRIVATE_ROUTES = join(import.meta.dir, "PrivateRoutes.ts")
+type PrivateRoutes = { handlePrivateRoute(method: string, pathname: string, req: Request): Promise<Response | null> }
+let privateRoutes: Promise<PrivateRoutes | null> | undefined
+function privateRoute(method: string, pathname: string, req: Request): Promise<Response | null> {
+  privateRoutes ??= existsSync(PRIVATE_ROUTES) ? (import(PRIVATE_ROUTES) as Promise<PrivateRoutes>) : Promise.resolve(null)
+  return privateRoutes.then((routes) => (routes ? routes.handlePrivateRoute(method, pathname, req) : null))
+}
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -126,7 +150,7 @@ export function observabilityHealth(): Record<string, unknown> {
 // ── JSONL Helper ──
 
 // BYTE-BOUNDED since 2026-07-26. The old body did readFileSync of the WHOLE
-// file and split it — against tool-activity.jsonl (93MB) that allocated ~2GB
+// file and split it — against a large tool-activity.jsonl that allocated gigabytes
 // of transient strings PER POLL of /api/events/recent, stalling the event loop
 // until /health timed out and the daemon got SIGKILLed (the Pulse crash-loop
 // found while building the root-spine ISA). The tail window is derived from
@@ -137,7 +161,7 @@ function readJsonlTail(filePath: string, maxLines = 100): any[] {
 }
 
 // Byte-bounded JSONL tail: read only the last maxBytes of a file, drop the
-// (possibly partial) first line, parse the rest. tool-activity.jsonl is ~76MB;
+// (possibly partial) first line, parse the rest. tool-activity.jsonl grows large;
 // reading it whole per request is banned (capabilities ISA C2/A1).
 function readJsonlByteTail(filePath: string, maxBytes: number): any[] {
   try {
@@ -219,6 +243,12 @@ async function serveStaticFile(pathname: string): Promise<Response | null> {
     const headers: Record<string, string> = { "Content-Type": MIME[ext] || "application/octet-stream" }
     // No caching for any Observatory assets — ensures rebuilds are picked up immediately
     headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    // No MIME sniffing, and no framing by another origin (GHSA-328j, @hjbrandt).
+    // A script CSP is deliberately absent: the static export's inline bootstrap
+    // scripts change per build, and the markdown sanitizer is the script-side wall.
+    headers["X-Content-Type-Options"] = "nosniff"
+    headers["X-Frame-Options"] = "SAMEORIGIN"
+    headers["Content-Security-Policy"] = "frame-ancestors 'self'"
     return new Response(file, { headers })
   } catch {
     return null
@@ -235,7 +265,7 @@ async function serveStaticFile(pathname: string): Promise<Response | null> {
 //
 // The work-events.jsonl log is the source of truth for HOW a run progressed:
 // every ISASync upsert that changed `progress` or `criteria` is an event with
-// a timestamp. Folding those per-slug yields the ascent — claims closed over
+// a timestamp. Folding those per-slug yields the ascent — criteria closed over
 // time — with zero dependency on declared phases. Cached by (mtime,size) so
 // the 100ms SSE poll never re-reads an unchanged file.
 interface ClimbPoint {
@@ -269,8 +299,8 @@ function foldClimbLine(map: Map<string, ClimbPoint[]>, line: string): void {
     total = parseInt(t)
   } else if (Array.isArray(ev.fields.criteria) && ev.fields.criteria.length > 0) {
     // Exclude anti-criteria: the `progress` frontmatter convention counts only
-    // real claims, and mixing denominators made the chart's totals jump and the
-    // delta fold overcount closes (caught on pixels, 2026-07-22).
+    // real criteria, and mixing denominators made the chart's totals jump and the
+    // delta fold overcount closes (caught on pixels).
     const claims = ev.fields.criteria.filter((c: any) => c.type !== "anti-criterion")
     if (claims.length > 0) {
       done = claims.filter((c: any) => c.status === "completed").length
@@ -643,7 +673,7 @@ function buildAlgorithmStatePayload(): { algorithms: any[]; active: boolean; pul
       const isActive = !isExplicitlyComplete && !isStale
       const ratings = Array.isArray(s.ratings) ? s.ratings : []
       // Tracked = an ISA backs this row. That's the real dichotomy on the board:
-      // tracked runs climb (claims close on evidence); untracked sessions are
+      // tracked runs climb (criteria close on evidence); untracked sessions are
       // liveness-only. Replaces the retired mode/currentMode machinery.
       const tracked = typeof s.isa === "string" && s.isa.length > 0
 
@@ -651,7 +681,7 @@ function buildAlgorithmStatePayload(): { algorithms: any[]; active: boolean; pul
       const placeholderTitle = (t: unknown) =>
         typeof t !== "string" || t.length === 0 || /^(working\.{0,3}|algorithm\s*run|starting\.{0,3})$/i.test(t)
       // intent was dropped from this chain (2026-07-20): it's a raw context
-      // snippet ("- 2026-07-19 account-wide sweep…" leaked as a card title).
+      // snippet (a dated note line leaked as a card title).
       // humanizeSlug is the honest fallback; intent renders in expanded view.
       const title = [s.sessionName, s.task]
         .find((t) => !placeholderTitle(t)) as string | undefined
@@ -785,6 +815,11 @@ let algorithmStreamPoller: ReturnType<typeof setInterval> | null = null
 let algorithmStreamWatcher: FSWatcher | null = null
 let lastWatchBroadcastMs = 0
 let lastBroadcastMtimeMs = 0
+// Wall clock of the last actual broadcast, from either path. The poller used to
+// debounce on `now - lastBroadcastMtimeMs`, comparing a clock against a file
+// mtime — that measures how long ago work.json was written, not how long ago we
+// broadcast (public issue #1837, @jacobo-ortiz).
+let lastBroadcastAtMs = 0
 const SSE_POLL_INTERVAL_MS = 100
 const SSE_KEEPALIVE_INTERVAL_MS = 25_000
 const SSE_DEBOUNCE_MS = 25
@@ -816,6 +851,7 @@ function broadcastAlgorithmState(): void {
   } catch {
     return
   }
+  lastBroadcastAtMs = Date.now()
   // Fan-out — independent try/catch per subscriber so one slow consumer
   // never blocks the others.
   for (const sub of [...algorithmStreamSubs]) {
@@ -843,7 +879,8 @@ function ensureAlgorithmStreamPoller(): void {
         mtimeMs = statSync(WORK_JSON_PATH).mtimeMs
       } catch { return }
       const now = Date.now()
-      if (mtimeMs !== lastBroadcastMtimeMs && now - lastBroadcastMtimeMs > SSE_DEBOUNCE_MS) {
+      // mtime change is the trigger; the wall clock is the rate limit.
+      if (mtimeMs !== lastBroadcastMtimeMs && now - lastBroadcastAtMs > SSE_DEBOUNCE_MS) {
         lastBroadcastMtimeMs = mtimeMs
         broadcastAlgorithmState()
       }
@@ -1027,7 +1064,7 @@ function handleCapabilitiesApi(searchParams: URLSearchParams): Response {
   let webFetches = 0
 
   // Recency per capability (ms epoch) — lets the strip order chips by what
-  // fired last and pulse the fresh ones (2026-07-28 dynamic-strip pass).
+  // fired last and pulse the fresh ones (dynamic-strip pass).
   const lastUsed: Record<string, number> = {}
   const touch = (key: string, ts: number) => {
     if (ts > (lastUsed[key] ?? 0)) lastUsed[key] = ts
@@ -1309,21 +1346,21 @@ function handleSecurityApi(): Response {
 
 // ── GET /api/security/attack-surface ──
 //
-// PRIVATE. Surfaces the Arbol infra-security scan: the continuously-discovered attack surface
+// PRIVATE. Surfaces the Workflows infra-security scan: the continuously-discovered attack surface
 // (curated + machine-discovered sites + worker origins) and the latest scan findings. Reads
 // the local discovery snapshot (token-free) plus the last scan report. All principal-specific
-// values (bearer token, worker subdomain) are read at RUNTIME from the local Arbol config, so
+// values (bearer token, worker subdomain) are read at RUNTIME from the local Workflows config, so
 // no hostname or token is baked into this SYSTEM file, and the static export ships the page
 // shell only — none of this real inventory/findings lands in a release.
 const ATTACK_SURFACE_SNAPSHOT = join(
-  HOME, ".config", "LIFEOS", "USER", "CUSTOMIZATIONS", "ARBOL", "Shared", "attack-surface.snapshot.json",
+  HOME, ".config", "LIFEOS", "USER", "CUSTOMIZATIONS", "WORKFLOWS", "Shared", "attack-surface.snapshot.json",
 )
-const ARBOL_CONFIG_PATH = join(HOME, ".config", "arbol", "config.yaml")
+const WORKFLOWS_CONFIG_PATH = workflowsConfigPath(HOME)
 
-function readArbolConfigValue(key: string): string {
+function readWorkflowsConfigValue(key: string): string {
   try {
-    if (!existsSync(ARBOL_CONFIG_PATH)) return ""
-    const line = readFileSync(ARBOL_CONFIG_PATH, "utf-8").split("\n").find((l) => l.startsWith(`${key}:`))
+    if (!existsSync(WORKFLOWS_CONFIG_PATH)) return ""
+    const line = readFileSync(WORKFLOWS_CONFIG_PATH, "utf-8").split("\n").find((l) => l.startsWith(`${key}:`))
     return line ? line.slice(key.length + 1).trim().replace(/^["']|["']$/g, "") : ""
   } catch {
     return ""
@@ -1350,12 +1387,12 @@ async function handleAttackSurfaceApi(): Promise<Response> {
 
   let scan: unknown = null
   try {
-    const token = readArbolConfigValue("auth_token")
-    const subdomain = readArbolConfigValue("subdomain")
+    const token = readWorkflowsConfigValue("auth_token")
+    const subdomain = readWorkflowsConfigValue("subdomain")
     if (token && subdomain) {
       // Worker NAME is an install-private fact — read from config, never
       // hardcoded here (Max audit, 7.31.5). Generic default, not this install's.
-      const securityWorker = readArbolConfigValue("security_worker") || "infra-security"
+      const securityWorker = readWorkflowsConfigValue("security_worker") || "infra-security"
       const reportUrl = `https://${securityWorker}.${subdomain}.workers.dev/report`
       const ctrl = new AbortController()
       const timer = setTimeout(() => ctrl.abort(), 6000)
@@ -1395,7 +1432,7 @@ async function handleAttackSurfaceApi(): Promise<Response> {
   // (Forge cross-vendor audit 2026-08-10, finding #3).
   if (inventory === null && scan === null) {
     return Response.json(
-      { configured: false, reason: "No attack-surface snapshot and no Arbol scanner configured on this install." },
+      { configured: false, reason: "No attack-surface snapshot and no Workflows scanner configured on this install." },
       { status: 404 },
     )
   }
@@ -1455,14 +1492,6 @@ function handleSecurityHooksDetail(): Response {
         event: "PreToolUse (Skill)",
         canBlock: true,
       },
-      "http://localhost:31337/hooks/agent-guard": {
-        description:
-          "Validates agent spawning via Pulse HTTP route. Enforces background execution policies.",
-        behavior:
-          "Receives agent type and configuration. Checks execution policies. Fail-open if Pulse is down.",
-        event: "PreToolUse (Agent)",
-        canBlock: true,
-      },
     }
 
   return Response.json(hookDescriptions)
@@ -1493,6 +1522,21 @@ function parseFrontmatter(content: string): Record<string, string | string[]> {
   return result
 }
 
+// A USER markdown file whose frontmatter says `provenance: template` is the
+// shipped scaffold, not captured data. Every reader that turns a USER file
+// into a number checks this first, so a fresh install renders "not captured"
+// instead of the sample's Energy 5/10 / Mood 8. (public issues #2049, #2050,
+// @lgertel; #1960, @hjbrandt)
+export function isTemplate(content: string): boolean {
+  const fm = parseFrontmatter(content)
+  if (fm.provenance !== "template") return false
+  // The interview edits these files in place and stamps `last_updated_by`
+  // (TelosFreshness.bumpReviewedTimestamp); a principal-reviewed file is
+  // captured even if the provenance line was never removed by hand.
+  const by = fm.last_updated_by
+  return !by || by === "bootstrap-template"
+}
+
 // Memory Graph — serves MEMORY/GRAPH/graph.json (built by LIFEOS/TOOLS/MemoryGraph.ts)
 // shaped for the KnowledgeGraph D3 component: category = community id, backlinkCount = degree.
 // Colored/clustered by DISCOVERED community (not domain), sized by degree — all silos.
@@ -1509,7 +1553,7 @@ function handleMemoryGraphApi(): Response {
     }
     // Themes = tag frequencies. Tags are curated human vocabulary, so they make
     // legible clusters; the discovered communities were statistical accidents
-    // labeled by one member's title and confused the principal (2026-07-19).
+    // labeled by one member's title, which confused readers.
     const tagCounts = new Map<string, number>()
     for (const n of g.nodes) {
       for (const t of n.tags ?? []) {
@@ -1865,6 +1909,8 @@ interface SpendInsightLine {
   display: string
   monthly_usd: number
   annual_usd: number
+  current_monthly_usd?: number
+  lapsed?: boolean
   observed_usd: number
   cadence: string
   confidence: "high"|"medium"|"low"
@@ -1880,6 +1926,8 @@ function toInsightLine(r: SpendAggregate): SpendInsightLine {
     display: r.display,
     monthly_usd: r.monthly_avg_usd,
     annual_usd: r.annualized_usd,
+    current_monthly_usd: (r as { current_monthly_usd?: number }).current_monthly_usd ?? 0,
+    lapsed: (r as { lapsed?: boolean }).lapsed ?? false,
     observed_usd: r.observed_total_usd ?? r.net_usd,
     cadence: r.cadence,
     confidence: r.confidence ?? "medium",
@@ -1973,7 +2021,39 @@ function buildSpendInsights(records: SpendAggregate[]) {
 
   const total_annualized = Math.round(real.reduce((s, r) => s + r.annualized_usd, 0))
 
-  return { top_bills, top_ai_services, top_infrastructure_services, cut_candidates, by_category, total_annualized }
+  // AI spend deep-dive. Everything here is derived from the user's data files —
+  // observed lines from the statement/QBO aggregate (tag "ai"), unattributed
+  // AI-labeled buckets by name match, and expense-ledger AI lines that never
+  // appear in observed charges (billed on accounts the aggregate can't see).
+  const aiObserved = real.filter(r => r.tags.includes("ai"))
+  const aiBuckets = real.filter(r => !r.tags.includes("ai") && /(^|\W)ai(\W|$)/i.test(r.display))
+  const observedNorms = real.map(r => r.merchant)
+  const aiLedgerBlindSpots: { vendor: string; item: string; monthly_usd: number | null }[] = []
+  try {
+    const ledgerPath = join(FINANCES_DIR, "expenses.json")
+    if (existsSync(ledgerPath)) {
+      const led = JSON.parse(readFileSync(ledgerPath, "utf-8"))
+      for (const l of [...(led.subscriptions ?? []), ...(led.oneoffs ?? [])]) {
+        if (!/ai|llm/i.test(String(l.category ?? ""))) continue
+        if (l.status !== "active" && l.status !== "needs-amount") continue
+        const n = String(l.vendor ?? "").toLowerCase().trim()
+        if (!n) continue
+        if (observedNorms.some(m => m.includes(n) || n.includes(m))) continue
+        aiLedgerBlindSpots.push({ vendor: l.vendor, item: l.item ?? "", monthly_usd: l.amount ?? null })
+      }
+    }
+  } catch { /* ledger unreadable → no blind-spot rows */ }
+  const ai_summary = {
+    total_annualized: Math.round(
+      aiObserved.reduce((s, r) => s + r.annualized_usd, 0) +
+      aiBuckets.reduce((s, r) => s + r.annualized_usd, 0),
+    ),
+    observed: aiObserved.sort((a, b) => b.annualized_usd - a.annualized_usd).map(toInsightLine),
+    unattributed_buckets: aiBuckets.sort((a, b) => b.annualized_usd - a.annualized_usd).map(toInsightLine),
+    ledger_blind_spots: aiLedgerBlindSpots,
+  }
+
+  return { top_bills, top_ai_services, top_infrastructure_services, cut_candidates, by_category, total_annualized, ai_summary }
 }
 
 function cutReason(r: SpendAggregate, all: SpendAggregate[]): string {
@@ -1993,6 +2073,80 @@ function cutReason(r: SpendAggregate, all: SpendAggregate[]): string {
     }
   }
   return "Review for cancellation"
+}
+
+// Newest QBO monthly P&L export (FINANCES/QBO/*ProfitAndLoss*.csv, produced by
+// the books-refresh workflow). Parses the Income section into streams and the
+// Total Income / Total Expenses / Net Income rows into a real monthly trend —
+// replacing the flat-baseline placeholder whenever the books data exists.
+interface QboPnl {
+  asOf: string | null
+  months: string[]
+  streams: { label: string; annual: number }[]
+  trend: { month: string; income: number; outbound: number; net: number }[]
+  totalIncome: number
+}
+
+function readQboPnlMonthly(): QboPnl | null {
+  try {
+    const dir = join(FINANCES_DIR, "QBO")
+    if (!existsSync(dir)) return null
+    const files = readdirSync(dir).filter(f => /ProfitAndLoss.*\.csv$/i.test(f)).sort()
+    if (files.length === 0) return null
+    const file = files[files.length - 1]
+    const asOf = file.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null
+    const text = readFileSync(join(dir, file), "utf-8")
+    const rows = text.split("\n").map(l => {
+      const c: string[] = []; let cur = "", q = false
+      for (const ch of l) {
+        if (ch === '"') q = !q
+        else if (ch === "," && !q) { c.push(cur); cur = "" }
+        else cur += ch
+      }
+      c.push(cur); return c
+    })
+    const monthOf = (h: string): string | null => {
+      const m = h.match(/([A-Z][a-z]{2})[a-z]* (?:[\d-]+ )?(\d{4})/)
+      if (!m) return null
+      const idx = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(m[1])
+      return idx < 0 ? null : `${m[2]}-${String(idx + 1).padStart(2, "0")}`
+    }
+    const headerIdx = rows.findIndex(r => r.length > 2 && r[0].trim() === "" && /total/i.test(r[r.length - 1] ?? ""))
+    if (headerIdx < 0) return null
+    const header = rows[headerIdx]
+    const months = header.slice(1, -1).map(h => monthOf(h.trim())).filter((m): m is string => m !== null)
+    const num = (s: string | undefined): number => {
+      const n = Number(String(s ?? "").replace(/[$,"]/g, "").trim())
+      return Number.isFinite(n) ? n : 0
+    }
+    let section = ""
+    const streams: { label: string; annual: number }[] = []
+    let incomeRow: number[] | null = null, expenseRow: number[] | null = null, netRow: number[] | null = null
+    for (const r of rows.slice(headerIdx + 1)) {
+      const label = (r[0] ?? "").trim()
+      if (!label) continue
+      if (/^income$/i.test(label)) { section = "income"; continue }
+      if (/^expenses$/i.test(label)) { section = "expenses"; continue }
+      const monthVals = () => r.slice(1, 1 + months.length).map(num)
+      if (/^total (for )?income$/i.test(label)) { incomeRow = monthVals(); section = ""; continue }
+      if (/^total (for )?expenses$/i.test(label)) { expenseRow = monthVals(); section = ""; continue }
+      if (/^net income$/i.test(label)) { netRow = monthVals(); continue }
+      if (section === "income" && !/^total/i.test(label)) {
+        const annual = num(r[r.length - 1])
+        if (annual !== 0) streams.push({ label: label.replace(/^\d+\s+/, ""), annual })
+      }
+    }
+    if (!incomeRow) return null
+    const trend = months.map((month, i) => ({
+      month,
+      income: Math.round(incomeRow?.[i] ?? 0),
+      outbound: Math.round(expenseRow?.[i] ?? 0),
+      net: Math.round(netRow?.[i] ?? (incomeRow?.[i] ?? 0) - (expenseRow?.[i] ?? 0)),
+    }))
+    return { asOf, months, streams: streams.sort((a, b) => b.annual - a.annual), trend, totalIncome: Math.round(incomeRow.reduce((s, v) => s + v, 0)) }
+  } catch {
+    return null
+  }
 }
 
 function readVendorCostsJsonl(): Map<string, CollectorEntry> {
@@ -2043,7 +2197,7 @@ function parseEffectiveTaxRate(content: string): { rate: number; source: "parsed
   return { rate: 0.25, source: "estimated" }
 }
 
-function parseBoldFields(content: string): Record<string, string> {
+export function parseBoldFields(content: string): Record<string, string> {
   const fields: Record<string, string> = {}
   for (const line of content.split("\n")) {
     // Accept both `**Field:** value` and bullet-list `- Field: value` shapes —
@@ -2267,15 +2421,28 @@ function parseCurrencyCell(cell: string): number {
   return plain ? parseFloat(plain[0]) : 0
 }
 
-function parseGoals(content: string): { id: string, text: string }[] {
+export function parseGoals(content: string): { id: string, text: string, progress?: number }[] {
+  // Explicit-ID goals come in two shapes: bullet form (- **G0**: …) and
+  // heading form (### G0: …) — the unified TELOS.md writes headings.
+  // (public PR #1929, @hjbrandt)
   const withIds = content.split("\n")
-    .filter(l => /^[-*]\s*\*{0,2}G\d+\*{0,2}:/.test(l))
+    .filter(l => /^(?:[-*]\s*|#{2,4}\s+)\*{0,2}G\d+\*{0,2}:/.test(l))
     .map(l => {
       const m = l.match(/\*{0,2}(G\d+)\*{0,2}:\s*(.+)/)
       return m ? { id: m[1], text: m[2].trim() } : null
     })
-    .filter(Boolean) as { id: string, text: string }[]
-  if (withIds.length > 0) return withIds
+    .filter(Boolean) as { id: string, text: string, progress?: number }[]
+  if (withIds.length > 0) {
+    // Hand-set progress: a `- Progress: N%` bullet inside the goal's H3 block —
+    // the contract the /life goals card hint promises. Percent only.
+    const progressById = new Map<string, number>()
+    for (const block of content.split(/^#{2,4} /m).slice(1)) {
+      const head = block.match(/^\*{0,2}(G\d+)\*{0,2}:/)
+      const prog = block.match(/^[-*]\s*\*{0,2}Progress\*{0,2}:\s*(\d{1,3})\s*%/im)
+      if (head && prog) progressById.set(head[1], Math.min(100, parseInt(prog[1], 10)))
+    }
+    return withIds.map(g => progressById.has(g.id) ? { ...g, progress: progressById.get(g.id) } : g)
+  }
   // ID-less prose fallback (unified TELOS, 2026-06-09 contract: explicit IDs
   // win, prose paragraphs get positional IDs — same rule as
   // GenerateTelosSummary.paragraphItems). Without this, /api/life/home renders
@@ -2288,7 +2455,7 @@ function parseGoals(content: string): { id: string, text: string }[] {
     .map((p, i) => ({ id: `G${i}`, text: p.replace(/\s*\n\s*/g, " ").replace(/^-\s+/, "").trim() }))
 }
 
-function parseSections(content: string): { heading: string, body: string }[] {
+export function parseSections(content: string): { heading: string, body: string }[] {
   // HTML comments (freshness markers like <!-- updated: ... -->) and horizontal
   // rules are document plumbing, not content — without this strip they surface
   // as literal "sections" on /life and /telos (the "unknown/empty" 2026-08-13 bug).
@@ -2305,6 +2472,24 @@ function parseSections(content: string): { heading: string, body: string }[] {
     if (body) sections.push({ heading, body })
   }
   if (sections.length > 0) return sections
+
+  // Unified-TELOS section bodies carry their entries as H3s (### M1: …).
+  // Treat ID-form H3s as the entries instead of falling through to the
+  // paragraph fallback, which shreds **Summary:**/**References:** lines into
+  // fake entries on /life. Field labels are structure, not content: drop the
+  // Summary prefix and the References line so consumers get prose.
+  // (public PR #1929, @hjbrandt)
+  const h3Entries: { heading: string, body: string }[] = []
+  for (const part of content.split(/^### /m).slice(1)) {
+    const newline = part.indexOf("\n")
+    const heading = (newline === -1 ? part : part.slice(0, newline)).trim()
+    const body = (newline === -1 ? "" : part.slice(newline + 1))
+      .replace(/^\s*\*\*Summary:\*\*\s*/im, "")
+      .replace(/^\s*\*\*References:\*\*[^\n]*$/gim, "")
+      .trim()
+    if (/^[A-Z]{1,4}\d+[a-z]?\s*:/.test(heading)) h3Entries.push({ heading, body })
+  }
+  if (h3Entries.length > 0) return h3Entries
 
   const lines = content.split("\n")
   let currentBullet: { heading: string, body: string } | null = null
@@ -2405,7 +2590,7 @@ function handleUserIndexApi(filter: string | null): Response {
 // of prose (Health, Finances, Relationships, ...). This is what the interview
 // workflow writes; the older **Mood:** bold-field format is kept as a legacy
 // path but nothing has produced it since the June 2026 unified-TELOS migration.
-function parseCurrentDomains(content: string): {
+export function parseCurrentDomains(content: string): {
   updated: string | null
   updatedBy: string | null
   domains: { name: string, summary: string, body: string }[]
@@ -2436,11 +2621,16 @@ function handleLifeHome(): Response {
     const sparksRaw = telosSectionOrFile(sections, "sparks", "SPARKS.md")
     const timelineRaw = telosSectionOrFile(sections, "2036", "2036.md")
 
+    // The freshness marker is an HTML comment, which the section split above strips.
+    // Read it (and the domains, which strip comments themselves) from a comment-keeping
+    // split of the same file, or `updated` is always null.
+    const currentWithMarker = parseTelosUnifiedContent(readMd(join(TELOS_DIR, "TELOS.md")), true)["current state"]
+      || readMd(join(TELOS_DIR, "CURRENT.md"))
     const fields = parseBoldFields(current)
-    const { updated, updatedBy, domains } = parseCurrentDomains(current)
+    const { updated, updatedBy, domains } = parseCurrentDomains(currentWithMarker)
     const actions = parseNumberedList(current, "Next likely actions")
     const goals = parseGoals(goalsRaw).slice(0, 3)
-    const sparkNames = sparksRaw.split("\n").filter(l => l.startsWith("### ")).map(l => l.replace(/^###\s*/, ""))
+    const sparkNames = parseSparkBullets(sparksRaw)
     const randomSpark = sparkNames.length > 0 ? sparkNames[Math.floor(Math.random() * sparkNames.length)] : null
     const timelineBlocks = timelineRaw.split("\n").filter(l => l.startsWith("### ")).length
 
@@ -2449,6 +2639,11 @@ function handleLifeHome(): Response {
     const oneSentence = (fields.mood || fields.energy || fields.focus)
       ? `${fields.mood || "—"}, ${fields.energy || "—"} energy. Focused on: ${fields.focus || "—"}.`
       : null
+    // Focus is what is being worked on right now: the live work session wins,
+    // a hand-written **Focus:** field is the fallback. Set after the banner so a
+    // live session never fabricates a mood/energy sentence. (public issue #2039,
+    // @jacobo-ortiz)
+    fields.focus = activeWorkFocus() || fields.focus || ""
 
     return Response.json({
       oneSentence,
@@ -2468,7 +2663,289 @@ function handleLifeHome(): Response {
   }
 }
 
+// ── GET /api/life/affirmation ──
+
+// Reads the affirmations practice (TELOS/AFFIRMATIONS.md) plus the A-dimension
+// journal (USER/STATE/log.jsonl). The streak is computed from the journal —
+// the file's own "Streak:" line is display prose, never the source.
+function handleLifeAffirmation(): Response {
+  try {
+    const path = join(TELOS_DIR, "AFFIRMATIONS.md")
+    if (!existsSync(path)) return Response.json({ active: null })
+    const content = readFileSync(path, "utf-8")
+
+    const activeBlock = content.split(/^## Active\s*$/m)[1]?.split(/^## /m)[0] ?? ""
+    const affirmation = activeBlock.match(/\*\*"?([^*"]+)"?\*\*/)?.[1]?.trim() ?? null
+    const target = activeBlock.match(/^- Target:\s*(.+)$/m)?.[1]?.trim() ?? null
+    const started = activeBlock.match(/^- Started:\s*([\d-]+)/m)?.[1] ?? null
+
+    const queueBlock = content.split(/^## Queue\s*$/m)[1]?.split(/^## /m)[0] ?? ""
+    const queue = queueBlock.split("\n")
+      .map(l => l.match(/^\|\s*\d+\s*\|\s*([^|]+)\|/)?.[1]?.trim())
+      .filter((t): t is string => Boolean(t))
+
+    // Consecutive local days with an A entry, ending today or yesterday.
+    const days = new Set<string>()
+    const logPath = join(USER_DIR, "STATE", "log.jsonl")
+    if (existsSync(logPath)) {
+      for (const line of readFileSync(logPath, "utf-8").split("\n")) {
+        if (!line.trim()) continue
+        try {
+          const e = JSON.parse(line)
+          if (e.dim === "A" && e.ts) days.add(new Date(e.ts).toLocaleDateString("en-CA"))
+        } catch { /* skip malformed journal lines */ }
+      }
+    }
+    const dayStr = (offset: number) => { const d = new Date(); d.setDate(d.getDate() - offset); return d.toLocaleDateString("en-CA") }
+    const todayDone = days.has(dayStr(0))
+    let streak = 0
+    for (let i = todayDone ? 0 : 1; days.has(dayStr(i)); i++) streak++
+
+    return Response.json({ active: affirmation, target, started, streak, todayDone, queue, queueCount: queue.length })
+  } catch (err: any) {
+    return Response.json({ error: err.message }, { status: 500 })
+  }
+}
+
 // ── GET /api/life/health ──
+
+// Live pipeline data written by the health sync job: current.json (today's
+// snapshot + per-source status) and DATA/oura/YYYY-MM-DD.json daily files.
+// The markdown files above are curated prose; this is the incoming stream.
+interface HealthDaily {
+  day: string
+  sleep: number | null
+  readiness: number | null
+  activity: number | null
+  steps: number | null
+  spo2: number | null
+}
+
+// One rich day for the trend board. Flat keys so Recharts can address them
+// directly; every field is `null` when the source has nothing (never 0 — the
+// charts draw gaps for null, and a zero would be a fake dip).
+interface HealthDay {
+  day: string
+  sleepScore: number | null
+  sleepH: number | null
+  sleepEff: number | null
+  deepH: number | null
+  remH: number | null
+  lightH: number | null
+  awakeH: number | null
+  sleepHr: number | null
+  hrv: number | null
+  restingHr: number | null
+  bedtime: string | null
+  wake: string | null
+  readiness: number | null
+  tempDev: number | null
+  activity: number | null
+  steps: number | null
+  activeCal: number | null
+  activeMin: number | null
+  spo2: number | null
+  bdi: number | null
+  stressMin: number | null
+  recoveryMin: number | null
+  weightKg: number | null
+  vo2max: number | null
+  respRate: number | null
+  /** Which stores contributed: "oura", "apple", or "oura+apple". */
+  src: string
+}
+
+// A day of the state journal (LIFEOS/USER/STATE/log.jsonl): last value per
+// rating dim that day, plus whether a workout / walk was logged. Only days with
+// at least one entry appear — the journal is sparse and the board shows it so.
+interface HealthJournalDay {
+  day: string
+  H: number | null
+  M: number | null
+  E: number | null
+  S: number | null
+  C: number | null
+  CF: number | null
+  W: boolean
+  K: boolean
+}
+
+
+function numOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null
+}
+function secToH(v: unknown): number | null {
+  const n = numOrNull(v)
+  return n === null ? null : Math.round((n / 3600) * 100) / 100
+}
+function secToMin(v: unknown): number | null {
+  const n = numOrNull(v)
+  return n === null ? null : Math.round(n / 60)
+}
+
+// The night's session is `long_sleep`; Oura lists naps first, so `sleep[0]` is
+// often a short nap. Prefer long_sleep, else the longest session, else nothing.
+function pickNight(sessions: unknown): Record<string, unknown> | null {
+  if (!Array.isArray(sessions) || sessions.length === 0) return null
+  const rows = sessions.filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null)
+  const long = rows.find(s => s.type === "long_sleep")
+  if (long) return long
+  let best: Record<string, unknown> | null = null
+  for (const s of rows) {
+    const d = numOrNull(s.total_sleep_duration)
+    if (d !== null && (best === null || d > (numOrNull(best.total_sleep_duration) ?? -1))) best = s
+  }
+  return best
+}
+
+function ouraDayRecord(day: string, j: any): HealthDay {
+  const m = j?.metrics ?? {}
+  const raw = m.raw ?? {}
+  const night = pickNight(raw.sleep)
+  const readiness = raw.daily_readiness?.[0] ?? null
+  const activity = raw.daily_activity?.[0] ?? null
+  const spo2 = raw.daily_spo2?.[0] ?? null
+  const stress = raw.daily_stress?.[0] ?? null
+  const activeSec =
+    activity && [activity.high_activity_time, activity.medium_activity_time].some(v => numOrNull(v) !== null)
+      ? (numOrNull(activity.high_activity_time) ?? 0) + (numOrNull(activity.medium_activity_time) ?? 0)
+      : null
+  return {
+    day,
+    sleepScore: numOrNull(m.oura_sleep_score),
+    sleepH: numOrNull(m.sleep_duration_h) ?? secToH(night?.total_sleep_duration),
+    sleepEff: numOrNull(m.sleep_efficiency) ?? numOrNull(night?.efficiency),
+    deepH: secToH(night?.deep_sleep_duration),
+    remH: secToH(night?.rem_sleep_duration),
+    lightH: secToH(night?.light_sleep_duration),
+    awakeH: secToH(night?.awake_time),
+    sleepHr: numOrNull(m.avg_sleep_hr) ?? numOrNull(night?.average_heart_rate),
+    hrv: numOrNull(m.avg_sleep_hrv) ?? numOrNull(night?.average_hrv),
+    restingHr: numOrNull(night?.lowest_heart_rate),
+    bedtime: typeof night?.bedtime_start === "string" ? night.bedtime_start : null,
+    wake: typeof night?.bedtime_end === "string" ? night.bedtime_end : null,
+    readiness: numOrNull(m.oura_readiness_score),
+    tempDev: numOrNull(readiness?.temperature_deviation),
+    activity: numOrNull(m.oura_activity_score),
+    steps: numOrNull(m.steps),
+    activeCal: numOrNull(activity?.active_calories),
+    activeMin: activeSec === null ? null : Math.round(activeSec / 60),
+    spo2: numOrNull(m.spo2_avg),
+    bdi: numOrNull(spo2?.breathing_disturbance_index),
+    stressMin: secToMin(stress?.stress_high),
+    recoveryMin: secToMin(stress?.recovery_high),
+    weightKg: null,
+    vo2max: null,
+    respRate: null,
+    src: "oura",
+  }
+}
+
+// Apple Health day (hourly Health Auto Export drain, or the bulk export via
+// `AppleHealthImport.ts --days-out`). Fills whatever Oura left null for that
+// day, and is the only source for weight / VO2 max / respiratory rate. Oura
+// keeps priority where both have a value: it is the ring on the finger.
+function appleFill(base: HealthDay | null, day: string, j: any): HealthDay {
+  const m = j?.metrics ?? {}
+  const n = (k: string) => numOrNull(m[k])
+  const r: HealthDay = base ?? {
+    day, sleepScore: null, sleepH: null, sleepEff: null, deepH: null, remH: null, lightH: null, awakeH: null,
+    sleepHr: null, hrv: null, restingHr: null, bedtime: null, wake: null, readiness: null, tempDev: null,
+    activity: null, steps: null, activeCal: null, activeMin: null, spo2: null, bdi: null, stressMin: null,
+    recoveryMin: null, weightKg: null, vo2max: null, respRate: null, src: "apple",
+  }
+  const fill = (k: keyof HealthDay, v: number | null) => {
+    if (v !== null && (r as any)[k] === null) (r as any)[k] = v
+  }
+  fill("steps", n("steps"))
+  fill("activeCal", n("active_energy_kcal"))
+  fill("activeMin", n("exercise_minutes"))
+  fill("restingHr", n("resting_hr"))
+  fill("hrv", n("hrv_ms"))
+  fill("spo2", n("spo2_pct"))
+  fill("sleepH", n("sleep_hours"))
+  fill("deepH", n("sleep_deep_h"))
+  fill("remH", n("sleep_rem_h"))
+  fill("lightH", n("sleep_core_h"))
+  fill("awakeH", n("sleep_awake_h"))
+  fill("weightKg", n("weight_kg"))
+  fill("vo2max", n("vo2max"))
+  fill("respRate", n("respiratory_rate"))
+  if (base) r.src = "oura+apple"
+  return r
+}
+
+function readDayDir(dir: string): Array<[string, unknown]> {
+  if (!existsSync(dir)) return []
+  const out: Array<[string, unknown]> = []
+  for (const f of readdirSync(dir).filter(f => /^\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort()) {
+    try {
+      out.push([f.replace(".json", ""), JSON.parse(readFileSync(join(dir, f), "utf8"))])
+    } catch {}
+  }
+  return out
+}
+
+function readHealthJournal(): HealthJournalDay[] {
+  const file = join(USER_DIR, "STATE", "log.jsonl")
+  if (!existsSync(file)) return []
+  const byDay = new Map<string, HealthJournalDay>()
+  const RATING = new Set(["H", "M", "E", "S", "C", "CF"])
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue
+    let e: any
+    try { e = JSON.parse(line) } catch { continue }
+    if (typeof e?.ts !== "string" || typeof e?.dim !== "string") continue
+    const t = new Date(e.ts)
+    if (Number.isNaN(t.getTime())) continue
+    const day = t.toLocaleDateString("en-CA")
+    const row = byDay.get(day) ?? { day, H: null, M: null, E: null, S: null, C: null, CF: null, W: false, K: false }
+    if (RATING.has(e.dim)) {
+      const v = numOrNull(e.value)
+      if (v !== null && v >= 1 && v <= 5) (row as any)[e.dim] = v
+    } else if (e.dim === "W") row.W = true
+    else if (e.dim === "K") row.K = true
+    byDay.set(day, row)
+  }
+  return [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day))
+}
+
+// Years of day files mean thousands of JSON parses per request. The store
+// changes at most hourly (HealthSync) and the page is opened far more often
+// than that, so the parsed result is memoised for a minute.
+let healthLiveCache: { at: number; value: ReturnType<typeof readHealthLiveUncached> } | null = null
+const HEALTH_LIVE_TTL_MS = 60_000
+
+function readHealthLive(): ReturnType<typeof readHealthLiveUncached> {
+  const now = Date.now()
+  if (healthLiveCache && now - healthLiveCache.at < HEALTH_LIVE_TTL_MS) return healthLiveCache.value
+  const value = readHealthLiveUncached()
+  healthLiveCache = { at: now, value }
+  return value
+}
+
+function readHealthLiveUncached(): {
+  current: unknown | null
+  daily: HealthDaily[]
+  days: HealthDay[]
+  journal: HealthJournalDay[]
+} {
+  let current: unknown = null
+  try {
+    current = JSON.parse(readFileSync(join(HEALTH_DIR, "current.json"), "utf8"))
+  } catch {}
+  const daily: HealthDaily[] = []
+  // Union of every stored day across sources, keyed by day; Oura first, Apple fills.
+  const byDay = new Map<string, HealthDay>()
+  for (const [day, j] of readDayDir(join(HEALTH_DIR, "DATA", "oura"))) byDay.set(day, ouraDayRecord(day, j))
+  for (const [day, j] of readDayDir(join(HEALTH_DIR, "DATA", "apple"))) byDay.set(day, appleFill(byDay.get(day) ?? null, day, j))
+  const days = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day))
+  // `daily` is the original 30-day shape; other pages read it, so it stays byte-compatible.
+  for (const d of days.slice(-30)) {
+    daily.push({ day: d.day, sleep: d.sleepScore, readiness: d.readiness, activity: d.activity, steps: d.steps, spo2: d.spo2 })
+  }
+  return { current, daily, days, journal: readHealthJournal() }
+}
 
 function handleLifeHealth(): Response {
   try {
@@ -2487,7 +2964,27 @@ function handleLifeHealth(): Response {
     for (const structured of ["CONDITIONS.md", "MEDICATIONS.md", "SUPPLEMENTS.md", "FITNESS.md", "NUTRITION.md", "METRICS.md", "HISTORY.md"]) {
       freshnessEntries.push({ name: structured, content: readMd(join(HEALTH_DIR, structured)) })
     }
-    const freshness = computeFreshness(freshnessEntries)
+    const live = readHealthLive()
+    // The pill answers "how current is this page's data?". The curated files
+    // are weakest-link (an old lab panel stays visible per file), but the
+    // verdict follows the live pipeline when it has data: an hourly Oura sync
+    // that ran today is not "stale" because a 2025 lab panel exists.
+    let freshness = computeFreshness(freshnessEntries)
+    const newestLive = live.days.length > 0 ? live.days[live.days.length - 1].day : null
+    if (newestLive) {
+      // Local midnight, not UTC: an Oura day keyed 2026-08-23 IS today on this Mac.
+      const daysOld = Math.max(0, Math.floor((Date.now() - new Date(newestLive + "T00:00:00").getTime()) / 86_400_000))
+      const liveRow: FreshnessFile = { name: "Health pipeline (Oura / Apple)", date: newestLive, source: "state" }
+      freshness = {
+        ...freshness,
+        dataDate: newestLive,
+        label: new Date(newestLive + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }),
+        daysOld,
+        // Same bands the file check uses; a pipeline that stops shows aging, then stale.
+        tier: daysOld < 30 ? "fresh" : daysOld < 120 ? "aging" : "stale",
+        perFile: [liveRow, ...freshness.perFile],
+      }
+    }
 
     return Response.json({
       files: files.map(f => ({ name: f.name, sections: f.sections.map(s => s.heading) })),
@@ -2501,6 +2998,7 @@ function handleLifeHealth(): Response {
       metrics: parseSections(readMd(join(HEALTH_DIR, "METRICS.md"))),
       history: parseSections(readMd(join(HEALTH_DIR, "HISTORY.md"))),
       labReports: labFiles,
+      live,
       freshness,
     })
   } catch (err: any) {
@@ -2547,7 +3045,7 @@ function parseMarkdownTable(body: string): { headers: string[]; rows: string[][]
   return { headers, rows }
 }
 
-function handleLifeFinances(): Response {
+async function handleLifeFinances(): Promise<Response> {
   try {
     const stateJson = readMd(join(FINANCES_DIR, "state.json"))
     let state = {}
@@ -2570,26 +3068,62 @@ function handleLifeFinances(): Response {
     // Per-card freshness — each card surfaces its own indicator pulling
     // only from the files it actually depends on. The composite `freshness`
     // is preserved for the page header / Income hero.
-    const freshness = computeFreshness([
-      { name: "Statement imports (state.json)", sourceDate: stateLastRun },
-      { name: "INCOME.md", content: incomeRaw },
-      { name: "EXPENSES.md", content: expensesRaw },
-      { name: "ACCOUNTS.md", content: accountsRaw },
-      { name: "INVESTMENTS.md", content: investmentsRaw },
-      { name: "TAXES.md", content: taxesRaw },
-    ])
-    const freshnessIncome = computeFreshness([
-      { name: "Statement imports (state.json)", sourceDate: stateLastRun },
-      { name: "INCOME.md", content: incomeRaw },
-    ])
-    const freshnessOutbound = computeFreshness([
-      { name: "EXPENSES.md", content: expensesRaw },
-      { name: "vendors.yaml", content: vendorsRaw },
-      { name: "obligations.yaml", content: obligationsRaw },
-    ])
+    // Composite (page-level) freshness: when a books export exists it follows
+    // the LIVE data sources; the hand-written docs each carry their own
+    // per-card pill, so the composite no longer inherits the oldest document.
+    const qboPnlForFreshness = readQboPnlMonthly()
+    const freshness = qboPnlForFreshness?.asOf
+      ? computeFreshness([
+          { name: "QBO books export", sourceDate: qboPnlForFreshness.asOf },
+        ])
+      : computeFreshness([
+          { name: "Statement imports (state.json)", sourceDate: stateLastRun },
+          { name: "INCOME.md", content: incomeRaw },
+          { name: "EXPENSES.md", content: expensesRaw },
+          { name: "ACCOUNTS.md", content: accountsRaw },
+          { name: "INVESTMENTS.md", content: investmentsRaw },
+          { name: "TAXES.md", content: taxesRaw },
+        ])
+    const qboPnl = readQboPnlMonthly()
+    const freshnessIncome = computeFreshness(
+      qboPnl?.asOf
+        ? [{ name: "QBO P&L export", sourceDate: qboPnl.asOf }]
+        : [
+            { name: "Statement imports (state.json)", sourceDate: stateLastRun },
+            { name: "INCOME.md", content: incomeRaw },
+          ],
+    )
+    // Outbound freshness follows the LIVE sources: the expense ledger
+    // (expenses.json meta.updated) and the statement/books aggregate
+    // (statement-spend.jsonl header). The legacy hand-edited yaml files only
+    // count when no ledger exists — a stale yaml must not mark fresh data
+    // stale, and a fresh yaml must not mask a dead pipeline.
+    const ledgerPathForFreshness = join(FINANCES_DIR, "expenses.json")
+    let ledgerUpdatedAt: string | null = null
+    try {
+      if (existsSync(ledgerPathForFreshness)) {
+        ledgerUpdatedAt = JSON.parse(readFileSync(ledgerPathForFreshness, "utf-8"))?.meta?.updated ?? null
+      }
+    } catch { /* unreadable ledger → fall back to yaml freshness */ }
+    const spendGeneratedAt = readStatementSpendJsonl().generated_at
+    const freshnessOutbound = computeFreshness(
+      ledgerUpdatedAt || spendGeneratedAt
+        ? [
+            { name: "expenses.json (ledger)", sourceDate: ledgerUpdatedAt },
+            { name: "statement-spend.jsonl", sourceDate: spendGeneratedAt },
+          ]
+        : [
+            { name: "EXPENSES.md", content: expensesRaw },
+            { name: "vendors.yaml", content: vendorsRaw },
+            { name: "obligations.yaml", content: obligationsRaw },
+          ],
+    )
+    // Accounts card freshness follows the document itself plus the newest books
+    // export — state.json.last_run only tracks the statement-import pipeline and
+    // was pinning this card stale even after the doc was reviewed and refreshed.
     const freshnessAccounts = computeFreshness([
-      { name: "Statement imports (state.json)", sourceDate: stateLastRun },
       { name: "ACCOUNTS.md", content: accountsRaw },
+      ...(qboPnl?.asOf ? [{ name: "QBO books export", sourceDate: qboPnl.asOf }] : [{ name: "Statement imports (state.json)", sourceDate: stateLastRun }]),
     ])
     const freshnessInvestments = computeFreshness([
       { name: "INVESTMENTS.md", content: investmentsRaw },
@@ -2600,7 +3134,12 @@ function handleLifeFinances(): Response {
     const freshnessPlan = computeFreshness([
       { name: "PLAN.md", content: planRaw },
     ])
-    const freshnessOverall = freshness
+    const freshnessOverall = qboPnl?.asOf || ledgerUpdatedAt
+      ? computeFreshness([
+          { name: "QBO P&L export", sourceDate: qboPnl?.asOf ?? null },
+          { name: "expenses.json (ledger)", sourceDate: ledgerUpdatedAt },
+        ])
+      : freshness
 
     // ── Forward financial plan (Plan tab) ──
     // parseSections gives the narrative cards; parseFlywheelBody turns the
@@ -2684,6 +3223,42 @@ function handleLifeFinances(): Response {
           category: o.category ?? "other",
         }
       })
+    // The expense ledger (expenses.json) is the single source of truth for
+    // money-out when it exists: its active subscription lines REPLACE the
+    // hand-maintained vendors.yaml list, so the Expenses cards always show the
+    // ledger's current state. vendors.yaml remains the fallback for installs
+    // without a ledger. Collector overrides still apply by matching name.
+    interface LedgerSubLine { id?: string; vendor?: string; item?: string; category?: string; scope?: string; cycle?: string; amount?: number | null; status?: string; note?: string }
+    let ledgerVendorLines: VendorYaml[] = []
+    try {
+      const lp = join(FINANCES_DIR, "expenses.json")
+      if (existsSync(lp)) {
+        const led = JSON.parse(readFileSync(lp, "utf-8"))
+        const CYCLE_TO_MONTHLY: Record<string, number> = { monthly: 1, annual: 1 / 12, quarterly: 1 / 3, weekly: 52 / 12 }
+        ledgerVendorLines = ((led?.subscriptions ?? []) as LedgerSubLine[])
+          .filter(l => (l.status === "active" || l.status === "needs-amount") && (l.vendor || l.id))
+          .map(l => {
+            const monthly = typeof l.amount === "number" ? l.amount * (CYCLE_TO_MONTHLY[l.cycle ?? "monthly"] ?? 1) : 0
+            const oldMatch = vendors.find(v => {
+              const a = (v.name ?? v.id).toLowerCase(); const b = String(l.vendor ?? l.id).toLowerCase()
+              return a.includes(b) || b.includes(a)
+            })
+            return {
+              id: l.id ?? slugify(String(l.vendor)),
+              name: `${l.vendor}${l.item ? ` — ${l.item}` : ""}`,
+              scope: (l.scope === "business" || l.scope === "personal" || l.scope === "mixed" ? l.scope : "mixed") as VendorYaml["scope"],
+              cadence: (l.cycle === "annual" ? "annual" : "monthly") as VendorYaml["cadence"],
+              source: "manual",
+              manual_monthly_usd: Math.round(monthly * 100) / 100,
+              tags: l.category ? [l.category] : undefined,
+              notes: l.note ?? (monthly === 0 ? "amount not yet priced" : undefined),
+              collector: oldMatch?.collector,
+            } as VendorYaml
+          })
+      }
+    } catch { /* unreadable ledger → vendors.yaml fallback */ }
+    const vendorSource: VendorYaml[] = ledgerVendorLines.length > 0 ? ledgerVendorLines : vendors
+
     const collectorData = readVendorCostsJsonl()
     const spendBundle = readStatementSpendJsonl()
     const spendInsights = buildSpendInsights(spendBundle.records)
@@ -2701,10 +3276,66 @@ function handleLifeFinances(): Response {
       tags?: string[]
       notes?: string
       collector?: string
+      basis?: string
     }
 
-    const resolvedVendors: ResolvedLine[] = vendors.map(v => {
-      const hit = collectorData.get(v.id)
+    // When the CFO skill is installed, its reconciled view is the source of truth
+    // for vendor and obligation lines: it already applied invoices, vendor APIs and
+    // statements per line, and it counts lines that share one invoice as one group.
+    // Resolving collector data a second time here would double-count them. The view
+    // is computed from the ledger on every request and never stored, so a ledger
+    // edit shows on the next load.
+    interface CfoSnapLine { id: string; vendor: string; item: string; category: string; scope: string; monthly_usd: number | null; basis: string; source: string; members?: string[] }
+    let cfoSnap: any = null
+    try {
+      const cfoCli = join(getSkillsDir(), PRIVATE_SKILL_NAMES.cfo, "Tools", "Cfo.ts")
+      if (existsSync(cfoCli)) {
+        // Async so a slow ledger read never stalls the rest of the server.
+        const stdout = await new Promise<string>((resolve, reject) =>
+          execFile("bun", [cfoCli, "snapshot", "--json"], { encoding: "utf8", timeout: 15_000, maxBuffer: 32 * 1024 * 1024 }, (err, out, errOut) =>
+            err ? reject(new Error(`${err.message} ${String(errOut).slice(0, 200)}`)) : resolve(out)))
+        if (stdout.trim()) cfoSnap = JSON.parse(stdout)
+      }
+    } catch (e) { console.error(`[finances] Cfo.ts snapshot failed: ${(e as Error).message}`); cfoSnap = null }
+    // "Owed to you": the Recover intent's summary, passed through to the page untouched. It carries amounts and
+    // capped titles for the principal's own screen, so it is never logged, cached or stored here.
+    const recoverySummary = await loadRecoverySummary(join(getSkillsDir(), PRIVATE_SKILL_NAMES.cfo, "Tools", "Recover.ts"))
+    const cfoResolved: ResolvedLine[] | null = Array.isArray(cfoSnap?.lines)
+      ? (cfoSnap.lines as CfoSnapLine[]).map(l => ({
+          id: l.id,
+          name: l.item ? `${l.vendor} — ${l.item}` : l.vendor,
+          scope: l.scope,
+          monthly_usd: l.monthly_usd ?? 0,
+          annual_usd: Math.round((l.monthly_usd ?? 0) * 12 * 100) / 100,
+          source: l.basis === "invoice" || l.basis === "api" ? "collector" : l.monthly_usd == null ? "unconfigured" : "manual",
+          cadence: "monthly",
+          tags: [l.category],
+          notes: `${l.basis}: ${l.source}${l.members ? ` (${l.members.length} ledger lines)` : ""}`,
+          basis: l.basis,
+        }))
+      : null
+    const cfoSummary = cfoSnap?.totals
+      ? {
+          generated_at: cfoSnap.generated_at,
+          totals: cfoSnap.totals,
+          discrepancies: cfoSnap.discrepancies ?? [],
+          unledgered: (cfoSnap.unledgered ?? []).slice(0, 8),
+          unledgered_count: (cfoSnap.unledgered ?? []).length,
+          ai: cfoSnap.ai ?? null,
+          delta: cfoSnap.delta ?? null,
+          sources: cfoSnap.sources ?? [],
+          alerts: cfoSnap.alerts ?? [],
+          breakdown: cfoSnap.breakdown ?? null,
+          // Recurring statement charges no bucket counted (the named ones carry a "statement:" item id).
+          breakdown_not_counted_monthly: (() => {
+            const counted = new Set<string>((cfoSnap.breakdown?.buckets ?? []).flatMap((b: any) => b.items.map((i: any) => i.id)))
+            return Math.round((cfoSnap.unledgered ?? []).filter((u: any) => !counted.has(`statement:${String(u.merchant).toLowerCase().replace(/[^a-z0-9]+/g, "")}`)).reduce((s: number, u: any) => s + u.monthly_avg_usd, 0) * 100) / 100
+          })(),
+        }
+      : null
+
+    const resolvedVendors: ResolvedLine[] = cfoResolved ?? vendorSource.map(v => {
+      const hit = collectorData.get(v.id) ?? (v.collector ? collectorData.get(v.collector) : undefined)
       if (hit) {
         return {
           id: v.id,
@@ -2735,7 +3366,20 @@ function handleLifeFinances(): Response {
       }
     })
 
-    const resolvedObligations: ResolvedLine[] = obligations.map(o => {
+    const cfoObligations: ResolvedLine[] | null = Array.isArray(cfoSnap?.obligations)
+      ? (cfoSnap.obligations as { id: string; name: string; scope: string; category: string | null; cadence: string; monthly_usd: number | null; note?: string }[]).map(o => ({
+          id: o.id,
+          name: o.name ?? o.id,
+          scope: o.scope,
+          monthly_usd: o.monthly_usd ?? 0,
+          annual_usd: Math.round((o.monthly_usd ?? 0) * 12 * 100) / 100,
+          source: o.monthly_usd == null ? "unconfigured" : "manual",
+          cadence: o.cadence,
+          tags: [o.category ?? "other"],
+          notes: o.note,
+        }))
+      : null
+    const resolvedObligations: ResolvedLine[] = cfoObligations ?? obligations.map(o => {
       const monthly = cadenceToMonthly(o.amount_usd, o.cadence)
       return {
         id: o.id,
@@ -2794,44 +3438,77 @@ function handleLifeFinances(): Response {
     const outboundAnnual = outboundVendorsAnnual + outboundObligationsAnnual + outboundOtherAnnual
     const outboundMonthly = outboundAnnual / 12
 
+    // Income: FINANCES/income.json (Tools/Income.ts: books for the months the QBO export
+    // covers, live Stripe + agency sheets after it) wins; then the bare QBO P&L; then
+    // INCOME.md's table for installs with neither.
+    let incomeJson: { updated?: string; total_ttm?: number; window?: { from: string; to: string }; streams?: { stream: string; ttm: number }[] } | null = null
+    try {
+      const raw = readMd(join(FINANCES_DIR, "income.json"))
+      if (raw.trim()) incomeJson = JSON.parse(raw)
+    } catch { incomeJson = null }
+    const incomeJsonStreams = incomeJson?.streams?.length && Number.isFinite(incomeJson.total_ttm)
+      ? incomeJson.streams.map(s => ({ label: s.stream, annual: Math.round(s.ttm) }))
+      : null
+    const incomeStreamsEff = incomeJsonStreams ?? (qboPnl?.streams?.length ? qboPnl.streams : incomeStreams)
+    const annualIncomeEff = incomeJsonStreams ? Number(incomeJson!.total_ttm) : qboPnl ? qboPnl.totalIncome : annualIncome
+    const monthlyIncomeEff = annualIncomeEff / 12
+
     // Income breakdown with MRR estimate (membership + any annual/12 stream).
     const mrrAnnualMarkers = /membership|subscription|substack|beehiiv|patreon/i
-    const mrrAnnual = incomeStreams
+    const mrrAnnual = incomeStreamsEff
       .filter(s => mrrAnnualMarkers.test(s.label))
       .reduce((sum, s) => sum + s.annual, 0)
     const mrrMonthly = mrrAnnual / 12
 
     // Effective tax rate from TAXES.md for post-tax overall.
     const { rate: effectiveTaxRate, source: effectiveTaxRateSource } = parseEffectiveTaxRate(taxesRaw)
-    const overallAnnual = annualIncome - outboundAnnual
+    const overallAnnual = annualIncomeEff - outboundAnnual
     const netPreTax = overallAnnual
     const netPostTax = overallAnnual * (1 - effectiveTaxRate)
     const overallMonthly = overallAnnual / 12
 
-    // 12-month trend: currently flat (historical per-month data not tracked yet).
-    // Populated by Phase 3 when we have per-month history. Until then, return
-    // the current month N=12 times so the UI renders without erroring; source
-    // is tagged so the UI can show a "flat baseline" notice.
-    const trend = Array.from({ length: 12 }, (_, i) => {
-      const d = new Date()
-      d.setMonth(d.getMonth() - (11 - i))
-      return {
-        month: d.toISOString().slice(0, 7),
-        income: Math.round(annualIncome / 12),
-        outbound: Math.round(outboundMonthly),
-        net: Math.round(overallMonthly),
-      }
-    })
+    // 12-month trend: real per-month Income / Expenses / Net from the QBO P&L
+    // whenever books data exists; the flat-baseline placeholder only for
+    // installs with no export yet.
+    const trend = qboPnl?.trend?.length
+      ? qboPnl.trend
+      : Array.from({ length: 12 }, (_, i) => {
+          const d = new Date()
+          d.setMonth(d.getMonth() - (11 - i))
+          return {
+            month: d.toISOString().slice(0, 7),
+            income: Math.round(annualIncomeEff / 12),
+            outbound: Math.round(outboundMonthly),
+            net: Math.round(overallMonthly),
+          }
+        })
+
+    // An operator-side sponsorship report writes FINANCES/sponsorships.json.
+    // Bookings, not revenue: rendered beside the
+    // income numbers, never summed into them (the books' income accounts are revenue of record). Absent
+    // file → null, same fail-open contract as every other optional source here.
+    let sponsorships: Record<string, unknown> | null = null
+    try {
+      const raw = readMd(join(FINANCES_DIR, "sponsorships.json"))
+      if (raw.trim()) sponsorships = JSON.parse(raw)
+    } catch { sponsorships = null }
+    const freshnessSponsorships = sponsorships?.updated
+      ? computeFreshness([{ name: "sponsorships.json", sourceDate: String(sponsorships.updated) }])
+      : null
 
     const v2 = {
       version: 2,
       income: {
-        streams: incomeStreams,
-        annual: annualIncome,
-        monthly: monthlyIncome,
+        streams: incomeStreamsEff,
+        annual: annualIncomeEff,
+        monthly: monthlyIncomeEff,
         mrr_monthly: Math.round(mrrMonthly),
         mrr_annual: mrrAnnual,
+        source: incomeJsonStreams ? "income.json" : qboPnl ? "qbo-pnl" : "INCOME.md",
+        updated: incomeJsonStreams ? incomeJson!.updated ?? null : qboPnl?.asOf ?? null,
+        window: incomeJsonStreams ? incomeJson!.window ?? null : null,
       },
+      sponsorships,
       outbound: {
         vendors: resolvedVendors,
         obligations: resolvedObligations,
@@ -2856,6 +3533,8 @@ function handleLifeFinances(): Response {
         active_collectors: Array.from(collectorData.keys()),
         jsonl_path: "MEMORY/OBSERVABILITY/vendor-costs.jsonl",
       },
+      cfo: cfoSummary,
+      recovery: recoverySummary,
       insights: {
         ...spendInsights,
         statement_spend: {
@@ -2896,6 +3575,7 @@ function handleLifeFinances(): Response {
         investments: freshnessInvestments,
         taxes: freshnessTaxes,
         plan: freshnessPlan,
+        sponsorships: freshnessSponsorships,
       },
       state,
     })
@@ -2909,14 +3589,13 @@ function handleLifeFinances(): Response {
 // Resolve the active company directory by enumeration, never by a hardcoded name.
 // BUSINESS_DIR is the generic parent (USER/WORK/YOUR_COMPANIES); each installer names
 // their own company dir, so a literal name here works for exactly one person and
-// silently returns empty revenue for everyone else. Prefer a dir that actually has a
-// REVENUE folder; otherwise fall back to the first subdirectory.
+// silently returns empty revenue for everyone else. Only a dir that actually has a
+// REVENUE folder qualifies — the old `?? dirs[0]` fallback named an arbitrary company
+// as the active one and rendered its README as authoritative (public issue #1842,
+// @jacobo-ortiz). No qualifying dir returns "", which the page reads as a fresh install.
+// The rule lives in lib/business-sources.ts, shared with the tab-freshness pill (ISC-19.1).
 function resolveCompanyDir(): string {
-  if (!existsSync(BUSINESS_DIR)) return ""
-  const dirs = readdirSync(BUSINESS_DIR, { withFileTypes: true })
-    .filter(d => d.isDirectory() && !d.name.startsWith("."))
-    .map(d => join(BUSINESS_DIR, d.name))
-  return dirs.find(d => existsSync(join(d, "REVENUE"))) ?? dirs[0] ?? ""
+  return resolveCompanyDirIn(BUSINESS_DIR)
 }
 
 function handleLifeBusiness(): Response {
@@ -2926,13 +3605,11 @@ function handleLifeBusiness(): Response {
 
     // Find most recent revenue report
     let latestRevenue = ""
-    let latestRevenueFile = ""
-    if (existsSync(revenueDir)) {
-      const revFiles = readdirSync(revenueDir).filter(f => f.endsWith(".md")).sort().reverse()
-      if (revFiles.length > 0) {
-        latestRevenueFile = revFiles[0]
-        latestRevenue = readMd(join(revenueDir, revFiles[0]))
-      }
+    let latestRevenueFileName = ""
+    const latest = latestRevenueFile(revenueDir)
+    if (latest) {
+      latestRevenueFileName = latest
+      latestRevenue = readMd(join(revenueDir, latest))
     }
 
     // Parse revenue summary table
@@ -2941,7 +3618,7 @@ function handleLifeBusiness(): Response {
     const revenueByProduct = revenueSections.find(s => s.heading.includes("Product"))
 
     return Response.json({
-      latestRevenueReport: latestRevenueFile,
+      latestRevenueReport: latestRevenueFileName,
       revenueSummary: summarySection?.body || "",
       revenueByProduct: revenueByProduct?.body || "",
       revenueAllSections: revenueSections,
@@ -2956,7 +3633,7 @@ function handleLifeBusiness(): Response {
 // ── GET /api/life/growth ──
 // Audience growth (newsletter + YouTube + web). Data lives in the USER-zone
 // Growth tool (single source of truth shared with the CLI). Cached 10 min —
-// cold fetch parallelizes Beehiiv pages so it's ~1-2s, warm is instant.
+// cold fetch parallelizes Beehiiv pages to stay quick, warm is instant.
 
 let growthCache: { data: GrowthData; ts: number } | null = null
 const GROWTH_TTL_MS = 10 * 60 * 1000
@@ -2997,8 +3674,11 @@ async function handleLifeGrowth(): Promise<Response> {
 function handleLifeWork(): Response {
   try {
     const projectsContent = readMd(PROJECTS_FILE)
-    // Parse project table rows
-    let projectLines = projectsContent.split("\n")
+    // Parse project table rows, scoped to the "## Projects" / "## Active
+    // projects" section when one exists — other tables in the registry
+    // (routing aliases, authored tools) otherwise leak their rows in as
+    // projects. (public PR #1929, @hjbrandt)
+    let projectLines = activeProjectsScope(projectsContent).split("\n")
       .filter(l => l.startsWith("|") && !l.includes("---") && !l.includes("Project"))
       .map(l => {
         const cols = l.split("|").map(c => c.trim()).filter(Boolean)
@@ -3042,7 +3722,11 @@ function handleLifeWork(): Response {
 
     return Response.json({
       projects: projectLines,
-      currentFocus: fields.focus || "",
+      // Live work state first (the active session's ISA), hand-written
+      // **Focus:** as the fallback. The TELOS.md § Current State section
+      // never carries a Focus field, so the old read was empty on every
+      // install. (public issue #2039, @jacobo-ortiz)
+      currentFocus: activeWorkFocus() || fields.focus || "",
       currentProject: fields.current_project || "",
       activeWorkstreams: fields.active_workstreams || "",
       algorithmSessions: activeSessions,
@@ -3104,7 +3788,7 @@ function handleLifeGoals(): Response {
       traumas: parseSections(traumas),
       status: parseSections(status),
       telosProjects: parseSections(telosProjects),
-      sparks: sparks.split("\n").filter(l => l.startsWith("### ")).map(l => l.replace(/^###\s*/, "")),
+      sparks: parseSparkBullets(sparks),
       timeline2036Blocks: timeline2036.split("\n").filter(l => l.startsWith("### ")).length,
       timeline2036Raw: timeline2036,
       telosMasterRaw: telosMaster,
@@ -3225,26 +3909,97 @@ function parseSourceHeadings(sections: LifeSection[], prefix: string): ParsedHea
   return out
 }
 
+// ── TELOS file editor: region-aware and hash-guarded ──
+//
+// GET returns the file, the sha256 of its exact bytes (the base hash), and the
+// file split into segments: hand-written text the editor may change, and each
+// machine-owned AUTOMATED region (LIFEOS/TOOLS/TelosRegions.ts) as a read-only
+// span from its BEGIN line through its END line. PUT carries the base hash back.
+// When the file changed since it was loaded (a scheduled region write, a second
+// tab, a hand edit) the save is refused with 409 and nothing is written. A save
+// that changes or drops any region byte is refused with 422.
+
+const TELOS_FILE_MAX_CHARS = 1_048_576
+const SHA256_HEX = /^[0-9a-f]{64}$/
+
+export type TelosFileSegment =
+  | { kind: "text"; text: string }
+  | { kind: "region"; which: string; text: string }
+
+/** sha256 of the exact file bytes. Covers the regions too, so a region write between load and save is a conflict. */
+export function telosFileHash(content: string): string {
+  return createHash("sha256").update(content, "utf8").digest("hex")
+}
+
+/** Split into editable text and read-only region spans. Concatenating every segment's text gives back `content`. */
+export function telosFileSegments(content: string): TelosFileSegment[] {
+  const out: TelosFileSegment[] = []
+  let cursor = 0
+  for (const r of [...parseRegions(content).regions].sort((a, b) => a.start - b.start)) {
+    const nl = content.indexOf("\n", r.bodyEnd)
+    const spanEnd = nl === -1 ? content.length : nl + 1
+    if (r.start > cursor) out.push({ kind: "text", text: content.slice(cursor, r.start) })
+    out.push({ kind: "region", which: r.which, text: content.slice(r.start, spanEnd) })
+    cursor = spanEnd
+  }
+  if (cursor < content.length || out.length === 0) out.push({ kind: "text", text: content.slice(cursor) })
+  return out
+}
+
+function regionSpans(content: string): string[] {
+  return telosFileSegments(content).flatMap((s) => (s.kind === "region" ? [s.text] : []))
+}
+
+function sameSpans(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i])
+}
+
 async function handleTelosFileGet(searchParams: URLSearchParams): Promise<Response> {
+  return telosFileGetResponse(TELOS_DIR, searchParams)
+}
+
+export async function telosFileGetResponse(dir: string, searchParams: URLSearchParams): Promise<Response> {
   try {
     const valid = validateTelosFileName(searchParams.get("name"))
     if (!valid.ok) return Response.json({ error: valid.error }, { status: 400 })
 
-    const p = join(TELOS_DIR, valid.name)
-    const file = Bun.file(p)
-    if (!(await file.exists())) {
-      return Response.json({ name: valid.name, content: "", mtime: null, missing: true })
+    const p = join(dir, valid.name)
+    if (!existsSync(p)) {
+      return Response.json({ name: valid.name, content: "", mtime: null, missing: true, hash: null, segments: telosFileSegments("") })
     }
 
-    const content = await file.text()
-    const mtime = (await file.stat()).mtime.toISOString()
-    return Response.json({ name: valid.name, content, mtime, missing: false })
+    const content = readFileSync(p, "utf8")
+    const mtime = statSync(p).mtime.toISOString()
+    return Response.json({
+      name: valid.name,
+      content,
+      mtime,
+      missing: false,
+      hash: telosFileHash(content),
+      segments: telosFileSegments(content),
+    })
   } catch (err) {
     return Response.json({ error: errorMessage(err) }, { status: 500 })
   }
 }
 
 async function handleTelosFilePut(req: Request): Promise<Response> {
+  return telosFilePutResponse(TELOS_DIR, req)
+}
+
+/** The real path a save would write, or null when the name resolves outside `dir` (a symlink escaping it). */
+function telosWriteTarget(dir: string, name: string): string | null {
+  const dirReal = realpathSync(dir)
+  const p = join(dir, name)
+  const real = existsSync(p) ? realpathSync(p) : join(dirReal, name)
+  return real === join(dirReal, name) || real.startsWith(dirReal + "/") ? real : null
+}
+
+function readIfPresent(path: string): string | null {
+  return existsSync(path) ? readFileSync(path, "utf8") : null
+}
+
+export async function telosFilePutResponse(dir: string, req: Request, lockOpts: TelosLockOptions = {}): Promise<Response> {
   try {
     let body: unknown
     try {
@@ -3256,16 +4011,73 @@ async function handleTelosFilePut(req: Request): Promise<Response> {
     if (!isRecord(body)) return Response.json({ error: "body must be an object" }, { status: 400 })
     const valid = validateTelosFileName(body.name)
     if (!valid.ok) return Response.json({ error: valid.error }, { status: 400 })
-    if (typeof body.content !== "string") return Response.json({ error: "content must be a string" }, { status: 400 })
-    if (body.content.length > 1_048_576) return Response.json({ error: "content exceeds 1 MiB" }, { status: 400 })
+    const content = body.content
+    if (typeof content !== "string") return Response.json({ error: "content must be a string" }, { status: 400 })
+    if (content.length > TELOS_FILE_MAX_CHARS) return Response.json({ error: "content exceeds 1 MiB" }, { status: 400 })
+    if (!("baseHash" in body)) {
+      return Response.json({ error: "baseHash is required: reload the file and save again" }, { status: 428 })
+    }
+    const baseHash = body.baseHash
+    if (!(baseHash === null || (typeof baseHash === "string" && SHA256_HEX.test(baseHash)))) {
+      return Response.json({ error: "baseHash must be a sha256 hex string or null" }, { status: 400 })
+    }
 
-    const p = join(TELOS_DIR, valid.name)
-    await Bun.write(p, body.content)
-    const mtime = (await Bun.file(p).stat()).mtime.toISOString()
-    return Response.json({ ok: true, mtime })
+    const target = telosWriteTarget(dir, valid.name)
+    if (!target) return Response.json({ error: "refusing to write through a link that leaves the TELOS folder" }, { status: 403 })
+
+    // The read, the hash compare and the rename all run under the one TELOS lock
+    // every writer takes, so no other writer can land between the check and the
+    // replace. The locked body is synchronous; only the wait for the lock yields.
+    try {
+      return await withTelosLockAsync(target, (lock) => saveTelosFileLocked(dir, valid.name, target, content, baseHash, lock), lockOpts)
+    } catch (err) {
+      if (err instanceof TelosLockTimeout) return Response.json({ error: err.message, busy: true }, { status: 503 })
+      throw err
+    }
   } catch (err) {
+    // An invariant breach is a programmer error: fail loud, never fold it into a 500 body.
+    if (err instanceof InvariantViolation) throw err
     return Response.json({ error: errorMessage(err) }, { status: 500 })
   }
+}
+
+function saveTelosFileLocked(dir: string, name: string, target: string, content: string, baseHash: string | null, lock: TelosLockHandle): Response {
+  const current = readIfPresent(target)
+  const currentHash = current === null ? null : telosFileHash(current)
+  if (currentHash !== baseHash) {
+    return Response.json({ error: "the file changed on disk after it was loaded", conflict: true, hash: currentHash }, { status: 409 })
+  }
+  if (!sameSpans(regionSpans(content), regionSpans(current ?? ""))) {
+    return Response.json({ error: "the AUTOMATED regions are machine-owned and read-only here; edit only the hand-written text" }, { status: 422 })
+  }
+
+  const dirReal = realpathSync(dir)
+  invariant(target === join(dirReal, name) || target.startsWith(dirReal + "/"), `TELOS save target escaped the TELOS folder: ${name}`)
+  invariant(sameSpans(regionSpans(content), regionSpans(current ?? "")), "TELOS save would change AUTOMATED region bytes")
+  invariant(content.length <= TELOS_FILE_MAX_CHARS, "TELOS save exceeds the size limit")
+
+  // Write beside the target, then rename over it, so a reader never sees a half-written file.
+  const mode = current === null ? 0o644 : statSync(target).mode & 0o777
+  const tmp = join(dirReal, `.${name}.${process.pid}.${Date.now()}.tmp`)
+  try {
+    writeFileSync(tmp, content, "utf8")
+    chmodSync(tmp, mode)
+    // Locked writers cannot land here; this re-check still narrows the window for a
+    // writer outside LifeOS (a text editor) that takes no lock.
+    const latest = readIfPresent(target)
+    const latestHash = latest === null ? null : telosFileHash(latest)
+    if (latestHash !== baseHash) {
+      unlinkSync(tmp)
+      return Response.json({ error: "the file changed on disk after it was loaded", conflict: true, hash: latestHash }, { status: 409 })
+    }
+    invariant(lock.held(), `TELOS lock on ${name} was lost before the save could replace the file`)
+    renameSync(tmp, target)
+  } catch (err) {
+    if (existsSync(tmp)) unlinkSync(tmp)
+    throw err
+  }
+  const mtime = statSync(target).mtime.toISOString()
+  return Response.json({ ok: true, mtime, hash: telosFileHash(content) })
 }
 
 // Format-tolerant ID-prefixed entry parser. Reads `## ID: text`, `### ID: text`,
@@ -3422,8 +4234,13 @@ function buildDimensionsFromIdealState(): Array<{ id: string; label: string; cur
     }
   }
 
-  const avg = (...vals: number[]) => {
-    const present = vals.filter((v) => Number.isFinite(v))
+  // A source with no captured number (template file → `pct: null` in
+  // LIFEOS_STATE.json, or no file) is skipped, never averaged in as 0 — that
+  // 0 produced "Creative Freedom 38" from one captured 75 and one template.
+  // All sources missing → 0, the existing "not captured" reading downstream.
+  // (public issue #2049, @lgertel)
+  const avg = (...vals: Array<number | undefined>) => {
+    const present = vals.filter((v): v is number => Number.isFinite(v))
     if (present.length === 0) return 0
     return Math.round(present.reduce((a, b) => a + b, 0) / present.length)
   }
@@ -3442,7 +4259,7 @@ function buildDimensionsFromIdealState(): Array<{ id: string; label: string; cur
     { id: "health",            label: "Health",            color: "--health",        sources: ["HEALTH.md"],
       cur: Math.round(pcts.health ?? 0) },
     { id: "creative_freedom",  label: "Creative Freedom",  color: "--creative",      sources: ["CREATIVE.md", "FREEDOM.md"],
-      cur: avg(pcts.creative ?? 0, pcts.freedom ?? 0) },
+      cur: avg(pcts.creative, pcts.freedom) },
     { id: "relationships",     label: "Relationships",     color: "--relationships", sources: ["RELATIONSHIPS.md"],
       cur: Math.round(pcts.relationships ?? 0) },
     { id: "finances",          label: "Finances",          color: "--money",         sources: ["MONEY.md", "FINANCES.md"],
@@ -3466,12 +4283,73 @@ function buildDimensionsFromIdealState(): Array<{ id: string; label: string; cur
 // handleTelosOverview's local closure; lifted so every /api/life/* handler
 // resolves sections the same way.
 function telosSectionOrFile(sections: Record<string, string>, sectionKey: string, legacyFile: string): string {
-  return sections[sectionKey] || readMd(join(TELOS_DIR, legacyFile))
+  return sections[sectionKey] || stripMdComments(readMd(join(TELOS_DIR, legacyFile)))
+}
+
+// Sparks are bold-lead bullets ("- **Gardening** — …") under H3 category
+// headings. The old read surfaced the H3 categories as the sparks; a legacy
+// H3-only file keeps working (falls back to the headings). (public PR #1929,
+// @hjbrandt)
+export function parseSparkBullets(raw: string): string[] {
+  // `(sample)` bullets are the shipped scaffold's shape-showing, not sparks:
+  // a scaffold yields no sparks, never its category headings.
+  const bullets = raw.split("\n")
+    .filter(l => /^[-*]\s+\*\*/.test(l))
+    .map(l => l.replace(/^[-*]\s+/, "").replace(/\*\*/g, "").trim())
+  if (bullets.length > 0) return bullets.filter(s => !/^\(sample\)/i.test(s))
+  return raw.split("\n").filter(l => l.startsWith("### ")).map(l => l.replace(/^###\s*/, ""))
+}
+
+// The "## Projects" / "## Active projects" section of PROJECTS.md when one
+// exists, else the whole file. (public PR #1929, @hjbrandt)
+export function activeProjectsScope(content: string): string {
+  return content.split(/^## /m)
+    .find((s) => /^(active )?projects( table)?\s*$/i.test(s.split("\n", 1)[0] ?? "")) ?? content
+}
+
+// What is being worked on right now, from the live session registry
+// (MEMORY/STATE/work.json): the most recently active non-complete session
+// that carries an ISA, preferring Algorithm runs over native ones — the same
+// precedence as LIFEOS/TOOLS/current-work-dir.ts. Returns the ISA's H1 title,
+// else the slug; "" when nothing is open. (public issue #2039, @jacobo-ortiz)
+export function activeWorkFocus(workJsonPath: string = WORK_JSON_PATH, root: string = LIFEOS_DIR): string {
+  try {
+    if (!existsSync(workJsonPath)) return ""
+    const sessions = (JSON.parse(readFileSync(workJsonPath, "utf-8")).sessions ?? {}) as Record<string, any>
+    const open = Object.entries(sessions).filter(([, s]) => typeof s?.isa === "string" && s.isa && s.phase !== "complete")
+    const ts = (s: any) => Date.parse(s.lastToolActivity ?? s.updatedAt ?? "") || 0
+    const pick = (xs: [string, any][]) => xs.reduce<[string, any] | null>((b, c) => (!b || ts(c[1]) > ts(b[1]) ? c : b), null)
+    const picked = pick(open.filter(([, s]) => s.phase !== "native")) ?? pick(open)
+    if (!picked) return ""
+    const [slug, s] = picked
+    const title = readMd(join(root, s.isa)).match(/^#\s+(.+?)\s*$/m)?.[1] ?? ""
+    return title.replace(/^ISA\s*[—–-]\s*/i, "").trim() || slug
+  } catch {
+    return ""
+  }
+}
+
+// lifeos-freshness-v1 markers (`<!-- updated: ... by:... -->`) are metadata, not
+// content — left in place, parseIdEntries' ID-less prose fallback reads each
+// one as a positional entry (M0 rendered as a raw comment in the /telos hero).
+function stripMdComments(s: string): string {
+  return s.replace(/<!--[\s\S]*?-->/g, "")
 }
 
 function parseTelosUnified(): Record<string, string> {
-  const telosPath = join(TELOS_DIR, "TELOS.md")
-  const content = readMd(telosPath)
+  return parseTelosUnifiedContent(readMd(join(TELOS_DIR, "TELOS.md")))
+}
+
+// The machine-owned AUTOMATED regions (LIFEOS/TOOLS/TelosRegions.ts) are cut out
+// FIRST. Their fences are HTML comments, so stripping comments first would delete
+// the markers and leave the region body behind as if it were hand-written content
+// (its bullets would then overwrite the bold fields and the /telos hero).
+//
+// `keepComments` leaves the remaining HTML comments in each section body. Only the
+// freshness-marker reader wants that (`<!-- updated: YYYY-MM-DD by:Name -->` is the
+// one comment with meaning); every content reader keeps the default.
+export function parseTelosUnifiedContent(raw: string, keepComments = false): Record<string, string> {
+  const content = keepComments ? exciseRegions(raw) : stripMdComments(exciseRegions(raw))
   if (!content) return {}
   const sections: Record<string, string> = {}
   const lines = content.split("\n")
@@ -3566,9 +4444,15 @@ async function buildWorkNarrative(): Promise<{ summary: string; inProgress: numb
 }
 
 function buildSnapshotFromCurrentState(): Array<{ id: string; label: string; v: number; of: number }> | null {
-  const path = join(TELOS_DIR, "CURRENT_STATE", "SNAPSHOT.md")
-  const content = readMd(path)
-  if (!content) return null
+  return snapshotFromContent(readMd(join(TELOS_DIR, "CURRENT_STATE", "SNAPSHOT.md")))
+}
+
+// The shipped SNAPSHOT.md scaffold (`provenance: template`, Energy 5/10,
+// Mood "steady") rendered as the principal's current state on every fresh
+// install. A template is "not captured": null, never the sample numbers.
+// (public issue #2050, @lgertel)
+export function snapshotFromContent(content: string): Array<{ id: string; label: string; v: number; of: number }> | null {
+  if (!content || isTemplate(content)) return null
   const fields = parseBoldFields(content)
   const parseScore = (raw: string | undefined): number | null => {
     if (!raw) return null
@@ -3924,7 +4808,7 @@ function buildSynthesisParagraph(input: SynthesisInputs): string | null {
   }
   // Title cleanup — preserve casing as the user wrote it, just trim em-dash
   // suffixes and trailing punctuation. The previous version lowercased
-  // everything which made "Build Human 3.0 systems" read as "build human 3.0
+  // everything which made "Build Ideal State systems" read as "build ideal state
   // systems" and felt clinical.
   const cleanTitle = (t: string): string =>
     t.split(/\s+[—–-]\s+/)[0].replace(/[.:;,]+$/, "").trim()
@@ -4015,7 +4899,12 @@ function buildRecommendedNextAction(
 // and USER identity files parsed at request time. No values are invented and
 // no user-identifying content is hardcoded here (this file ships in releases).
 
-const BUNKER_STATE_FILE = join(HOME, ".bunker", "monitor-state.json")
+// public PR #2113, @pai-scaffolde: Bunker monitor state is per-install USER data
+// (BunkerSystem.md: per-app state lives in the user tree; SystemUserBoundary.md: all per-install
+// state under the USER data home). It sits with the rest of the Bunker data in USER/PULSE/Bunker/
+// — the same directory PULSE/modules/bunker.ts reads shots from — not in a home-relative
+// dot-directory outside both the config root and the USER tree.
+const BUNKER_STATE_FILE = join(USER_DIR, "PULSE", "Bunker", "monitor-state.json")
 
 interface BunkerAppState { status: "green" | "red"; failing: string[]; since: string }
 
@@ -4061,11 +4950,19 @@ function cleanWorkTitle(raw: string): string {
     .trim()
 }
 
-function agentFromLabels(labels: string[] | undefined): string {
-  const l = (labels ?? []).find((x) => x.startsWith("agent:"))
+export function agentFromLabels(labels: string[] | undefined): string {
+  // WorkSweep writes `Agent:<name>`; the repo taxonomy may hold either casing.
+  // (public issue #2048, @lgertel; PR #1929, @hjbrandt)
+  const l = (labels ?? []).find((x) => x.toLowerCase().startsWith("agent:"))
   if (!l) return ""
   const name = l.slice("agent:".length)
   return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+// First `<prefix><value>` label, any casing, else "". (public PR #1929, @hjbrandt)
+function labelValue(labels: string[] | undefined, prefix: string): string {
+  const l = (labels ?? []).find((x) => x.toLowerCase().startsWith(prefix.toLowerCase()))
+  return l ? l.slice(prefix.length) : ""
 }
 
 function etaFromAge(ageHours: number | undefined): string {
@@ -4081,10 +4978,14 @@ function buildProjectsFromStatus(inFlight: WorkApiItem[]): OverviewProject[] | n
   const projects: OverviewProject[] = []
 
   if (inFlight.length > 0) {
+    // Badge and owner are never empty: the card's Strategy: label, else its
+    // Property:, else an explicit "unmapped"; owner falls back to
+    // "unassigned". (public issue #2048, @lgertel)
+    const badge = (w: WorkApiItem) => labelValue(w.labels, "Strategy:") || labelValue(w.labels, "Property:") || "unmapped"
     projects.push({
       id: "WORK",
       title: "Work in flight",
-      strategy: "",
+      strategy: [...new Set(inFlight.map(badge))].find((b) => b !== "unmapped") ?? "unmapped",
       dims: [],
       // Any thread older than a week without closing gets an amber row and
       // ambers the card — staleness is visible, not judged.
@@ -4092,10 +4993,10 @@ function buildProjectsFromStatus(inFlight: WorkApiItem[]): OverviewProject[] | n
       work: inFlight.map((w) => ({
         id: w.slug || String(w.number ?? ""),
         title: cleanWorkTitle(w.title ?? ""),
-        strategy: "",
+        strategy: badge(w),
         eta: etaFromAge(w.ageHours),
         status: (w.ageHours ?? 0) > 168 ? "amber" : "green",
-        owner: agentFromLabels(w.labels),
+        owner: agentFromLabels(w.labels) || "unassigned",
       })),
     })
   }
@@ -4196,8 +5097,14 @@ async function handleTelosOverview(): Promise<Response> {
     // Falls back to legacy per-file reads if TELOS.md is absent or a section
     // is missing — preserves back-compat for installs that haven't migrated.
     const sections = parseTelosUnified()
-    const sectionOrFile = (sectionKey: string, legacyFile: string): string =>
-      sections[sectionKey] || readMd(join(TELOS_DIR, legacyFile))
+    // public issue #2117, @NAmorim: apply hasRealContent check to TELOS.md sections
+    // so a still-template TELOS.md section correctly falls through to a populated
+    // legacy file, matching GenerateTelosSummary.ts's own logic.
+    const sectionOrFile = (sectionKey: string, legacyFile: string): string => {
+      const sectionText = sections[sectionKey]
+      if (sectionText && hasRealContent(sectionText)) return sectionText
+      return readMd(join(TELOS_DIR, legacyFile))
+    }
     const missionRaw = sectionOrFile("mission", "MISSION.md")
     const goalsRaw = sectionOrFile("goals", "GOALS.md")
     const problemsRaw = sectionOrFile("problems", "PROBLEMS.md")
@@ -4227,7 +5134,9 @@ async function handleTelosOverview(): Promise<Response> {
           addresses: refsByPrefix(g.references, "P"),
           kpi: pickBulletValue(g.body, "KPI") ?? "",
           target: pickBulletValue(g.body, "Target") ?? "",
-          pct: 0,
+          // Same hand-set `- Progress: N%` bullet parseGoals reads for /life.
+          // (public PR #1929, @hjbrandt)
+          pct: Math.min(100, parseInt((pickBulletValue(g.body, "Progress") ?? "").match(/(\d{1,3})\s*%/)?.[1] ?? "0", 10)),
           delta: null,
           dims: [],
           metrics: [],
@@ -4427,6 +5336,62 @@ function handleLifeAir(): Response {
   }
 }
 
+// ── House (home devices: lights + vacuums, v1) ───────────────────────────────
+// Reads the cache the house-poll job primes; the handler never does device I/O.
+function handleHouseApi(): Response {
+  try {
+    const cachePath = join(MEMORY_DIR, "_HOUSE", "latest.json")
+    if (!existsSync(cachePath)) {
+      return Response.json({ ok: false, error: "cache not primed — run checks/house-poll.ts" }, { status: 503 })
+    }
+    return Response.json(JSON.parse(readFileSync(cachePath, "utf8")))
+  } catch (e) {
+    return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 })
+  }
+}
+
+/** The Observer button and any client: { action: "toggle" | "on" | "off" | "auto" }, default toggle. */
+async function handleObfuscatePost(req: Request): Promise<Response> {
+  let body: { action?: unknown } = {}
+  try { body = await req.json() } catch { /* an empty body means toggle */ }
+  const action = body.action ?? "toggle"
+  if (action === "toggle") return Response.json(toggle())
+  if (action === "on" || action === "off" || action === "auto") return Response.json(setMode(action))
+  return Response.json({ ok: false, error: "action must be toggle, on, off or auto" }, { status: 400 })
+}
+
+// Control: routes to the device CLI by its most direct path, then re-primes the
+// cache so the next GET reflects reality. Args are passed as an array (no shell
+// interpolation); device/action are allow-listed. Garage/locks are not exposed
+// in v1 — when added they gate behind an explicit confirm token here.
+// Cross-site browser writes are refused before routing (pulse.ts isForbiddenCrossSiteWrite).
+async function handleHouseAction(req: Request): Promise<Response> {
+  let body: HouseActionBody
+  try {
+    body = await req.json()
+  } catch {
+    return Response.json({ ok: false, error: "invalid JSON body" }, { status: 400 })
+  }
+  if (!body || typeof body !== "object") return Response.json({ ok: false, error: "invalid JSON body" }, { status: 400 })
+  if (typeof body.target !== "string" || !/^[A-Za-z0-9 _-]{1,32}$/.test(body.target)) return Response.json({ ok: false, error: "bad target" }, { status: 400 })
+
+  const cmd = houseCommand(body)
+  if (!cmd) return Response.json({ ok: false, error: "unsupported device/action" }, { status: 400 })
+
+  // The home skill is private and optional: an install without it answers "not installed" instead of failing the spawn.
+  const script = houseScript(getSkillsDir(), PRIVATE_SKILL_NAMES.home, cmd[0]!)
+  if (!script) return Response.json({ ok: false, error: "house controls are not installed on this machine" }, { status: 501 })
+
+  // NOKICK: this route re-primes the cache itself below, so the CLI must not spawn its own kick.
+  const run = spawnSync("bun", [script, ...cmd.slice(1)], { encoding: "utf8", timeout: 25_000, env: { ...process.env, LIFEOS_HOUSE_NOKICK: "1" } })
+  if (run.status !== 0) {
+    return Response.json({ ok: false, error: (run.stderr || run.stdout || "command failed").trim() }, { status: 502 })
+  }
+  // Re-prime the cache so the UI can reconfirm from real device state.
+  spawnSync("bun", ["run", join(LIFEOS_DIR, "PULSE", "checks", "house-poll.ts")], { encoding: "utf8", timeout: 45_000, cwd: join(LIFEOS_DIR, "PULSE") })
+  return Response.json({ ok: true, result: run.stdout.trim() })
+}
+
 // ── Legacy /api/observability/life-card (redirects to /api/life/home) ──
 
 function handleLifeCardApi(): Response {
@@ -4452,8 +5417,13 @@ const SAMPLE_ENTRY_RE = /^\**\s*\(sample\b/i
 function telosPersonalized(): boolean {
   try {
     const sections = parseTelosUnified()
-    const sectionOrFile = (key: string, legacyFile: string): string =>
-      sections[key] || readMd(join(TELOS_DIR, legacyFile))
+    // public issue #2117, @NAmorim: check hasRealContent on TELOS.md sections
+    // before using them, so a still-template section falls back to legacy file
+    const sectionOrFile = (key: string, legacyFile: string): string => {
+      const sectionText = sections[key]
+      if (sectionText && hasRealContent(sectionText)) return sectionText
+      return readMd(join(TELOS_DIR, legacyFile))
+    }
     const realEntries = (text: string, prefix: string): number =>
       parseIdEntries(text, prefix).filter(
         (e) => !SAMPLE_ENTRY_RE.test((e.title || e.body || "").trim()),
@@ -4531,6 +5501,10 @@ export async function handleObservabilityRequest(req: Request): Promise<Response
   const pathname = url.pathname
   const method = req.method
 
+  // This install's private routes, when it has any (PrivateRoutes.ts).
+  const privateResponse = await privateRoute(method, pathname, req)
+  if (privateResponse) return privateResponse
+
   // ── PUT routes ──
 
   if (method === "PUT") {
@@ -4545,6 +5519,8 @@ export async function handleObservabilityRequest(req: Request): Promise<Response
   if (method === "POST") {
     if (pathname === "/api/security/patterns") return handleSecurityPatternsMutation(req)
     if (pathname === "/api/security/rules") return handleSecurityRulesMutation(req)
+    if (pathname === "/api/house/action") return handleHouseAction(req)
+    if (pathname === "/api/obfuscate") return handleObfuscatePost(req)
 
     return null
   }
@@ -4552,6 +5528,13 @@ export async function handleObservabilityRequest(req: Request): Promise<Response
   // ── GET routes ──
 
   if (method === "GET") {
+    // A retired page answers with a permanent redirect so old links and bookmarks land.
+    const moved = retiredPageRedirect(pathname, url.searchParams)
+    if (moved) return new Response(null, { status: 308, headers: { Location: moved } })
+
+    if (pathname === "/api/house/cameras") return handleCameraPreviews(req)
+    // The shared obfuscation switch (LIFEOS/TOOLS/Obfuscate.ts): OBS running or `ob`. Every tab polls it for Observer mode.
+    if (pathname === "/api/obfuscate") return Response.json(obfuscation(), { headers: { "Cache-Control": "no-store" } })
     // Work sessions
     if (pathname === "/api/algorithm") return handleAlgorithmApi()
     // SSE realtime channel (2026-05-24 realtime-phase-tracking)
@@ -4580,6 +5563,8 @@ export async function handleObservabilityRequest(req: Request): Promise<Response
     if (pathname === "/api/life/work") return handleLifeWork()
     if (pathname === "/api/life/goals") return handleLifeGoals()
     if (pathname === "/api/life/air") return handleLifeAir()
+    if (pathname === "/api/life/affirmation") return handleLifeAffirmation()
+    if (pathname === "/api/house") return handleHouseApi()
     if (pathname === "/api/telos/file") return handleTelosFileGet(url.searchParams)
     if (pathname === "/api/telos/overview") return handleTelosOverview()
 

@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.3.25
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -11,12 +14,12 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  *
  * Harvest STAGES candidates into KNOWLEDGE/_harvest-queue/<Domain>/ for review;
  * notes only enter KNOWLEDGE/<Domain>/ via an explicit `promote` (#1171/#1351).
- * Memory scanning is multi-instance: every ~/.claude/projects/<project>/memory
- * dir is covered, overridable via LIFEOS_AUTO_MEMORY_DIR (#1170).
+ * Harness auto-memory (~/.claude/projects/<project>/memory) is disabled by design and is
+ * not an input; sources are WORK/ ISAs, reflections and RESEARCH/.
  *
  * Commands:
- *   harvest              Stage candidates from all sources (auto-memory, WORK/, reflections, RESEARCH/)
- *   harvest --source X   Harvest from specific source (memory|work|reflections|research)
+ *   harvest              Stage candidates from all sources (WORK/, reflections, RESEARCH/)
+ *   harvest --source X   Harvest from specific source (work|reflections|research)
  *   harvest --dry-run    Preview without writing
  *   review               List staged notes pending review (read-only)
  *   promote <slug>       Promote staged note into KNOWLEDGE/ (--all for everything)
@@ -37,6 +40,13 @@ import { parseArgs } from "util";
 import * as fs from "fs";
 import * as path from "path";
 import { homedir } from "node:os";
+import { getClaudeDir, getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { bumpMemoryGeneration } from "./MemoryRetriever";
+import { ALL_DIRS } from "./KnowledgeSchema.ts"; // public PR #2149, @Bowlerjim; PR #2143, @joecoxtech
+import { assertAnswerArtifact } from "./AnswerArtifact";
+import { invariant } from "./Invariant";
+import { confinedPath } from "./lib/Boundary";
+import { ErrataStore } from "../ERRATA/Store";
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -50,7 +60,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 // ============================================================================
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || path.join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const MEMORY_DIR = path.join(LIFEOS_DIR, "MEMORY");
 const KNOWLEDGE_DIR = path.join(MEMORY_DIR, "KNOWLEDGE");
 const WORK_DIR = path.join(MEMORY_DIR, "WORK");
@@ -59,7 +69,6 @@ const RESEARCH_DIR = path.join(MEMORY_DIR, "RESEARCH");
 const HARVEST_QUEUE_DIR = path.join(KNOWLEDGE_DIR, "_harvest-queue");
 const ARCHIVE_DIR = path.join(KNOWLEDGE_DIR, "_archive");
 
-const PROJECTS_DIR = path.join(HOME, ".claude", "projects");
 
 /**
  * Single-pass backlink index over KNOWLEDGE/ (public PR #1574, @asdf8675309).
@@ -103,53 +112,33 @@ function computeBacklinks(): Map<string, number> {
 }
 
 /**
- * Auto-memory dirs — multi-instance aware (#1170).
- * Override with LIFEOS_AUTO_MEMORY_DIR (colon-separated absolute paths).
- * Otherwise every ~/.claude/projects/<project>/memory dir is scanned, not just
- * the single hardcoded -Users-<user>--claude instance.
- */
-function getAutoMemoryDirs(): Array<{ dir: string; project: string }> {
-  const override = process.env.LIFEOS_AUTO_MEMORY_DIR;
-  if (override) {
-    return override.split(":").filter(Boolean).map(dir => ({
-      dir,
-      project: path.basename(path.dirname(dir)) || path.basename(dir),
-    }));
-  }
-  if (!fs.existsSync(PROJECTS_DIR)) return [];
-  const dirs: Array<{ dir: string; project: string }> = [];
-  for (const entry of fs.readdirSync(PROJECTS_DIR)) {
-    const memDir = path.join(PROJECTS_DIR, entry, "memory");
-    try { if (!fs.statSync(memDir).isDirectory()) continue; } catch { continue; }
-    dirs.push({ dir: memDir, project: entry });
-  }
-  return dirs;
-}
-
-/**
- * WORK roots — the central MEMORY/WORK plus any per-project
- * projects/<project>/memory/{WORK,MEMORY/WORK} trees (#1170).
+ * WORK roots — the central MEMORY/WORK. Per-project trees under the disabled
+ * auto-memory path are no longer scanned.
  */
 function getWorkRoots(): Array<{ dir: string; project: string | null }> {
-  const roots: Array<{ dir: string; project: string | null }> = [{ dir: WORK_DIR, project: null }];
-  for (const { dir, project } of getAutoMemoryDirs()) {
-    for (const sub of ["WORK", path.join("MEMORY", "WORK")]) {
-      const candidate = path.join(dir, sub);
-      try { if (fs.statSync(candidate).isDirectory()) roots.push({ dir: candidate, project }); } catch { /* absent */ }
-    }
-  }
-  return roots;
+  return [{ dir: WORK_DIR, project: null }];
 }
 
 const HARVEST_STATE_FILE = path.join(KNOWLEDGE_DIR, ".harvest-state.json");
 const REFLECTIONS_FILE = path.join(LEARNING_DIR, "REFLECTIONS", "algorithm-reflections.jsonl");
-const RATINGS_FILE = path.join(LEARNING_DIR, "SIGNALS", "ratings.jsonl");
 
 const MAX_NOTES_PER_HARVEST_DEFAULT = 5;
 const MAX_NOTES_BACKFILL = 50;
 const SEEDLING_EXPIRY_DAYS = 90;
 
-const DOMAINS = ["People", "Companies", "Ideas", "Research"];
+// All six note types (kb-v3 CANONICAL_TYPES). Using KnowledgeSchema.ALL_DIRS as the single
+// source prevents drift where Books or Blogs notes would be invisible to the harvester (public PR #2149, @Bowlerjim).
+const DOMAINS = ALL_DIRS;
+
+/**
+ * Queue JSON is untrusted input: a domain is only ever a member of DOMAINS
+ * (case-insensitive match returns the canonical spelling), never a path.
+ * Anything else, including "../Ideas", falls back to "Ideas".
+ */
+export function queueDomain(raw: unknown): string {
+  if (typeof raw !== "string") return "Ideas";
+  return DOMAINS.find((d) => d.toLowerCase() === raw.trim().toLowerCase()) ?? "Ideas";
+}
 
 // Object type classification keywords
 const TYPE_KEYWORDS: Record<string, string[]> = {
@@ -192,6 +181,48 @@ interface ArchiveStats {
   lastHarvest: string | null;
 }
 
+/** The single persistence boundary for harvested markdown artifacts. */
+/**
+ * The physical path a harvest write or read may touch: its parent directory must
+ * dereference inside `root`, and the leaf itself must not be a symlink (dangling or
+ * not), because existsSync reads a dangling link as absent and a plain write would
+ * follow it out of the tree. Returns the leaf under the real parent; throws otherwise.
+ */
+export function confineHarvestPath(root: string, p: string): string {
+  const realParent = confinedPath(root, path.dirname(p));
+  invariant(realParent !== null, `confineHarvestPath: ${p} resolves outside ${root}`);
+  let leaf: fs.Stats | null = null;
+  try { leaf = fs.lstatSync(p); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+  invariant(!leaf || !leaf.isSymbolicLink(), `confineHarvestPath: ${p} is a symlink`);
+  return path.join(realParent, path.basename(p));
+}
+
+/**
+ * Write a harvested note. When `root` is given the target is confined to it first.
+ * The bytes go to an exclusively created (O_EXCL | O_NOFOLLOW, mode 0600) temp file
+ * in the target's own directory and are renamed over the target; rename replaces a
+ * link at the target rather than following it, so no write ever leaves the tree.
+ */
+export function writeHarvestedArtifact(targetPath: string, content: string, root?: string): void {
+  assertAnswerArtifact(content);
+  const target = root ? confineHarvestPath(root, targetPath) : targetPath;
+  const tmp = path.join(path.dirname(target), `.${path.basename(target)}.${process.pid}.${crypto.randomUUID()}.tmp`);
+  const fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
+  try {
+    fs.writeSync(fd, content);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    fs.renameSync(tmp, target);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
+}
+
 // ============================================================================
 // Harvest State Management
 // ============================================================================
@@ -210,43 +241,6 @@ function saveHarvestState(state: HarvestState): void {
 // ============================================================================
 // Source Scanners
 // ============================================================================
-
-function scanAutoMemory(state: HarvestState): HarvestCandidate[] {
-  const candidates: HarvestCandidate[] = [];
-
-  for (const { dir, project } of getAutoMemoryDirs()) {
-    let files: string[];
-    try { files = fs.readdirSync(dir); } catch { continue; }
-
-    for (const file of files) {
-      if (file === "MEMORY.md" || !file.endsWith(".md")) continue;
-      const filePath = path.join(dir, file);
-      try { if (!fs.statSync(filePath).isFile()) continue; } catch { continue; }
-      if (state.harvestedPaths.includes(filePath)) continue;
-
-      const content = fs.readFileSync(filePath, "utf-8");
-      const frontmatter = parseFrontmatter(content);
-      if (!frontmatter.type || frontmatter.type === "feedback") continue; // Skip feedback — stays in auto-memory
-
-      const domain = classifyDomain(content, frontmatter);
-      // Map old types to new types or infer from domain
-      const type = domain === "People" ? "person" as const :
-                   domain === "Companies" ? "company" as const :
-                   domain === "Research" ? "research" as const : "idea" as const;
-
-      candidates.push({
-        sourcePath: filePath,
-        title: frontmatter.name || frontmatter.title || file.replace(/\.md$/, ""),
-        content: content.replace(/^---[\s\S]*?---\n*/, ""), // Strip frontmatter
-        domain,
-        type,
-        tags: extractTags(content),
-        sourceProject: project,
-      });
-    }
-  }
-  return candidates;
-}
 
 function scanWorkISAs(state: HarvestState, backfillMode: boolean = false): HarvestCandidate[] {
   const candidates: HarvestCandidate[] = [];
@@ -394,7 +388,7 @@ function scanHarvestQueue(_state: HarvestState): HarvestCandidate[] {
         sourcePath: data.sourcePath || `queue:${file}`,
         title: data.title || file.replace(/\.json$/, ""),
         content: data.content || "",
-        domain: data.domain || "Ideas",
+        domain: queueDomain(data.domain),
         type: data.type || "reference",
         tags: data.tags || [],
         queueFile,
@@ -501,7 +495,6 @@ function extractSection(content: string, heading: string): string | null {
 }
 
 function getSentimentForSession(dirName: string): number | null {
-  if (!fs.existsSync(RATINGS_FILE)) return null;
   // Extract timestamp from dir name: YYYYMMDD-HHMMSS_description
   // Match by session_id if available in ISA, otherwise by hour-level timestamp
   const dateTimePrefix = dirName.substring(0, 15); // YYYYMMDD-HHMMSS
@@ -514,20 +507,17 @@ function getSentimentForSession(dirName: string): number | null {
     "$1-$2-$3"
   ); // "2026-04-01"
   try {
-    const lines = fs.readFileSync(RATINGS_FILE, "utf-8").trim().split("\n");
-    // Check last 50 ratings — prefer minute-level match, fall back to averaging same-day
+    const entries = new ErrataStore().all().filter((entry) => entry.rating !== null).slice(-50).reverse();
+    // Check last 50 Errata ratings — prefer minute-level match, fall back to averaging same-day
     const sameDayRatings: number[] = [];
-    for (const line of lines.slice(-50).reverse()) {
-      try {
-        const entry = JSON.parse(line);
-        const ts = entry.timestamp || "";
-        const rating = entry.rating || entry.implied_sentiment;
-        if (!rating) continue;
+    for (const entry of entries) {
+        const ts = entry.ts;
+        const rating = entry.rating;
+        if (rating === null) continue;
         // Minute-level match: most precise
         if (ts.includes(dateFormatted)) return rating;
         // Collect same-day ratings for averaging
         if (ts.includes(dateOnly)) sameDayRatings.push(rating);
-      } catch { /* skip */ }
     }
     // No minute-level match — average same-day ratings instead of taking the worst one
     if (sameDayRatings.length > 0) {
@@ -540,6 +530,8 @@ function getSentimentForSession(dirName: string): number | null {
 function toKebabCase(str: string): string {
   return str
     .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "") // strip diacritics: "ação" → "acao", not "ao" (public issue #2131, @drpaulobernardy)
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
@@ -568,14 +560,23 @@ function isDuplicate(candidate: HarvestCandidate, state: HarvestState): boolean 
  */
 function stageNote(candidate: HarvestCandidate): string {
   const slug = toKebabCase(candidate.title);
+  invariant(DOMAINS.includes(candidate.domain), `stageNote: domain is not a known domain: ${candidate.domain}`);
   const targetDir = path.join(HARVEST_QUEUE_DIR, candidate.domain);
   const targetPath = path.join(targetDir, `${slug}.md`);
 
   if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+  // Staging must stay inside _harvest-queue even through symlinked components.
+  const realQueue = fs.realpathSync(HARVEST_QUEUE_DIR);
+  const realTarget = fs.realpathSync(targetDir);
+  invariant(
+    realTarget === realQueue || realTarget.startsWith(realQueue + path.sep),
+    `stageNote: staging dir escapes _harvest-queue: ${realTarget}`,
+  );
 
   const today = new Date().toISOString().split("T")[0];
   const tagsStr = candidate.tags.map(t => `${t}`).join(", ");
   const projectLine = candidate.sourceProject ? `\nsource_project: ${candidate.sourceProject}` : "";
+  const answerProvenance = candidate.type === "research" ? "\nsource_kind: internal\nconfidence: 0.7" : "";
 
   const note = `---
 title: "${candidate.title.replace(/"/g, '\\"')}"
@@ -586,7 +587,7 @@ created: ${today}
 updated: ${today}
 quality: 5
 status: pending-review
-harvested_from: ${candidate.sourcePath}${projectLine}
+harvested_from: ${candidate.sourcePath}${projectLine}${answerProvenance}
 ---
 
 # ${candidate.title}
@@ -594,7 +595,7 @@ harvested_from: ${candidate.sourcePath}${projectLine}
 ${candidate.content}
 `;
 
-  fs.writeFileSync(targetPath, note);
+  writeHarvestedArtifact(targetPath, note, HARVEST_QUEUE_DIR);
   return targetPath;
 }
 
@@ -607,15 +608,25 @@ interface StagedNote {
   created: string;
 }
 
-function listStagedNotes(): StagedNote[] {
+/**
+ * Every staged note in the queue, by its physical path. A domain directory that resolves
+ * outside the queue (a link out of it) is skipped with a warning, and only regular files are
+ * listed, so nothing a later promote or reject touches can sit outside the queue.
+ */
+export function listStagedNotes(queueDir: string = HARVEST_QUEUE_DIR): StagedNote[] {
   const staged: StagedNote[] = [];
-  if (!fs.existsSync(HARVEST_QUEUE_DIR)) return staged;
+  if (!fs.existsSync(queueDir)) return staged;
 
   for (const domain of DOMAINS) {
-    const domainDir = path.join(HARVEST_QUEUE_DIR, domain);
-    if (!fs.existsSync(domainDir)) continue;
-    for (const file of fs.readdirSync(domainDir)) {
-      if (!file.endsWith(".md")) continue;
+    if (!fs.existsSync(path.join(queueDir, domain))) continue;
+    const domainDir = confinedPath(queueDir, domain);
+    if (domainDir === null) {
+      console.error(`  ⚠️  skipping _harvest-queue/${domain}: it resolves outside the queue`);
+      continue;
+    }
+    for (const entry of fs.readdirSync(domainDir, { withFileTypes: true })) {
+      const file = entry.name;
+      if (!entry.isFile() || !file.endsWith(".md")) continue;
       const filePath = path.join(domainDir, file);
       let fm: Record<string, any> = {};
       try { fm = parseFrontmatter(fs.readFileSync(filePath, "utf-8")); } catch { /* unreadable — still list it */ }
@@ -929,12 +940,6 @@ function cmdHarvest(sourceFilter: string | null, dryRun: boolean, maxNotes: numb
   console.log("─".repeat(40));
 
   // Collect candidates from each source
-  if (!sourceFilter || sourceFilter === "memory") {
-    const memCandidates = scanAutoMemory(state);
-    console.log(`  Auto-memory: ${memCandidates.length} candidates`);
-    allCandidates.push(...memCandidates);
-  }
-
   if (!sourceFilter || sourceFilter === "work") {
     const isBackfill = maxNotes > MAX_NOTES_PER_HARVEST_DEFAULT;
     const workCandidates = scanWorkISAs(state, isBackfill);
@@ -1024,6 +1029,45 @@ function cmdReview(): void {
   console.log(`\n  ${staged.length} note(s) pending. Promote with \`promote <slug>\` or \`promote --all\`; reject with \`reject <slug>\`.`);
 }
 
+/**
+ * Move one staged note into KNOWLEDGE/<Domain>/. The source must physically live in
+ * the queue (no link out to some other file to read and publish), the destination
+ * directory must physically live in KNOWLEDGE, and the destination leaf must not be
+ * a link. A real existing note is left alone and reported as "exists".
+ */
+export function promoteStagedNote(
+  s: Pick<StagedNote, "domain" | "slug" | "path">, knowledgeDir: string, queueDir: string,
+): "promoted" | "exists" {
+  invariant(DOMAINS.includes(s.domain), `promoteStagedNote: domain is not a known domain: ${s.domain}`);
+  const source = confineHarvestPath(queueDir, s.path);
+  invariant(fs.lstatSync(source).isFile(), `promoteStagedNote: staged source is not a regular file: ${s.path}`);
+  const targetDir = path.join(knowledgeDir, s.domain);
+  if (!fs.existsSync(targetDir)) {
+    let dangling = false;
+    try { dangling = fs.lstatSync(targetDir).isSymbolicLink(); } catch { /* absent */ }
+    invariant(!dangling, `promoteStagedNote: domain dir is a dangling link: ${targetDir}`);
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+  const targetPath = confineHarvestPath(knowledgeDir, path.join(targetDir, `${s.slug}.md`));
+  if (fs.existsSync(targetPath)) return "exists";
+  // Drop the pending-review marker; harvested_from provenance stays
+  const content = fs.readFileSync(source, "utf-8").replace(/^status: pending-review\n/m, "");
+  writeHarvestedArtifact(targetPath, content, knowledgeDir);
+  fs.unlinkSync(source);
+  return "promoted";
+}
+
+/**
+ * Delete one staged note. Its directory must physically live in the queue and the leaf must be
+ * a regular file, so a linked domain directory or a crafted path can never delete outside it.
+ */
+export function rejectStagedNote(s: Pick<StagedNote, "domain" | "slug" | "path">, queueDir: string): void {
+  invariant(DOMAINS.includes(s.domain), `rejectStagedNote: domain is not a known domain: ${s.domain}`);
+  const target = confineHarvestPath(queueDir, s.path);
+  invariant(fs.lstatSync(target).isFile(), `rejectStagedNote: staged note is not a regular file: ${s.path}`);
+  fs.unlinkSync(target);
+}
+
 function cmdPromote(target: string | null, all: boolean): void {
   const staged = listStagedNotes();
   const toPromote = all ? staged : target ? matchStaged(staged, target) : [];
@@ -1045,17 +1089,11 @@ function cmdPromote(target: string | null, all: boolean): void {
   const affectedDomains = new Set<string>();
 
   for (const s of toPromote) {
-    const targetDir = path.join(KNOWLEDGE_DIR, s.domain);
-    const targetPath = path.join(targetDir, `${s.slug}.md`);
-    if (fs.existsSync(targetPath)) {
+    if (promoteStagedNote(s, KNOWLEDGE_DIR, HARVEST_QUEUE_DIR) === "exists") {
       console.log(`  ⚠️  skipped ${s.domain}/${s.slug} — already exists in KNOWLEDGE/ (reject or rename the staged copy)`);
       continue;
     }
-    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-    // Drop the pending-review marker; harvested_from provenance stays
-    const content = fs.readFileSync(s.path, "utf-8").replace(/^status: pending-review\n/m, "");
-    fs.writeFileSync(targetPath, content);
-    fs.unlinkSync(s.path);
+    bumpMemoryGeneration();
     state.totalHarvested++;
     affectedDomains.add(s.domain);
     console.log(`  ✅ promoted: ${s.domain}/${s.slug}.md`);
@@ -1092,7 +1130,7 @@ function cmdReject(target: string | null, all: boolean): void {
   }
 
   for (const s of toReject) {
-    fs.unlinkSync(s.path);
+    rejectStagedNote(s, HARVEST_QUEUE_DIR);
     console.log(`  🗑  rejected: ${s.domain}/${s.slug}.md`);
   }
   // Note: harvestedPaths keeps the source entry, so rejected content is not re-staged next run.
@@ -1193,7 +1231,9 @@ function cmdContradictions(): void {
 
   for (let i = 0; i < notes.length; i++) {
     for (let j = i + 1; j < notes.length; j++) {
-      const shared = notes[i].tags.filter(t => notes[j].tags.includes(t));
+      // `untagged` is the migrator's placeholder, not a topic: two notes that share
+      // only "we have no tags" are not related. (public issue #1985, @hjbrandt)
+      const shared = notes[i].tags.filter(t => t !== "untagged" && notes[j].tags.includes(t));
       if (shared.length >= 2) {
         // Check temporal validity — skip pairs with non-overlapping windows
         const hasTemporalData = notes[i].fm.valid_from || notes[i].fm.valid_until ||
@@ -1262,6 +1302,7 @@ function cmdIndex(): void {
 // CLI Entry Point
 // ============================================================================
 
+if (import.meta.main) {
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   options: {
@@ -1287,7 +1328,7 @@ nothing enters KNOWLEDGE/<Domain>/ until an explicit promote.
 
 Commands:
   harvest              Stage candidates from all sources into _harvest-queue/
-  harvest --source X   Harvest from: memory, work, reflections, research
+  harvest --source X   Harvest from: work, reflections, research
   harvest --dry-run    Preview without writing
   review               List staged notes pending review (read-only)
   promote <slug>       Promote a staged note into KNOWLEDGE/ (--all for everything)
@@ -1295,10 +1336,6 @@ Commands:
   status               Archive health dashboard
   index                Regenerate all MOC dashboards
   contradictions       Find note pairs with high tag overlap for semantic review
-
-Env:
-  LIFEOS_AUTO_MEMORY_DIR   Colon-separated memory dirs to scan (default: all
-                           ~/.claude/projects/*/memory instances)
 
 Examples:
   bun KnowledgeHarvester.ts harvest
@@ -1340,4 +1377,5 @@ switch (command) {
   default:
     console.error(`Unknown command: ${command}. Use --help for usage.`);
     process.exit(1);
+}
 }

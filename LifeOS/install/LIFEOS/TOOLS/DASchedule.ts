@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.4.7
  * DASchedule — CLI for managing DA scheduled tasks
  *
  * Usage:
@@ -14,9 +15,10 @@ import { join } from "path"
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from "fs"
 import { getDAName } from "../../hooks/lib/identity"
 import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir()
-const LIFEOS_DIR = join(HOME, ".claude", "LIFEOS")
+const LIFEOS_DIR = getLifeosDir()
 const TASKS_DIR = join(LIFEOS_DIR, "PULSE", "state", "da")
 const TASKS_PATH = join(TASKS_DIR, "scheduled-tasks.jsonl")
 

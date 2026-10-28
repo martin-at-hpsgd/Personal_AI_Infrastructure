@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<!-- A paused timeline whose scenes are visible in CSS and hidden by the timeline's own state at time 0 (a 2026-10-10 film build:
+     tl.set(..., 0) on a paused GSAP timeline). Like GSAP, seek(t) renders nothing when the playhead is already at t, so a
+     fresh page seeked to 0 shows every scene stacked unless the producer forces a render. -->
+<html><head><meta charset="UTF-8">
+<style>
+html, body { margin: 0; background: #0b0d12; }
+#root { position: relative; width: 800px; height: 400px; overflow: hidden; color: #e3e9f4; font: 700 48px sans-serif; }
+#a, #b { position: absolute; left: 40px; }
+#a { top: 60px; } #b { top: 200px; }
+</style></head>
+<body><div id="root" data-composition-id="fx" data-width="800" data-height="400" data-duration="4">
+<div id="a">OPENING</div><div id="b">LATER</div>
+</div>
+<script>
+var a = document.getElementById("a"), b = document.getElementById("b");
+var tl = { _t: 0, totalTime: function () { return this._t; }, time: function () { return this._t; },
+  seek: function (t) { if (t === this._t) return this; this._t = t; a.style.visibility = t < 2 ? "visible" : "hidden"; b.style.visibility = t >= 2 ? "visible" : "hidden"; return this; } };
+window.__timelines = { fx: tl };
+</script></body></html>

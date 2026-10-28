@@ -1,4 +1,5 @@
 /**
+ * @version 1.1.0
  * resolveBun — return an absolute path to the bun binary.
  *
  * Detached / unref'd hook subprocesses can get a minimal PATH, so spawning the

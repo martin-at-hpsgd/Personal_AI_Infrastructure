@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.2
+ * @version 1.1.0
  * AtlasEventCapture.hook.ts — mutation hints for the Atlas asset graph.
  *
  * TRIGGER: PostToolUse (Bash, Write, Edit, MultiEdit)
@@ -13,20 +13,23 @@
  * reconciliation heals everything. (Atlas doctrine: hint, never fact.)
  */
 
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { readStdinJson } from "./lib/hook-stdin";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
 const ATLAS_DIR = join(homedir(), ".local/state/lifeos/atlas");
 const EVENTS_PATH = join(ATLAS_DIR, "events.jsonl");
 
-let input: { tool_name?: string; tool_input?: { command?: string; file_path?: string } };
-try {
-  input = JSON.parse(readFileSync(0, "utf-8"));
-} catch {
-  process.exit(0);
-}
+/** A Bash command that deploys or deletes Cloudflare infra: Wrangler, the cf CLI that replaced it on
+ * 2026-09-29 (bare, bunx, pinned, or forwarded by CfEnv.ts), and the deploy scripts. */
+export const CLOUDFLARE_MUTATION_RE =
+  /wrangler(@\S+)?\s+(deploy|delete|pages\s+deploy)|deploy\.sh|CfEnv\.ts\s+deploy|(?:(?<![\w.-])cf(?:@\S+)?|\bCfEnv\.ts)\s+(?:[\w-]+\s+){0,3}(?:deploy|delete|bulk-delete)\b(?!-)/;
 
+type AtlasInput = { tool_name?: string; tool_input?: { command?: string; file_path?: string } };
+
+/** Append Atlas hints for a mutating tool call. Never emits model context. */
+export function run(input: AtlasInput): null {
 const tool = input.tool_name ?? "";
 const cmd = input.tool_input?.command ?? "";
 const filePath = input.tool_input?.file_path ?? "";
@@ -35,7 +38,7 @@ const filePath = input.tool_input?.file_path ?? "";
 const sources = new Set<string>();
 
 if (tool === "Bash") {
-  if (/wrangler(@\S+)?\s+(deploy|delete|pages\s+deploy)|deploy\.sh|CfEnv\.ts\s+deploy/.test(cmd)) sources.add("cloudflare");
+  if (CLOUDFLARE_MUTATION_RE.test(cmd)) sources.add("cloudflare");
   if (/\bdns_records\b|zones\/.*\/dns/.test(cmd)) sources.add("cloudflare");
   if (/\bgh\s+repo\s+(create|delete|rename|archive)/.test(cmd)) sources.add("github");
   if (/launchctl\s+(load|unload|bootstrap|bootout)/.test(cmd)) sources.add("launchd");
@@ -62,4 +65,11 @@ if (sources.size > 0) {
     // Never block the tool call over a hint. Reconciliation heals.
   }
 }
-process.exit(0);
+return null;
+}
+
+if (import.meta.main) {
+  const input = await readStdinJson();
+  if (input) run(input as AtlasInput);
+  process.exit(0);
+}

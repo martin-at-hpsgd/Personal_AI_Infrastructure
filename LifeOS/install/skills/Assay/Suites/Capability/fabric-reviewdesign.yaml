@@ -1,0 +1,166 @@
+# Fabric ReviewDesign — a review of an architecture design: verdict, seven areas
+# of findings with severity, evidence and fix, assumptions, and a closing
+# summary of strengths and ranked changes. The regex asserts pin the literal shape (heading and verdict,
+# the sections in order, the finding line form, Source/Answer lines, the
+# no-design line); the judged asserts carry what code cannot: findings tied to
+# this design, nothing invented, the real critical flaw caught, a verdict that
+# follows the findings, the typed-hint override. Synthetic inline fixtures only.
+name: fabric-reviewdesign
+type: capability
+# A full seven-area review of a multi-tenant design, written against a long
+# intent, runs past the 90 s default answer timeout.
+subject_timeout_ms: 240000
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ReviewDesign.md"
+cases:
+  - id: pasted_multitenant_design
+    prompt: |
+      review_design on this:
+
+      "Design doc, fictional reporting API (v0.3). Clients call a REST API over HTTPS with an API key in the X-Api-Key header. An nginx gateway applies a rate limit of 100 requests per minute per IP address. Behind it, three stateless app containers run the report service. All tenants share one Postgres database; every table has a tenant_id column, and the service adds WHERE tenant_id = ? to each query it builds. Report exports are written to a shared object storage bucket under the path exports/<report_id>.csv, where report_id is a sequential integer, and the API returns a public link to the file. A nightly cron job on the first app container rebuilds the summary tables. The architecture diagram also shows the report service calling a Billing service, which the text does not describe."
+    # SYNTHETIC ADVERSARIAL FIXTURE: right heading, verdict form, sections, finding
+    # lines and assumptions, but every finding is a generic checklist item that
+    # fits any API, it asks for HTTPS the doc already states, it credits the
+    # design with Kubernetes autoscaling the doc never mentions, and it misses
+    # the public, sequentially numbered export links that expose every tenant's
+    # reports.
+    adversarial_output: |
+      # Design review: Reporting API
+
+      Verdict: Sound with changes. The design is generally solid but security and scalability should be strengthened.
+
+      ## Architecture and components
+
+      - Medium: Component responsibilities could be documented more clearly. Evidence: Not stated. Fix: Document each component.
+
+      ## External integrations
+
+      - Medium: External integrations may introduce risk. Evidence: Not stated. Fix: Review integrations regularly.
+
+      ## Security
+
+      - High: Security measures may be insufficient. Evidence: Not stated. Fix: Follow OWASP best practices and enable HTTPS everywhere.
+
+      ## Performance, scalability and resilience
+
+      - Medium: The Kubernetes autoscaler may react slowly to spikes. Evidence: Common practice, autoscalers lag sudden load. Fix: Lower the scale-up threshold.
+
+      ## Data management
+
+      - Low: Data should be backed up. Evidence: Not stated. Fix: Take regular backups.
+
+      ## Maintainability and growth
+
+      - Low: The system could be more modular. Evidence: Not stated. Fix: Consider microservices.
+
+      ## Document readability
+
+      - Low: Some terms could be clearer. Evidence: Not stated. Fix: Add a glossary.
+
+      ## Assumptions
+
+      - Assumed: The system runs on Kubernetes.
+
+      ## Strengths
+
+      - The architecture is modern and well structured.
+
+      ## Most critical changes
+
+      1. Security: Follow security best practices across all components.
+      2. Performance, scalability and resilience: Tune the Kubernetes autoscaling policy.
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)# Design review: [^\n]+\n[ \t]*\nVerdict: (?:Sound with changes|Needs rework|Sound)\. \S'
+      - type: regex
+        weight: 2
+        value: '\n## Architecture and components\n[\s\S]*\n## External integrations\n[\s\S]*\n## Security\n[\s\S]*\n## Performance, scalability and resilience\n[\s\S]*\n## Data management\n[\s\S]*\n## Maintainability and growth\n[\s\S]*\n## Document readability\n[\s\S]*\n## Assumptions\n[\s\S]*\n## Strengths\n[\s\S]*\n## Most critical changes\n[ \t]*\n1\. [^\n]+(?:\n[ \t]*\d+\. [^\n]+)*\s*$'
+      - type: regex
+        weight: 1
+        value: '\n- (?:Critical|High|Medium|Low): [^\n]+ Evidence: [^\n]+ Fix: [^\n]+'
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 4
+        value: [ "The review rates the public export links at exports/<report_id>.csv with sequential report ids as Critical, because anyone can enumerate other tenants' reports, and the verdict is Needs rework", "The review notes that tenant isolation rests only on the service adding WHERE tenant_id = ? to each query, and proposes a database-level control such as row-level security or a per-tenant role", "At least one finding addresses the rate limit being per IP address rather than per API key, or the nightly cron job living only on the first app container", "Document readability flags the Billing service that appears in the diagram but not in the text", "Findings name parts of this design (the X-Api-Key header, the nginx gateway, the shared Postgres, the export bucket, the cron job) rather than fitting any API, and no fix is a generic line such as follow best practices" ]
+        reference: "a multi-tenant reporting API with app-side tenant_id filtering, public sequential export links, per-IP rate limit, cron on one container, an undocumented Billing service in the diagram"
+      - type: llm-assert
+        weight: 2
+        value: [ "No verdict line, strength, finding or assumption describes the current design as using a technology or setting the doc does not state (such as Kubernetes or autoscaling); a Fix that proposes such a technology as a change is allowed", "The review does not ask for HTTPS, which the doc already states" ]
+        reference: "the doc states HTTPS, an nginx gateway, three stateless app containers, one shared Postgres, an object storage bucket, a cron job and a Billing service, and nothing else about the platform"
+      - type: llm-assert
+        weight: 2
+        value: [ "The review ends on its ranked Most critical changes, and each ranked change restates the fix of a finding that appears above it", "No strength, No issues line or verdict sentence credits the design with a guarantee (such as complete tenant isolation) that one of the review's own findings contradicts" ]
+        reference: "the closing summary of a review must follow from its findings; tenant isolation here rests on app-side filtering and public sequential links"
+  - id: bare_topic_named_pattern
+    prompt: "review_design: a URL shortener"
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)# Design review: [^\n]+\n[ \t]*\nVerdict: (?:Sound with changes|Needs rework|Sound)\. \S'
+      - type: regex
+        weight: 2
+        value: '\nSource: \S[^\n]*\n'
+      - type: regex
+        weight: 1
+        value: '\n## Document readability\n[ \t]*\n- Not applicable: \S'
+      - type: regex
+        weight: 1
+        value: '\n## Architecture and components\n[\s\S]*\n## External integrations\n[\s\S]*\n## Security\n[\s\S]*\n## Performance, scalability and resilience\n[\s\S]*\n## Data management\n[\s\S]*\n## Maintainability and growth\n[\s\S]*\n## Document readability\n[\s\S]*\n## Assumptions\n[\s\S]*\n## Strengths\n[\s\S]*\n## Most critical changes\n[ \t]*\n1\. [^\n]+(?:\n[ \t]*\d+\. [^\n]+)*\s*$'
+      - type: llm-assert
+        weight: 3
+        value: [ "The review assesses the typical design of a URL shortener and its known weak points, such as short-code generation and collisions, enumeration of guessable codes, read-heavy redirect caching, and abuse through malicious or phishing links", "The Source line says the review draws on the common design of a URL shortener because no design document was supplied", "The review does not quote or cite a design document, since none was given; evidence is Not stated or Common practice" ]
+        reference: "review_design: a URL shortener (bare topic, no document)"
+  - id: question_gets_answer
+    prompt: |
+      Is one Redis instance enough for this design? "Fictional booking site, about 20,000 daily users. Three app servers behind a load balancer keep all user sessions in a single Redis instance with persistence turned off. Bookings are written to a managed MySQL database with a standby replica in a second zone."
+    assert:
+      - type: regex
+        weight: 2
+        value: '\nAnswer: \S[^\n]*\n'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Design review: [^\n]+\n[ \t]*\nVerdict: (?:Sound with changes|Needs rework|Sound)\. \S'
+      - type: regex
+        weight: 1
+        value: '\n## Performance, scalability and resilience\n[ \t]*\n- (?:Critical|High|Medium|Low): '
+      - type: llm-assert
+        weight: 4
+        value: [ "The Answer line answers the question directly: one instance has ample capacity for about 20,000 daily users, but with persistence off and no replica it is a single point of failure whose restart logs every user out", "The review contrasts the session store with the MySQL database, which already has a standby replica in a second zone, rather than treating the whole design as fragile", "The fix for Redis is specific, such as adding a replica with automatic failover or enabling persistence, not a generic call to improve resilience" ]
+        reference: "a single non-persistent Redis session store for three app servers, 20k daily users, MySQL with a cross-zone standby"
+  - id: no_design_input
+    prompt: "review_design: Mix two cups of flour with one cup of sugar, add three eggs and a cup of milk, then bake at 180 C for 40 minutes."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*No design: [^\n]+\s*$'
+      - type: not-contains
+        weight: 1
+        value: "## Security"
+      - type: llm-assert
+        weight: 2
+        value: [ "The output says the input is a baking recipe rather than a software design, and reviews nothing" ]
+        reference: "a cake recipe given to review_design"
+  - id: hint_narrows_to_security
+    prompt: |
+      review_design, security only: "Fictional internal wiki. Staff sign in with the company's single sign-on. Pages are stored in a Postgres database. Admins can upload HTML templates that are rendered into every page without sanitizing. Backups are copied nightly to an object storage bucket shared with the marketing team."
+    assert:
+      - type: icontains
+        weight: 1
+        value: "security"
+      - type: not-contains
+        weight: 2
+        value: "## Maintainability and growth"
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: llm-assert
+        weight: 4
+        value: [ "The output covers only security, without the other review areas", "It identifies the unsanitized admin-uploaded HTML templates rendered into every page as a stored cross-site scripting risk and rates it high or critical", "It flags the backups copied to a bucket shared with the marketing team as exposing every page to people outside the wiki's audience", "It does not ask for single sign-on, which the design already states" ]
+        reference: "a wiki with unsanitized admin HTML templates and backups in a bucket shared with marketing, security-only hint"

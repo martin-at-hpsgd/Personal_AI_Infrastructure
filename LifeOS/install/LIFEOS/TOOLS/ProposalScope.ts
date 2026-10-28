@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.0
+ * @version 1.0.6
  * ProposalScope — the one deterministic answer to "who needs this rule loaded?"
  *
  * The memory reviewer classifies a proposal by KIND (what it is about: an
@@ -8,12 +8,12 @@
  * curated file a proposal belongs to. It says nothing about SCOPE — whether the
  * rule is global doctrine or scoped to one skill, one project, or one hook.
  *
- * Without a scope axis every rule-shaped signal lands in OPERATIONAL_RULES.md,
- * which is @-imported on EVERY turn. Audit 2026-07-31: of the 10 entries in that
- * file's proposals tail, 7 were skill- or project-scoped (FTC disclosure →
- * _SOCIALPOST, Discussions triage → _LIFEOS, portal onboarding → Vector) and 2
- * were already absorbed into the body. One was genuinely global. The always-on
- * context was paying ~4.9KB per turn to carry rules almost none of it needed.
+ * Without a scope axis every rule-shaped signal lands in OPERATIONAL_PREFERENCES.md,
+ * which is @-imported on EVERY turn. An audit (2026-07-31) found most entries in
+ * that file's proposals tail were skill- or project-scoped (FTC disclosure →
+ * the social-post skill, Discussions triage → the system skill, portal onboarding → a project),
+ * some were already absorbed into the body, and few were genuinely global. The
+ * always-on context was paying every turn to carry rules almost none of it needed.
  *
  * Scope is decided by NAME MATCH against what actually exists on disk — a real
  * skill directory, a real hook file, a real project row. That makes it precise
@@ -57,7 +57,7 @@ export function listHooks(): string[] {
   } catch { return []; }
 }
 
-/** Skill dir names present under skills/ (e.g. "_VIDEO", "Research"). */
+/** Skill dir names present under skills/ (e.g. "Art", "Research"). */
 export function listSkills(): string[] {
   try {
     return readdirSync(join(CLAUDE_DIR, "skills"), { withFileTypes: true })
@@ -72,19 +72,30 @@ export function listSkills(): string[] {
  * moment it has a row — the table is already the registry, so this adds no
  * second place to update.
  */
-export function listProjects(): string[] {
-  const path = join(CLAUDE_DIR, "LIFEOS/USER/PROJECTS.md");
+export function listProjects(path: string = join(CLAUDE_DIR, "LIFEOS/USER/PROJECTS.md")): string[] {
   if (!existsSync(path)) return [];
   try {
     const names = new Set<string>();
+    let bodyRows = 0;
+    let inBody = false;
     for (const line of readFileSync(path, "utf8").split("\n")) {
-      if (!line.startsWith("|")) continue;
+      if (!line.startsWith("|")) { inBody = false; continue; }
+      if (/^\|[\s:|-]+$/.test(line)) { inBody = true; continue; } // header separator row
+      if (inBody) bodyRows++;
       const m = line.match(/^\|\s*\*\*([^*|]{2,40})\*\*/);
       if (m) names.add(m[1].trim());
+    }
+    // public issue #2175, @selinium: an unbolded table used to yield [] with no signal, so every
+    // project-scoped proposal silently routed global. Say so, once per file.
+    if (bodyRows > 0 && names.size === 0 && !warnedProjectFiles.has(path)) {
+      warnedProjectFiles.add(path);
+      console.error(`ProposalScope: ${path} has ${bodyRows} table row(s) but no project names parsed; names in the first column must be bold (**Name**) or project-scoped proposals route global`);
     }
     return [...names];
   } catch { return []; }
 }
+
+const warnedProjectFiles = new Set<string>();
 
 export interface ScopeTables {
   hooks: string[];
@@ -99,9 +110,9 @@ export function loadScopeTables(): ScopeTables {
 
 /**
  * A universal rule over a generic class is global doctrine, whatever names it
- * cites. "Any production app (e.g. Surface) failing to update must alert" is a
- * rule about production apps; Surface is the example that motivated it. Reading
- * that as Surface-scoped would file global doctrine under one project and lose
+ * cites. "Any production app (e.g. a storefront) failing to update must alert" is a
+ * rule about production apps; the storefront is the example that motivated it. Reading
+ * that as project-scoped would file global doctrine under one project and lose
  * it for every other app.
  *
  * This encodes the system's own constitutional line — universal claims beat
@@ -135,7 +146,7 @@ function onlyExemplified(text: string, name: string): boolean {
 /**
  * True when `name` is the grammatical subject of an obligation — the entry
  * naming its own owner. Matches "<Name> ... must/should/never/always ..." within
- * a short window, and the possessive form ("Vector's portal invites are never
+ * a short window, and the possessive form ("Project's portal invites are never
  * sent"), which is how the reviewer phrases project-owned rules.
  *
  * The window is deliberately short: a long gap means the obligation belongs to
@@ -145,7 +156,7 @@ function isObligationSubject(text: string, name: string): boolean {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Project and skill names are PROPER NOUNS — matched case-sensitively, always.
   // Case-insensitive matching read "any status that appears in more than one UI
-  // surface must…" as the Surface project owning the rule, which is how a
+  // surface must…" as a project owning the rule, which is how a
   // universal doctrine line nearly got filed under one app.
   const nameRe = new RegExp(`\\b${esc}(?:'s)?\\b`, "g");
   const OBLIGATION = /^[^.;]{0,60}?\s(?:must|should|needs? to|is required to|are required to|is never|are never|is always|are always|never|always)\b/i;
@@ -158,7 +169,7 @@ function isObligationSubject(text: string, name: string): boolean {
 
 /**
  * True when `name` appears only inside an enumeration of three or more names —
- * "(Bunker, Arbol, Pulse, Memory, Hooks, Algorithm)". An enumeration is a list
+ * "(Bunker, Workflows, Pulse, Memory, Hooks, Algorithm)". An enumeration is a list
  * of instances the rule ranges over, which makes the rule global, not owned by
  * whichever name happens to be first.
  */
@@ -178,12 +189,12 @@ function matchesSkill(text: string, skill: string): boolean {
   // are common English words, so they only count with the word "skill" attached.
   return skill.startsWith("_")
     ? new RegExp(`\\b${skill}\\b`).test(text)
-    : new RegExp(`\\b${skill}\\s+(skill|workflow)\\b`, "i").test(text);
+    : new RegExp(`\\b${skill}\\s+(skill|intent|workflow)\\b`, "i").test(text);
 }
 
 function matchesProject(text: string, project: string): boolean {
   // Project names are title-case phrases; require a word-boundary match on the
-  // full name so "Vector" hits but "vectorize" does not.
+  // full name so a project name hits but a related verb does not.
   const esc = project.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`\\b${esc}\\b`).test(text);
 }
@@ -210,12 +221,12 @@ export function classifyScope(text: string, tables?: ScopeTables): ScopeVerdict 
     return { scope: "hook", dest: hook, reason: `names ${hook} as the enforcer — the hook is the rule` };
   }
 
-  // STRONG signal: the name is the subject of an obligation ("the _SOCIALPOST
-  // workflow must enforce…", "Vector's portal invites are never sent…"). That is
+  // STRONG signal: the name is the subject of an obligation ("the social-post skill
+  // workflow must enforce…", "Project's portal invites are never sent…"). That is
   // the entry naming its own owner, and it outranks the universal test — a rule
   // can be universal over posts and still be owned by the posting skill.
   // An exemplified mention can sit close enough to a "must" to look like a
-  // subject ("any production app (e.g. Surface) failing … must alert"), so the
+  // subject ("any production app (e.g. a storefront) failing … must alert"), so the
   // example test gates the strong signal too.
   const owned =
     t.skills.find((s) => isObligationSubject(text, s) && matchesSkill(text, s) && !onlyExemplified(text, s)) ??

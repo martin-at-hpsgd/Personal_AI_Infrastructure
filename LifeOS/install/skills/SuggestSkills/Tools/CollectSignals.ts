@@ -14,16 +14,18 @@
  *
  * Usage:
  *   bun CollectSignals.ts [--root <dir>] [--days <n>] [--max-rating <n>]
- *                         [--ratings <file>] [--work <dir>] [--skills <dir>] [--loops <dir>]
+ *                         [--ratings <dir>] [--work <dir>] [--skills <dir>] [--loops <dir>]
+ *                         [--skill-gaps <file>]
  *   env: SKILLSCAN_MEMORY_ROOT, SKILLSCAN_RATINGS_FILE, SKILLSCAN_WORK_DIR,
- *        SKILLSCAN_SKILLS_DIR, SKILLSCAN_LOOPS_DIR
+ *        SKILLSCAN_SKILLS_DIR, SKILLSCAN_LOOPS_DIR, SKILLSCAN_SKILL_GAPS_FILE
  *
  * Contract (stdout JSON):
  *   {
  *     window:       { days, since },
  *     sessions:     { slug, mtime }[],                              // recent work-session dirs (. and _ prefixed skipped as system dirs)
- *     frustrations: { date, rating, note }[],                       // low ratings + sentiment, sorted
- *     registries:   { kind: "skill"|"loop"|"workflow", name, description }[],  // for dedup; bodies read by the LLM step
+ *     frustrations: { date, rating, kind, note }[],                 // low ratings + unrated complaint-class rows, sorted
+ *     skillGaps:    { date, calls }[],                              // skill-less substantive sessions (AlgorithmNudge skill-gap row)
+ *     registries:   { kind: "skill"|"loop"|"intent", name, description }[],  // for dedup; bodies read by the LLM step
  *     warnings:     string[],                                       // malformed rows, unreadable/oversized files (non-fatal)
  *     missing:      string[],                                       // stores that don't exist in this install
  *     sources:      Record<string,string>                          // resolved paths actually used
@@ -34,16 +36,26 @@
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
-const MAX_RATINGS_BYTES = 10_000_000; // guard against a huge/FIFO ratings store
+const MAX_RATINGS_BYTES = 10_000_000; // guard each monthly ledger file
 const MAX_NOTE_CHARS = 500;
+/** Errata kinds that are frustration whether or not a rating was captured. */
+const COMPLAINT_KINDS = new Set(["complaint", "correction", "bug", "incident"]);
 
 type Session = { slug: string; mtime: string };
-type Frustration = { date: string; rating: number; note: string };
-type RegistryEntry = { kind: "skill" | "loop" | "workflow"; name: string; description: string };
+/** A frustration signal from the Errata ledger. Rated rows count when rating <= --max-rating;
+ *  unrated rows (rating null) count when their kind is complaint-class, because most explicit
+ *  complaints and corrections are captured without a number. */
+type Frustration = { date: string; rating: number | null; kind: string; note: string };
+/** One end-of-turn detection from the skill-gap nudge row: a substantive session that
+ *  invoked no skill and matched no skill's USE WHEN. Counts only — the hook writes no
+ *  prompt text, so recurrence is established without carrying user content. */
+type SkillGap = { date: string; calls: number };
+type RegistryEntry = { kind: "skill" | "loop" | "intent"; name: string; description: string };
 type Corpus = {
   window: { days: number; since: string };
   sessions: Session[];
   frustrations: Frustration[];
+  skillGaps: SkillGap[];
   registries: RegistryEntry[];
   warnings: string[];
   missing: string[];
@@ -98,18 +110,66 @@ function resolveStore(
   return null;
 }
 
-function parseFrustrations(file: string | null, maxRating: number, since: Date, warnings: string[], missing: string[]): Frustration[] {
-  if (!file) { missing.push("ratings"); return []; }
+function parseFrustrations(dir: string | null, maxRating: number, since: Date, warnings: string[], missing: string[]): Frustration[] {
+  if (!dir) { missing.push("ratings"); return []; }
+  const out: Frustration[] = [];
+  let bad = 0;
+  let files: string[];
+  try { files = readdirSync(dir).filter((name) => /^errata-\d{4}-\d{2}\.jsonl$/.test(name) && name.slice(7, 14) >= since.toISOString().slice(0, 7)).sort(); }
+  catch (e) { warnings.push(`ratings unreadable: ${(e as Error).message}`); return []; }
+  for (const name of files) {
+    const file = join(dir, name);
+    let raw: string;
+    try {
+      const st = statSync(file);
+      if (!st.isFile() || st.size > MAX_RATINGS_BYTES) { warnings.push(`ratings: skipped ${name} (not a regular file or too large)`); continue; }
+      raw = readFileSync(file, "utf8");
+    } catch (e) { warnings.push(`ratings unreadable: ${name}: ${(e as Error).message}`); continue; }
+    for (const line of raw.split("\n")) {
+      const t = line.trim();
+      if (!t) continue;
+      let j: unknown;
+      try { j = JSON.parse(t); } catch { bad++; continue; }
+      const r = j as Record<string, unknown>;
+      if (r.op === "patch" || r.system !== "lifeos") continue;
+      const kind = typeof r.kind === "string" ? r.kind : "";
+      const rating = typeof r.rating === "number" && Number.isFinite(r.rating) ? r.rating : null;
+      if (rating === null ? !COMPLAINT_KINDS.has(kind) : rating > maxRating) continue;
+      const ts = typeof r.ts === "string" ? r.ts : "";
+      if (!ts) { bad++; continue; }
+      const ms = new Date(ts).getTime();
+      if (Number.isNaN(ms)) { bad++; continue; } // unparseable timestamp = malformed, not "out of window"
+      if (ms < since.getTime()) continue;
+      const note = (typeof r.complaint === "string" ? r.complaint : "")
+        .replace(/[\u0000-\u001f\u007f]/g, " ")
+        .slice(0, MAX_NOTE_CHARS);
+      out.push({ date: new Date(ms).toISOString().slice(0, 10), rating, kind, note });
+    }
+  }
+  if (bad > 0) warnings.push(`ratings: skipped ${bad} malformed/incomplete line(s)`);
+  // Rated rows first, lowest rating first; unrated complaint-class rows after them.
+  const rank = (f: Frustration) => f.rating ?? Number.POSITIVE_INFINITY;
+  return out.sort((a, b) => (rank(a) === rank(b) ? 0 : rank(a) < rank(b) ? -1 : 1)
+    || a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind) || a.note.localeCompare(b.note));
+}
+
+/**
+ * Skill-gap detections inside the window. Each row is `{ts, session_id, calls}` written by
+ * AlgorithmNudge's skill-gap row. Malformed rows are counted, never fatal — same contract as
+ * every other store here. Sorted fully tie-broken so two runs over an unchanged file are
+ * byte-identical.
+ */
+function parseSkillGaps(file: string | null, since: Date, warnings: string[], missing: string[]): SkillGap[] {
+  if (!file) { missing.push("skill-gaps"); return []; }
+  let raw: string;
   try {
     const st = statSync(file);
-    if (!st.isFile()) { warnings.push(`ratings: not a regular file`); return []; }
-    if (st.size > MAX_RATINGS_BYTES) { warnings.push(`ratings: too large (${st.size} bytes), skipped`); return []; }
-  } catch (e) { warnings.push(`ratings unreadable: ${(e as Error).message}`); return []; }
+    if (!st.isFile()) { warnings.push(`skill-gaps: not a regular file`); return []; }
+    if (st.size > MAX_RATINGS_BYTES) { warnings.push(`skill-gaps: too large (${st.size} bytes), skipped`); return []; }
+    raw = readFileSync(file, "utf8");
+  } catch (e) { warnings.push(`skill-gaps unreadable: ${(e as Error).message}`); return []; }
 
-  let raw: string;
-  try { raw = readFileSync(file, "utf8"); } catch (e) { warnings.push(`ratings unreadable: ${(e as Error).message}`); return []; }
-
-  const out: Frustration[] = [];
+  const out: SkillGap[] = [];
   let bad = 0;
   for (const line of raw.split("\n")) {
     const t = line.trim();
@@ -117,20 +177,16 @@ function parseFrustrations(file: string | null, maxRating: number, since: Date, 
     let j: unknown;
     try { j = JSON.parse(t); } catch { bad++; continue; }
     const r = j as Record<string, unknown>;
-    const rating = typeof r.rating === "number" ? r.rating : NaN;
-    const ts = typeof r.timestamp === "string" ? r.timestamp : "";
-    if (!Number.isFinite(rating) || !ts) { bad++; continue; }
-    if (rating > maxRating) continue;
+    const ts = typeof r.ts === "string" ? r.ts : "";
+    const calls = typeof r.calls === "number" ? r.calls : NaN;
+    if (!ts || !Number.isFinite(calls)) { bad++; continue; }
     const ms = new Date(ts).getTime();
-    if (Number.isNaN(ms)) { bad++; continue; } // unparseable timestamp = malformed, not "out of window"
+    if (Number.isNaN(ms)) { bad++; continue; }
     if (ms < since.getTime()) continue;
-    const note = (typeof r.sentiment_summary === "string" ? r.sentiment_summary : "")
-      .replace(/[\u0000-\u001f\u007f]/g, " ")
-      .slice(0, MAX_NOTE_CHARS);
-    out.push({ date: new Date(ms).toISOString().slice(0, 10), rating, note });
+    out.push({ date: new Date(ms).toISOString().slice(0, 10), calls });
   }
-  if (bad > 0) warnings.push(`ratings: skipped ${bad} malformed/incomplete line(s)`);
-  return out.sort((a, b) => a.rating - b.rating || a.date.localeCompare(b.date) || a.note.localeCompare(b.note));
+  if (bad > 0) warnings.push(`skill-gaps: skipped ${bad} malformed/incomplete line(s)`);
+  return out.sort((a, b) => b.date.localeCompare(a.date) || a.calls - b.calls);
 }
 
 function collectSessions(dir: string | null, since: Date, warnings: string[], missing: string[]): Session[] {
@@ -187,9 +243,9 @@ function collectRegistries(skillsDir: string | null, loopsDir: string | null, wa
       const meta = readMeta(md);
       if (!meta) { warnings.push(`skills: ${d}/SKILL.md unreadable or missing name:`); continue; }
       out.push({ kind: "skill", name: meta.name, description: meta.description });
-      const wf = join(skillsDir, d, "Workflows"); // workflows are reusable coverage too
+      const wf = join(skillsDir, d, "Intents"); // intents are reusable coverage too
       if (existsSync(wf)) {
-        try { for (const f of readdirSync(wf)) if (f.endsWith(".md")) out.push({ kind: "workflow", name: `${meta.name}/${basename(f, ".md")}`, description: "" }); } catch { /* skip */ }
+        try { for (const f of readdirSync(wf)) if (f.endsWith(".md")) out.push({ kind: "intent", name: `${meta.name}/${basename(f, ".md")}`, description: "" }); } catch { /* skip */ }
       }
     }
   }
@@ -204,21 +260,24 @@ const HELP = `CollectSignals — read-only signal collector for skill-gap discov
 
 Usage:
   bun CollectSignals.ts [--root <dir>] [--days <n>] [--max-rating <n>]
-                        [--ratings <file>] [--work <dir>] [--skills <dir>] [--loops <dir>]
+                        [--ratings <dir>] [--work <dir>] [--skills <dir>] [--loops <dir>]
+                        [--skill-gaps <file>]
 
   --root <dir>        base for conventional store defaults (default: $HOME/.claude)
   --days <n>          lookback window, 1-3650 (default: 45)
-  --max-rating <n>    highest rating still counted as frustration, 1-10 (default: 4)
-  --ratings <file>    ratings JSONL store
+  --max-rating <n>    highest rating still counted as frustration, 1-10 (default: 4);
+                      unrated complaint, correction, bug and incident rows always count
+  --ratings <dir>     Errata ledger directory containing monthly JSONL files
   --work <dir>        work-session dirs
   --skills <dir>      skills tree
   --loops <dir>       loop catalog (opt-in; no default)
+  --skill-gaps <file> skill-gap detections JSONL (AlgorithmNudge skill-gap row)
 
 Each store resolves flag > env > first existing default under --root.
 Env: SKILLSCAN_MEMORY_ROOT, SKILLSCAN_RATINGS_FILE, SKILLSCAN_WORK_DIR,
-     SKILLSCAN_SKILLS_DIR, SKILLSCAN_LOOPS_DIR
+     SKILLSCAN_SKILLS_DIR, SKILLSCAN_LOOPS_DIR, SKILLSCAN_SKILL_GAPS_FILE
 
-Emits the corpus JSON on stdout: { window, sessions, frustrations, registries, warnings, missing, sources }.
+Emits the corpus JSON on stdout: { window, sessions, frustrations, skillGaps, registries, warnings, missing, sources }.
 `;
 
 function main(): void {
@@ -233,9 +292,11 @@ function main(): void {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const ratingsFile = resolveStore(arg("--ratings"), "SKILLSCAN_RATINGS_FILE",
-    ["LIFEOS/MEMORY/LEARNING/SIGNALS/ratings.jsonl", "MEMORY/LEARNING/SIGNALS/ratings.jsonl"], root, "ratings", warnings);
+    ["LIFEOS/USER/ERRATA", "USER/ERRATA"], root, "ratings", warnings);
   const workDir = resolveStore(arg("--work"), "SKILLSCAN_WORK_DIR",
     ["LIFEOS/MEMORY/WORK", "MEMORY/WORK"], root, "work", warnings);
+  const skillGapsFile = resolveStore(arg("--skill-gaps"), "SKILLSCAN_SKILL_GAPS_FILE",
+    ["LIFEOS/MEMORY/OBSERVABILITY/skill-gap-candidates.jsonl", "MEMORY/OBSERVABILITY/skill-gap-candidates.jsonl"], root, "skill-gaps", warnings);
   const skillsDir = resolveStore(arg("--skills"), "SKILLSCAN_SKILLS_DIR", ["skills"], root, "skills", warnings);
   const loopsDir = resolveStore(arg("--loops"), "SKILLSCAN_LOOPS_DIR", [], root, "loops", warnings); // opt-in; no personal default
 
@@ -243,12 +304,14 @@ function main(): void {
     window: { days, since: since.toISOString().slice(0, 10) },
     sessions: collectSessions(workDir, since, warnings, missing),
     frustrations: parseFrustrations(ratingsFile, maxRating, since, warnings, missing),
+    skillGaps: parseSkillGaps(skillGapsFile, since, warnings, missing),
     registries: collectRegistries(skillsDir, loopsDir, warnings, missing),
     warnings,
     missing,
     sources: {
       root,
       ratings: ratingsFile ?? "(none)",
+      skillGaps: skillGapsFile ?? "(none)",
       work: workDir ?? "(none)",
       skills: skillsDir ?? "(none)",
       loops: loopsDir ?? "(none)",

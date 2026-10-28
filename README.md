@@ -77,7 +77,7 @@ Either path needs a capable AI coding harness — we build and run on [Claude Co
 
 ## 🧩 Skills
 
-LifeOS installs as one self-contained skill that bundles the whole library — research, security, writing, art, and more. Browse them all on the site.
+LifeOS ships 97 public skills, from research, security, writing and art to video, publishing and your home. Browse them all on the site.
 
 **[Browse all skills →](https://ourlifeos.ai/skills)**
 
@@ -128,10 +128,9 @@ Recovery is straightforward:
 | Feature | Description |
 |---------|-------------|
 | **Local Model Support** | Run LifeOS with local models (Ollama, llama.cpp) for privacy and cost control |
-| **Granular Model Routing** | Route different tasks to different models based on complexity |
 | **Remote Access** | Access your LifeOS from anywhere—mobile, web, other devices |
 | **Outbound Phone Calling** | Voice capabilities for outbound calls |
-| **External Notifications** | Robust notification system for Email, Discord, Telegram, Slack |
+| **External Notifications** | Robust notification system for Email, Discord, iMessage, Slack |
 
 ---
 
@@ -287,6 +286,14 @@ badosanjos · benoitdepaire · bnkath2o · brycemagera · catchingknives · DAES
 <summary><strong>📜 Update History</strong></summary>
 
 <br/>
+
+**v8.761.0 — The One Loop**
+- **One loop at every level** — an output serves its task's ISA, a task serves its project, a project serves a TELOS goal, and the Algorithm confirms direction before it builds.
+- **Proof attached** — Assay measures every output against the ideal state it was made for; Errata records misses and HillClimb experiments until a fix holds.
+- **Development, Workflows, Vigil and STATVS** — software built and tested against its ISA, scheduled work in one system, one monitoring layer, one record of what happened.
+- **Security where the action lands** — eighteen of 7.40.4's hooks retired, most of them per-call guards; Claude Code's permission rules, git hooks and a kernel sandbox do that job now.
+- **One command to install or upgrade**, and 50 skills newly public, with Fabric's most-used patterns rewritten.
+- [Full release notes](Releases/v8.761.0/README.md)
 
 **v7.28.3 — Cortex, Hermes, and hardened releases**
 - **Cortex** — the memory system, named: hot-layer memory, a typed Knowledge Archive (People, Companies, Ideas, Research), learnings, and work history, consolidated across sessions so each one starts smarter than the last.

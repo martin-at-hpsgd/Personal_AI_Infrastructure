@@ -1,0 +1,9 @@
+{
+  "_docs": "Brand values for every email LifeOS sends (LIFEOS/TOOLS/EmailTemplate.ts loadBrand(): this object is spread over the built-in defaults, so any key you omit keeps its default). name = banner wordmark; bannerBg = banner color (hex); logoUrl = HOSTED image URL for the banner mark, never a filesystem path (empty hides the logo); company = company line in the footer; supportEmail = footer contact (empty hides it); footerBrand = the 'Sent by' line.",
+  "name": "LIFEOS",
+  "bannerBg": "#316AE9",
+  "logoUrl": "",
+  "company": "",
+  "supportEmail": "",
+  "footerBrand": "Sent by LifeOS"
+}

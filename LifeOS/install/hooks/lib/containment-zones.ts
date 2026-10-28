@@ -1,3 +1,6 @@
+/**
+ * @version 1.4.42
+ */
 // containment-zones.ts — release-pipeline zone inventory.
 //
 // A zone is a named set of path patterns whose contents are allowed to contain
@@ -6,14 +9,10 @@
 //
 // Consumed by two enforcement points:
 //   1. Release pipeline gates in the release tooling (build-time).
-//   2. hooks/SystemFileGuard.hook.ts (runtime PreToolUse Write/Edit/MultiEdit
-//      gate, restored 2026-05-21 in Phase E of the system/user separation
-//      rebuild). The hook reads CONTAINMENT_ZONES via isContained() to decide
-//      whether a target path is USER (allowed to hold identity) or SYSTEM
-//      (must be deny-list clean).
-// The 2026-05-06 "ContainmentGuard removed" note no longer applies — the
-// guard came back as SystemFileGuard with a tighter scope (writes only,
-// fail-safe-open, USER-zone no-op).
+//   2. The pre-commit leak scan (LIFEOS/TOOLS/githooks/StagedLeakScan.ts),
+//      through system-file-guard-core's evaluateWrite(), which reads
+//      CONTAINMENT_ZONES via isContained() to decide whether a staged path is
+//      USER (allowed to hold identity) or SYSTEM (must be deny-list clean).
 //
 // Path patterns are matched relative to CLAUDE_ROOT (the .claude directory
 // root, resolved from HOME). `**` means "anywhere under this prefix". A bare
@@ -81,13 +80,21 @@ export const CONTAINMENT_ZONES: readonly ContainmentZone[] = [
       "stats.json",
       "ids.txt",
       "checkpoint-repos.txt",
+      // Claude Code daemon supervisor (v2.1.233+): control.key, roster, dispatch mailbox,
+      // the daemon log, and the job pin file — harness-owned, found tracked at the 7.50.0
+      // zone review; also in ROOT_RUNTIME_STATE_DENY + rsync excludes (parity test above).
+      "daemon/**",
+      "daemon",
+      "daemon.log",
+      "jobs/**",
+      "jobs",
     ],
     description: "Claude Code runtime install state written by the harness — plugin registry (both Plugins/ and Linux's lowercase plugins/), history, remote-settings.json, and debug/ session transcripts (the debug/latest symlink and per-session .txt dumps; runtime output, never ships)",
   },
   {
     name: "private-infra",
     patterns: [
-      "LIFEOS/ARBOL/**",
+      "LIFEOS/WORKFLOWS/v1/**",
       "LIFEOS/PULSE/Assistant/state/**",
       "LIFEOS/PULSE/Plans/**",
       "LIFEOS/PULSE/logs/**",
@@ -99,10 +106,20 @@ export const CONTAINMENT_ZONES: readonly ContainmentZone[] = [
       "LIFEOS/PULSE/Observability/out/**",
       "LIFEOS/PULSE/.playwright-cli/**",
       "LIFEOS/PULSE/Bunker/**",
+      // Vigil is not zoned: its engine and skill ship, and the install's personal
+      // adapters live in LIFEOS/USER/VIGIL/ under user-data (Vigil ISA F14).
+      // Watches emit through Vigil and read hyper-local personal sources (utility, roads, city, mentions).
+      "LIFEOS/WATCHES/**",
       "LIFEOS/ScheduledTasks/**",
     ],
-    description: "Top-level private infrastructure dirs: cloud worker code, Assistant runtime state (diary jsonl), planning docs, runtime logs/state, rendered HTML, Bunker app-harness code (personal probe targets + alert email; concept ships via DOCUMENTATION, impl stays private)",
+    description: "Top-level private infrastructure dirs (the Workflows v1 tree, now LIFEOS/WORKFLOWS/v1, left this zone 2026-09-09: the runner, declarative workflow format and example actions are SYSTEM and ship; a user's own worker code stays in LIFEOS/USER/CUSTOMIZATIONS/WORKFLOWS): Assistant runtime state (diary jsonl), planning docs, runtime logs/state, rendered HTML, Bunker app-harness code (personal probe targets + alert email; concept ships via DOCUMENTATION, impl stays private)",
   },
+  // The private offensive-security surface (pentest-cognition tool, its PostToolUse
+  // gate, and the private-gate registry StopGates loads via an existsSync guard) is
+  // release-excluded through the operative exclusion lists in the non-shipping
+  // ShadowRelease.ts — NOT named here. This inventory file ships in the public payload,
+  // and G18 forbids the codename in any lexical form, so listing those paths here would
+  // make the inventory itself the leak (self-referential redaction blind spot, 2026-08-17).
   {
     name: "pre-sanitization-backups",
     patterns: [
@@ -146,40 +163,43 @@ export const PATTERN_ALLOWLIST_FILES: readonly string[] = [
   "hooks/lib/containment-zones.ts",
   "skills/_LIFEOS/Tools/ShadowRelease.ts",
   "LIFEOS/DOCUMENTATION/Tools/Containment.md",
-  // skills/Daemon/Docs/SecurityClassification.md REMOVED 2026-05-04 — the doc
-  // was rewritten to use categorical descriptions only (no literal names /
-  // projects / paths) so it no longer needs to embed identity strings. G2 +
-  // the sanitizer now cover it like any other public file. If identity tokens
-  // ever land here again, the gate trips — by design.
-  "skills/Daemon/Tools/SecurityFilter.ts",
-  "skills/CreateSkill/Workflows/ValidateSkill.md",
+  "skills/_DAEMON/Tools/SecurityFilter.ts",
+  "skills/CreateSkill/Intents/ValidateSkill.md",
   "LIFEOS/TOOLS/SessionHarvester.ts",
   "LIFEOS/TOOLS/gmail.ts",
+  // NOTE for public installs: some allowlisted paths below (test files, private
+  // release tooling) do not SHIP in the release payload. That is coherent, not
+  // stale: an allowlist entry for an absent file matches nothing and allows
+  // nothing — fail-closed by construction. The inventory describes the
+  // maintainer tree, where these gates actually run. (Cross-vendor audit
+  // finding, 7.43.0 cut, dispositioned as-designed with this note.)
   // SystemFileGuard test file legitimately embeds deny-list pattern literals
   // as test fixtures — the whole point is verifying the gate catches them.
   "hooks/SystemFileGuard.test.ts",
   // 2026-07-20 — the public install flow embeds the public install URL
-  // (curl -fsSL https://ourlifeos.ai/install.sh) BY DESIGN: ourlifeos.ai is
-  // the public marketing/install domain, and these files are the shipped
+  // (the `curl -fsSL <project site>/install.sh` line) BY DESIGN: that domain is
+  // the project's public marketing/install site, and these files are the shipped
   // install path + brand-asset doc. Reviewed hit-by-hit before allowlisting;
-  // only the ourlifeos.ai pattern fires in them.
+  // only the install-domain pattern fires in them.
   "skills/LifeOS/SKILL.md",
   "skills/LifeOS/INSTALL.md",
   "skills/LifeOS/install/install.sh",
   // The public repo README (template overlay lands at staging root README.md).
   // Author attribution — blog/social links, contributor credits — is BY DESIGN
-  // here and already public on github.com/danielmiessler/LifeOS; the star-history
+  // here and already public in the LifeOS repo on GitHub; the star-history
   // README refresh (2026-07-17) made G2 fire on it. Allowlisting also skips the
   // token sanitizer so the links ship intact. (Principal approved 2026-07-21.)
   "README.md",
   "LIFEOS/DOCUMENTATION/BrandAssets.md",
-  // Fabric quiz/answer patterns that legitimately use "unsupervised learning"
-  // as ML terminology (not as a brand name). Allowed past G2.
+  // 2026-10-10: community leaderboard service address, a data-only file (Leaderboard ISA ISC-95). Principal approved.
+  "LIFEOS/TOOLS/leaderboard-endpoint.json",
+  // Fabric quiz/answer patterns that use standard ML terminology.
+  // Allowed past G2.
   "skills/Fabric/Patterns/create_quiz/README.md",
   "skills/Fabric/Patterns/analyze_answers/README.md",
   // Phase G.5 (added 2026-05-25 after Forge iter-4) — files that legitimately
   // embed pattern literals as functional or doctrine content:
-  //   - DocsPublicAudit.ts defines the patterns it audits
+  //   - DocsPublicAudit.ts defines the patterns it audits (maintainer-side, not shipped; the entry is inert on an install)
   //   - CLAUDE.md (live) gets overlaid by RELEASE_TEMPLATES/CLAUDE.public.md
   //     at build time — the live form ships only to the principal; the public
   //     ship is the template overlay. Verified: staged CLAUDE.md is clean.
@@ -190,7 +210,7 @@ export const PATTERN_ALLOWLIST_FILES: readonly string[] = [
   // strings from a USER-zone config file at runtime (never ships publicly).
   // Allowlist became an escape hatch hiding real bare-token leaks — fixed at
   // the source instead.
-  "LIFEOS/TOOLS/DocsPublicAudit.ts",
+  "LIFEOS/TOOLS/DocsPublicAudit.ts", // maintainer-side, not shipped
   "CLAUDE.md",
 ];
 
@@ -212,14 +232,17 @@ function componentMatch(component: string, glob: string): boolean {
   return component.endsWith(tail) && component.length >= cursor + tail.length;
 }
 
-function matchesPattern(relPath: string, pattern: string): boolean {
+export function matchesPattern(relPath: string, pattern: string): boolean {
   const patternParts = pattern.split("/");
   const pathParts = relPath === "" ? [] : relPath.split("/");
   let pi = 0;
   let i = 0;
   while (pi < patternParts.length) {
     const pp = patternParts[pi];
-    if (pp === "**") return true;
+    // public issue #1869, @garthsch — `**` is TERMINAL-only. A bare `return true`
+    // here made a leading or mid-pattern `**` match every path, failing isContained()
+    // open for every consumer. Terminal `**` behavior is unchanged.
+    if (pp === "**") return pi === patternParts.length - 1;
     if (i >= pathParts.length) return false;
     if (!componentMatch(pathParts[i], pp)) return false;
     pi += 1;

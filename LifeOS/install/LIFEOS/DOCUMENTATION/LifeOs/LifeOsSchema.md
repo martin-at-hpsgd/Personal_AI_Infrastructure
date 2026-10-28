@@ -1,8 +1,8 @@
 ---
-version: 1.1.2
+version: 1.1.6
 ---
 
-# Life OS Schema
+# LifeOS Schema
 
 > ## ⚠️ SUPERSEDED AS A LAYOUT SPEC — read this first
 >
@@ -13,7 +13,7 @@ version: 1.1.2
 > - **`ALL_CAPS` names, not PascalCase.** `PRINCIPAL_IDENTITY.md`, `WRITINGSTYLE.md`, `PROJECTS.md` — §2's PascalCase rule was never adopted.
 > - **Domain directories sit at `USER/` root:** `PRINCIPAL/`, `DIGITAL_ASSISTANT/`, `TELOS/`, `HEALTH/`, `FINANCES/`, `BUSINESS/`, `WORK/`, `SECURITY/`, `CONFIG/`, `CUSTOMIZATIONS/`.
 > - **`TELOS/` holds the goal files plus `CURRENT_STATE/` and `IDEAL_STATE/`**, each carrying its own domain files (`HEALTH.md`, `INFRASTRUCTURE.md`, `FINANCIAL.md`, …). Those are state snapshots and are distinct from the root `HEALTH/` and `FINANCES/` directories.
-> - **The operative frontmatter convention is `pai-freshness-v1`** (`last_updated`, `last_updated_by`, `convention`, `last_reviewed`, `last_reviewed_by`) — see `LIFEOS/DOCUMENTATION/Freshness/FreshnessSystem.md`. It is **not** the five-field `category`/`kind`/`publish`/`review_cadence`/`last_updated` contract in §3 below.
+> - **The operative frontmatter convention is `lifeos-freshness-v1`** (`last_updated`, `last_updated_by`, `convention`, `last_reviewed`, `last_reviewed_by`) — see `LIFEOS/DOCUMENTATION/Freshness/FreshnessSystem.md`. It is **not** the five-field `category`/`kind`/`publish`/`review_cadence`/`last_updated` contract in §3 below.
 >
 > The body is kept as history: it records the shape that was designed in April 2026 and the reasoning behind it, and §4–§5 still describe how Pulse groups and renders files where those fields are present. Treat it as a design document, not as a spec to conform to.
 
@@ -222,7 +222,7 @@ Adding a new file with `interview_phase: 3` auto-includes it in the P3 conversat
 
 1. **Drop a new `.md` file at USER/ root with valid frontmatter.** That's it.
 2. Pulse's `fs.watch` detects the new file → indexer parses it → dashboard renders a new tile.
-3. Daemon's aggregator picks it up if `publish:` is set.
+3. The daemon aggregator picks it up if `publish:` is set.
 4. Interview's scan picks it up on next run.
 
 Examples of user extensions:
@@ -284,7 +284,7 @@ USER/
   Telos/  Health/  Finances/  Business/  Work/  Relationships/  Daemon/  Security/
   # infrastructure directories (system-operational, not life content)
   Config/  Credentials/  Customizations/  Terminal/  Workflows/
-  Actions/  Flows/  Pipelines/  Arbol/  BrowserState/
+  Actions/  Flows/  Pipelines/  BrowserState/
 ```
 
 ## 16. Changelog

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<!-- Strike bars as a film first built them, before a 2026-10-09 fix: CSS top:50% of the line box (and one at top:44%), declared as strikes. -->
+<html><head><meta charset="UTF-8">
+<style>
+@font-face { font-family: "Din"; src: local("DIN Condensed Bold"), local("DINCondensed-Bold"), url("file:///System/Library/Fonts/Supplemental/DIN%20Condensed%20Bold.ttf"); font-weight: 700; }
+html, body { margin: 0; background: #0b0d12; }
+#root { position: relative; width: 1200px; height: 400px; overflow: hidden; background: #0b0d12; color: #e3e9f4; }
+.cby { position: absolute; left: 60px; top: 60px; display: flex; align-items: center; gap: 14px; font-family: "Din"; font-size: 60px; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; white-space: nowrap; }
+.byn { position: relative; display: inline-flex; align-items: center; gap: 14px; font-weight: 700; }
+.strike { position: absolute; left: -8px; right: -8px; top: 50%; height: 13px; margin-top: -8px; background: #58a6ff; border-radius: 4px; transform-origin: 0 50%; }
+.big { position: absolute; left: 60px; top: 200px; font-family: "Din"; font-weight: 700; font-size: 96px; text-transform: uppercase; letter-spacing: -0.01em; white-space: nowrap; }
+.struckw { position: relative; display: inline-block; color: #8f9bb8; }
+.struckw i { position: absolute; left: -6px; right: -6px; top: 44%; height: 9px; background: #58a6ff; border-radius: 4px; }
+</style></head>
+<body><div id="root" data-composition-id="fx" data-width="1200" data-height="400" data-duration="2">
+<div class="cby"><span class="byn"><span id="hero_by">A FIRST-TIME WRITER</span><i class="strike" id="hero_strike" data-mark="strike"></i></span></div>
+<div class="big"><span>NOT THE <span class="struckw">BYLINE<i id="word_strike" data-mark="strike"></i></span>.</span></div>
+</div>
+<script>
+document.fonts.load('700 60px "Din"').then(function () {
+  if (!document.fonts.check('700 60px "Din"')) throw new Error("DIN Condensed Bold did not load");
+  window.__timelines = { fx: { seek: function () {} } };
+});
+</script></body></html>

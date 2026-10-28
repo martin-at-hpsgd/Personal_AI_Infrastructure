@@ -1,14 +1,17 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.4
  * HealthSync foundation CLI.
  *
  * Usage:
  *   bun LIFEOS/TOOLS/HealthSync.ts pull
+ *   bun LIFEOS/TOOLS/HealthSync.ts backfill oura --since 2019-08-01   # one-off history pull
  *   bun LIFEOS/TOOLS/HealthSync.ts pull --source oura
  *   bun LIFEOS/TOOLS/HealthSync.ts status
  *   bun LIFEOS/TOOLS/HealthSync.ts current
  *   bun LIFEOS/TOOLS/HealthSync.ts auth oura
  */
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type {
@@ -35,23 +38,17 @@ import {
   withTimeout,
   writeJson,
 } from "./healthsync/store";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 type SourcePull = (ctx: Ctx) => Promise<SourceResult>;
 type SourceModule = { pull: SourcePull };
-type CliCommand = "pull" | "status" | "current" | "auth";
+type CliCommand = "pull" | "status" | "current" | "auth" | "backfill";
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
 const PREFIX = "[HealthSync]";
 const SOURCE_NAMES: readonly SourceName[] = ["oura", "eightsleep", "apple", "function"];
-const CURRENT_PATH = join(HOME, ".claude", "LIFEOS", "USER", "HEALTH", "current.json");
-const HEALTHSYNC_LOG_PATH = join(
-  HOME,
-  ".claude",
-  "LIFEOS",
-  "MEMORY",
-  "OBSERVABILITY",
-  "healthsync.jsonl",
-);
+const CURRENT_PATH = lifeosPath("USER", "HEALTH", "current.json");
+const HEALTHSYNC_LOG_PATH = lifeosPath("MEMORY", "OBSERVABILITY", "healthsync.jsonl");
 const FRESH_MS = 25 * 60 * 60 * 1000;
 const RUN_TIMEOUT_MS = 60_000;
 const FETCH_TIMEOUT_MS = 15_000;
@@ -67,7 +64,44 @@ function usage(): string {
     "  bun LIFEOS/TOOLS/HealthSync.ts status",
     "  bun LIFEOS/TOOLS/HealthSync.ts current",
     "  bun LIFEOS/TOOLS/HealthSync.ts auth oura",
+    "  bun LIFEOS/TOOLS/HealthSync.ts backfill oura --since YYYY-MM-DD [--overwrite] [--dry-run]",
   ].join("\n");
+}
+
+/**
+ * One-off history pull. Only Oura today: its cloud holds the whole ring
+ * history, and the hourly pull only ever asks for the last 7 days.
+ */
+async function runBackfill(args: string[]): Promise<number> {
+  const source = args[0];
+  if (source !== "oura") {
+    console.error(`${PREFIX} backfill supports: oura (got "${source ?? ""}")`);
+    return 1;
+  }
+  const sinceAt = args.indexOf("--since");
+  const since = sinceAt !== -1 ? args[sinceAt + 1] : undefined;
+  if (!since || since.startsWith("--")) {
+    console.error(`${PREFIX} backfill needs --since YYYY-MM-DD`);
+    return 1;
+  }
+  const ctx = await buildCtx();
+  const mod = (await loadSourceModule("oura")) as unknown as {
+    backfill: (c: Ctx, s: string, o: { overwrite?: boolean; dryRun?: boolean }) => Promise<import("./healthsync/oura").BackfillResult>;
+  };
+  const r = await mod.backfill(ctx, since, {
+    overwrite: args.includes("--overwrite"),
+    dryRun: args.includes("--dry-run"),
+  });
+  if (!r.ok) {
+    console.error(`${PREFIX} backfill failed: ${r.error}`);
+    return 1;
+  }
+  log(
+    `oura backfill ${r.since}..${r.until}: ${r.records} records over ${r.pages} pages → ${r.daysSeen} days ` +
+    `(${r.firstDay}..${r.lastDay}), ${r.written} written, ${r.skipped} already present` +
+    (args.includes("--dry-run") ? " [dry run]" : ""),
+  );
+  return 0;
 }
 
 function log(message: string): void {
@@ -352,13 +386,37 @@ async function runPull(args: string[]): Promise<number> {
     results,
   });
 
+  // public PR #2108, @pai-scaffolde: Group unconfigured providers into one skip line
+  const skipped: string[] = [];
+  const notSkipped: SourceResult[] = [];
   for (const result of results) {
+    if (result.status === "unconfigured" || result.status === "awaiting-first-export") {
+      skipped.push(result.source);
+    } else {
+      notSkipped.push(result);
+    }
+  }
+
+  if (skipped.length > 0) {
+    log(`skipped (not configured): ${skipped.join(", ")}`);
+  }
+
+  for (const result of notSkipped) {
     log(
       `${result.source}: ${result.status}; records=${result.records}; ms=${result.ms}; error=${result.lastError ?? "none"}`,
     );
   }
 
-  return 0;
+  return pullExitCode(results);
+}
+
+/**
+ * Exit code for a pull. A selected source that failed (including a timeout) or came back
+ * stale is a failure the scheduler must see. Unconfigured and awaiting-first-export sources
+ * are skips, not successes and not failures.
+ */
+export function pullExitCode(results: readonly Pick<SourceResult, "status">[]): number {
+  return results.some((r) => r.status === "failed" || r.status === "stale") ? 1 : 0;
 }
 
 function isFresh(result: SourceResult, nowMs: number): boolean {
@@ -495,7 +553,24 @@ async function exchangeOuraCode(ctx: Ctx, code: string): Promise<TokenStore> {
   return tokens;
 }
 
-async function waitForOuraCode(): Promise<string> {
+/** A fresh, unguessable, single-use OAuth `state` value. */
+export function newOAuthState(): string {
+  return randomBytes(32).toString("hex");
+}
+
+/**
+ * Constant-time check that a callback echoed the state we issued. The caller spends the
+ * state on first success (see waitForOuraCode), so a replay is refused too.
+ */
+export function oauthStateMatches(expected: string, received: string | null): boolean {
+  if (expected === "" || received === null || received === "") return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(received);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+async function waitForOuraCode(expectedState: string): Promise<string> {
+  let stateSpent = false;
   let server: ReturnType<typeof Bun.serve> | undefined;
   let resolveCode: (code: string) => void;
   let rejectCode: (error: Error) => void;
@@ -512,6 +587,14 @@ async function waitForOuraCode(): Promise<string> {
       if (url.pathname !== "/callback") {
         return new Response("Not found", { status: 404 });
       }
+
+      // Bind the callback to the authorization request this process started. A callback
+      // that does not echo our state (a forged hit from a web page, a replay) is refused
+      // and ignored; the listener keeps waiting, so it cannot cancel the real consent.
+      if (stateSpent || !oauthStateMatches(expectedState, url.searchParams.get("state"))) {
+        return new Response("Invalid state.", { status: 400, headers: { "Content-Type": "text/plain" } });
+      }
+      stateSpent = true;
 
       const error = url.searchParams.get("error");
       if (error !== null) {
@@ -531,7 +614,9 @@ async function waitForOuraCode(): Promise<string> {
         });
       }
 
-      resolveCode(code);
+      // Resolve after the response flushes: the finally block's force-stop
+      // otherwise cuts the connection and the browser shows a blank page.
+      setTimeout(() => resolveCode(code), 500);
       return new Response("HealthSync Oura auth complete. Return to the terminal.", {
         status: 200,
         headers: { "Content-Type": "text/plain" },
@@ -560,13 +645,15 @@ async function runAuth(args: string[]): Promise<number> {
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("redirect_uri", AUTH_REDIRECT_URI);
+  const state = newOAuthState();
+  authUrl.searchParams.set("state", state);
   // Valid v2 scopes only — "sleep" is not a scope; daily covers daily_* endpoints,
   // session covers sleep sessions, spo2 covers daily_spo2.
-  authUrl.searchParams.set("scope", "email personal daily heartrate workout tag session spo2");
+  authUrl.searchParams.set("scope", "email personal daily heartrate workout tag session spo2 heart_health");
 
   log("opening Oura authorization page; credential values will not be printed");
   await openBrowser(authUrl.toString());
-  const code = await waitForOuraCode();
+  const code = await waitForOuraCode(state);
   const tokens = await exchangeOuraCode(ctx, code);
   await saveTokens(ctx, tokens);
   log("Oura tokens saved");
@@ -589,16 +676,21 @@ async function main(): Promise<number> {
   if (command === "auth") {
     return runAuth(args);
   }
+  if (command === "backfill") {
+    return runBackfill(args);
+  }
 
   console.log(usage());
   return command === undefined ? 0 : 1;
 }
 
-main()
-  .then((code) => {
-    process.exitCode = code;
-  })
-  .catch((error) => {
-    console.error(`${PREFIX} ${errorMessage(error)}`);
-    process.exitCode = 1;
-  });
+if (import.meta.main) {
+  main()
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((error) => {
+      console.error(`${PREFIX} ${errorMessage(error)}`);
+      process.exitCode = 1;
+    });
+}

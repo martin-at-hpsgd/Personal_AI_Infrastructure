@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.6.14
  * CreateUpdate - Create new system update files with the new schema
  *
  * Usage:
@@ -9,21 +10,24 @@
  * Options:
  *   --title, -t         Update title (required, 4-8 words)
  *   --significance, -s  Significance: critical|major|moderate|minor|trivial
- *   --change-type, -c   Change type: skill_update|structure_change|doc_update|hook_update|workflow_update|config_update|tool_update|multi_area
+ *   --change-type, -c   Change type: skill_update|structure_change|doc_update|hook_update|intent_update|config_update|tool_update|multi_area
  *   --purpose, -p       Why was this change made
  *   --improvement, -i   What should be better as a result
  *   --files, -f         Comma-separated list of affected files
  *   --stdin             Accept full input as JSON via stdin (for automation)
  */
 
-import { writeFile, mkdir, readFile } from "fs/promises";
-import { join } from "path";
+import { mkdir, readFile } from "fs/promises";
+import { existsSync, realpathSync } from "fs";
+import { join, resolve, dirname, sep } from "path";
 import { parseArgs } from "util";
-import { homedir } from "node:os";
+import { invariant } from "./Invariant";
+import { assertSafeDestination, UnsafeDestinationError, writeFileNoFollow } from "./lib/NoFollowWrite";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // LIFEOS_DIR already IS .../LIFEOS — fallback must match UpdateIndex.ts, else the
 // two tools fork the registry in a bare environment (found 2026-07-19 Ledger unification).
-const LIFEOS_DIR = process.env.LIFEOS_DIR || `${homedir()}/.claude/LIFEOS`;
+const LIFEOS_DIR = getLifeosDir();
 const UPDATES_DIR = join(LIFEOS_DIR, "MEMORY/SYSTEMUPDATES");
 const INDEX_PATH = join(UPDATES_DIR, "INDEX.md");
 
@@ -37,6 +41,7 @@ type ChangeType =
   | 'structure_change'
   | 'doc_update'
   | 'hook_update'
+  | 'intent_update'
   | 'workflow_update'
   | 'config_update'
   | 'tool_update'
@@ -48,6 +53,7 @@ const VALID_CHANGE_TYPES: ChangeType[] = [
   'structure_change',
   'doc_update',
   'hook_update',
+  'intent_update',
   'workflow_update',
   'config_update',
   'tool_update',
@@ -97,6 +103,41 @@ function generateTimestamp(): string {
   return now.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+/**
+ * A --timestamp override must be a canonical UTC ISO instant (2026-10-13T08:00:00Z,
+ * optional .mmm). The year and month are used as directory names, so anything
+ * else (`../..`, separators, NUL) is refused before any path is built.
+ */
+export function validateTimestamp(timestamp: string): { valid: true } | { valid: false; error: string } {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/.exec(timestamp);
+  if (!m) return { valid: false, error: `timestamp must be canonical ISO UTC like 2026-10-13T08:00:00Z, got ${JSON.stringify(timestamp.slice(0, 80))}` };
+  const d = new Date(timestamp);
+  if (Number.isNaN(d.getTime()) || d.getUTCFullYear() !== Number(m[1]) || d.getUTCMonth() + 1 !== Number(m[2]) || d.getUTCDate() !== Number(m[3])) {
+    return { valid: false, error: `timestamp is not a real calendar instant: ${timestamp}` };
+  }
+  return { valid: true };
+}
+
+/**
+ * Directory for an update's year/month under `updatesDir`, proven to stay inside
+ * it (realpath of the deepest existing ancestor, so a symlinked component cannot
+ * redirect the write). Throws on escape; creates nothing.
+ */
+export function confinedUpdateDir(updatesDir: string, year: string, month: string): string {
+  invariant(/^\d{4}$/.test(year) && /^\d{2}$/.test(month), `update dir parts are not YYYY/MM: ${year}/${month}`);
+  const lexRoot = resolve(updatesDir);
+  const target = resolve(lexRoot, year, month);
+  if (!target.startsWith(lexRoot + sep)) throw new Error(`update path escapes the update directory: ${target}`);
+  let probe = target;
+  while (!existsSync(probe) && probe !== lexRoot && probe !== dirname(probe)) probe = dirname(probe);
+  if (existsSync(probe)) {
+    const realProbe = realpathSync(probe);
+    const realRoot = existsSync(lexRoot) ? realpathSync(lexRoot) : lexRoot;
+    if (realProbe !== realRoot && !realProbe.startsWith(realRoot + sep)) throw new Error(`update path resolves outside the update directory via a symlink: ${target}`);
+  }
+  return target;
+}
+
 function timestampForFilename(timestamp: string): string {
   return timestamp
     .replace("T", "-")
@@ -118,8 +159,39 @@ async function prependToIndex(
   significance: SignificanceLabel,
   changeType: ChangeType
 ): Promise<void> {
+  // Entry line format is shared with the seeded file below. The invariant sits
+  // OUTSIDE the fail-soft try so a violation fails loud instead of becoming a
+  // warning (OPERATIONAL_PREFERENCES § Code invariants).
+  invariant(/^\d{4}-\d{2}-\d{2}/.test(timestamp), `ledger timestamp is not ISO-dated: ${timestamp}`);
+  const newEntry = `${timestamp} | ${title} | ${significance} | ${changeType}`;
   try {
-    const indexContent = await readFile(INDEX_PATH, "utf-8");
+    // The index is read and written only as a regular file inside the updates dir: a symlink planted at
+    // INDEX.md is refused, never read from or written through.
+    assertSafeDestination(INDEX_PATH, UPDATES_DIR);
+    let indexContent: string;
+    try {
+      indexContent = await readFile(INDEX_PATH, "utf-8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      // Nothing else mints INDEX.md, so a fresh install's first ledger entry
+      // seeds it instead of warning and moving on. public issue #1954, @pybe
+      writeFileNoFollow(INDEX_PATH, [
+        "# System Updates Index",
+        "",
+        "Quick reference: one line per update. **Most recent at top.**",
+        "",
+        "---",
+        "",
+        newEntry,
+        "",
+        "---",
+        "",
+        "**Total:** 1 updates",
+        "",
+      ].join("\n"), { root: UPDATES_DIR });
+      console.log(`Created INDEX.md with its first entry`);
+      return;
+    }
     const lines = indexContent.split("\n");
 
     // Find the line after "---" (the separator after the header)
@@ -136,9 +208,6 @@ async function prependToIndex(
       return;
     }
 
-    // Create the new entry line with new format
-    const newEntry = `${timestamp} | ${title} | ${significance} | ${changeType}`;
-
     lines.splice(insertIndex, 0, newEntry);
 
     // Update the total count at the bottom
@@ -147,9 +216,10 @@ async function prependToIndex(
       (match, count) => `**Total:** ${parseInt(count) + 1} updates`
     );
 
-    await writeFile(INDEX_PATH, updatedContent);
+    writeFileNoFollow(INDEX_PATH, updatedContent, { root: UPDATES_DIR });
     console.log(`Prepended entry to INDEX.md`);
   } catch (error) {
+    if (error instanceof UnsafeDestinationError) throw error; // a planted link is reported loud, never a warning
     console.warn(`Could not update INDEX.md: ${error}`);
   }
 }
@@ -453,7 +523,8 @@ function formatChangeType(changeType: ChangeType): string {
     structure_change: 'Structure Change',
     doc_update: 'Documentation Update',
     hook_update: 'Hook Update',
-    workflow_update: 'Workflow Update',
+    intent_update: 'Intent Update',
+    workflow_update: 'Intent Update',
     config_update: 'Config Update',
     tool_update: 'Tool Update',
     multi_area: 'Multi-Area',
@@ -525,11 +596,13 @@ async function main() {
     console.log("Options:");
     console.log("  --title, -t         Update title (required, 4-8 words)");
     console.log("  --significance, -s  critical|major|moderate|minor|trivial");
-    console.log("  --change-type, -c   skill_update|structure_change|doc_update|hook_update|workflow_update|config_update|tool_update|multi_area");
+    console.log("  --change-type, -c   skill_update|structure_change|doc_update|hook_update|intent_update|config_update|tool_update|multi_area");
     console.log("  --purpose, -p       Why was this change made");
     console.log("  --improvement, -i   What should be better as a result");
     console.log("  --files, -f         Comma-separated list of affected files");
     console.log("  --timestamp         Timestamp override (ISO format)");
+    // --upgrade-id was parsed but never listed here. public issue #2250, @mj-deving
+    console.log("  --upgrade-id        Link this update to an Upgrades queue item");
     console.log("  --stdin             Accept full input as JSON via stdin");
     console.log("  --help, -h          Show this help");
     console.log("");
@@ -624,13 +697,18 @@ async function main() {
 
   // Generate timestamp and ID
   const timestamp = values.timestamp || generateTimestamp();
+  const tsCheck = validateTimestamp(timestamp);
+  if (!tsCheck.valid) {
+    console.error(`Error: ${tsCheck.error}`);
+    process.exit(1);
+  }
   const [datePart] = timestamp.split("T");
   const [year, month] = datePart.split("-");
   const id = generateId(timestamp, title);
   const filename = `${id}.md`;
 
-  // Create directory if needed
-  const dirPath = join(UPDATES_DIR, year, month);
+  // Create directory if needed — confinement is proven before mkdir or write
+  const dirPath = confinedUpdateDir(UPDATES_DIR, year, month);
   await mkdir(dirPath, { recursive: true });
 
   // Generate content
@@ -650,12 +728,23 @@ async function main() {
     verbose_narrative: verboseNarrative,
   });
 
-  // Write file
+  // Write file: the directory is confined above; the final name is refused when it is a symlink or other
+  // non-file, and written through an exclusive no-follow temp file then a rename.
   const filePath = join(dirPath, filename);
-  await writeFile(filePath, content);
+  writeFileNoFollow(filePath, content, { root: UPDATES_DIR });
 
   // Prepend to INDEX.md
   await prependToIndex(timestamp, title, significance, changeType);
+
+  // Regenerate the derived views (index.json, CHANGELOG.md, RECENT.md) so the
+  // registry never ships consumers without a producer. Fail-soft: a regenerate
+  // error must not un-book the entry written above. public issue #1954, @pybe
+  try {
+    const { regenerate } = await import("./UpdateIndex");
+    await regenerate();
+  } catch (e) {
+    console.error(`UpdateIndex regenerate failed (entry still recorded): ${e}`);
+  }
 
   // Upgrades-store backlink: this ledger entry implements a pending upgrade →
   // mark the record applied and stamp both ids on each other. Ledger stays
@@ -679,7 +768,9 @@ async function main() {
 // Exit non-zero on failure: IntegrityMaintenance.ts records a ledger entry on
 // `code === 0`, so swallowing the error into a 0 booked work that never happened.
 // ported from public PR #1737, @elhoim
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

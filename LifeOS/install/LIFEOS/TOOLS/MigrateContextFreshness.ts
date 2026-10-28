@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.3.8
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -7,7 +10,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 /**
- * MigrateContextFreshness — adds pai-freshness-v1 frontmatter to constitutional
+ * MigrateContextFreshness — adds lifeos-freshness-v1 frontmatter to constitutional
  * context files without altering substantive body content.
  *
  * Usage:
@@ -25,6 +28,7 @@ import {
   readFileFrontmatter,
   type ContextFile,
 } from "./TelosFreshness";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -34,7 +38,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const CLAUDE_DIR = dirname(LIFEOS_DIR);
 const SEED_ISO = "2026-05-03T23:00:00-07:00";
 const BACKUP_TS = "2026-05-03-23-00-00";
@@ -93,7 +97,7 @@ function insertFreshnessIntoExistingBlock(content: string): { content: string; a
   const injected =
     `last_updated: ${SEED_ISO}\n` +
     `last_updated_by: migration\n` +
-    `convention: pai-freshness-v1\n`;
+    `convention: lifeos-freshness-v1\n`;
   return {
     content: "---\n" + injected + block + "\n---\n" + content.slice(end + 5),
     action: "upgraded-block",
@@ -105,7 +109,7 @@ function newFrontmatterBlock(entry: ContextFile): string {
     "---",
     `last_updated: ${SEED_ISO}`,
     "last_updated_by: migration",
-    "convention: pai-freshness-v1",
+    "convention: lifeos-freshness-v1",
   ];
 
   if (entry.is_auto_generated && entry.derived_from) {
@@ -248,7 +252,7 @@ function printSummary(results: MigrationResult[]): void {
 // ─── State-file mode (--state) ────────────────────────────────────────────
 //
 // CURRENT_STATE/ and IDEAL_STATE/ dimension files already carry last_updated
-// in an older frontmatter dialect. This mode upserts only the pai-freshness-v1
+// in an older frontmatter dialect. This mode upserts only the lifeos-freshness-v1
 // membership fields (convention + last_updated_by) into the existing block,
 // preserving every existing field. Body content is sha256-verified unchanged.
 
@@ -268,7 +272,7 @@ function stampStateFile(entry: ContextFile, dryRun: boolean): MigrationResult {
   let block = original.slice(4, end);
   let action = "unchanged";
   if (!/^convention:/m.test(block)) {
-    block += `\nconvention: pai-freshness-v1`;
+    block += `\nconvention: lifeos-freshness-v1`;
     action = "stamped";
   }
   if (!/^last_updated_by:/m.test(block)) {

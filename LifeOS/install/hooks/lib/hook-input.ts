@@ -1,4 +1,5 @@
 /**
+ * @version 1.0.0
  * hook-input.ts — zero-dependency boundary validation for hook stdin.
  *
  * Hooks receive untrusted tool-input JSON on stdin and, historically, did

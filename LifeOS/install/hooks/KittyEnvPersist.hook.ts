@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.4.14
+ * @version 1.4.17
  * KittyEnvPersist.hook.ts - Kitty terminal env persistence + tab reset (SessionStart)
  *
  * PURPOSE:
@@ -17,30 +17,35 @@ import { getLifeosDir } from './lib/paths';
 import { setTabState, readTabState, persistKittySession } from './lib/tab-setter';
 import { getDAName } from './lib/identity';
 import { isSubagentContext } from './lib/subagent';
+import { registerSession, harnessFromEnv, findHarnessPid } from '../LIFEOS/TOOLS/LiveSessions';
 
-const paiDir = getLifeosDir();
-
-// Skip for subagents
-if (isSubagentContext()) process.exit(0);
+const lifeosDir = getLifeosDir();
 
 // Read session_id + source from stdin (SessionStart hook input)
-// source ∈ {"startup", "resume", "compact", "clear"}; absent on older CC versions.
+// source ∈ {"startup", "resume", "compact", "clear", "fork"}; absent on older CC versions.
 let sessionId = '';
 let source = '';
+let parsed: unknown = null;
 try {
   const raw = readFileSync(0, 'utf-8');
   if (raw) {
-    const parsed = JSON.parse(raw);
-    sessionId = String(parsed.session_id || '');
-    source = String(parsed.source || '');
+    const json = JSON.parse(raw);
+    parsed = json;
+    sessionId = String(json.session_id || '');
+    source = String(json.source || '');
   }
 } catch { /* best-effort */ }
+
+// Skip for subagents — a fork announces itself as `source: "fork"` on stdin and
+// nowhere in the env, so this reads the payload above (see lib/subagent.ts).
+// public PR #1958, @theNetworkChuck
+if (isSubagentContext(parsed)) process.exit(0);
 
 // Persist Kitty environment for hooks that run later without terminal context
 const kittyListenOn = process.env.KITTY_LISTEN_ON;
 const kittyWindowId = process.env.KITTY_WINDOW_ID;
 if (kittyListenOn && kittyWindowId) {
-  const stateDir = join(paiDir, 'MEMORY', 'STATE');
+  const stateDir = join(lifeosDir, 'MEMORY', 'STATE');
   if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
   writeFileSync(
     join(stateDir, 'kitty-env.json'),
@@ -49,6 +54,23 @@ if (kittyListenOn && kittyWindowId) {
   // Per-session file — required by out-of-process consumers (Pulse voice daemon) that
   // can't inherit KITTY_* env vars but have session_id. See hooks/lib/tab-setter.ts.
   if (sessionId) persistKittySession(sessionId, kittyListenOn, kittyWindowId);
+}
+
+// Register this session in the harness-agnostic live-sessions registry so
+// `bun LIFEOS/TOOLS/Sessions.ts restore` (/rs) can bring it back after the
+// terminal dies. Harness comes from LIFEOS_HARNESS (the bridges set it; Claude
+// does not), cwd from the hook input, pid from walking up to the harness process.
+if (sessionId && source !== 'compact') {
+  try {
+    const cwd = String((parsed as { cwd?: string } | null)?.cwd || process.cwd());
+    const harness = harnessFromEnv();
+    registerSession({
+      sessionId, harness, cwd,
+      pid: findHarnessPid(harness, process.ppid),
+      startedAt: new Date().toISOString(),
+      kitty: kittyListenOn && kittyWindowId ? { listenOn: kittyListenOn, windowId: kittyWindowId } : null,
+    });
+  } catch (err) { console.error(`⚠️ live-sessions register failed: ${err}`); }
 }
 
 // Reset tab title to clean state — prevents stale titles bleeding through when a

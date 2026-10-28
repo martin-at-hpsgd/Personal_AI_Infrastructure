@@ -1,0 +1,18 @@
+# Ring 3: everyone and everything not listed in another ring. Nothing is listed here.
+ring: 3
+name: Outside
+description: Unknown senders and outside content. No model acts on it; it is dropped, or passed on only as quoted data.
+members: []
+pending: []
+answers:
+  can: []
+  never: ["Anything"]
+skills: []
+data: []
+actions: []
+model:
+  lane: none
+caps: {}
+logging:
+  stream: relay
+  record_text: false

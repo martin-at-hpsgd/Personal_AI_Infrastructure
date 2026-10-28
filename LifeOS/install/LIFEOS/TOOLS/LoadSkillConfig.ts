@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.5.11
  * LoadSkillConfig - Shared utility for loading skill configurations with user customizations
  *
  * Skills call this to load their JSON/YAML configs, which automatically merges
  * base config with user customizations from the CUSTOMIZATIONS/SKILLS directory.
  *
  * Usage:
- *   import { loadSkillConfig } from '~/.claude/LIFEOS/TOOLS/LoadSkillConfig';
+ *   import { loadSkillConfig } from '~/.claude/LIFEOS/TOOLS/LoadSkillConfig.ts';
  *   const config = loadSkillConfig<MyConfigType>(__dirname, 'config.json');
  *
  * Or CLI:
@@ -16,8 +17,8 @@
 
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
-import { homedir } from 'os';
 import { parse as parseYaml } from 'yaml';
+import { lifeosPath } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Types
 interface CustomizationMetadata {
@@ -34,8 +35,7 @@ interface ExtendManifest {
 }
 
 // Constants
-const HOME = homedir();
-const CUSTOMIZATION_DIR = join(HOME, '.claude', 'LIFEOS', 'USER', 'CUSTOMIZATIONS', 'SKILLS');
+const CUSTOMIZATION_DIR = lifeosPath('USER', 'CUSTOMIZATIONS', 'SKILLS');
 
 /**
  * Deep merge two objects recursively

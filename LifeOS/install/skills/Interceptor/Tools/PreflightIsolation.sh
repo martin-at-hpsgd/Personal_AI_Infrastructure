@@ -27,7 +27,7 @@
 # remediation, never an auto-route to Default. The old "fall back to the first
 # available / Default context" behavior is DELETED and must never be re-derived.
 #
-# Every browser workflow's first step. Source from a workflow:
+# Every browser intent's first step. Source from an intent:
 #
 #   if ! bash ~/.claude/skills/Interceptor/Tools/PreflightIsolation.sh; then
 #     exit 1   # surface to operator; do NOT fall back
@@ -43,13 +43,13 @@ set -euo pipefail
 # Source per-machine USER customizations if present (Chrome profile dir name,
 # pinned context ID, working-profile deny-list). Lives outside the public skill
 # body so the skill stays generic.
-USER_PREFS="${HOME}/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Interceptor/preferences.env"
+USER_PREFS="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Interceptor/preferences.env"
 if [ -f "$USER_PREFS" ]; then
     # shellcheck disable=SC1090
     . "$USER_PREFS"
 fi
 
-MIN_VERSION="0.16.9"
+MIN_VERSION="0.23.16"
 
 # The pinned test context. No friendly default — an unset value is a hard stop,
 # never a fall-through to a default name that might resolve to the wrong profile.
@@ -62,8 +62,10 @@ if [ -z "$REQUIRED_CONTEXT" ]; then
 REMEDIATION:
   Set INTERCEPTOR_TEST_CONTEXT_ID in
     ~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Interceptor/preferences.env
-  to the pinned Interceptor test context (raw UUID today; durable fix is the
-  friendly name "interceptor-test" set once in the extension popup). There is
+  to the pinned Interceptor test context (a raw UUID, or the friendly name
+  "interceptor-test" set once in the extension popup — same storage key, same
+  durability; the name can simply be re-typed after a Remove + Load Unpacked
+  wipes it — public issue #2010, @dsather). There is
   no default — running without an explicit pinned context could route a tab to
   the operator's working profile.
 EOF
@@ -81,7 +83,7 @@ if ! command -v interceptor >/dev/null 2>&1; then
 [PreflightIsolation] FAIL: interceptor not found on PATH.
 
 REMEDIATION:
-  Build and install per Workflows/Update.md, then verify with:
+  Build and install per Intents/Update.md, then verify with:
     interceptor --version
 EOF
     exit 2
@@ -98,7 +100,7 @@ if [ -z "$current_version" ]; then
 
 REMEDIATION:
   Run \`interceptor --version\` manually and confirm output shape
-  matches "interceptor X.Y.Z (sha, date)". If not, rebuild per Workflows/Update.md.
+  matches "interceptor X.Y.Z (sha, date)". If not, rebuild per Intents/Update.md.
 EOF
     exit 3
 fi
@@ -115,7 +117,7 @@ WHY THIS MATTERS:
   usually the operator's Default profile. A tab opens in the wrong window.
 
 REMEDIATION:
-  Upgrade via Workflows/Update.md, then:
+  Upgrade via Intents/Update.md, then:
     interceptor --version          # confirm >= $MIN_VERSION
 EOF
     exit 4
@@ -140,11 +142,13 @@ REMEDIATION (operator action — no auto-launch):
   1. Open the dedicated Interceptor test profile window.
   2. In that profile, open chrome://extensions/. If the Interceptor card is
      missing or shows an error: Load Unpacked
-       -> ~/.claude/skills/Interceptor/Extension/
+       -> /Library/Application Support/Interceptor/extension (signed installer)
+          or ~/.claude/skills/Interceptor/Extension/ (from-source pin, made by Pin.sh)
      and accept any new permissions.
   3. Click the Interceptor toolbar icon, set Context ID to the friendly name
-     "interceptor-test", Save. Friendly names survive extension reloads; raw
-     UUIDs rot on every reload (see preferences.env header).
+     "interceptor-test", Save. Name and UUID share one storage key — both
+     survive Reload, both are wiped by Remove + Load Unpacked, after which the
+     name is simply re-typed (public issue #2010, @dsather).
   4. Set INTERCEPTOR_TEST_CONTEXT_ID in preferences.env to match, then re-run.
 EOF
     exit 5
@@ -183,9 +187,11 @@ REMEDIATION (UUID rot — most common):
   2. If the live UUID is the same test profile under a new value, copy it into
      preferences.env and re-run this preflight.
 
-DURABLE FIX (end UUID rot):
-  Set the friendly name "interceptor-test" in the extension popup once and pin
-  that string in preferences.env. Friendly names survive reloads; raw UUIDs do not.
+RE-PIN BY HAND (there is no auto-rebind — public issue #2010, @dsather):
+  Set the friendly name "interceptor-test" in the extension popup and pin that
+  string in preferences.env. A name and a UUID share one storage key and are
+  wiped together by Remove + Load Unpacked; the name's advantage is that you
+  can re-type it, whereas a minted UUID cannot be restored.
 EOF
     exit 6
 fi
@@ -204,13 +210,17 @@ if [ -z "$deny_hit" ] && [ -n "$WORKING_PROFILE_IDS" ]; then
     # contains spaces must still match whole. Test the whole value and both splits:
     # a superset of the comma-only parse, so this can only add a refusal.
     # public issue #1802, @catchingknives
-    _deny_raw="$(printf '%s' "$WORKING_PROFILE_IDS" | sed 's/^[ \t]*//;s/[ \t]*$//')"
+    # [[:space:]]: BSD sed reads a backslash-t inside brackets as two literal chars, so a
+    # trailing "t" was trimmed off an id and the deny-list failed open.
+    # GHSA-89c2-rpfv-mhc4, @Steffen025
+    _deny_raw="$(printf '%s' "$WORKING_PROFILE_IDS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
     [ "$_deny_raw" = "$REQUIRED_CONTEXT" ] && deny_hit="matches working-profile deny-list entry ($_deny_raw)"
     for _sep in ',' $', \t'; do
         [ -n "$deny_hit" ] && break
         IFS="$_sep" read -ra _deny_ids <<< "$_deny_raw"
         for _id in "${_deny_ids[@]:-}"; do
-            _id="$(printf '%s' "$_id" | sed 's/^[ \t]*//;s/[ \t]*$//')"
+            # POSIX class, BSD-sed safe (GHSA-89c2-rpfv-mhc4, @Steffen025)
+            _id="$(printf '%s' "$_id" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
             [ -z "$_id" ] && continue
             if [ "$_id" = "$REQUIRED_CONTEXT" ]; then
                 deny_hit="matches working-profile deny-list entry ($_id)"
@@ -295,6 +305,9 @@ WHY THIS MATTERS:
 REMEDIATION:
   1. Re-pin:  bash "$(rel_home "$PIN_SH")"
      (needs the built extension at $UPSTREAM_DIST_DISP; override with INTERCEPTOR_SRC)
+     Installed from a release tarball (Linux)? There is no source checkout to pin
+     from: set INTERCEPTOR_EXT_DIR=<unpack dir>/extension/dist in preferences.env.
+     (public issue #2216, @corobis)
   2. In the test profile: chrome://extensions/ -> Load Unpacked
        from $EXT_DIR_DISP
   3. Re-run this preflight.
@@ -334,15 +347,16 @@ WHY THIS MATTERS:
   "screenshot-runner.js could not load" failures.
 
 REMEDIATION:
-  1. Re-pin via the Update workflow (runs Tools/Pin.sh).
+  1. Re-pin via the Update intent (runs Tools/Pin.sh).
   2. In the test profile: chrome://extensions/ -> Interceptor -> Load Unpacked
-       from ~/.claude/skills/Interceptor/Extension/ (or reload if already loaded).
+       from /Library/Application Support/Interceptor/extension (signed installer) or
+       ~/.claude/skills/Interceptor/Extension/ (from-source pin), or reload if already loaded.
   3. Re-run this preflight.
 EOF
         exit 6
     fi
 else
-    # Upstream dist absent (currently true on this machine) — cannot compare.
+    # When the upstream dist is absent, freshness cannot be compared.
     # Warn, do not hard-fail on a missing reference.
     printf '[PreflightIsolation] WARN: cannot verify extension freshness ' >&2
     printf '(upstream dist %s absent or PINNED_FROM.txt missing). Proceeding.\n' \
@@ -350,6 +364,13 @@ else
 fi
 
 # --- All checks passed ---
+# Placement: the verified test context is about to be driven, so snap its window back to
+# INTERCEPTOR_TEST_WINDOW_BOUNDS if it drifted (Tools/PinTestWindow.sh; no-op when unset).
+# Advisory — a pin failure never fails the gate. Runs here, not only in EnsureTestProfile.sh,
+# because most intents call this gate directly. INTERCEPTOR_PREFLIGHT_NO_PIN=1 skips it.
+if [ -z "${INTERCEPTOR_PREFLIGHT_NO_PIN:-}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/PinTestWindow.sh" ]; then
+    INTERCEPTOR_PIN_PREFS="$USER_PREFS" bash "$(dirname "${BASH_SOURCE[0]}")/PinTestWindow.sh" || true
+fi
 printf '[PreflightIsolation] OK — interceptor %s, pinned context "%s" connected and not denied.\n' \
     "$current_version" "$REQUIRED_CONTEXT"
 exit 0

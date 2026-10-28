@@ -1,3 +1,4 @@
+<!-- isa-example claims=40 probes=11 era=legacy -->
 <!-- Fictitious example. "Mariner Frequencies" is a teaching project name; any resemblance to real artists, labels, or releases is coincidental. Working-title only; no production endpoint. -->
 
 ---
@@ -12,6 +13,29 @@ mode: interactive
 started: 2025-11-01T16:00:00Z
 updated: 2026-04-25T19:00:00Z
 ---
+
+## Ideal State
+
+### L3 · One sentence
+
+Mariner Frequencies is a 12-track instrumental album of harbor-adjacent ambient-electronic music, mixed, mastered, and released by 2026-05-15, that a listener plays through to the end and then returns to.
+
+### L2 · Summary
+
+The album takes 18 months of scattered material to a finished record in six months, without the old pattern of endless composing and tweaking.
+
+- Twelve instrumental tracks totaling 42 to 54 minutes, threaded with coastal field recordings.
+- Mixed by the artist and mastered by a paid third-party engineer to streaming-spec LUFS.
+- Released between 2025-11-01 and 2026-05-15 through Bandcamp and DistroKid.
+- At least one track the artist would still defend as representative five years later.
+
+### L1 · Full articulation
+
+Mariner Frequencies is a 12-track instrumental album of patient, harbor-adjacent ambient-electronic music, 42 to 54 minutes long and threaded with field recordings made along the coast at dawn. It is produced, mixed, mastered, and released between 2025-11-01 and 2026-05-15: mixed by the artist, mastered by a paid third-party engineer to streaming-spec LUFS, and distributed through Bandcamp and DistroKid.
+
+It exists to close the gap between eighteen months of accumulated sketches, voice memos, half-finished arrangements, and an old field recorder full of ocean and harbor sounds, and a thing the world can listen to from start to finish. The artist's earlier attempts stalled the same way each time: composition opened too many doors, mixing extended into tweaking forever, and mastering was handed off and came back sounding like everyone else's record. This time 12 tracks go from blank page to mastered release inside a six-month window without that pattern repeating.
+
+The moment it is right: a listener finds the record on a streaming platform or a Bandcamp page, presses play, and stops scrolling before track three. They listen all the way through, go back to track 5 three more times in a row, and text a friend a link with the words "play this with headphones." At least one track is one the artist would still defend as a representative work five years later.
 
 ## Problem
 
@@ -49,10 +73,6 @@ A 12-track instrumental album titled `Mariner Frequencies` — roughly 48 minute
 - Field recordings sourced from coastal locations within 90 minutes of the studio. Recordings must be made by the artist, not licensed.
 - Mixing done by the artist; mastering done by a paid third-party engineer with delivery format LUFS −14 integrated for streaming.
 - Reference album for sonic palette: a 2018 ambient-electronic record the artist has listened to ~200 times — used as A/B comparison during mix, not as imitation target.
-
-## Goal
-
-Produce, mix, master, and release a 12-track instrumental album titled `Mariner Frequencies` between 2025-11-01 and 2026-05-15, totaling 42–54 minutes, mixed by the artist and mastered by a paid third-party engineer to streaming-spec LUFS, distributed via Bandcamp and DistroKid, with at least one track that the artist would still defend as a representative work five years later.
 
 ## Criteria
 
@@ -119,73 +139,20 @@ Produce, mix, master, and release a 12-track instrumental album titled `Mariner 
 
 ## Test Strategy
 
-```yaml
-- isc: ISC-1
-  type: count
-  check: distinct Logic project files in sketches/
-  threshold: ≥ 30 by 2025-12-15
-  tool: ls sketches/*.logicx | wc -l
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-1 | bash | distinct Logic project files in sketches/ | ≥ 30 by 2025-12-15 | test "$(ls sketches/*.logicx \| wc -l)" -ge 30 |  |
+| ISC-4 | manual | end-to-end listen of 14 candidates triggers ≤ 2 skip impulses | artist self-reported, logged in project notes | listening session 2025-12-30 with timer + skip-impulse tally |  |
+| ISC-9 | manual | ≥ 6 final tracks contain a field recording as load-bearing element | 6 of 12 | per-track audit of stems against field-recordings/ folder |  |
+| ISC-15 | manual | total runtime of locked sequence | 42:00 ≤ runtime ≤ 54:00 | sum of track durations from Logic bounce manifest |  |
+| ISC-18 | eval | A/B against reference album on ≥ 4 systems | each track logged with date and system in mix-notes.md | artist log entries |  |
+| ISC-24 | manual | integrated LUFS and true-peak per mastered track | −14 LUFS ± 1 LU; true-peak ≤ −1 dBTP | ffmpeg -i track.wav -filter_complex ebur128=peak=true |  |
+| ISC-26 | manual | artist has listened end-to-end across 3 playback systems | signed sign-off note with date and system list | mastered/SIGNOFF.md |  |
+| ISC-28 | manual | DistroKid submission status | "Live on Spotify" by 2026-05-15 | DistroKid dashboard screenshot |  |
+| ISC-34 | manual | simultaneous audio tracks at densest bar per project | ≤ 24 per track | Logic project audit script (count non-muted regions overlapping bar) |  |
+| ISC-37 | manual | integrated LUFS per mastered track | ≥ −16 LUFS | ffmpeg -i track.wav -filter_complex ebur128=peak=true |  |
+| ISC-38 | manual | project loads on fresh Logic install | zero "missing plugin" warnings | load each .logicx on a clean Logic install, capture warnings |  |
 
-- isc: ISC-4
-  type: antecedent / experiential
-  check: end-to-end listen of 14 candidates triggers ≤ 2 skip impulses
-  threshold: artist self-reported, logged in project notes
-  tool: listening session 2025-12-30 with timer + skip-impulse tally
-
-- isc: ISC-9
-  type: antecedent / structural
-  check: ≥ 6 final tracks contain a field recording as load-bearing element
-  threshold: 6 of 12
-  tool: per-track audit of stems against field-recordings/ folder
-
-- isc: ISC-15
-  type: runtime
-  check: total runtime of locked sequence
-  threshold: 42:00 ≤ runtime ≤ 54:00
-  tool: sum of track durations from Logic bounce manifest
-
-- isc: ISC-18
-  type: antecedent / mix-quality
-  check: A/B against reference album on ≥ 4 systems
-  threshold: each track logged with date and system in mix-notes.md
-  tool: artist log entries
-
-- isc: ISC-24
-  type: loudness
-  check: integrated LUFS and true-peak per mastered track
-  threshold: −14 LUFS ± 1 LU; true-peak ≤ −1 dBTP
-  tool: ffmpeg -i track.wav -filter_complex ebur128=peak=true
-
-- isc: ISC-26
-  type: antecedent / sign-off
-  check: artist has listened end-to-end across 3 playback systems
-  threshold: signed sign-off note with date and system list
-  tool: mastered/SIGNOFF.md
-
-- isc: ISC-28
-  type: distribution
-  check: DistroKid submission status
-  threshold: "Live on Spotify" by 2026-05-15
-  tool: DistroKid dashboard screenshot
-
-- isc: ISC-34
-  type: anti-probe / mix-density
-  check: simultaneous audio tracks at densest bar per project
-  threshold: ≤ 24 per track
-  tool: Logic project audit script (count non-muted regions overlapping bar)
-
-- isc: ISC-37
-  type: anti-probe / loudness-floor
-  check: integrated LUFS per mastered track
-  threshold: ≥ −16 LUFS
-  tool: ffmpeg -i track.wav -filter_complex ebur128=peak=true
-
-- isc: ISC-38
-  type: anti-probe / license
-  check: project loads on fresh Logic install
-  threshold: zero "missing plugin" warnings
-  tool: load each .logicx on a clean Logic install, capture warnings
-```
 
 ## Features
 

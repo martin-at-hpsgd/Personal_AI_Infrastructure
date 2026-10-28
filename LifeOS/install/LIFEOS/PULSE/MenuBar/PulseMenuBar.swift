@@ -13,6 +13,7 @@ import Foundation
 
 let PULSE_API = "http://localhost:31337/api/menubar"
 let PULSE_DASHBOARD = "http://localhost:31337"
+let PULSE_VOICE_MUTE = "http://localhost:31337/voice/mute"
 let LAST_SEEN_KEY = "lifeos.pulse.menubar.lastSeenMs"
 
 // MARK: - /api/menubar payload
@@ -185,6 +186,8 @@ class PulseMenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pollTimer: Timer?
     private var payload: MenuBarPayload?
     private var apiReachable = false
+    /// nil = voice server unreachable (row hidden); polled with the main payload.
+    private var voiceMuted: Bool?
 
     private let pulseDir: String
     private let pollInterval: TimeInterval = 5.0
@@ -221,6 +224,52 @@ class PulseMenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.apiReachable = (newPayload != nil)
                 if let p = newPayload { self.payload = p }
                 self.updateIcon()
+                self.rebuildMenu()
+            }
+        }.resume()
+        fetchVoiceMuteState()
+    }
+
+    // MARK: - Voice mute (the recording/call kill switch)
+
+    private func fetchVoiceMuteState() {
+        guard let url = URL(string: PULSE_VOICE_MUTE) else { return }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 2.0
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            var muted: Bool? = nil
+            if let data,
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let m = obj["muted"] as? Bool {
+                muted = m
+            }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if self.voiceMuted != muted {
+                    self.voiceMuted = muted
+                    self.rebuildMenu()
+                }
+            }
+        }.resume()
+    }
+
+    @objc private func toggleVoiceMute() {
+        guard let url = URL(string: PULSE_VOICE_MUTE) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 3.0
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{\"source\":\"pulse-menubar\"}".utf8)
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            var muted: Bool? = nil
+            if let data,
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let m = obj["muted"] as? Bool {
+                muted = m
+            }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.voiceMuted = muted
                 self.rebuildMenu()
             }
         }.resume()
@@ -387,6 +436,17 @@ class PulseMenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
             menu.addItem(NSMenuItem.separator())
+        }
+
+        // Voice mute toggle — the recording/call kill switch. Hidden when the
+        // voice server is unreachable; audio only, desktop notifications keep flowing.
+        if let muted = voiceMuted {
+            // Uppercase "M" renders as ⇧⌘M — plain ⌘M is system minimize (2026-08-18).
+            let voice = NSMenuItem(title: muted ? "🔇 Voice: Muted" : "🔊 Voice: On",
+                                   action: #selector(toggleVoiceMute), keyEquivalent: "M")
+            voice.target = self
+            voice.state = muted ? .on : .off
+            menu.addItem(voice)
         }
 
         // Open dashboard

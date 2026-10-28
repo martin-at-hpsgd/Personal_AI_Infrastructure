@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "types": ["bun"],
+    "noEmit": true
+  },
+  "include": ["Workflows/**/*.ts", "Actions/lib/runner.v2.ts", "Actions/lib/types.v2.ts", "Actions/lib/pipeline-runner.ts", "Actions/lifeos.ts"]
+}

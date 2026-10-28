@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useApi, apiFetch } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import MarkdownRenderer from "@/components/wiki/MarkdownRenderer";
 import WikiMeta from "@/components/wiki/WikiMeta";
@@ -9,6 +9,7 @@ import EmptyStateGuide from "@/components/EmptyStateGuide";
 import { Users, Building2, Lightbulb, Clock, Search, X, FileText, BookOpen, Newspaper, FlaskConical, GraduationCap, Sparkles, Workflow } from "lucide-react";
 import Link from "next/link";
 import { wikiPageUrl } from "@/lib/wiki-links";
+import { fmtDateParts } from "@/lib/time";
 import { PageShell, PageHeader, Panel, PanelHeader, StatTile, Pill, type Dim } from "@/components/ui/chrome";
 
 interface WikiPage {
@@ -54,6 +55,8 @@ interface PageDetail {
   wikilinks: string[];
   tags?: string[];
   quality?: number;
+  qualityInferred?: boolean;
+  rating?: number;
   filePath?: string;
   author?: string;
   source?: string;
@@ -145,11 +148,8 @@ function KnowledgeHeroSearch({ totalPages }: { totalPages: number }) {
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/wiki/search?q=${encodeURIComponent(query)}&limit=40`);
-        if (res.ok) {
-          const data = await res.json();
-          setResults(data.results || []);
-        }
+        const data = await apiFetch<{ results?: SearchHit[] }>(`/api/wiki/search?q=${encodeURIComponent(query)}&limit=40`);
+        setResults(data.results || []);
       } catch {
         // ignore
       } finally {
@@ -266,7 +266,9 @@ const MEMORY_CATEGORIES = new Set([
 ]);
 
 function KnowledgeLanding({ data }: { data: WikiIndex }) {
-  const knowledgeEntries = data.recentChanges.filter((p) => MEMORY_CATEGORIES.has(p.category));
+  const [filter, setFilter] = useState<string | null>(null);
+  const allEntries = data.recentChanges.filter((p) => MEMORY_CATEGORIES.has(p.category));
+  const knowledgeEntries = filter ? allEntries.filter((p) => p.category === filter) : allEntries;
 
   const isFreshInstall = data.stats.totalPages === 0;
 
@@ -291,17 +293,25 @@ function KnowledgeLanding({ data }: { data: WikiIndex }) {
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {[
-            { icon: Users, label: "People", count: data.stats.totalPeople, dim: "relationships" as const },
-            { icon: Building2, label: "Companies", count: data.stats.totalCompanies, dim: "money" as const },
-            { icon: Lightbulb, label: "Ideas", count: data.stats.totalIdeas, dim: "freedom" as const },
-            { icon: Newspaper, label: "Blogs", count: data.stats.totalBlogs ?? 0, dim: "creative" as const },
-            { icon: BookOpen, label: "Books", count: data.stats.totalBooks ?? 0, dim: "creative" as const },
-            { icon: FlaskConical, label: "Research", count: data.stats.totalResearch ?? 0, dim: "freedom" as const },
-            { icon: Workflow, label: "ISAs", count: data.stats.totalIsas ?? 0, dim: "rhythms" as const },
-            { icon: GraduationCap, label: "Lessons", count: data.stats.totalLessons ?? 0, dim: "health" as const },
-            { icon: Sparkles, label: "Wisdom", count: data.stats.totalWisdom ?? 0, dim: "freedom" as const },
-          ].map(({ icon: Icon, label, count, dim }) => (
-            <StatTile key={label} icon={Icon} label={label} value={count} dim={dim} />
+            { icon: Users, label: "People", count: data.stats.totalPeople, dim: "relationships" as const, category: "person" },
+            { icon: Building2, label: "Companies", count: data.stats.totalCompanies, dim: "money" as const, category: "company" },
+            { icon: Lightbulb, label: "Ideas", count: data.stats.totalIdeas, dim: "freedom" as const, category: "idea" },
+            { icon: Newspaper, label: "Blogs", count: data.stats.totalBlogs ?? 0, dim: "creative" as const, category: "blog" },
+            { icon: BookOpen, label: "Books", count: data.stats.totalBooks ?? 0, dim: "creative" as const, category: "book" },
+            { icon: FlaskConical, label: "Research", count: data.stats.totalResearch ?? 0, dim: "freedom" as const, category: "research" },
+            { icon: Workflow, label: "ISAs", count: data.stats.totalIsas ?? 0, dim: "rhythms" as const, category: "isa" },
+            { icon: GraduationCap, label: "Lessons", count: data.stats.totalLessons ?? 0, dim: "health" as const, category: "lesson" },
+            { icon: Sparkles, label: "Wisdom", count: data.stats.totalWisdom ?? 0, dim: "freedom" as const, category: "wisdom" },
+          ].map(({ icon: Icon, label, count, dim, category }) => (
+            <StatTile
+              key={label}
+              icon={Icon}
+              label={label}
+              value={count}
+              dim={dim}
+              active={filter === category}
+              onClick={() => setFilter(filter === category ? null : category)}
+            />
           ))}
         </div>
 
@@ -329,10 +339,7 @@ function KnowledgeLanding({ data }: { data: WikiIndex }) {
                     </span>
                   )}
                   <span className="shrink-0 tabular-nums mono text-ink-3" style={{ fontSize: 12 }}>
-                    {new Date(page.lastModified).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {fmtDateParts(page.lastModified, { month: "short", day: "numeric" })}
                   </span>
                 </Link>
               );
@@ -351,26 +358,11 @@ function KnowledgePageInner() {
   const isViewingKnowledge = !!category && !!slug;
   const isViewing = isViewingKnowledge;
 
-  const { data: indexData } = useQuery<WikiIndex>({
-    queryKey: ["wiki-index"],
-    queryFn: async () => {
-      const res = await fetch("/api/wiki");
-      if (!res.ok) throw new Error("Failed to fetch wiki index");
-      return res.json();
-    },
-    staleTime: 30_000,
-    enabled: !isViewing,
-  });
+  const { data: indexData } = useApi<WikiIndex>("/api/wiki", { staleTime: 30_000, enabled: !isViewing });
 
-  const { data: knowledgeDetail } = useQuery<PageDetail>({
-    queryKey: ["wiki-knowledge", category, slug],
-    queryFn: async () => {
-      const res = await fetch(`/api/wiki/knowledge/${category}/${slug}`);
-      if (!res.ok) throw new Error("Failed to fetch knowledge note");
-      return res.json();
-    },
-    enabled: isViewingKnowledge,
-  });
+  const { data: knowledgeDetail } = useApi<PageDetail>(
+    isViewingKnowledge ? `/api/wiki/knowledge/${encodeURIComponent(category)}/${encodeURIComponent(slug)}` : null,
+  );
 
   if (isViewingKnowledge && knowledgeDetail) {
     return (
@@ -384,6 +376,8 @@ function KnowledgePageInner() {
           category={knowledgeDetail.category}
           tags={knowledgeDetail.tags}
           quality={knowledgeDetail.quality}
+          qualityInferred={knowledgeDetail.qualityInferred}
+          rating={knowledgeDetail.rating}
           lastModified={knowledgeDetail.lastModified}
           wordCount={knowledgeDetail.wordCount}
           backlinks={knowledgeDetail.backlinks}

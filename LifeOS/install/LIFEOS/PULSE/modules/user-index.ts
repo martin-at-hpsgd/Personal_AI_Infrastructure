@@ -395,14 +395,14 @@ const SKIP_DIRS = new Set([
   "Actions", "ACTIONS",
   "Flows", "FLOWS",
   "Pipelines", "PIPELINES",
-  "Workflows",
-  "Arbol", "ARBOL",
+  "Workflows", "WORKFLOWS",
+  "Intents", "INTENTS",
   "Config",
   "Credentials", "CREDENTIALS",
   "SkillCustomizations", "SKILLCUSTOMIZATIONS",
   "Terminal", "TERMINAL",
   "Security", "SECURITY",  // security operational state (SecurityPosture, MONITORING) never enters the wiki index
-  "Daemon",  // handled by Daemon skill directly
+  "Daemon",  // handled by its own skill directly
   "node_modules", ".git", "Backups",
 ])
 

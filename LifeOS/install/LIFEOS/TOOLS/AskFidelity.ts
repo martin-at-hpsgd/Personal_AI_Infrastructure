@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 /**
- * AskFidelity — the emitter for Algorithm doctrine claim 10.
+ * AskFidelity — the emitter for Algorithm doctrine criterion 10.
  *
- * Claim 10 says every explicit ask in the principal's verbatim message was met,
+ * Criterion 10 says every explicit ask in the principal's verbatim message was met,
  * skipped with a stated reason, or surfaced, and that one line lands in
  * MEMORY/OBSERVABILITY/ask-fidelity.jsonl — "any ✗ blocks complete".
  *
  * Until 2026-07-24 there was no writer on disk. Rows were hand-authored freehand,
- * so the 2026-07-24 audit found 54/108 in-window rows with `all_met` AND `slug`
- * null, two incompatible schemas (`session_id`+`verdict` vs `session`+`all_met`),
- * and exactly ONE `false` in 122 rows ever. A gate that cannot record a ✗ has no
+ * so the 2026-07-24 audit found about half the in-window rows with `all_met` AND
+ * `slug` null, two incompatible schemas (`session_id`+`verdict` vs `session`+`all_met`),
+ * and almost no `false` rows ever. A gate that cannot record a ✗ has no
  * teeth. This tool is that missing instrument.
  *
  * Design rules, each answering a specific way the freehand rows failed:
@@ -27,9 +27,9 @@
  *   unmet    — not done and not accounted for → blocks
  *
  * Consumers (do not break these):
- *   - skills/Evals/Tools/ProposeFromFailures.ts — reads asks[].ask, asks[].status,
+ *   - evaluation consumers — read asks[].ask, asks[].status,
  *     deferred[].item, deferred[].reason, session, ts
- *   - <your-release-skill>/Workflows/AlgorithmAudit.md — reads all_met, slug
+ *   - private maintenance audit workflow (when installed) — reads all_met, slug
  *
  * Usage:
  *   bun AskFidelity.ts --slug 20260724-foo --session <uuid> \
@@ -39,15 +39,15 @@
  *
  *   bun AskFidelity.ts --check   # report corpus health, write nothing
  *
- * @version 1.0.0
+ * @version 1.0.5
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(homedir(), ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const LOG_PATH = join(LIFEOS_DIR, "MEMORY", "OBSERVABILITY", "ask-fidelity.jsonl");
 
 const BLOCKING = "unmet";
@@ -85,7 +85,7 @@ function parseAsk(raw: string): Ask {
   if (!STATUSES.includes(head as Status)) {
     throw new Error(`--ask "${raw}": status must start with one of ${STATUSES.join(", ")} (got "${head}")`);
   }
-  // skipped/surfaced are only honest with a reason attached — claim 10 says
+  // skipped/surfaced are only honest with a reason attached — criterion 10 says
   // "skipped with a stated reason", so an unexplained skip is an unmet ask.
   if ((head === "skipped" || head === "surfaced") && status.length <= head.length + 2) {
     throw new Error(`--ask "${raw}": "${head}" requires a stated reason (e.g. "${head} — principal deferred it")`);
@@ -193,7 +193,7 @@ function main(): number {
   }
 
   if (unmet.length) {
-    console.error(`✗ ask-fidelity: ${unmet.length} unmet ask(s) — claim 10 blocks complete:`);
+    console.error(`✗ ask-fidelity: ${unmet.length} unmet ask(s) — criterion 10 blocks complete:`);
     for (const a of unmet) console.error(`    • ${a.ask} [${a.status}]`);
     return 1;
   }

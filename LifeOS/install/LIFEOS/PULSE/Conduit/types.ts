@@ -47,4 +47,6 @@ export interface DailyRecord {
   narrative: string | null;
   /** Reserved seam for TELOS scoring — empty in v1. */
   telosTags: Record<string, number>;
+  /** Forward link to the day's Cortex note (KNOWLEDGE/Research), set at persist time. */
+  cortexRef?: { type: "knowledge_note"; category: "research"; slug: string };
 }

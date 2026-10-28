@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'"><title>Pulse Dashboard</title><link rel="stylesheet" href="style.css"></head><body>
+<header><div class="brand"><img src="icon.png" alt=""><h1>PULSE<span>DASHBOARD</span></h1></div><div class="clock"><time id="clock"></time><span id="date"></span></div><div class="actions"><button id="tour" aria-pressed="false" title="Cycle through every page · ⌘T">Tour</button><button id="privacy" aria-pressed="false" title="Hide every pane · ⌘P">Privacy</button><button id="edit" aria-pressed="false" title="Move and resize panes · ⌘E">Arrange panes</button><button id="add">+ Add pane</button></div></header>
+<div id="page-tabs"><button id="tabs-back" aria-label="Scroll tabs left">‹</button><nav id="tabs" aria-label="Pulse pages"></nav><button id="tabs-next" aria-label="Scroll tabs right">›</button></div>
+<main id="board" aria-label="Life dashboard"></main>
+<section id="page" hidden aria-label="Pulse page"><div class="page-placeholder"><span class="orbit"></span><p id="page-title"></p><small>Loading the live Pulse page</small></div></section>
+<footer><span><i class="signal-dot"></i> Connected to your life</span><span id="notice" role="status">Pulse / GitHub / the reader</span></footer>
+<dialog id="picker"><form method="dialog"><h2>Add a pane</h2><button aria-label="Close pane picker">Close</button></form><div id="choices"></div></dialog>
+<script type="module" src="renderer.js"></script></body></html>

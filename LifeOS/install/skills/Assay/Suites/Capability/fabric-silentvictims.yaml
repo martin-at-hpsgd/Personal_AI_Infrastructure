@@ -1,0 +1,252 @@
+# Fabric SilentVictims — who an action harms that cannot complain. The regex
+# asserts pin the literal shape (title, the seven sections in order, the five
+# scan categories, the severity table header, no asterisks); the judged asserts
+# carry what code cannot: calibration (no victims invented for a clean trade),
+# victims tied to the input, an honest reversed test and concrete remedies.
+# Synthetic inline fixtures only.
+name: fabric-silentvictims
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/SilentVictims.md"
+cases:
+  - id: pasted_plan_ties_victims_to_clauses
+    prompt: 'detect_silent_victims on this plan: "Fictional fitness app, free tier. Revenue comes from selling each user''s heart-rate, sleep and location history to health insurers and employers'' wellness vendors. Consent is one line on page 14 of the terms. Data is kept forever, including after an account is deleted. Children aged 13 and up may sign up."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section, field and table row is in
+    # place and agrees with itself, but the victims are generic ("society",
+    # "future generations"), nothing is tied to the plan's clauses (insurers,
+    # page-14 consent, keeping data after deletion, teenage users), and the
+    # recommendations are boilerplate.
+    adversarial_output: |
+      # Silent Victims: A Free Fitness App
+
+      ## ACTION/SYSTEM ANALYZED
+
+      A free fitness app that makes money from user data.
+
+      ## VISIBLE STAKEHOLDERS
+
+      - The company.
+      - The users.
+
+      ## SILENT VICTIM SCAN
+
+      ### Temporal Victims (Future)
+
+      - Found: Yes
+      - Who: Future generations
+      - Harm: Future generations may be affected by the choices made today
+      - Reversibility: Irreversible
+
+      ### Power Victims (Voiceless)
+
+      - Found: Yes
+      - Who: Marginalized communities
+      - Harm: Marginalized communities may suffer harm from technology
+      - Why silent: They lack a platform to speak up
+
+      ### Information Victims (Unaware)
+
+      - Found: Yes
+      - Who: Society as a whole
+      - Harm: People may not understand how technology affects them
+      - Ignorance source: Natural complexity
+
+      ### Diffuse Victims (Distributed)
+
+      - Found: Yes
+      - Who: Everyone who uses digital services
+      - Harm: People may lose some privacy in the digital economy
+      - Individual harm: Small
+      - Aggregate harm: Society bears a broad cost from the digital economy
+      - Diffusion deliberate: Unclear
+
+      ### Structural Victims (Systemic)
+
+      - Found: Yes
+      - Who: Society as a whole
+      - Harm: Technology companies gain power over ordinary people
+      - Mechanism: Capitalism rewards growth over the wellbeing of people
+      - Self-reinforcing: Yes
+
+      ## THE REVERSED TEST
+
+      No. If everyone affected had a voice, society would want a more ethical approach to technology.
+
+      ## SILENT VICTIM SEVERITY
+
+      | Category | Found | Scale | Severity | Reversible |
+      |----------|-------|-------|----------|------------|
+      | Temporal | Yes | Everyone in the future | High | No |
+      | Power | Yes | Many communities | High | No |
+      | Information | Yes | Society | High | No |
+      | Diffuse | Yes | Everyone | High | No |
+      | Structural | Yes | Society | High | No |
+
+      ## OVERALL ASSESSMENT
+
+      CONFIRMED SILENT VICTIMS
+
+      This action has serious ethical implications that should be considered carefully.
+
+      ## RECOMMENDATIONS
+
+      - Increase transparency and consider all stakeholders (Information, Power)
+      - Adopt ethical business practices for the long term (Temporal, Structural)
+      - Raise awareness of the issues among the public (Diffuse)
+    assert:
+      - type: regex
+        weight: 3
+        value: '## ACTION/SYSTEM ANALYZED[\s\S]*## VISIBLE STAKEHOLDERS[\s\S]*## SILENT VICTIM SCAN[\s\S]*## THE REVERSED TEST[\s\S]*## SILENT VICTIM SEVERITY[\s\S]*## OVERALL ASSESSMENT[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '### Temporal Victims \(Future\)[\s\S]*### Power Victims \(Voiceless\)[\s\S]*### Information Victims \(Unaware\)[\s\S]*### Diffuse Victims \(Distributed\)[\s\S]*### Structural Victims \(Systemic\)'
+      - type: regex
+        weight: 1
+        value: '\|\s*Category\s*\|\s*Found\s*\|\s*Scale\s*\|\s*Severity\s*\|\s*Reversible\s*\|'
+      - type: regex
+        weight: 2
+        value: '## OVERALL ASSESSMENT\s*\n\s*(?:PROBABLE|CONFIRMED) SILENT VICTIMS'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Silent Victims: \S'
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The silent victims named come from the plan's own clauses: users judged by insurers or employers on data they did not knowingly hand over, consent hidden on page 14 of the terms, data kept after an account is deleted, and teenage users who cannot meaningfully consent", "No victim is a generic group such as 'society', 'everyone' or 'future generations' without saying which people and how the plan harms them", "The recommendations are concrete changes to this app (for example ending or separating the insurer sale, consent on its own screen, deleting data when an account closes, excluding minors' data) rather than boilerplate like 'increase transparency'" ]
+        reference: 'detect_silent_victims on this plan: "Fictional fitness app, free tier. Revenue comes from selling each user''s heart-rate, sleep and location history to health insurers and employers'' wellness vendors. Consent is one line on page 14 of the terms. Data is kept forever, including after an account is deleted. Children aged 13 and up may sign up."'
+  - id: clean_trade_finds_no_victims
+    prompt: "silent victims: two adults at a weekend flea market trade a used bicycle for a used guitar. Each tried the other's item first and both are happy with the deal."
+    # SYNTHETIC ADVERSARIAL FIXTURE: shape and internal agreement hold, but it
+    # finds Possible victims in every category on far-fetched chains (bike
+    # shops losing a sale, carbon from the drive home), which is the "victims
+    # everywhere" failure the intent forbids; the right verdict is NO.
+    adversarial_output: |
+      # Silent Victims: Trading a Bicycle for a Guitar at a Flea Market
+
+      ## ACTION/SYSTEM ANALYZED
+
+      Two adults trade a used bicycle for a used guitar at a weekend flea market after trying each item.
+
+      ## VISIBLE STAKEHOLDERS
+
+      - The adult giving up the bicycle.
+      - The adult giving up the guitar.
+
+      ## SILENT VICTIM SCAN
+
+      ### Temporal Victims (Future)
+
+      - Found: Possible
+      - Who: Future residents affected by emissions from driving to the market
+      - Harm: The trip adds a small amount of carbon to the atmosphere
+      - Reversibility: Partially reversible
+
+      ### Power Victims (Voiceless)
+
+      - Found: Possible
+      - Who: Neighbors who may dislike guitar practice noise
+      - Harm: They may hear the new guitar through the walls
+      - Why silent: They were not part of the deal
+
+      ### Information Victims (Unaware)
+
+      - Found: Possible
+      - Who: Local bike and music shops
+      - Harm: They lose two potential sales without knowing it
+      - Ignorance source: Natural complexity
+
+      ### Diffuse Victims (Distributed)
+
+      - Found: Possible
+      - Who: Taxpayers in the area
+      - Harm: The city collects slightly less sales tax
+      - Individual harm: Negligible
+      - Aggregate harm: Untaxed private trades reduce local sales tax revenue
+      - Diffusion deliberate: No
+
+      ### Structural Victims (Systemic)
+
+      - Found: Possible
+      - Who: Retail workers
+      - Harm: Fewer new-goods sales may mean fewer retail hours
+      - Mechanism: Secondhand trading weakens demand for new goods and retail jobs
+      - Self-reinforcing: No
+
+      ## THE REVERSED TEST
+
+      Partly. The two traders consent, but shop owners, neighbors and taxpayers were never asked.
+
+      ## SILENT VICTIM SEVERITY
+
+      | Category | Found | Scale | Severity | Reversible |
+      |----------|-------|-------|----------|------------|
+      | Temporal | Possible | One car trip | Low | Partly |
+      | Power | Possible | A few neighbors | Low | Yes |
+      | Information | Possible | Two local shops | Low | Yes |
+      | Diffuse | Possible | Area taxpayers | Low | Yes |
+      | Structural | Possible | Retail workers | Low | Yes |
+
+      ## OVERALL ASSESSMENT
+
+      POSSIBLE SILENT VICTIMS
+
+      Even a simple trade has ripple effects worth investigating before going ahead.
+
+      ## RECOMMENDATIONS
+
+      - Walk or cycle to the market instead of driving there (Temporal)
+      - Agree on quiet hours for guitar practice with the neighbors (Power)
+      - Buy accessories from a local shop to offset the lost sales (Information, Structural)
+      - Report the value of the trade for local tax purposes (Diffuse)
+    assert:
+      - type: regex
+        weight: 3
+        value: '## ACTION/SYSTEM ANALYZED[\s\S]*## VISIBLE STAKEHOLDERS[\s\S]*## SILENT VICTIM SCAN[\s\S]*## THE REVERSED TEST[\s\S]*## SILENT VICTIM SEVERITY[\s\S]*## OVERALL ASSESSMENT[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 1
+        value: '\|\s*Category\s*\|\s*Found\s*\|\s*Scale\s*\|\s*Severity\s*\|\s*Reversible\s*\|'
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The overall verdict is NO SILENT VICTIMS", "Every scan category is marked No with a short reason specific to this trade, and none is marked Yes or Possible on a far-fetched chain such as shops losing a sale, sales tax, driving emissions or practice noise", "The reversed test answers Yes, because the two traders are the only parties and both consent" ]
+        reference: "silent victims: two adults at a weekend flea market trade a used bicycle for a used guitar. Each tried the other's item first and both are happy with the deal."
+  - id: question_answered_by_verdict
+    prompt: "detect_silent_victims: is it victimless for a fictional city of 300,000 people to build a new pro sports stadium with a 30-year bond repaid from the general fund? The current council and the team owner both support it."
+    assert:
+      - type: regex
+        weight: 3
+        value: '## ACTION/SYSTEM ANALYZED[\s\S]*## VISIBLE STAKEHOLDERS[\s\S]*## SILENT VICTIM SCAN[\s\S]*## THE REVERSED TEST[\s\S]*## SILENT VICTIM SEVERITY[\s\S]*## OVERALL ASSESSMENT[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '### Temporal Victims \(Future\)\s*\n\s*- Found: (?:Yes|Possible)'
+      - type: regex
+        weight: 1
+        value: '## OVERALL ASSESSMENT\s*\n\s*(?:POSSIBLE|PROBABLE|CONFIRMED) SILENT VICTIMS'
+      - type: llm-assert
+        weight: 4
+        value: [ "The audit answers the question directly: the stadium is not victimless, and the verdict carries that answer", "It names residents and taxpayers who will repay the bond over 30 years, including people too young to vote or not yet living in the city, as temporal victims bound by a decision they had no part in", "It names what the general fund gives up (for example schools, transit, repairs or other services) and who loses those services, rather than speaking of costs in the abstract", "The recommendations are concrete changes to the deal, such as a public vote, a shorter term, the team owner sharing the debt, or a guarantee that services are not cut" ]
+        reference: "detect_silent_victims: is it victimless for a fictional city of 300,000 people to build a new pro sports stadium with a 30-year bond repaid from the general fund? The current council and the team owner both support it."
+  - id: bare_practice_reads_ordinary_case
+    prompt: "silent victims of subscriptions that renew automatically and can only be cancelled by phoning during business hours"
+    assert:
+      - type: regex
+        weight: 3
+        value: '## ACTION/SYSTEM ANALYZED[\s\S]*## VISIBLE STAKEHOLDERS[\s\S]*## SILENT VICTIM SCAN[\s\S]*## THE REVERSED TEST[\s\S]*## SILENT VICTIM SEVERITY[\s\S]*## OVERALL ASSESSMENT[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '### Information Victims \(Unaware\)\s*\n\s*- Found: (?:Yes|Possible)'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Silent Victims: \S'
+      - type: llm-assert
+        weight: 4
+        value: [ "It names subscribers who forget or never notice the renewal and keep paying for something they no longer use, and says the friction of phone-only cancellation is what keeps them paying", "It names people for whom a business-hours phone call is especially hard (for example shift workers, people with hearing or speech difficulties, or those who struggle with phone calls) as victims without the power to escape easily", "It treats the many small charges as a diffuse harm that adds up across subscribers, and the recommendations include letting people cancel online the same way they signed up" ]
+        reference: "silent victims of subscriptions that renew automatically and can only be cancelled by phoning during business hours"

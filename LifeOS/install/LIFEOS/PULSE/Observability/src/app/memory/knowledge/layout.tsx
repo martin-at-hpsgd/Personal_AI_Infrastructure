@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useApi } from "@/lib/api";
 import WikiSidebar from "@/components/wiki/WikiSidebar";
 import { openPalette } from "@/lib/palette/events";
 
@@ -22,15 +22,7 @@ function filterMemoryTree(tree: TreeNode[]): TreeNode[] {
 
 export default function KnowledgeLayout({ children }: { children: React.ReactNode }) {
   // ⌘K is handled globally by CommandPalette (opens WIKI-scoped on this route).
-  const { data } = useQuery<{ tree: TreeNode[] }>({
-    queryKey: ["wiki-tree"],
-    queryFn: async () => {
-      const res = await fetch("/api/wiki");
-      if (!res.ok) throw new Error("Failed to fetch wiki index");
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
+  const { data } = useApi<{ tree: TreeNode[] }>("/api/wiki", { staleTime: 30_000 });
 
   const memoryTree = data?.tree ? filterMemoryTree(data.tree) : [];
 

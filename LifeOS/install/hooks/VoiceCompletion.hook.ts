@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * @version 1.4.7
+ * @version 1.4.11
  * VoiceCompletion.hook.ts — Send completion voice line to TTS server
  *
  * PURPOSE:
  * Extracts the 🗣️ voice line from Claude's response and sends it to
- * the ElevenLabs voice server for spoken playback.
+ * the Fish voice server for spoken playback.
  *
  * TRIGGER: Stop
  *
@@ -21,40 +21,13 @@ import { readHookInput, parseTranscriptFromInput } from './lib/hook-io';
 import { handleVoice } from './handlers/VoiceNotification';
 import { extractVoiceCompletion } from '../LIFEOS/TOOLS/TranscriptParser';
 import { isDesktopChannel, logSkippedVoice, getNotificationChannel } from './lib/notification-channel';
+import { hookCovers } from './lib/function-hooks';
+import type { ParsedTranscript } from '../LIFEOS/TOOLS/TranscriptParser';
+import { isOn as voiceModeOn, spokenLine } from '../LIFEOS/TOOLS/VoiceMode';
 
-/**
- * Extract a speakable summary from response text when no 🗣️ line exists.
- * Tries structured markers first, then falls back to first sentence.
- */
-function extractFallbackSummary(text: string): string {
-  // Strip system-reminder tags
-  text = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '');
-
-  // Try SUMMARY line
-  const summaryMatch = text.match(/📋\s*\*{0,2}SUMMARY:?\*{0,2}\s*(.+?)(?:\n|$)/i);
-  if (summaryMatch?.[1]) {
-    const summary = summaryMatch[1].trim();
-    if (summary.length >= 10 && summary.length <= 200) return summary;
-  }
-
-  // Try CHANGE/VERIFY bullets (take first one)
-  const changeMatch = text.match(/🔧\s*\*{0,2}CHANGE:?\*{0,2}\s*(.+?)(?:\n|$)/i);
-  if (changeMatch?.[1]) {
-    const change = changeMatch[1].trim();
-    if (change.length >= 10 && change.length <= 200) return change;
-  }
-
-  // Last resort: first sentence that looks like a summary (>20 chars, ends with period)
-  const sentences = text.split(/[.!?]\s/);
-  for (const s of sentences) {
-    const clean = s.replace(/[#*_`~>\[\](){}|]/g, '').trim();
-    if (clean.length >= 20 && clean.length <= 150 && !/^[═━─╌]/.test(clean)) {
-      return clean + '.';
-    }
-  }
-
-  return '';
-}
+// Only the 🗣️ closer is ever spoken (or 🎙️ SPOKEN in voice mode). A reply without one —
+// an agent's hand-back, an interim stop, a gate-blocked turn — stays silent. The old
+// first-sentence fallback spoke those aloud mid-turn (principal directive, 2026-10-14).
 
 /**
  * Voice gate: only main terminal sessions get voice.
@@ -67,9 +40,23 @@ function isMainSession(): boolean {
   return !process.env.CLAUDE_CODE_AGENT_TASK_ID;
 }
 
+/** Unit E (2026-09-05): speak an answer's 🗣️ line. Called by HookBridge turn-complete in an
+ *  armed LifeOSHooks session with the answer the engine handed the plugin; same gates as main. */
+export async function speakAnswer(sessionId: string, answer: string): Promise<boolean> {
+  if (!isMainSession()) return false;
+  if (!isDesktopChannel()) { logSkippedVoice({ hookLabel: 'VoiceCompletion', message: '', sessionId }); return false; }
+  // Voice mode off: spokenLine returns exactly this closer path's output (VoiceMode.ts, ISC-23).
+  const pick = spokenLine(sessionId, answer, extractVoiceCompletion);
+  if (!pick.text) return false;
+  await handleVoice({ voiceCompletion: pick.text } as ParsedTranscript, sessionId, { interruptible: pick.interruptible, spoken: pick.source === 'spoken' });
+  return true;
+}
+
 async function main() {
   const input = await readHookInput();
   if (!input) { process.exit(0); }
+  // Armed LifeOSHooks session: turn.complete speaks through HookBridge turn-complete.
+  if (hookCovers(String(input.session_id ?? ''), 'voice')) process.exit(0);
 
   // Voice gate: skip subagent sessions
   if (!isMainSession()) {
@@ -89,25 +76,22 @@ async function main() {
 
   const parsed = await parseTranscriptFromInput(input);
 
-  // Fallback: if transcript parsing found no voice line, try last_assistant_message
+  // If transcript parsing found no voice line, try last_assistant_message's 🗣️ line. No closer, no speech.
   if (!parsed.voiceCompletion && input.last_assistant_message) {
-    const fromLastMsg = extractVoiceCompletion(input.last_assistant_message);
-    if (fromLastMsg) {
-      parsed.voiceCompletion = fromLastMsg;
-    } else {
-      // Final fallback: extract first meaningful sentence from last_assistant_message.
-      // Log it — a silent fallback spoke CHANGE bullets for six days on one
-      // install before anyone noticed. (public issue #1829, @MatiasBarboza)
-      console.error('[VoiceCompletion] no 🗣️ line extracted — falling back to summary extraction');
-      const fallback = extractFallbackSummary(input.last_assistant_message);
-      if (fallback) {
-        parsed.voiceCompletion = fallback;
-      }
-    }
+    parsed.voiceCompletion = extractVoiceCompletion(input.last_assistant_message) || '';
+    if (!parsed.voiceCompletion) console.error('[VoiceCompletion] no 🗣️ line — staying silent');
+  }
+
+  // Voice mode: speak the reply's 🎙️ SPOKEN field instead of the closer, interruptibly.
+  let voiceOpts: { interruptible?: boolean; spoken?: boolean } | undefined;
+  if (voiceModeOn(input.session_id) && input.last_assistant_message) {
+    const pick = spokenLine(input.session_id, input.last_assistant_message, () => parsed.voiceCompletion || '', extractVoiceCompletion);
+    parsed.voiceCompletion = pick.text;
+    voiceOpts = { interruptible: pick.interruptible, spoken: pick.source === 'spoken' };
   }
 
   try {
-    await handleVoice(parsed, input.session_id);
+    await handleVoice(parsed, input.session_id, voiceOpts);
   } catch (err) {
     console.error('[VoiceCompletion] Handler failed:', err);
   }
@@ -115,7 +99,13 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error('[VoiceCompletion] Fatal:', err);
-  process.exit(0);
-});
+// Guarded: HookBridge imports speakAnswer from this file, and an unguarded
+// main() ran at import time inside the bridge child, consumed its stdin, and
+// process.exit(0)'d it before prompt-context could store the session name
+// (2026-09-07: unnamed sessions whenever the child outlived the 2 s stdin race).
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error('[VoiceCompletion] Fatal:', err);
+    process.exit(0);
+  });
+}

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.6.0
  * remove-bg - Background Removal CLI
  *
  * Remove backgrounds from images using local rembg.
@@ -9,9 +10,13 @@
  * (commit 1), @anikinsasha.)
  *
  * Usage:
- *   remove-bg input.png                    # Overwrites original
- *   remove-bg input.png output.png         # Saves to new file
- *   remove-bg file1.png file2.png file3.png # Batch process
+ *   remove-bg input.png                            # Overwrites original
+ *   remove-bg input.png output.png                 # Saves to output (always; an existing output is replaced)
+ *   remove-bg --batch file1.png file2.png file3.png # Batch: each file cut in place
+ *
+ * Two paths always mean input and output. Batch needs the explicit --batch flag, so an
+ * existing output path can never turn an input/output call into a double in-place cut
+ * (the old form batch-cut both files whenever the second path already existed).
  */
 
 import { resolve, extname } from "node:path";
@@ -35,8 +40,9 @@ remove-bg - Background Removal CLI
 Remove backgrounds from images using local rembg (no API).
 
 USAGE:
-  remove-bg <input> [output]           Single file
-  remove-bg <file1> <file2> ...        Batch process (overwrites originals)
+  remove-bg <input> [output]           Single file (two paths are always input and output)
+  remove-bg --batch <file1> <file2> ...
+                                       Batch process (overwrites originals)
 
 ARGUMENTS:
   input     Path to image file (PNG, JPG, JPEG, WebP)
@@ -45,7 +51,7 @@ ARGUMENTS:
 EXAMPLES:
   remove-bg header.png
   remove-bg header.jpg header-transparent.png
-  remove-bg diagram1.png diagram2.png diagram3.png
+  remove-bg --batch diagram1.png diagram2.png diagram3.png
 
 NOTES:
   - rembg always produces PNG output (alpha channel required)
@@ -131,34 +137,51 @@ async function removeBackground(inputPath: string, outputPath?: string): Promise
   console.log(`✅ Saved: ${target}${dims} in ${elapsed}ms`);
 }
 
+export type RemoveBgCommand =
+  | { mode: "help" }
+  | { mode: "single"; input: string; output?: string }
+  | { mode: "batch"; files: string[] }
+  | { mode: "error"; message: string };
+
+/**
+ * Reads the CLI arguments. One path cuts in place; two paths are always input and output, whether
+ * or not the output exists; batch needs --batch. Three or more paths without --batch are refused
+ * rather than guessed at.
+ */
+export function parseRemoveBgArgs(args: string[]): RemoveBgCommand {
+  if (args.length === 0 || args.includes("--help") || args.includes("-h")) return { mode: "help" };
+  const batch = args.includes("--batch");
+  const paths = args.filter((a) => a !== "--batch");
+  const unknown = paths.find((a) => a.startsWith("--"));
+  if (unknown) return { mode: "error", message: `Unknown flag: ${unknown}` };
+  if (batch) {
+    if (paths.length === 0) return { mode: "error", message: "--batch needs at least one file" };
+    return { mode: "batch", files: paths };
+  }
+  if (paths.length === 1) return { mode: "single", input: paths[0] };
+  if (paths.length === 2) return { mode: "single", input: paths[0], output: paths[1] };
+  return { mode: "error", message: `${paths.length} paths given: pass --batch to cut each file in place, or exactly two paths for input and output` };
+}
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const cmd = parseRemoveBgArgs(process.argv.slice(2));
 
-  if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
-    showHelp();
+  if (cmd.mode === "help") showHelp();
+  if (cmd.mode === "error") {
+    console.error(`❌ ${cmd.message}`);
+    process.exit(2);
   }
-
-  if (args.length === 1) {
-    await removeBackground(args[0]);
+  if (cmd.mode === "single") {
+    await removeBackground(cmd.input, cmd.output);
     return;
   }
+  if (cmd.mode !== "batch") return;
 
-  if (args.length === 2) {
-    if (existsSync(args[1])) {
-      for (const file of args) {
-        await removeBackground(file);
-      }
-    } else {
-      await removeBackground(args[0], args[1]);
-    }
-    return;
-  }
-
-  console.log(`🔲 Batch processing ${args.length} files...\n`);
+  console.log(`🔲 Batch processing ${cmd.files.length} files...\n`);
   let success = 0;
   let failed = 0;
 
-  for (const file of args) {
+  for (const file of cmd.files) {
     try {
       await removeBackground(file);
       success++;
@@ -170,4 +193,4 @@ async function main(): Promise<void> {
   console.log(`\n📊 Complete: ${success} succeeded, ${failed} failed`);
 }
 
-main();
+if (import.meta.main) main();

@@ -11,17 +11,20 @@
  *   bun InstallConduitInsight.ts --status    show launchd state
  */
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
+import { existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { DATA_ROOT } from "./paths.ts"
 import * as systemd from "../../TOOLS/lib/SystemdUser"
+import { installVerb } from "../../TOOLS/lib/InstallVerb"
+import { agentPath, writeAgent } from "../../TOOLS/lib/LaunchAgent"
 
 const LABEL = "com.lifeos.conduit.insight"
-const PLIST = join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`)
+const PLIST = agentPath(LABEL)
 const BUILD_INSIGHT = join(import.meta.dir, "BuildInsight.ts")
 const LOG_DIR = join(DATA_ROOT, "logs")
-const BUN = process.execPath
+// The bun on PATH, not the Cellar path execPath resolves to (see InstallConduit.ts).
+// public PR #2208, @pai-scaffolde
+const BUN = Bun.which("bun") ?? process.execPath
 const INTERVAL_SEC = 3600 // hourly
 
 function escapeXml(s: string): string {
@@ -69,7 +72,7 @@ function plistBody(): string {
 
 function install(): void {
   mkdirSync(LOG_DIR, { recursive: true })
-  writeFileSync(PLIST, plistBody())
+  writeAgent(LABEL, plistBody())
   try {
     execFileSync("launchctl", ["unload", PLIST], { stdio: "ignore" })
   } catch {
@@ -112,7 +115,7 @@ async function linuxSpec(): Promise<systemd.UnitSpec> {
   return {
     label: LABEL,
     description: "LifeOS Conduit insight build",
-    // BUN is process.execPath, already absolute — no `which` lookup needed.
+    // BUN is already absolute (resolved at the top) — no `which` lookup needed.
     exec: [BUN, BUILD_INSIGHT],
     logPath: join(LOG_DIR, "conduit-insight.out.log"),
     errLogPath: join(LOG_DIR, "conduit-insight.err.log"),
@@ -132,7 +135,7 @@ async function linuxMain(a: string | undefined): Promise<void> {
   if (!(await systemd.install(spec, log))) process.exit(1)
 }
 
-const arg = process.argv[2]
+const arg = installVerb(process.argv, "InstallConduitInsight")
 if (systemd.isLinux()) await linuxMain(arg)
 else if (arg === "--uninstall") uninstall()
 else if (arg === "--status") status()

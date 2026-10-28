@@ -13,18 +13,20 @@ single source of truth for "where does my stuff live and how do I authenticate."
 | File | What it holds |
 |------|----------------|
 | `LIFEOS_CONFIG.toml` | The main config — projects directory, default temperature unit, integration toggles. |
+| `anthropic-accounts.json` | Claude logins the status line and the Pulse `/usage` page report on. |
+| `openai-accounts.json` | OpenAI (codex) logins the Pulse `/usage` page tracks. One `default` row for `~/.codex`; each other row logs in under `<configDirRoot>/<slug>`. |
+| `overage.json` | `ceilingUsd`, your monthly cap for the emergency API lane. `0` means the built-in default. Shown on `/usage`. |
 
 ## Where credentials actually live
 
 `LIFEOS_CONFIG.toml` itself does **not** store credentials. Secrets live in
 two places:
 
-- **`~/.claude/.env`** — environment variables (`ELEVENLABS_API_KEY`,
+- **`~/.claude/.env`** — environment variables (`FISH_API_KEY`,
   etc.). Pulse loads this on boot. The installer writes here when you
   complete the voice setup steps.
-- **`~/.claude/LIFEOS/USER/CREDENTIALS/`** — credential JSON files (Google
-  OAuth, AWS profiles, etc.). The directory does not exist by default;
-  create it on demand and `chmod 700` it.
+- **`~/.claude/LIFEOS/USER/CONFIG/CREDENTIALS/`** — credential JSON files (Google
+  OAuth, AWS profiles, etc.). Create it on demand and `chmod 700` it.
 
 `LIFEOS_CONFIG.toml` references these by path, never by value. That keeps
 secrets out of any file that gets accidentally committed or shared.

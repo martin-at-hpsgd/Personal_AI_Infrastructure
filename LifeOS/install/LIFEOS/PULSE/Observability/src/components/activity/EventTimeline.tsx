@@ -98,7 +98,7 @@ export default function EventTimeline({
             <p className="text-sm text-[var(--line-2)]">Events will appear here as they stream in</p>
           </div>
         ) : (
-          <div className="space-y-1.5 divide-y divide-[rgba(107,128,171,0.1)]">
+          <div className="space-y-1.5 divide-y divide-[var(--line-1)]">
             {sortedEvents.map((event) => (
               <EventRow key={`${event.id}-${event.timestamp}`} event={event} />
             ))}

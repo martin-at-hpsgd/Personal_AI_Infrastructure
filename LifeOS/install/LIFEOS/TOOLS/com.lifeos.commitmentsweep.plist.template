@@ -3,10 +3,15 @@
   com.lifeos.commitmentsweep.plist.template — Source template. Install via:
     bun ~/.claude/LIFEOS/TOOLS/InstallCommitmentSweep.ts
 
-  The installer reads $HOME at install time, substitutes /Users/__USER__ placeholders,
-  writes the materialized plist to ~/Library/LaunchAgents/, and bootstraps it
-  with launchctl. This template stays clean of principal-specific paths so it
-  ships in the public LifeOS release.
+  The installer resolves the running bun binary and $HOME at install time,
+  substitutes {{BUN}} / {{BUN_DIR}} / {{HOME}}, writes the materialized plist to
+  ~/Library/LaunchAgents/, and bootstraps it with launchctl. This template stays
+  clean of principal-specific paths so it ships in the public LifeOS release.
+
+  {{BUN}} rather than a hardcoded /opt/homebrew/bin/bun: that path is an Apple
+  Silicon Homebrew assumption, so the job silently never ran on Intel macs
+  (/usr/local), on ~/.bun installs, and on any non-Homebrew bun. Matches the
+  other 16 templates (public issues #1875, @GRyndStone; #1880, @schmetti-dev).
 
   Behavior:
     Runs CommitmentSweep.ts daily at 7am local (StartCalendarInterval Hour=7).
@@ -21,8 +26,8 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/bun</string>
-    <string>__HOME__/.claude/LIFEOS/TOOLS/CommitmentSweep.ts</string>
+    <string>{{BUN}}</string>
+    <string>{{HOME}}/.claude/LIFEOS/TOOLS/CommitmentSweep.ts</string>
   </array>
 
   <!-- RunAtLoad true so a missed nightly fires at next login — a laptop asleep
@@ -42,20 +47,20 @@
   <integer>60</integer>
 
   <key>StandardOutPath</key>
-  <string>__HOME__/.claude/LIFEOS/MEMORY/STATE/com.lifeos.commitmentsweep.log</string>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/STATE/com.lifeos.commitmentsweep.log</string>
 
   <key>StandardErrorPath</key>
-  <string>__HOME__/.claude/LIFEOS/MEMORY/STATE/com.lifeos.commitmentsweep.log</string>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/STATE/com.lifeos.commitmentsweep.log</string>
 
   <key>WorkingDirectory</key>
-  <string>__HOME__/.claude</string>
+  <string>{{HOME}}/.claude</string>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>{{BUN_DIR}}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HOME</key>
-    <string>__HOME__</string>
+    <string>{{HOME}}</string>
   </dict>
 </dict>
 </plist>

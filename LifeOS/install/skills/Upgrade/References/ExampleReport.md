@@ -1,6 +1,6 @@
 # Upgrade — Example Report
 
-Reference example only. NOT loaded into the workflow at runtime. Consult when uncertain about the canonical output shape.
+Reference example only, not loaded into the intent at runtime. Consult when uncertain about the canonical output shape. It shows the core sections; a real report also carries every other section in `OutputFormat.md` § Section order.
 
 ---
 
@@ -10,7 +10,7 @@ User: "check for upgrades"
 [Agents run in parallel...]
 
 # LifeOS Upgrade Report
-**Generated:** 2026-01-15 19:45:00 PST
+**Generated:** 2026-01-15 19:45:00 UTC
 **Sources Processed:** 20 release notes parsed | 5 videos checked | 30 docs analyzed
 **Findings:** 3 techniques extracted | 4 content items skipped
 
@@ -23,7 +23,7 @@ Everything interesting we found, ranked by how cool it is.
 | # | Discovery | Source | Why It's Interesting | LifeOS Relevance |
 |---|-----------|--------|---------------------|---------------|
 | 1 | PreToolUse hooks can inject reasoning context | claude-code v2.1.16 | Hooks can now return `additionalContext` that Claude reasons about before tool execution — this is a paradigm shift from binary block/allow to intelligent security | SecurityValidator could inject warnings instead of blocking, enabling context-aware security decisions |
-| 2 | Native ${CLAUDE_SESSION_ID} variable | claude-code v2.1.16 | Session IDs are now first-class environment variables everywhere — no more extraction hacks | Session documentation workflows can drop manual ID extraction code |
+| 2 | Native ${CLAUDE_SESSION_ID} variable | claude-code v2.1.16 | Session IDs are now first-class environment variables everywhere — no more extraction hacks | Session documentation intents can drop manual ID extraction code |
 | 3 | MCP auto mode enabled by default | claude-code v2.1.16 | MCP servers now auto-connect without explicit configuration | Already enabled — no action needed |
 
 ---
@@ -40,7 +40,7 @@ Everything interesting we found, ranked by how cool it is.
 
 | # | Recommendation | Prior Status | Evidence | LifeOS Relevance | Effort | Files Affected |
 |---|---------------|-------------|----------|---------------|--------|----------------|
-| 2 | Replace session ID hacks with native ${CLAUDE_SESSION_ID} | 🔶 PARTIAL | `skills/_MYSKILL/Workflows/DocumentSession.md:15` uses extraction hack | Session documentation workflows have manual extraction workarounds — native variable eliminates fragile code | Low | `skills/_MYSKILL/Workflows/DocumentSession.md` |
+| 2 | Replace session ID hacks with native ${CLAUDE_SESSION_ID} | 🔶 PARTIAL | An example private skill's session-documentation intent uses an extraction hack | Session documentation intents have manual extraction workarounds — native variable eliminates fragile code | Low | Example private skill intent |
 
 (MEDIUM and LOW tiers omitted — no items.)
 
@@ -73,14 +73,14 @@ return { decision: "allow", additionalContext: "WARNING: Protected file." };
 
 **What It Is:** Native environment variable ${CLAUDE_SESSION_ID} is now available in all hooks and commands, eliminating the need for custom session ID extraction or workaround code.
 
-**How It Helps LifeOS:** Our session documentation workflows had manual session ID extraction hacks. Native substitution means cleaner code and reliable session tracking across all LifeOS workflows.
+**How It Helps LifeOS:** Our session documentation intents had manual session ID extraction hacks. Native substitution means cleaner code and reliable session tracking across all LifeOS intents.
 
 **The Technique:**
 ```bash
 echo "Session: ${CLAUDE_SESSION_ID}"
 ```
 
-**Applies To:** `skills/_MYSKILL/Workflows/DocumentSession.md`
+**Applies To:** Example private skill's session documentation intent
 
 ---
 
@@ -89,7 +89,7 @@ echo "Session: ${CLAUDE_SESSION_ID}"
 | # | Technique | Source | Priority | LifeOS Component | Effort |
 |---|-----------|--------|----------|---------------|--------|
 | 1 | PreToolUse Additional Context | claude-code v2.1.16 | 🔴 | SecurityValidator hook | Low |
-| 2 | Session ID Substitution | claude-code v2.1.16 | 🟠 | DocumentSession workflow | Low |
+| 2 | Session ID Substitution | claude-code v2.1.16 | 🟠 | DocumentSession intent | Low |
 
 **Totals:** 1 Critical | 1 High | 0 Medium | 0 Low | 4 Skipped
 

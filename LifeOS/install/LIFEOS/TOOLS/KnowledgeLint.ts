@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.3
  * KnowledgeLint — validates the Knowledge Archive against the kb-v3 contract
  * (KnowledgeSchema.ts). This is Karpathy's "Lint" step, made real: it reports
  * non-conformant notes (missing required fields, un-migrated dialects,
@@ -18,10 +19,10 @@
 
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { resolve as pathResolve, join as pathJoin } from "node:path";
-import { homedir } from "node:os";
 import { parseNote, validate, DIR_TO_TYPE, ALL_DIRS, slugFromPath, SCHEMA_VERSION, type CanonicalType } from "./KnowledgeSchema";
+import { getClaudeDir } from "./Paths"; // public issue #1665 @rogdex24 — aliased resolve sites missed by the 09-03 sweep
 
-const KNOWLEDGE_DIR = pathResolve(homedir(), ".claude/LIFEOS/MEMORY/KNOWLEDGE");
+const KNOWLEDGE_DIR = pathResolve(getClaudeDir(), "LIFEOS/MEMORY/KNOWLEDGE");
 const DIRS = ALL_DIRS;
 
 function listNotes(dir: string): string[] {

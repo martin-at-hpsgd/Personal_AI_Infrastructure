@@ -24,6 +24,43 @@ export interface Project {
   stack: string;
   badges: Badge[];
   openSession: boolean;
+  /** The project ISA's standing, computed server-side at request time; null when there is no ISA. */
+  isa?: ProjectIsa | null;
+}
+
+export interface ProjectIsa {
+  path: string;
+  template: string;
+  latest: boolean;
+  missing: string[];
+  stamp: string | null;
+  checkup: string | null;
+}
+
+/** `2026-10-11 red 5→2` → `Checkup 2026-10-11 · red 5→2`; anything else is shown as-is after "Checkup". */
+function checkupLabel(checkup: string | null): string {
+  if (!checkup) return "No checkup yet";
+  const m = checkup.match(/^(\d{4}-\d{2}-\d{2}) (\S+) (\d+)→(\d+)$/);
+  return m ? `Checkup ${m[1]} · ${m[2]} ${m[3]}→${m[4]}` : `Checkup ${checkup}`;
+}
+
+/** The two ISA chips on a card: template standing and last checkup. Nothing when there is no ISA. */
+function IsaChips({ isa }: { isa: ProjectIsa }) {
+  const templateTitle = isa.latest
+    ? `Meets ISA template ${isa.template}`
+    : `Missing for template ${isa.template}:\n${isa.missing.map((m) => `• ${m}`).join("\n")}`;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <Pill dim={isa.latest ? "ok" : "warn"} title={templateTitle} className="shrink-0">
+        <span>
+          Latest template ({isa.template}): {isa.latest ? "Yes" : "No"}
+        </span>
+      </Pill>
+      <Pill dim="neutral" title={isa.checkup ? `Checkup frontmatter: ${isa.checkup}` : "The ISA has no checkup: key yet"} className="shrink-0">
+        <span>{checkupLabel(isa.checkup)}</span>
+      </Pill>
+    </div>
+  );
 }
 
 export interface ProjectGroup {
@@ -106,7 +143,7 @@ export default function ProjectsBoard({ group }: { group: ProjectGroup }) {
                     className="inline-flex items-center gap-1 text-[var(--accent-blue)] hover:text-ink-1 text-sm mt-0.5 truncate max-w-full"
                   >
                     <ExternalLink className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{p.url}</span>
+                    <span className="truncate min-w-0">{p.url}</span>
                   </a>
                 ) : (
                   p.url && p.url !== "—" && <div className="text-ink-3 text-sm mt-0.5 truncate">{p.url}</div>
@@ -130,6 +167,9 @@ export default function ProjectsBoard({ group }: { group: ProjectGroup }) {
                 ))}
               </div>
             )}
+
+            {/* ISA standing — only when the project's path holds an ISA */}
+            {p.isa && <IsaChips isa={p.isa} />}
 
             {/* Stack / description */}
             {p.stack && <div className="text-ink-2 text-sm leading-snug line-clamp-3">{p.stack}</div>}

@@ -1,0 +1,3 @@
+{
+  "_comment": "Optional overrides for how Achilles classifies a finding's fix: auto, agent or human. Keys are a source_ref prefix or check name, longest prefix wins, for example \"manual|\": \"human\". Empty (as shipped) means Achilles uses its built-in classifier. Keys starting with _ are ignored."
+}

@@ -1,0 +1,141 @@
+# Fabric ExtractRecommendations — the practical recommendations a source makes,
+# then the ones that follow from it tagged (implied), each a short instruction.
+# The code asserts pin what is literal (title, 16-word bullets, 20-bullet cap,
+# plain bulleted Markdown, the no-recommendations line, figures kept); the
+# judged asserts carry what code cannot: what counts as a recommendation,
+# fidelity to the source, honest tagging, the hint override and specificity.
+# Synthetic inline fixtures only.
+name: fabric-extractrecommendations
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExtractRecommendations.md"
+cases:
+  - id: postmortem_stated_and_implied
+    prompt: |
+      extract recommendations from this postmortem:
+
+      Incident summary, a fictional company called Larkspur Freight, March. The primary order database was corrupted by a failed storage migration. When the team went to restore, they found the nightly backup job had been writing zero-byte files for six weeks; the job exited successfully each night, so no alert fired. An older weekly snapshot existed on a disconnected drive, and the team restored from it, losing nine days of orders. The restore took nineteen hours, most of it spent working out steps from a runbook last updated two years earlier. Action items agreed in the review: run a full test restore every month; alert whenever a backup file is under 1 MB; keep at least one offline copy, rotated weekly. Dana Ortiz, the database lead, also asked that backup jobs report success only after verifying the file's checksum.
+    # SYNTHETIC ADVERSARIAL FIXTURE: right title, bullets and tag, keeps "1 MB",
+    # but changes monthly to weekly, includes a finding posing as a
+    # recommendation, adds generic advice the postmortem never gives, and tags
+    # a vendor purchase the text does not support as implied.
+    adversarial_output: |
+      # Recommendations: Larkspur Freight Backup Postmortem
+
+      - Test restores every week using automated tooling.
+      - Alert whenever a backup file is under 1 MB.
+      - Backups wrote zero-byte files for six weeks without anyone noticing.
+      - Communicate clearly with stakeholders during every incident.
+      - Improve backup practices across the whole organization.
+      - Migrate all backups to a modern cloud backup vendor. (implied)
+    assert:
+      - type: starts-with
+        value: "# Recommendations: "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[-*+][ \t]+(?:\S+[ \t]+){16}(?!\(implied\)[ \t]*(?:\n|$))\S+'
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*\d+[.)][ \t]'
+        weight: 1
+      - type: contains-any
+        value: [ "1 MB", "1MB", "one megabyte", "1 megabyte" ]
+        weight: 1
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-icontains
+        value: "Recommendation 1"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "Every bullet is an action a reader could take, written as an instruction; none is a finding or description of what happened (such as the backups writing zero-byte files)", "The untagged bullets include the review's action items with their figures intact: a full test restore every month (not weekly), an alert for backup files under 1 MB, and an offline copy rotated weekly", "Verifying the backup file's checksum before reporting success appears, and if attributed it is attributed to Ortiz", "Every bullet tagged (implied) rests on a detail of this postmortem: the failed storage migration, the silent zero-byte backups, the old weekly snapshot, the two-year-old runbook, the nineteen-hour restore, or the nine days of lost orders", "No bullet tagged (implied) recommends a purchase, a vendor or a tool the postmortem never mentions", "No bullet is generic advice that would fit any incident report, such as communicating clearly or improving practices in general" ]
+        reference: "A fictional postmortem whose stated action items are monthly test restores, an alert for backups under 1 MB, a weekly-rotated offline copy, and checksum verification before reporting success; the stale runbook and nine lost days support implied recommendations."
+  - id: bare_topic_expert_consensus
+    prompt: "extract recommendations: getting better sleep"
+    # SYNTHETIC ADVERSARIAL FIXTURE: right title and shape, no tags, but every
+    # bullet is a platitude that names no concrete action.
+    adversarial_output: |
+      # Recommendations: Getting Better Sleep
+
+      - Prioritize your sleep as part of a healthy lifestyle.
+      - Listen to your body and rest when you need it.
+      - Practice self-care and reduce stress where possible.
+      - Create an environment that feels relaxing to you.
+      - Be mindful of habits that might affect your rest.
+    assert:
+      - type: starts-with
+        value: "# Recommendations: "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[-*+][ \t]+(?:\S+[ \t]+){16}(?!\(implied\)[ \t]*(?:\n|$))\S+'
+        weight: 2
+      - type: not-regex
+        value: '(?:[-*+][ \t][^\n]*\n(?:[ \t]*\n)*){20}[-*+][ \t]'
+        weight: 1
+      - type: not-contains
+        value: "(implied)"
+        weight: 1
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*\d+[.)][ \t]'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The bullets give concrete recommendations sleep experts commonly make, such as a consistent wake time, morning daylight, a caffeine cutoff hours before bed, a cool dark bedroom, or limiting alcohol near bedtime", "Each bullet is an instruction concrete enough that the reader knows what doing it looks like, not a platitude such as prioritizing sleep or listening to your body", "No recommendation is attributed to a named authority or study the model invented" ]
+        reference: "extract recommendations: getting better sleep"
+  - id: hint_keeps_only_the_guest
+    prompt: |
+      extract recommendations from this podcast transcript, just the guest's:
+
+      HOST (Sam): Before we start, I always tell listeners to back up their phones weekly. Anyway, welcome, Priya.
+      GUEST (Priya Raman, a fictional home-network researcher): Thanks. The single biggest fix for home routers is to turn off remote administration; almost nobody needs it. Second, change the default admin password before the router ever touches the internet. And put smart-home gadgets on a separate guest network so a cheap camera can't reach your laptop.
+      HOST: I'd add that everyone should cover their webcam with tape.
+      GUEST: One more from me: check for firmware updates every quarter, because most consumer routers never update themselves.
+    # SYNTHETIC ADVERSARIAL FIXTURE: keeps the host's advice out, but drops the
+    # guest's top recommendation (remote administration), invents a VPN and a
+    # mesh-router purchase she never suggested, and blurs the rest into
+    # generic advice.
+    adversarial_output: |
+      # Recommendations: Priya Raman on Home Router Security
+
+      - Secure your home network with strong settings.
+      - Use a VPN on every device in the house.
+      - Buy a mesh router from a major brand.
+      - Keep your router software reasonably up to date.
+    assert:
+      - type: starts-with
+        value: "# Recommendations: "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[-*+][ \t]+(?:\S+[ \t]+){16}(?!\(implied\)[ \t]*(?:\n|$))\S+'
+        weight: 2
+      - type: not-icontains
+        value: "webcam"
+        weight: 1
+      - type: not-icontains
+        value: "phone"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The output includes the guest's recommendations: turn off remote administration, change the default admin password before the router goes online, put smart-home devices on a separate guest network, and check for firmware updates every quarter", "The output includes none of the host's advice and no recommendation the guest did not make, such as a VPN or buying new hardware", "Each bullet keeps the guest's concrete detail (remote administration, default password, separate network, every quarter) rather than a vague restatement" ]
+        reference: "The guest's four recommendations: disable remote administration, change the default admin password before going online, isolate smart-home devices on a guest network, check firmware quarterly. The host's phone backups and webcam tape are excluded by the hint."
+  - id: descriptive_text_has_none
+    prompt: |
+      extract recommendations from this:
+
+      The fictional Harrow Valley Museum opened in 1911 in a former grain exchange. Its first collection was forty-two farm tools donated by local families. A fire in 1956 destroyed the east wing, which was rebuilt in brick two years later. Today the museum holds about three thousand objects, most of them from the valley's farming history, and its reading room keeps the original 1911 visitor ledger.
+    assert:
+      - type: starts-with
+        value: "# Recommendations: "
+        weight: 1
+      - type: contains
+        value: "No recommendations found in"
+        weight: 3
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*[-*+][ \t]'
+        weight: 2
+      - type: llm-assert
+        weight: 2
+        value: [ "The output states that the text makes no recommendations and lists none, with no invented advice such as visiting the museum" ]
+        reference: "A purely historical description of a fictional museum, with no recommendation in it."

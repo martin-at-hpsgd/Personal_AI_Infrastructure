@@ -1,0 +1,185 @@
+# Fabric AnalyzeThreatReport — the three threat-report modes. Full mode: a
+# titled SUMMARY plus TRENDS, STATISTICS, QUOTES, REFERENCES and
+# RECOMMENDATIONS. Trends mode: TRENDS alone. Commands mode: grouped reusable
+# commands. The regex asserts pin the shape (section order, "- " items, one-line
+# summary); contains/not-contains pin the literal facts; the judged asserts
+# carry the inferred read, specificity, fidelity, verbatim quotes and mode
+# selection. Synthetic inline fixtures only: every vendor, product, victim,
+# malware family and CVE ID below is fictional.
+name: fabric-analyzethreatreport
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AnalyzeThreatReport.md"
+cases:
+  - id: full_report_specific_and_faithful
+    prompt: &report |
+      analyze this threat report:
+
+      NORTHWIND THREAT INTELLIGENCE, Q3 (synthetic)
+      The group we track as Fernhollow moved away from macro phishing this
+      quarter and now gains its first foothold by abusing a signed but
+      vulnerable driver, CVE-2099-30012, which it loads to disable endpoint
+      agents. Across 48 confirmed intrusions we observed a median time to
+      domain admin of 103 minutes, down from 6 hours a year ago. In 62 percent
+      of cases the actor entered with a valid stolen credential bought from an
+      access broker rather than by exploitation.
+      One of our responders noted: "They rotated command-and-control
+      infrastructure every 14 hours, which defeated our static blocklists."
+      The report references the open-source tool BloodHound for the actor's
+      Active Directory mapping and the fictional vendor Alder Security's prior
+      write-up on the same driver. It recommends enforcing a driver blocklist,
+      alerting on credential use from hosts that have never authenticated the
+      account, and shortening credential lifetimes at the broker-supplied tier.
+      Separately, Alder Security announced a 40 million dollar funding round.
+    # SYNTHETIC ADVERSARIAL FIXTURE: the six sections are present and in order
+    # with the right shape, but the items are generic, the summary describes the
+    # document instead of its finding, a CVSS score and a nation-state
+    # attribution are invented, and the funding round is wrongly included.
+    adversarial_output: |
+      # Threat Report Analysis: Northwind Threat Intelligence Q3
+
+      ## SUMMARY
+
+      This report analyzes several important threats, trends and recommendations observed across many intrusions this quarter.
+
+      ## TRENDS
+
+      - Attackers are becoming more sophisticated and faster over time
+      - Threat actors increasingly rely on stolen credentials
+
+      ## STATISTICS
+
+      - A large percentage of intrusions involved credential theft
+      - CVE-2099-30012 has a CVSS score of 9.8
+
+      ## QUOTES
+
+      - The attackers were very persistent and well resourced
+
+      ## REFERENCES
+
+      - A popular Active Directory tool
+      - Alder Security funding round of 40 million dollars
+
+      ## RECOMMENDATIONS
+
+      - Improve security posture and follow best practices
+      - Patch systems in a timely manner
+    assert:
+      - type: regex
+        weight: 3
+        value: '^# Threat Report Analysis: [^\n]+\n\s*## SUMMARY\s*\n[^\n#*-][^\n]*\n\s*## TRENDS\s*\n(?:- [^\n]+\n)+\s*## STATISTICS\s*\n(?:- [^\n]+\n)+\s*## QUOTES\s*\n(?:- [^\n]+\n)+\s*## REFERENCES\s*\n(?:- [^\n]+\n)+\s*## RECOMMENDATIONS\s*\n(?:- [^\n]+(?:\n|$))+\s*$'
+      - type: contains
+        value: "CVE-2099-30012"
+        weight: 1
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The SUMMARY is one sentence that names Fernhollow's shift to abusing the signed vulnerable driver (CVE-2099-30012) as the key finding, not a description of the document"
+          - "TRENDS names the move from macro phishing to signed-driver abuse and the drop in time to domain admin, specific to this report rather than generic statements like attackers becoming more sophisticated"
+          - "STATISTICS gives the report's own numbers (median 103 minutes to domain admin, 62 percent entering with stolen credentials) and gives no CVSS score, which the report never states"
+          - "QUOTES contains the verbatim responder line about rotating infrastructure every 14 hours, copied exactly, not paraphrased"
+          - "REFERENCES names BloodHound and the Alder Security driver write-up, and does not list the funding round"
+          - "No line invents an attribution such as a nation-state, and the funding round is left out as non-security news"
+        reference: *report
+  - id: default_mode_is_full
+    prompt: &defbrief |
+      what should I take away from this report?
+
+      SYNTHETIC BRIEF (Mosswell Labs): A ransomware crew the authors call
+      Mossgrove adopted intermittent encryption this quarter to speed up
+      attacks and evade ratio-based detection, and moved from email lures to
+      exploiting CVE-2099-44100 in the fictional Contoso VPN appliance for
+      initial access. Of the cases studied, 71 percent of victims had no
+      offline backups and the median ransom demand was 420 thousand dollars.
+      The lead analyst writes: "Intermittent encryption cut our detection
+      window to minutes, and most teams never saw it coming." The brief cites
+      the open-source tool Velociraptor for triage and the fictional Contoso
+      security advisory CA-2099-07, and recommends enabling offline backups,
+      patching the appliance to 7.2.1, and monitoring for partial-write
+      patterns on file shares.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^# Threat Report Analysis: [^\n]+\n\s*## SUMMARY\s*\n[^\n#*-][^\n]*\n\s*## TRENDS\s*\n(?:- [^\n]+\n)+\s*## STATISTICS\s*\n(?:- [^\n]+\n)+\s*## QUOTES\s*\n(?:- [^\n]+\n)+\s*## REFERENCES\s*\n(?:- [^\n]+\n)+\s*## RECOMMENDATIONS\s*\n(?:- [^\n]+(?:\n|$))+\s*$'
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The output is the full analysis (all six sections), the correct default when the request names no mode word"
+          - "TRENDS and RECOMMENDATIONS use the report's own specifics: intermittent encryption, CVE-2099-44100 in the Contoso VPN appliance, offline backups, patching to 7.2.1"
+          - "QUOTES copies the lead analyst's verbatim line about the detection window, and STATISTICS gives the report's numbers (71 percent without backups, 420 thousand dollar median demand)"
+        reference: *defbrief
+  - id: trends_mode_only_trends
+    prompt: |
+      just the trends from this report:
+
+      SYNTHETIC: Over the last year the fictional actor Briarpatch shifted from
+      email lures to search-engine poisoning, began signing its loaders with
+      stolen code-signing certificates, and started renting rather than owning
+      its proxy infrastructure. Dwell time rose because it staged for weeks
+      before encryption.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^# Threat Report Trends: [^\n]+\n\s*## TRENDS\s*\n(?:- [^\n]+(?:\n|$))+\s*$'
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The output has only the TRENDS section, no SUMMARY, STATISTICS, QUOTES, REFERENCES or RECOMMENDATIONS, because the request asked for trends only"
+          - "The trends are specific to this report (search-engine poisoning, stolen code-signing certificates, rented proxy infrastructure, longer staging), not generic"
+        reference: "just the trends from this report (Briarpatch text above)"
+  - id: commands_mode_reusable
+    prompt: |
+      extract the commands from this pentest writeup:
+
+      SYNTHETIC WRITEUP: We began with a full port and service scan of the
+      target with Nmap, then enumerated Active Directory with BloodHound's
+      SharpHound collector set to gather everything, and finally used
+      CrackMapExec over SMB to run a command on a reachable host with a
+      recovered password.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^# Threat Report Commands: [^\n]+\n'
+      - type: regex
+        weight: 2
+        value: '`[^`]+`'
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The output groups the commands by purpose (reconnaissance, enumeration or Active Directory, post-exploitation) with a heading per group"
+          - "Each tool from the writeup (Nmap, SharpHound/BloodHound, CrackMapExec) carries a reusable command line with placeholders such as <target-ip> where the writeup gives no concrete value"
+          - "No command is invented beyond what the writeup describes, and each command has a short plain note of what it does"
+        reference: "extract the commands from this pentest writeup (text above)"
+  - id: quotes_are_verbatim
+    prompt: &quotereport |
+      analyze this report:
+
+      SYNTHETIC VENDOR REPORT: The actor Thornfield used a watering-hole on a
+      trade-association site to deliver its first-stage loader. The report's
+      authors conclude: "Attribution remains low-confidence, and we caution
+      against naming a sponsor on current evidence." They cite the MITRE
+      ATT&CK technique T1189 and the fictional CloudHaven CDN abused for
+      staging, and recommend blocking the staging domains and deploying
+      script-execution controls on managed browsers.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^# Threat Report Analysis: [^\n]+\n\s*## SUMMARY\s*\n[^\n#*-][^\n]*\n\s*## TRENDS\s*\n(?:- [^\n]+\n)+\s*## STATISTICS\s*\n(?:- [^\n]+\n)+\s*## QUOTES\s*\n(?:- [^\n]+\n)+\s*## REFERENCES\s*\n(?:- [^\n]+\n)+\s*## RECOMMENDATIONS\s*\n(?:- [^\n]+(?:\n|$))+\s*$'
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The QUOTES section copies the authors' caution about low-confidence attribution verbatim, exactly as written, not paraphrased or trimmed mid-phrase"
+          - "No line states or implies a confident attribution or a sponsor, because the report itself cautions against it"
+          - "REFERENCES names the MITRE ATT&CK technique T1189 and the CloudHaven CDN, both drawn from the report"
+        reference: *quotereport

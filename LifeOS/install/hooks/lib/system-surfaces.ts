@@ -1,4 +1,5 @@
 /**
+ * @version 1.0.3
  * system-surfaces.ts — which files ARE "the system", and how a turn's changes
  * to them render as one line.
  *
@@ -27,7 +28,7 @@ export interface Surface {
 export interface ChangeEntry {
   tier: SurfaceTier;
   label: string;
-  /** Optional trailing detail, e.g. an ISA claim delta. */
+  /** Optional trailing detail, e.g. an ISA criterion delta. */
   detail?: string;
 }
 
@@ -41,7 +42,7 @@ const TAIL_SURFACES: Array<{ tail: string; tier: SurfaceTier; label: string }> =
   { tail: "USER/PRINCIPAL/WRITINGSTYLE.md", tier: "identity", label: "WRITINGSTYLE" },
   { tail: "USER/DIGITAL_ASSISTANT/DA_IDENTITY.md", tier: "identity", label: "DA_IDENTITY" },
   { tail: "USER/DIGITAL_ASSISTANT/DA_MEMORY.md", tier: "identity", label: "DA_MEMORY" },
-  { tail: "USER/CONFIG/OPERATIONAL_RULES.md", tier: "identity", label: "OPERATIONAL_RULES" },
+  { tail: "USER/CONFIG/OPERATIONAL_PREFERENCES.md", tier: "identity", label: "OPERATIONAL_PREFERENCES" },
   { tail: "USER/TELOS/TELOS.md", tier: "identity", label: "TELOS" },
   { tail: "USER/PROJECTS.md", tier: "identity", label: "PROJECTS" },
   { tail: "USER/CONTACTS.md", tier: "identity", label: "CONTACTS" },
@@ -94,6 +95,10 @@ export function classifySurface(absPath: string, claudeRoot: string): Surface | 
   if (/^hooks\/lib\/[^/]+\.ts$/.test(rel)) {
     return { tier: "machinery", label: `hooks/lib/${base.replace(/\.ts$/, "")}` };
   }
+  // SessionEnd/Stop handlers are machinery (public issue #2193, @corobis).
+  if (/^hooks\/handlers\/[^/]+\.ts$/.test(rel)) {
+    return { tier: "machinery", label: `hooks/handlers/${base.replace(/\.ts$/, "")}` };
+  }
 
   const skill = /^skills\/([^/]+)\/SKILL\.md$/.exec(rel);
   if (skill) return { tier: "machinery", label: `skill:${skill[1]}` };
@@ -105,7 +110,7 @@ export function classifySurface(absPath: string, claudeRoot: string): Surface | 
   return null;
 }
 
-/** Count ISA claim checkboxes. Used to render a real progress delta. */
+/** Count ISA criterion checkboxes. Used to render a real progress delta. */
 export function countClaims(body: string): { closed: number; open: number } {
   const closed = (body.match(/^- \[x\] /gm) ?? []).length;
   const open = (body.match(/^- \[ \] /gm) ?? []).length;
@@ -122,11 +127,12 @@ const MAX_ITEMS = 6;
 export function renderSystemLine(entries: ChangeEntry[]): string | null {
   if (entries.length === 0) return null;
 
-  // Deduplicate by label, keeping the richest detail seen for it.
+  // Deduplicate by label; the LATEST detail wins (an ISA written twice in a turn
+  // shows its final count), a detail-less entry never displaces one (public issue #2199, @corobis).
   const byLabel = new Map<string, ChangeEntry>();
   for (const e of entries) {
     const prior = byLabel.get(e.label);
-    if (!prior || (!prior.detail && e.detail)) byLabel.set(e.label, e);
+    if (!prior || e.detail) byLabel.set(e.label, e);
   }
 
   const sorted = [...byLabel.values()].sort(

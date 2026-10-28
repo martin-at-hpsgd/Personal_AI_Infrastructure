@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.4
  * CommitmentDetect.ts — Haiku-backed detector for outbound commitments.
  *
  * Reads a message (from stdin or --text), returns JSON:
@@ -15,11 +16,17 @@
  *   bun ~/.claude/LIFEOS/TOOLS/CommitmentDetect.ts --text "I'll send Alex the brief by Friday"
  *   echo "thanks" | bun ~/.claude/LIFEOS/TOOLS/CommitmentDetect.ts --stdin
  *
- * Routes through Inference.ts level: low (haiku-tier, 15s timeout, subscription billing).
+ * Asks Assay's judgment layer first: once that question may act, a "no" answers without Haiku. Otherwise routes
+ * through Inference.ts level: low (Haiku on the subscription, 15s timeout), and records both answers.
  * Returns {detected: false} on parse failure or timeout — never throws.
  */
 
 import { inference } from "./Inference";
+import { checkThisOne, judgeOrNull, judgedValue, recordPair } from "../ASSAY/HaikuSwap";
+import type { Questions } from "../ASSAY/Engine";
+
+/** The yes/no gate on Assay's judgment layer: once it may act, a "no" skips Haiku; a "yes" still needs Haiku for the details. */
+export const COMMITMENT_QUESTIONS: Questions = { commitment: { type: "noul", instructions: "Does this outbound message commit its sender to do, send, deliver, or follow up on something, now or by a named time? Pleasantries, thanks and questions are not commitments." } };
 import { getPrincipalName } from "../../hooks/lib/identity";
 
 // Principal name resolved at runtime, never a literal: a hardcoded name ships
@@ -56,6 +63,12 @@ If detected is false, set subject/beneficiary/due to null and confidence to 0.`;
 async function run(text: string): Promise<void> {
   const todayIso = new Date().toISOString().slice(0, 10);
   const userPrompt = `Today is ${todayIso}.\n\nMessage:\n"""${text}"""\n\nDetect commitment. Return JSON only.`;
+  const j = await judgeOrNull("commitment-detect", text, COMMITMENT_QUESTIONS);
+  const judged = judgedValue(j, "commitment");
+  if (j?.commitment?.verdict.act && judged === "no" && !checkThisOne("commitment-detect", text)) {
+    process.stdout.write(JSON.stringify({ detected: false, subject: null, beneficiary: null, due: null, confidence: 0, reasoning: "judgment layer: no commitment", latency_ms: 0 }) + "\n");
+    return;
+  }
 
   const result = await inference({
     systemPrompt: SYSTEM_PROMPT,
@@ -86,6 +99,7 @@ async function run(text: string): Promise<void> {
     reasoning: parsed.reasoning ?? null,
     latency_ms: result.latencyMs,
   };
+  recordPair("commitment-detect", "commitment", text, judged, out.detected ? "yes" : "no");
   process.stdout.write(JSON.stringify(out) + "\n");
 }
 

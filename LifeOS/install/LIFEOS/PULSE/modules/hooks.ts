@@ -28,7 +28,7 @@ const stats: HookStats = {
 
 let blockedSkills = ["keybindings-help"]
 const FAST_AGENT_TYPES = ["Explore"]
-const FAST_MODELS = ["haiku"]
+const FAST_MODELS = ["sonnet"]
 
 // ── Init ──
 
@@ -115,7 +115,9 @@ function handleAgentGuard(body: {
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "allow",
-        additionalContext: `WATCHDOG: Background agent "${name}" launching. If not already running, start an agent watchdog Monitor:\nMonitor({ description: "Agent watchdog", persistent: true, timeout_ms: 3600000, command: "bun $HOME/.claude/LIFEOS/TOOLS/AgentWatchdog.ts" })`,
+        additionalContext: `WATCHDOG: Background agent "${name}" launching. If not already running, start an agent watchdog Monitor:\nMonitor({ description: "Agent watchdog", timeout_ms: 1800000, command: "bun $HOME/.claude/LIFEOS/TOOLS/AgentWatchdog.ts" })\nMonitor watches end at 30 minutes; when the deadline notice arrives, re-arm the same call.`,
+        // Monitor watches end at their deadline, so the notice asks for a re-arm.
+        // public issue #2226, @cristbc
       },
     })
   }

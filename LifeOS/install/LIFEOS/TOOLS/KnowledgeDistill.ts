@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.7
  * ============================================================================
  * KNOWLEDGE DISTILL — weekly harvest of the Cortex Knowledge Archive
  * ============================================================================
@@ -21,9 +22,11 @@
  *   bun KnowledgeDistill.ts status                            # state summary
  *
  * Config (optional, personal — never hardcoded here):
- *   ~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Knowledge/DistillConfig.json
+ *   ~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Cortex/DistillConfig.json
  *   { contentRepo, contentLabel, maxIssues, maxUpgrades, maxDigestItems, windowDays }
  *   Missing config → the issue lane is skipped (candidates stay digest-only).
+ *   contentRepo must verify PRIVATE (lib/PrivateRepo) or the lane is refused:
+ *   pitches carry Cortex-derived material and never go to a public repo.
  *
  * Headless synthesis rides Inference.ts (never a nested `claude` session).
  * ============================================================================
@@ -31,11 +34,13 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import { createHash } from "crypto";
 import { addUpgrade } from "./Upgrades";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { bumpMemoryGeneration } from "./MemoryRetriever";
+import { verifyPrivateRepo } from "./lib/PrivateRepo";
 
-const BASE = process.env.LIFEOS_DIR || join(homedir(), ".claude", "LIFEOS");
+const BASE = getLifeosDir();
 const KNOWLEDGE = join(BASE, "MEMORY", "KNOWLEDGE");
 const DIGESTS = join(BASE, "MEMORY", "DIGESTS");
 const STATE_FILE = join(BASE, "MEMORY", "STATE", "distill.json");
@@ -106,6 +111,7 @@ function loadState(): DistillState {
 function saveState(st: DistillState): void {
   mkdirSync(join(BASE, "MEMORY", "STATE"), { recursive: true });
   writeFileSync(STATE_FILE, JSON.stringify(st, null, 2));
+  bumpMemoryGeneration();
 }
 
 function loadConfig(): DistillConfig {
@@ -261,7 +267,11 @@ async function runHeadless(dryRun: boolean): Promise<void> {
   }
   let items: DigestItem[];
   try { items = JSON.parse(jsonMatch[0]).items ?? []; } catch (e) {
-    console.error(`[distill] synthesis JSON unparseable: ${e}`);
+    // public PR #2125, @pai-scaffolde: log head 500 + tail 300 of output + stderr head for debugging
+    const outputHead = out.slice(0, 500);
+    const outputTail = out.length > 300 ? out.slice(-300) : out;
+    const stderrHead = proc.stderr.toString().slice(0, 500);
+    console.error(`[distill] synthesis JSON unparseable: ${e}\nOutput head:\n${outputHead}\nOutput tail:\n${outputTail}\nStderr head:\n${stderrHead}`);
     process.exit(1);
   }
 
@@ -279,13 +289,17 @@ async function runHeadless(dryRun: boolean): Promise<void> {
     return;
   }
 
-  // route: content lane → gh issues
+  // route: content lane → gh issues, only into a verified-private repo
   const routedContent: { item: DigestItem; dest: string }[] = [];
+  const contentPrivacy = cfg.contentRepo && content.length > 0 ? verifyPrivateRepo(cfg.contentRepo) : null;
+  if (contentPrivacy && !contentPrivacy.ok) console.error(`[distill] content lane refused — ${contentPrivacy.repo}: ${contentPrivacy.reason}`);
   for (const item of content) {
     let dest = "not filed — no contentRepo configured";
-    if (cfg.contentRepo) {
+    if (contentPrivacy && !contentPrivacy.ok) {
+      dest = `not filed — contentRepo not verified private (${contentPrivacy.reason})`;
+    } else if (contentPrivacy?.ok) {
       const body = `${item.pitch}\n\n**Why now:** ${item.why_now}\n\n**Sources:**\n${item.sources.map((s) => `- \`${s}\``).join("\n")}\n\n${item.suggested_format ? `**Suggested format:** ${item.suggested_format}\n\n` : ""}_Filed by Cortex Distill._`;
-      const r = Bun.spawnSync(["gh", "issue", "create", "--repo", cfg.contentRepo, "--label", cfg.contentLabel ?? "content-idea", "--title", item.title, "--body", body], { stdout: "pipe", stderr: "pipe" });
+      const r = Bun.spawnSync(["gh", "issue", "create", "--repo", contentPrivacy.repo, "--label", cfg.contentLabel ?? "content-idea", "--title", item.title, "--body", body], { stdout: "pipe", stderr: "pipe" });
       dest = r.exitCode === 0 ? r.stdout.toString().trim() : `not filed — gh error: ${r.stderr.toString().trim().slice(0, 200)}`;
     }
     routedContent.push({ item, dest });
@@ -329,6 +343,7 @@ ${g.contradiction_candidates.map((p) => `- possible contradiction: \`${p.a}\` �
 - deeper action: \`/knowledge develop\` · \`/knowledge contradictions\`
 `;
   writeFileSync(digestPath, digest);
+  bumpMemoryGeneration();
   const marked = markFromDigest(digestPath);
   console.log(JSON.stringify({ digest: digestPath, issues: routedContent.map((r) => r.dest), upgrades: routedSystem.map((r) => r.dest), marked }, null, 2));
 
@@ -336,7 +351,7 @@ ${g.contradiction_candidates.map((p) => `- possible contradiction: \`${p.a}\` �
   try {
     await fetch("http://localhost:31337/notify", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      // voice_enabled must be explicit: /notify defaults voice ON, and scheduled tasks never voice ({{PRINCIPAL_NAME}}, 2026-08-14)
+      // voice_enabled must be explicit: /notify defaults voice ON, and scheduled tasks never voice (2026-08-14)
       body: JSON.stringify({ message: `Cortex distill complete: ${routedContent.length} content ideas, ${routedSystem.length} upgrades filed.`, voice_enabled: false }),
       signal: AbortSignal.timeout(3000),
     });

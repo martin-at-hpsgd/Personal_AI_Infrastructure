@@ -6,7 +6,8 @@
  * Data: GET /api/ledger (modules/ledger.ts). This page holds zero data logic.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useApi } from "@/lib/api";
 import {
   GitCommitVertical,
   Package,
@@ -78,26 +79,11 @@ function timeAgo(iso: string | null | undefined): string {
 }
 
 export default function LedgerPage() {
-  const [data, setData] = useState<LedgerPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
-      fetch("/api/ledger")
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-        // Clear the error on success — the 60s poll recovers, but the error
-        // branch renders first and never released the page once it was set.
-        // ported from public PR #1735, @elhoim
-        .then((j) => { if (alive) { setData(j); setError(null); } })
-        .catch((e) => alive && setError(String(e)));
-    load();
-    const t = setInterval(load, 60_000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
+  const { data: ledgerData, error: ledgerError } = useApi<LedgerPayload>("/api/ledger", { refetchInterval: 60_000 });
+  const data = ledgerData ?? null;
+  const error = ledgerError ? String(ledgerError) : null;
+  const [sigFilter, setSigFilter] = useState<string | null>(null);      // System updates by significance
+  const [deployFilter, setDeployFilter] = useState<"ok" | "fail" | null>(null); // Estate deploys by outcome
 
   if (error) {
     return (
@@ -109,7 +95,8 @@ export default function LedgerPage() {
   }
 
   const integrityClean = data?.integrity?.clean;
-  const driftCount = data?.drift?.count ?? 0;
+  // public issue #1843, @jacobo-ortiz — absent drift data must read "—", not a green zero
+  const driftCount = data?.drift?.count ?? null;
 
   return (
     <PageShell>
@@ -138,9 +125,9 @@ export default function LedgerPage() {
         />
         <StatTile
           label="Drift"
-          value={driftCount}
-          unit="files"
-          dim={driftCount >= 10 ? "warn" : "ok"}
+          value={driftCount == null ? "—" : driftCount}
+          unit={driftCount == null ? undefined : "files"}
+          dim={driftCount == null ? "neutral" : driftCount >= 10 ? "warn" : "ok"}
           icon={Rocket}
           sub={data?.drift?.tag ? `since ${data.drift.tag}` : undefined}
         />
@@ -153,9 +140,26 @@ export default function LedgerPage() {
             icon={GitCommitVertical}
             meta={data?.registry ? `latest ${data.registry.recent.length}` : undefined}
           />
-          {data?.registry?.recent?.length ? (
+          {data?.registry?.recent?.length ? (() => {
+            const recent = data.registry.recent;
+            const counts: Record<string, number> = {};
+            for (const u of recent) counts[u.significance ?? "?"] = (counts[u.significance ?? "?"] ?? 0) + 1;
+            const order = ["critical", "major", "moderate", "minor", "trivial"];
+            const sigs = Object.keys(counts).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+            const shown = sigFilter ? recent.filter((u) => (u.significance ?? "?") === sigFilter) : recent;
+            return (
+            <>
+            {sigs.length > 1 && (
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-3">
+                {sigs.map((s) => (
+                  <StatTile key={s} label={s} value={counts[s]} dim={SIG_DIM[s] ?? "neutral"}
+                    active={sigFilter === s}
+                    onClick={() => setSigFilter(sigFilter === s ? null : s)} />
+                ))}
+              </div>
+            )}
             <ul className="flex flex-col divide-y divide-line-2">
-              {data.registry.recent.map((u, i) => (
+              {shown.map((u, i) => (
                 <li key={i} className="py-2.5 flex items-center gap-3">
                   <Pill dim={SIG_DIM[u.significance ?? ""] ?? "neutral"}>{u.significance ?? "?"}</Pill>
                   <div className="min-w-0 flex-1">
@@ -170,7 +174,9 @@ export default function LedgerPage() {
                 </li>
               ))}
             </ul>
-          ) : (
+            </>
+            );
+          })() : (
             <EmptyState icon={GitCommitVertical} title="No registry entries readable" />
           )}
         </Panel>
@@ -181,9 +187,18 @@ export default function LedgerPage() {
             icon={Rocket}
             meta={data ? `latest ${data.deploys.length}` : undefined}
           />
-          {data?.deploys?.length ? (
+          {data?.deploys?.length ? (() => {
+            const okN = data.deploys.filter((d) => d.ok).length;
+            const failN = data.deploys.length - okN;
+            const shown = deployFilter ? data.deploys.filter((d) => (deployFilter === "ok" ? d.ok : !d.ok)) : data.deploys;
+            return (
+            <>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <StatTile label="ok" value={okN} dim="ok" active={deployFilter === "ok"} onClick={() => setDeployFilter(deployFilter === "ok" ? null : "ok")} />
+              <StatTile label="fail" value={failN} dim={failN ? "err" : "neutral"} active={deployFilter === "fail"} onClick={() => setDeployFilter(deployFilter === "fail" ? null : "fail")} />
+            </div>
             <ul className="flex flex-col divide-y divide-line-2">
-              {data.deploys.map((d, i) => (
+              {shown.map((d, i) => (
                 <li key={i} className="py-2.5 flex items-center gap-3">
                   <Pill dim={d.ok ? "ok" : "err"}>{d.ok ? "ok" : "fail"}</Pill>
                   <div className="min-w-0 flex-1">
@@ -199,7 +214,9 @@ export default function LedgerPage() {
                 </li>
               ))}
             </ul>
-          ) : (
+            </>
+            );
+          })() : (
             <EmptyState
               icon={Rocket}
               title="No deploy events yet"

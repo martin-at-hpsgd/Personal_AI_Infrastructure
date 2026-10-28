@@ -1,0 +1,9 @@
+{
+  "lookback_hours": 26,
+  "rating_threshold": 4,
+  "min_confidence": 0.6,
+  "max_new_per_day": 5,
+  "push_to_vector": false,
+  "vector_tenant": "",
+  "schema_version": 1
+}

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.7.13
  * SessionHarvester - Extract learnings from Claude Code session transcripts
  *
  * Harvests insights from ~/.claude/projects/ sessions and writes to LEARNING/
@@ -24,16 +25,18 @@ import * as fs from "fs";
 import * as path from "path";
 import { getLearningCategory, isLearningCapture } from "../../hooks/lib/learning-utils";
 import { ingestCaptureEnvelope } from "./CaptureEnvelope";
-import { homedir } from "node:os";
+import { createHash } from "node:crypto";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { bumpMemoryGeneration } from "./MemoryRetriever";
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const CLAUDE_DIR = path.join(homedir(), ".claude");
+const CLAUDE_DIR = getClaudeDir();
 // Derive the project slug dynamically from CLAUDE_DIR (works on macOS and Linux)
-// macOS: ${HOME}/.claude → ${HARNESS_USER_DIR}
-// Linux: ${HOME}/.claude → ${HARNESS_USER_DIR}
+// macOS: /Users/<you>/.claude → -Users-<you>--claude
+// Linux: /home/<you>/.claude → -home-<you>--claude
 const CWD_SLUG = CLAUDE_DIR.replace(/[\/\.]/g, "-");
 const PROJECTS_DIR = path.join(CLAUDE_DIR, "projects", CWD_SLUG);
 const LEARNING_DIR = path.join(CLAUDE_DIR, "LIFEOS", "MEMORY", "LEARNING");
@@ -119,6 +122,9 @@ const MINING_PATTERN_MAP: Record<MemoryType, RegExp[]> = {
 interface ProjectsEntry {
   sessionId?: string;
   type?: "user" | "assistant" | "summary";
+  /** Present when the "user" entry is a tool result the harness fabricated, not a typed message. */
+  toolUseResult?: unknown;
+  isMeta?: boolean;
   message?: {
     role?: string;
     content?: string | Array<{
@@ -156,6 +162,44 @@ interface HarvestedLearning {
 // Session File Discovery
 // ============================================================================
 
+/**
+ * Is this file a conversation transcript, judged by what is inside it rather than
+ * by its extension? On the default projects/ path every `.jsonl` is a transcript,
+ * so the extension was a fine proxy. Point `--projects-dir` at an archive and it
+ * stops being one: those directories also hold telemetry rotations (voice events,
+ * traces, tripwire alerts, security events), and the harvester was mining log text
+ * for conversational learning patterns. (public issue #1913, @christauff)
+ *
+ * This has to PARSE, not regex. Record key order is not stable — `message`
+ * sometimes precedes `type`, and the nested `role` sometimes precedes the
+ * top-level `type` — so a pattern requiring both in order false-negatives on most
+ * real transcripts. The read is bounded so this stays cheap on a large tree.
+ */
+function isConversationTranscript(filePath: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(256 * 1024);
+    const read = fs.readSync(fd, buf, 0, buf.length, 0);
+    if (read === 0) return false;
+    const lines = buf.subarray(0, read).toString('utf8').split('\n');
+    if (read === buf.length) lines.pop();  // last line may be truncated mid-record
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let rec: any;
+      try { rec = JSON.parse(trimmed); } catch { continue; }
+      if (rec?.type !== 'user' && rec?.type !== 'assistant') continue;
+      if (rec?.message?.role === rec.type) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+  }
+}
+
 function getSessionFiles(options: {
   recent?: number;
   all?: boolean;
@@ -170,6 +214,7 @@ function getSessionFiles(options: {
 
   const files = fs.readdirSync(dir)
     .filter(f => f.endsWith('.jsonl'))
+    .filter(f => isConversationTranscript(path.join(dir, f)))
     .map(f => ({
       name: f,
       path: path.join(dir, f),
@@ -233,6 +278,39 @@ function ingestTranscriptText(sessionId: string, timestamp: string, raw: string)
   );
 }
 
+/**
+ * A "user" entry in a transcript is not necessarily something the principal
+ * typed: tool results, hook output, injected context blocks and file contents
+ * all arrive under the same type. Harvesting those as corrections is how the
+ * corpus filled with writing rubrics — a 5/5 sample of August's correction_*.md
+ * files held `## RUBRIC` text under `## Learning` with an empty `## Context`,
+ * because a rubric file read into the transcript contained the word "actually".
+ * (improvement pass #4, 2026-08-20)
+ */
+const SYNTHETIC_TURN_MARKERS: RegExp[] = [
+  /^\s*</,                        // <system-reminder>, <lifeos-memory>, any injected block
+  /<system-reminder>/i,
+  /^#{1,6}\s/,                    // a document pasted or read in, not a spoken correction
+  /^\s*\|/,                       // markdown table dumps
+  /^\s*\{/,                       // JSON payloads
+  /^\s*\(?(?:Bash|Read|Edit|Write|Grep|Glob)\b.*(?:completed|failed|no output)/i,
+  /^Caveat: The messages below/i,
+  /^\s*```/,
+];
+
+/** True only for something a human plausibly typed as a conversational turn. */
+export function isHumanTurn(entry: Pick<ProjectsEntry, "toolUseResult" | "isMeta">, text: string): boolean {
+  if (entry.toolUseResult !== undefined) return false;
+  if (entry.isMeta) return false;
+  if (SYNTHETIC_TURN_MARKERS.some((re) => re.test(text))) return false;
+  // A correction is a remark, not a document. Long blobs are pasted material.
+  if (text.length > 2000) return false;
+  return true;
+}
+
+/** Correction cues only count when they OPEN the remark, not when buried in pasted text. */
+const CORRECTION_LEAD_CHARS = 120;
+
 function matchesPatterns(text: string, patterns: RegExp[]): { matches: boolean; matchedPattern: string | null } {
   for (const pattern of patterns) {
     if (pattern.test(text)) {
@@ -267,8 +345,12 @@ function harvestLearnings(sessionPath: string): HarvestedLearning[] {
 
       // Check for corrections (user messages)
       if (entry.type === 'user') {
-        const { matches, matchedPattern } = matchesPatterns(textContent, CORRECTION_PATTERNS);
-        if (matches) {
+        const humanTurn = isHumanTurn(entry, textContent);
+        const { matches, matchedPattern } = matchesPatterns(
+          textContent.slice(0, CORRECTION_LEAD_CHARS),
+          CORRECTION_PATTERNS
+        );
+        if (humanTurn && matches) {
           learnings.push({
             sessionId,
             timestamp,
@@ -279,7 +361,7 @@ function harvestLearnings(sessionPath: string): HarvestedLearning[] {
             source: matchedPattern || 'correction'
           });
         }
-        previousContext = textContent;
+        if (humanTurn) previousContext = textContent;
       }
 
       // Check for errors (assistant messages with error patterns)
@@ -446,6 +528,7 @@ function writeToQueue(mem: MinedMemory): string {
   };
 
   fs.writeFileSync(filepath, JSON.stringify(candidate, null, 2));
+  bumpMemoryGeneration();
   return filepath;
 }
 
@@ -453,14 +536,26 @@ function writeToQueue(mem: MinedMemory): string {
 // Learning File Generation
 // ============================================================================
 
-function getMonthDir(category: 'SYSTEM' | 'ALGORITHM'): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
+/**
+ * The month a learning is filed under is the month it HAPPENED, not the month it
+ * was harvested. On the default 7-day sweep the two agree, which is why this was
+ * invisible; on the `--projects-dir` archive path they diverge completely and a
+ * whole back-catalogue lands under the current month, labelled as this month's
+ * work. The filename already carried the true date, so the directory contradicted
+ * the file sitting in it. (public issue #1912, @christauff)
+ *
+ * `create` is false on the dry-run path: a preview that makes directories is not
+ * a preview.
+ */
+function getMonthDir(category: 'SYSTEM' | 'ALGORITHM', timestamp: string, create = true): string {
+  const when = new Date(timestamp);
+  const basis = Number.isNaN(when.getTime()) ? new Date() : when;
+  const year = basis.getUTCFullYear();
+  const month = String(basis.getUTCMonth() + 1).padStart(2, '0');
 
   const monthDir = path.join(LEARNING_DIR, category, `${year}-${month}`);
 
-  if (!fs.existsSync(monthDir)) {
+  if (create && !fs.existsSync(monthDir)) {
     fs.mkdirSync(monthDir, { recursive: true });
   }
 
@@ -474,7 +569,20 @@ function generateLearningFilename(learning: HarvestedLearning): string {
   const typeSlug = learning.type;
   const sessionShort = learning.sessionId.slice(0, 8);
 
-  return `${dateStr}_${timeStr}_${typeSlug}_${sessionShort}.md`;
+  // The timestamp resolves to the minute, and writeLearning() skips on collision.
+  // Without the digest, two distinct learnings from one session in one minute
+  // collapsed to a single path and the second was dropped silently — measured at
+  // 6.8% of one corpus, and weighted toward exactly the moments worth keeping,
+  // since repeated corrections inside a minute are what a session going wrong
+  // looks like. The digest keeps the idempotency the skip was protecting:
+  // identical content still resolves to an identical path.
+  // (public issue #1914, @christauff)
+  const digest = createHash('sha256')
+    .update(`${learning.content} ${learning.context}`)
+    .digest('hex')
+    .slice(0, 6);
+
+  return `${dateStr}_${timeStr}_${typeSlug}_${sessionShort}_${digest}.md`;
 }
 
 function formatLearningFile(learning: HarvestedLearning): string {
@@ -503,7 +611,7 @@ ${learning.content}
 }
 
 function writeLearning(learning: HarvestedLearning): string {
-  const monthDir = getMonthDir(learning.category);
+  const monthDir = getMonthDir(learning.category, learning.timestamp);
   const filename = generateLearningFilename(learning);
   const filepath = path.join(monthDir, filename);
 
@@ -514,6 +622,7 @@ function writeLearning(learning: HarvestedLearning): string {
 
   const content = formatLearningFile(learning);
   fs.writeFileSync(filepath, content);
+  bumpMemoryGeneration();
 
   return filepath;
 }
@@ -521,118 +630,122 @@ function writeLearning(learning: HarvestedLearning): string {
 // ============================================================================
 // CLI
 // ============================================================================
+// Entrypoint guard (2026-08-20): this file's CLI section used to run at import,
+// so any `import { ... } from "./SessionHarvester"` performed a full harvest —
+// and hit `process.exit(0)` when it found nothing, killing the importing process.
+if (import.meta.main) {
+  const { values } = parseArgs({
+    args: Bun.argv.slice(2),
+    options: {
+      recent: { type: "string" },
+      all: { type: "boolean" },
+      session: { type: "string" },
+      "projects-dir": { type: "string" },
+      "dry-run": { type: "boolean" },
+      mine: { type: "boolean", short: "m" },
+      help: { type: "boolean", short: "h" },
+    },
+  });
 
-const { values } = parseArgs({
-  args: Bun.argv.slice(2),
-  options: {
-    recent: { type: "string" },
-    all: { type: "boolean" },
-    session: { type: "string" },
-    "projects-dir": { type: "string" },
-    "dry-run": { type: "boolean" },
-    mine: { type: "boolean", short: "m" },
-    help: { type: "boolean", short: "h" },
-  },
-});
+  if (values.help) {
+    console.log(`
+  SessionHarvester - Extract learnings from Claude Code session transcripts
 
-if (values.help) {
-  console.log(`
-SessionHarvester - Extract learnings from Claude Code session transcripts
+  Usage:
+    bun run SessionHarvester.ts --recent 10    Harvest from 10 most recent sessions
+    bun run SessionHarvester.ts --all          Harvest from all sessions (7 days)
+    bun run SessionHarvester.ts --session ID            Harvest from specific session
+    bun run SessionHarvester.ts --projects-dir PATH     Override PROJECTS_DIR (e.g. v4 archive or sibling cwd); skips 7-day --all filter when set
+    bun run SessionHarvester.ts --dry-run               Preview without writing files
+    bun run SessionHarvester.ts --mine                  Mine conversations for decisions, preferences, milestones, problems
 
-Usage:
-  bun run SessionHarvester.ts --recent 10    Harvest from 10 most recent sessions
-  bun run SessionHarvester.ts --all          Harvest from all sessions (7 days)
-  bun run SessionHarvester.ts --session ID            Harvest from specific session
-  bun run SessionHarvester.ts --projects-dir PATH     Override PROJECTS_DIR (e.g. v4 archive or sibling cwd); skips 7-day --all filter when set
-  bun run SessionHarvester.ts --dry-run               Preview without writing files
-  bun run SessionHarvester.ts --mine                  Mine conversations for decisions, preferences, milestones, problems
+  Mining examples:
+    bun run SessionHarvester.ts --mine --recent 5
+    bun run SessionHarvester.ts --mine --recent 10 --dry-run
 
-Mining examples:
-  bun run SessionHarvester.ts --mine --recent 5
-  bun run SessionHarvester.ts --mine --recent 10 --dry-run
+  Output:
+    Harvest: MEMORY/LEARNING/{ALGORITHM|SYSTEM}/YYYY-MM/
+    Mine:    MEMORY/KNOWLEDGE/_harvest-queue/ (review queue)
+  `);
+    process.exit(0);
+  }
 
-Output:
-  Harvest: MEMORY/LEARNING/{ALGORITHM|SYSTEM}/YYYY-MM/
-  Mine:    MEMORY/KNOWLEDGE/_harvest-queue/ (review queue)
-`);
-  process.exit(0);
-}
+  // Get sessions to process
+  const sessionFiles = getSessionFiles({
+    recent: values.recent ? parseInt(values.recent) : undefined,
+    all: values.all,
+    sessionId: values.session,
+    projectsDir: values["projects-dir"]
+  });
 
-// Get sessions to process
-const sessionFiles = getSessionFiles({
-  recent: values.recent ? parseInt(values.recent) : undefined,
-  all: values.all,
-  sessionId: values.session,
-  projectsDir: values["projects-dir"]
-});
+  if (sessionFiles.length === 0) {
+    console.log("No sessions found to harvest");
+    process.exit(0);
+  }
 
-if (sessionFiles.length === 0) {
-  console.log("No sessions found to harvest");
-  process.exit(0);
-}
-
-// Mining mode
-if (values.mine) {
-  console.log(`\u{1F50D} Mining ${sessionFiles.length} session(s) for memory candidates...`);
-  let totalMined = 0;
-  for (const session of sessionFiles) {
-    const memories = mineMemories(session);
-    if (memories.length === 0) continue;
-    console.log(`\n\u{1F4CB} ${path.basename(session, '.jsonl').slice(0, 8)}: ${memories.length} candidate(s)`);
-    for (const mem of memories) {
-      if (!values["dry-run"]) {
-        writeToQueue(mem);
+  // Mining mode
+  if (values.mine) {
+    console.log(`\u{1F50D} Mining ${sessionFiles.length} session(s) for memory candidates...`);
+    let totalMined = 0;
+    for (const session of sessionFiles) {
+      const memories = mineMemories(session);
+      if (memories.length === 0) continue;
+      console.log(`\n\u{1F4CB} ${path.basename(session, '.jsonl').slice(0, 8)}: ${memories.length} candidate(s)`);
+      for (const mem of memories) {
+        if (!values["dry-run"]) {
+          writeToQueue(mem);
+        }
+        console.log(`  ${confidenceIcon(mem.confidence)} [${mem.memoryType}] ${mem.content.substring(0, 80)}... (${(mem.confidence * 100).toFixed(0)}%)`);
+        totalMined++;
       }
-      console.log(`  ${confidenceIcon(mem.confidence)} [${mem.memoryType}] ${mem.content.substring(0, 80)}... (${(mem.confidence * 100).toFixed(0)}%)`);
-      totalMined++;
+    }
+    console.log(`\n\u{2705} ${totalMined} candidate(s) ${values["dry-run"] ? "found (dry run)" : "queued for review"}`);
+    if (!values["dry-run"] && totalMined > 0) {
+      console.log(`  Review: bun KnowledgeHarvester.ts harvest --source queue`);
+    }
+    process.exit(0);
+  }
+
+  console.log(`\u{1F50D} Scanning ${sessionFiles.length} session(s)...`);
+
+  // Harvest learnings from each session
+  let totalLearnings = 0;
+  const allLearnings: HarvestedLearning[] = [];
+
+  for (const sessionFile of sessionFiles) {
+    const sessionName = path.basename(sessionFile, '.jsonl').slice(0, 8);
+    const learnings = harvestLearnings(sessionFile);
+
+    if (learnings.length > 0) {
+      console.log(`  📂 ${sessionName}: ${learnings.length} learning(s)`);
+      allLearnings.push(...learnings);
+      totalLearnings += learnings.length;
     }
   }
-  console.log(`\n\u{2705} ${totalMined} candidate(s) ${values["dry-run"] ? "found (dry run)" : "queued for review"}`);
-  if (!values["dry-run"] && totalMined > 0) {
-    console.log(`  Review: bun KnowledgeHarvester.ts harvest --source queue`);
+
+  if (totalLearnings === 0) {
+    console.log("✅ No new learnings found");
+    process.exit(0);
   }
-  process.exit(0);
-}
 
-console.log(`\u{1F50D} Scanning ${sessionFiles.length} session(s)...`);
+  console.log(`\n📊 Found ${totalLearnings} learning(s)`);
+  console.log(`   - Corrections: ${allLearnings.filter(l => l.type === 'correction').length}`);
+  console.log(`   - Errors: ${allLearnings.filter(l => l.type === 'error').length}`);
+  console.log(`   - Insights: ${allLearnings.filter(l => l.type === 'insight').length}`);
 
-// Harvest learnings from each session
-let totalLearnings = 0;
-const allLearnings: HarvestedLearning[] = [];
-
-for (const sessionFile of sessionFiles) {
-  const sessionName = path.basename(sessionFile, '.jsonl').slice(0, 8);
-  const learnings = harvestLearnings(sessionFile);
-
-  if (learnings.length > 0) {
-    console.log(`  📂 ${sessionName}: ${learnings.length} learning(s)`);
-    allLearnings.push(...learnings);
-    totalLearnings += learnings.length;
+  if (values["dry-run"]) {
+    console.log("\n🔍 DRY RUN - Would write:");
+    for (const learning of allLearnings) {
+      const monthDir = getMonthDir(learning.category, learning.timestamp, false);
+      const filename = generateLearningFilename(learning);
+      console.log(`   ${learning.category}/${path.basename(monthDir)}/${filename}`);
+    }
+  } else {
+    console.log("\n✍️  Writing learning files...");
+    for (const learning of allLearnings) {
+      const result = writeLearning(learning);
+      console.log(`   ✅ ${path.basename(result)}`);
+    }
+    console.log(`\n✅ Harvested ${totalLearnings} learning(s) to MEMORY/LEARNING/`);
   }
-}
-
-if (totalLearnings === 0) {
-  console.log("✅ No new learnings found");
-  process.exit(0);
-}
-
-console.log(`\n📊 Found ${totalLearnings} learning(s)`);
-console.log(`   - Corrections: ${allLearnings.filter(l => l.type === 'correction').length}`);
-console.log(`   - Errors: ${allLearnings.filter(l => l.type === 'error').length}`);
-console.log(`   - Insights: ${allLearnings.filter(l => l.type === 'insight').length}`);
-
-if (values["dry-run"]) {
-  console.log("\n🔍 DRY RUN - Would write:");
-  for (const learning of allLearnings) {
-    const monthDir = getMonthDir(learning.category);
-    const filename = generateLearningFilename(learning);
-    console.log(`   ${learning.category}/${path.basename(monthDir)}/${filename}`);
-  }
-} else {
-  console.log("\n✍️  Writing learning files...");
-  for (const learning of allLearnings) {
-    const result = writeLearning(learning);
-    console.log(`   ✅ ${path.basename(result)}`);
-  }
-  console.log(`\n✅ Harvested ${totalLearnings} learning(s) to MEMORY/LEARNING/`);
 }

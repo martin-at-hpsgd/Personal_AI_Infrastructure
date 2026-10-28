@@ -1,0 +1,291 @@
+# Fabric DesignDocument — a security-minded C4 design document for any system
+# or idea. The regex asserts pin the literal shape (the title and five sections
+# in order, three C4 views each with a mermaid block and a five-column table,
+# the `security control:` and `accepted risk:` prefixes, questions carrying
+# `Assumed:`, no bold); the judged asserts carry what code cannot: fidelity to a
+# pasted design, input-kind inference, specificity, risk appetite and the
+# typed-hint override, plus keeping proposed and open items in rough notes apart
+# from decided ones. Mermaid rendering is the checker's job
+# (Tools/DesignDocumentCheck.ts), not this suite's. Synthetic inline fixtures only.
+name: fabric-designdocument
+type: capability
+pass_threshold: 0.75
+trials: 3
+subject_timeout_ms: 300000
+system_prompt_file: "~/.claude/skills/Fabric/Intents/DesignDocument.md"
+cases:
+  - id: pasted_design_note_stays_faithful
+    prompt: |
+      create_design_document for this:
+
+      "Parcelpoint (fictional) is a twelve-person startup running smart parcel lockers in two cities. Couriers drop parcels using a courier mobile app. Recipients get an SMS with a six-digit pickup code and open their locker door by typing it on the cabinet keypad. Each locker cabinet runs a small Linux controller that polls our cloud API every 30 seconds over HTTPS, authenticating with a per-cabinet API key written into its disk image at the factory. The cloud API is a Go service on a managed Kubernetes cluster with a Postgres database, and SMS goes out through a third-party SMS provider. Couriers sign in to the app with a username and password. We accept that a cabinet keeps working offline for up to 24 hours using the pickup codes it has cached."
+    # SYNTHETIC ADVERSARIAL FIXTURE: right title, sections, views, tables,
+    # prefixes and assumed defaults, but it is a generic web-app template:
+    # it invents existing controls the note never states (WAF, MFA, SIEM),
+    # leaves the lockers, keypad codes and SMS provider out of the design,
+    # misses the stated offline trade-off, and fills every Security controls
+    # cell with boilerplate.
+    adversarial_output: |
+      # Design Document: Parcelpoint
+
+      ## BUSINESS POSTURE
+
+      Parcelpoint is a modern digital platform that aims to deliver value to its customers. As an enterprise-grade solution it must meet the highest standards of security and reliability.
+
+      ### Business priorities
+
+      - Deliver a great user experience.
+      - Grow the customer base.
+
+      ### Business risks
+
+      - Data breaches could damage the company's reputation.
+      - Downtime could reduce customer satisfaction.
+
+      ## SECURITY POSTURE
+
+      ### Existing security controls
+
+      - security control: Web application firewall in front of all services.
+      - security control: Multi-factor authentication for all users.
+      - security control: Centralized SIEM monitoring of all logs.
+
+      ### Accepted risks
+
+      - accepted risk: none stated
+
+      ### Recommended security controls
+
+      - Use strong passwords.
+      - Encrypt sensitive data at rest and in transit.
+      - Keep all software up to date.
+
+      ### Security requirements
+
+      - Users must be authenticated.
+      - Inputs must be validated.
+
+      ## DESIGN
+
+      ### C4 CONTEXT
+
+      ```mermaid
+      flowchart LR
+        user[User] --> app[Parcelpoint]
+        app --> ext[External systems]
+      ```
+
+      | Name | Type | Description | Responsibilities | Security controls |
+      |------|------|-------------|------------------|-------------------|
+      | User | Person | A user of the system | Uses the system | Standard security controls |
+      | Parcelpoint | System | The platform | Provides functionality | Standard security controls |
+      | External systems | System | Other systems | Integrations | Standard security controls |
+
+      ### C4 CONTAINER
+
+      ```mermaid
+      flowchart LR
+        web[Web app] --> api[API]
+        api --> db[(Database)]
+      ```
+
+      | Name | Type | Description | Responsibilities | Security controls |
+      |------|------|-------------|------------------|-------------------|
+      | Web app | Container | Front end | User interface | Standard security controls |
+      | API | Container | Back end | Business logic | Standard security controls |
+      | Database | Container | Data store | Stores data | Standard security controls |
+
+      ### C4 DEPLOYMENT
+
+      Production in the cloud.
+
+      ```mermaid
+      flowchart LR
+        cloud[Cloud] --> api[API]
+        cloud --> db[(Database)]
+      ```
+
+      | Name | Type | Description | Responsibilities | Security controls |
+      |------|------|-------------|------------------|-------------------|
+      | Cloud | Node | Cloud provider | Hosts the system | Standard security controls |
+      | API | Container | Back end | Business logic | Standard security controls |
+      | Database | Container | Data store | Stores data | Standard security controls |
+
+      ## RISK ASSESSMENT
+
+      ### Critical business processes
+
+      - All business processes are critical.
+
+      ### Data to protect
+
+      - User data: confidential. It is sensitive.
+
+      ## QUESTIONS & ASSUMPTIONS
+
+      ### BUSINESS POSTURE
+
+      - What is the budget? Assumed: adequate.
+
+      ### SECURITY POSTURE
+
+      - Is there a security team? Assumed: yes.
+
+      ### DESIGN
+
+      - Which cloud is used? Assumed: a major provider.
+    assert:
+      - type: regex
+        weight: 1
+        value: '^# Design Document: [^\n]+\n[\s\S]*\n## BUSINESS POSTURE[ \t]*\n[\s\S]*\n## SECURITY POSTURE[ \t]*\n[\s\S]*\n## DESIGN[ \t]*\n[\s\S]*\n## RISK ASSESSMENT[ \t]*\n[\s\S]*\n## QUESTIONS & ASSUMPTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '### C4 CONTEXT[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|[\s\S]*?### C4 CONTAINER[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|[\s\S]*?### C4 DEPLOYMENT[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|'
+      - type: regex
+        weight: 1
+        value: '\n- security control: \S[\s\S]*\n- accepted risk: \S'
+      - type: regex
+        weight: 1
+        value: '\?[ \t]+Assumed:[ \t]*\S'
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: not-icontains
+        weight: 1
+        value: "DesignDocumentCheck"
+      - type: not-icontains
+        weight: 1
+        value: "virtual"
+      - type: llm-assert
+        weight: 5
+        value: [ "Every item under Existing security controls is something the note states (HTTPS polling, the per-cabinet API key, courier username and password sign-in, or the SMS pickup code); none is a control the note never mentions, such as a web application firewall, multi-factor authentication or a SIEM", "The accepted risks include the stated trade-off that cabinets keep working offline for up to 24 hours on cached pickup codes", "The diagrams and tables include the locker cabinet controller, the courier mobile app, the Go cloud API, the Postgres database and the third-party SMS provider", "The recommended controls address risks specific to this design, including at least two of: guessing six-digit pickup codes at the keypad, the per-cabinet API key being extracted from a factory disk image, and courier accounts protected only by a password", "The Security controls cells name what each specific element enforces rather than repeating a filler such as 'standard security controls'", "The business posture reflects a small startup's risk appetite rather than calling the system enterprise-grade" ]
+        reference: "a twelve-person parcel-locker startup: courier app, cabinet controllers polling a Go API on Kubernetes with Postgres, per-cabinet API keys in the factory image, six-digit SMS pickup codes, password-only courier sign-in, 24-hour offline operation accepted"
+  - id: bare_idea_named_pattern
+    prompt: "create_design_document: a URL shortener with click analytics"
+    assert:
+      - type: regex
+        weight: 1
+        value: '^# Design Document: [^\n]+\n[\s\S]*\n## BUSINESS POSTURE[ \t]*\n[\s\S]*\n## SECURITY POSTURE[ \t]*\n[\s\S]*\n## DESIGN[ \t]*\n[\s\S]*\n## RISK ASSESSMENT[ \t]*\n[\s\S]*\n## QUESTIONS & ASSUMPTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '### C4 CONTEXT[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|[\s\S]*?### C4 CONTAINER[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|[\s\S]*?### C4 DEPLOYMENT[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|'
+      - type: regex
+        weight: 1
+        value: '\n- security control: \S[\s\S]*\n- accepted risk: \S'
+      - type: regex
+        weight: 1
+        value: '\?[ \t]+Assumed:[ \t]*\S'
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: not-icontains
+        weight: 1
+        value: "DesignDocumentCheck"
+      - type: llm-assert
+        weight: 5
+        value: [ "The business posture names the build it assumed for the URL shortener (for example who uses it and at what stage), since the request gave only the idea", "The existing security controls are presented as an assumed baseline (marked assumed), not as facts about a real system", "The design separates the redirect path from the click-analytics collection and storage", "The security content is specific to URL shorteners, covering at least two of: short links abused for phishing or malware, guessing or enumerating short codes, open-redirect abuse, and privacy of click data such as IP addresses", "The risk assessment classifies the data it names (for example destination URLs and click records) with a sensitivity and a reason" ]
+        reference: "create_design_document: a URL shortener with click analytics"
+  - id: typed_hint_regulated_healthcare
+    prompt: "design document for a hospital: a patient portal where patients view their lab results and message their care team"
+    assert:
+      - type: regex
+        weight: 1
+        value: '^# Design Document: [^\n]+\n[\s\S]*\n## BUSINESS POSTURE[ \t]*\n[\s\S]*\n## SECURITY POSTURE[ \t]*\n[\s\S]*\n## DESIGN[ \t]*\n[\s\S]*\n## RISK ASSESSMENT[ \t]*\n[\s\S]*\n## QUESTIONS & ASSUMPTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '### C4 CONTEXT[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|[\s\S]*?### C4 CONTAINER[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|[\s\S]*?### C4 DEPLOYMENT[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|'
+      - type: regex
+        weight: 1
+        value: '\?[ \t]+Assumed:[ \t]*\S'
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: not-icontains
+        weight: 1
+        value: "DesignDocumentCheck"
+      - type: llm-assert
+        weight: 5
+        value: [ "The business posture reflects a hospital's low risk appetite and regulatory obligations for health data, not a startup's", "Lab results and patient messages are classified as regulated or highly sensitive health data in the risk assessment", "The design shows the portal integrating with the hospital's clinical record or lab system rather than holding lab results in isolation", "The requirements or recommended controls include at least two of: an audit trail of who viewed a patient's records, verifying a patient's identity before granting portal access, access for a parent or proxy on behalf of a patient, and keeping message content out of notification emails or texts" ]
+        reference: "design document for a hospital: a patient portal for lab results and messaging the care team"
+  - id: pasted_compose_file
+    prompt: |
+      Design doc for this system:
+
+      services:
+        web:
+          image: nginx:1.27
+          ports: ["443:443"]
+          volumes: ["./certs:/etc/nginx/certs:ro"]
+        app:
+          build: ./app
+          environment:
+            DATABASE_URL: postgres://db:5432/app
+            REDIS_URL: redis://redis:6379
+        worker:
+          build: ./app
+          command: ["node", "worker.js"]
+          environment:
+            DATABASE_URL: postgres://db:5432/app
+            REDIS_URL: redis://redis:6379
+        db:
+          image: postgres:16
+          environment:
+            POSTGRES_PASSWORD: app
+          volumes: ["pgdata:/var/lib/postgresql/data"]
+        redis:
+          image: redis:7
+      volumes:
+        pgdata: {}
+    assert:
+      - type: regex
+        weight: 1
+        value: '^# Design Document: [^\n]+\n[\s\S]*\n## BUSINESS POSTURE[ \t]*\n[\s\S]*\n## SECURITY POSTURE[ \t]*\n[\s\S]*\n## DESIGN[ \t]*\n[\s\S]*\n## RISK ASSESSMENT[ \t]*\n[\s\S]*\n## QUESTIONS & ASSUMPTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '### C4 CONTEXT[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|[\s\S]*?### C4 CONTAINER[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|[\s\S]*?### C4 DEPLOYMENT[ \t]*\n[\s\S]*?```mermaid[\s\S]*?```[\s\S]*?\| *Name *\| *Type *\| *Description *\| *Responsibilities *\| *Security controls *\|'
+      - type: regex
+        weight: 1
+        value: '\n- security control: \S[\s\S]*\n- accepted risk: \S'
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: not-icontains
+        weight: 1
+        value: "DesignDocumentCheck"
+      - type: llm-assert
+        weight: 5
+        value: [ "The container view shows exactly the five services the file defines (an nginx web front, the app, the worker, Postgres and Redis) and presents no other service as part of the running system", "The document flags the weak, hardcoded database password in plain environment variables as a problem and recommends a fix", "The deployment view shows the services on a single Docker Compose host, or states that as its assumption, rather than inventing a cluster or cloud services the file does not define", "Because the file says nothing about the business, the business posture and the questions say what was assumed about the system's purpose" ]
+        reference: "a docker compose file with nginx, app, worker, postgres and redis, and a hardcoded password"
+  - id: rough_notes_keep_decision_status
+    prompt: |
+      design doc from our kickoff notes:
+
+      Driver timesheets (Brightline Haulage, fictional, about 40 drivers)
+      - drivers clock in and out from a phone web app; managers approve the week in a web dashboard
+      - backend is a Node API and MySQL on the single VPS that already runs the old rota tool
+      - driver login is phone number plus an SMS one-time code (built, works)
+      - payroll export: nightly CSV pushed to the payroll provider over SFTP (decided)
+      - Sam suggested we drop TLS on the internal admin port because it is only reachable over the VPN. not agreed, Priya to confirm
+      - proposed: nightly DB backups to object storage. nobody owns this yet
+      - record GPS location at clock-in? waiting on legal
+      - manager SSO maybe later
+    assert:
+      - type: regex
+        weight: 1
+        value: '^# Design Document: [^\n]+\n[\s\S]*\n## BUSINESS POSTURE[ \t]*\n[\s\S]*\n## SECURITY POSTURE[ \t]*\n[\s\S]*\n## DESIGN[ \t]*\n[\s\S]*\n## RISK ASSESSMENT[ \t]*\n[\s\S]*\n## QUESTIONS & ASSUMPTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '\n- security control: \S[\s\S]*\n- accepted risk: \S'
+      - type: regex
+        weight: 1
+        value: '\?[ \t]+Assumed:[ \t]*\S'
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: not-icontains
+        weight: 1
+        value: "DesignDocumentCheck"
+      - type: llm-assert
+        weight: 5
+        value: [ "Dropping TLS on the internal admin port is not listed under Accepted risks as if it were agreed; it appears as an open question or is argued against, because the notes say it was only suggested and not agreed", "The proposed nightly backups and the possible manager SSO are not listed as existing security controls; they appear as recommendations or questions", "Whether to record GPS location at clock-in stays an open question with an assumed default, and the design does not present GPS collection as decided", "Every existing security control is something the notes state as already in place (for example the SMS one-time code login, the SFTP payroll export, or the admin port being reachable only over the VPN), and none is a control the notes never mention, such as multi-factor authentication, a web application firewall or encryption at rest", "The document states no user count, request volume, uptime target or deadline beyond what the notes give (about 40 drivers), except as a marked assumption or a question", "The reply is only the design document, with no shell commands, tool-call markup or remarks about running a checker" ]
+        reference: "rough kickoff notes for a 40-driver timesheet app: phone web app, manager dashboard, Node API and MySQL on one VPS, SMS one-time code login built, nightly SFTP payroll export decided; dropping admin-port TLS only suggested and not agreed, backups only proposed, GPS at clock-in waiting on legal, manager SSO maybe later"

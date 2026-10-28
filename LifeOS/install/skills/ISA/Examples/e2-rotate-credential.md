@@ -1,3 +1,4 @@
+<!-- isa-example claims=16 probes=6 era=legacy -->
 <!-- Fictitious example. The CI pipeline and credential surfaces here are teaching placeholders. -->
 
 ---
@@ -12,13 +13,15 @@ started: 2026-02-08T18:30:00Z
 updated: 2026-02-08T18:30:00Z
 ---
 
+## Ideal State
+
+### L3 · One sentence
+
+Rotate `DEPLOY_API_TOKEN` end-to-end so the next production deploy succeeds on a new same-scope token and the old token is inactive within four hours of the new one going live.
+
 ## Problem
 
 The production deploy credential (a long-lived API token stored in CI as `DEPLOY_API_TOKEN`) was provisioned 14 months ago, has never been rotated, and grants broad write scope on the deploy target. Per the org's quarterly rotation policy this is overdue. We need to rotate it without breaking the next deploy and without leaving the old token live longer than necessary.
-
-## Goal
-
-Rotate `DEPLOY_API_TOKEN` end-to-end: provision a new token with the same scope, update the CI secret, run a verification deploy on a non-production branch, then revoke the old token. The next production deploy after this rotation must succeed, and the old token must be inactive within four hours of the new one going live.
 
 ## Criteria
 
@@ -58,45 +61,17 @@ Rotate `DEPLOY_API_TOKEN` end-to-end: provision a new token with the same scope,
 
 ## Test Strategy
 
-```yaml
-- isc: ISC-1
-  type: api-probe
-  check: new token's scope list is exactly [deploy:write]
-  threshold: scopes == ["deploy:write"]
-  tool: curl -s -H "Authorization: Bearer $NEW_TOKEN" https://deploy.example.org/v1/me | jq -r '.scopes | sort | join(",")'
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-1 | bash | new token's scope list is exactly [deploy:write] | exit 0 | test-new-token-scope.sh |  |
+| ISC-5 | bash | new token value never appears in CI logs | 0 matches | check-token-in-logs.sh |  |
+| ISC-6 | bash | test deploy with new token succeeds | exit 0 | gh workflow run deploy.yml --ref rotation-test && gh run watch --exit-status $(gh run list --workflow deploy.yml --branch rotation-test --limit 1 --json databaseId --jq '.[0].databaseId') |  |
+| ISC-10 | bash | old token is rejected | HTTP 401 | check-old-token-rejection.sh |  |
+| ISC-14 | bash | neither token's first 8 chars appear in any tracked surface | 0 matches | credential-leak-audit.sh |  |
+| ISC-16 | bash | gap between new-token-active and old-token-revoked >= 30min | exit 0 | check-rotation-gap.sh |  |
 
-- isc: ISC-5
-  type: log-grep
-  check: new token value never appears in CI logs
-  threshold: 0 matches
-  tool: gh run view --log | rg "$(echo $NEW_TOKEN | head -c 8)"
-
-- isc: ISC-6
-  type: integration
-  check: test deploy with new token succeeds
-  threshold: exit 0
-  tool: gh workflow run deploy.yml --ref rotation-test && wait-for-completion
-
-- isc: ISC-10
-  type: api-probe
-  check: old token is rejected
-  threshold: HTTP 401
-  tool: curl -i -H "Authorization: Bearer $OLD_TOKEN" -X POST https://deploy.example.org/v1/deploys
-
-- isc: ISC-14
-  type: privacy
-  check: neither token's first 8 chars appear in any tracked log/commit/artifact
-  threshold: 0 matches across all surfaces
-  tool: bash scripts/credential-leak-audit.sh
-
-- isc: ISC-16
-  type: timing
-  check: gap between new-token-active and old-token-revoked ≥ 30 min
-  threshold: ≥ 1800s
-  tool: jq '.activated - .revoked' rotation-log.json
-```
 
 <!--
-E2 ops ISA. Required sections: Problem, Goal, Criteria, Test Strategy.
+E2 ops ISA. Required sections: Ideal State (L3 alone), Problem, Criteria, Test Strategy.
 Demonstrates the ISA primitive applied to an ops/runbook task — the same shape as a code task. ISC count of 16 hits the E2 floor exactly. Anti-criteria (ISC-14, 15, 16) cover privacy, scope, and rollback safety — typical ops-task regression-prevention concerns. Note ISC-16 explicitly preserves a safety window — a real-world lesson learned from prior bungled rotations.
 -->

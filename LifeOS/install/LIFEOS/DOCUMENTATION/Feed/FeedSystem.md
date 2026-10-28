@@ -1,10 +1,10 @@
 ---
-version: 1.3.2
+version: 1.4.5
 ---
 
 # Feed — the LifeOS External Sense
 
-> **Private infrastructure — not included in the public LifeOS release.** This document describes a feed pipeline the maintainer runs privately on Arbol (also private). No Feed implementation ships with the OSS release; it's reference documentation for how the architecture works, and a blueprint if you want to build your own.
+> **Private infrastructure — not included in the public LifeOS release.** This document describes a feed pipeline the maintainer runs privately on Workflows (also private). No Feed implementation ships with the OSS release; it's reference documentation for how the architecture works, and a blueprint if you want to build your own.
 
 > The Feed is the LifeOS's **external sense** in thesis terms (`LifeOs/LifeOsThesis.md`) — Conduit is the internal one, and both feed Synapse (`Synapse/SynapseSystem.md`), the input router. The Feed keeps the OS's current-state picture fed with the outside world, and it routes by what *your* ideal state cares about — a TELOS-relevant signal alerts immediately, noise archives silently. Its rate/route stages are conceptually Synapse's work running in the Feed's plumbing.
 
@@ -12,7 +12,7 @@ version: 1.3.2
 
 **Turning information streams into routed intelligence.**
 
-The Feed System is the sensor layer of the LIFEOS/ARBOL architecture. It monitors content sources, processes everything through an AI intelligence pipeline, and routes actionable items to the right destinations at the right priority.
+The Feed System is the sensor layer of the Workflows architecture. It monitors content sources, processes everything through an AI intelligence pipeline, and routes actionable items to the right destinations at the right priority.
 
 This is not an RSS reader. It's an intelligence routing engine.
 
@@ -108,7 +108,7 @@ AI generates two summary levels:
 
 ### Stage 3: Rate
 
-> **Status (2026-06-11):** in the live deployment, `quality_score` (1-100) is the only rating written — the S/A/B/C/D tier, importance, novelty, and urgency dimensions below are PLANNED/legacy design (the `tier` column is NULL on all items in prod). The same applies to the routing-rules engine in the Routing section: the table exists with zero rows; no rules fire.
+> **Status:** a deployment may write only `quality_score` (1-100) at first. The S/A/B/C/D tier, importance, novelty, and urgency dimensions below are the full design, and a deployment that has not built them leaves those columns empty. The routing-rules engine in the Routing section works the same way: until its table has rows, no rules fire.
 
 Multi-dimensional AI evaluation:
 
@@ -204,18 +204,19 @@ These are illustrative starting points — edit, replace, or remove them to fit 
 
 ---
 
-## Relationship to Arbol
+## Relationship to Workflows
 
-The Feed System runs on the **Arbol** Cloudflare Workers platform. Feed actions are deployed as Arbol Workers following the same patterns as the rest of Arbol infrastructure (Actions, Pipelines, Flows).
+The Feed System runs on the **Workflows** Cloudflare Workers platform. Feed actions are deployed as Workflows Workers following the same patterns as the rest of Workflows infrastructure (Actions, Pipelines, Flows).
 
-A typical mapping looks like:
+A deployment maps the stages like this:
 
 | Component | Form |
 |-----------|------|
-| Ingest | Action Worker (`A_FEED_INGEST`) |
-| Summarize | Action Worker (`A_FEED_SUMMARIZE`) |
-| Rate | Action Worker (`A_FEED_RATE`) |
-| Route | Action Worker (`A_FEED_ROUTE`) |
+| Ingest | Flow `F_FEEDS_POLLER` (cron `*/5`), enqueueing to `feed-new-items` |
+| Extract | Actions `A_EXTRACT_ARTICLE` (no LLM) and `A_TRANSCRIBE_AUDIO` |
+| Rate | Action `A_LABEL_AND_RATE` (writes `quality_score` and labels) |
+| Deliver | Action `A_DELIVER_ITEM` (writes the labeled item to the consuming app's feed database) |
+| Route | Routing-rules table; routing runs only once the table has rows |
 | Feed API | Long-running Worker (HTTP service) |
 | Feed Poller | Flow with cron trigger (e.g. `*/5`) |
 | Feed Processor | Flow with queue consumer |
@@ -223,25 +224,23 @@ A typical mapping looks like:
 
 **Poller circuit breaker.** A robust poller treats "HTTP 200 but zero parsed items" as a soft failure — increment `error_count` rather than reset it. This catches silent dead-weight feeds (parked domains, broken XML) that would otherwise look healthy.
 
-**Tier fallback chain for fetching.** When a source 403s or rate-limits, fall back through tiers: direct fetch → reader-proxy service → self-hosted proxy. Each tier costs more but recovers more sources.
+**Respect a refusal when fetching.** When a source returns 403 or 429, honour it: back off with `Retry-After` and exponential delay, and mark the source degraded after repeated failures. A reader service is used only to render pages the source allows to be fetched, never to get around a block or a rate limit.
 
-### How Feed Powers Arbol Workflows
+### How Feed Powers Workflows
 
-The Feed System is the **source layer** for the Arbol platform. It generates the content that downstream actions, pipelines, and flows operate on:
+The Feed System is the **source layer** for the Workflows platform. It generates the content that downstream actions, pipelines, and flows operate on:
 
 ```
 Feed System (sources + intelligence)
     │
     ├─► F_HN_LABEL_EMAIL (HN → rate → email)
     │
-    ├─► F_YOUTUBE_DIGEST (YouTube → transcribe → rate → digest)
+    ├─► F_YT_LABEL_RATE (YouTube channels → rate → consuming app → notify)
     │
-    ├─► F_SECURITY_ALERTS (Security feeds → rate → notify if urgent)
-    │
-    └─► F_SOCIAL_CONTENT (High-rated items → generate posts → queue)
+    └─► F_X_BOOKMARKS_SUMMARIZE (X bookmarks → summarize)
 ```
 
-Every flow in Arbol that processes external content starts with the Feed System. The intelligence pipeline (ingest → summarize → rate → route) is the common backbone. Flows just connect specific sources to specific pipelines on specific schedules.
+Every flow in Workflows that processes external content starts with the Feed System. The intelligence pipeline (ingest → summarize → rate → route) is the common backbone. Flows just connect specific sources to specific pipelines on specific schedules.
 
 ---
 
@@ -448,13 +447,13 @@ The Feed System transforms LifeOS from a reactive assistant into a proactive int
 2. **Evaluates** — AI rates everything on 5 dimensions with a fixed label taxonomy
 3. **Routes** — configurable rules determine what deserves attention
 4. **Delivers** — right content reaches the right destination at the right priority
-5. **Powers** — downstream Arbol workflows (social posts, blog drafts, digests) consume feed intelligence
+5. **Powers** — downstream workflows (social posts, blog drafts, digests) consume feed intelligence
 
 The goal: never miss important content, never be overwhelmed by noise.
 
 ### Knowledge Archive Integration
 
-High-value feed items can be harvested into the LifeOS Knowledge Archive (`MEMORY/KNOWLEDGE/`, four entity types: People, Companies, Ideas, Research) by the KnowledgeHarvester or captured directly by the Algorithm LEARN phase. This closes the loop: the Feed System surfaces intelligence, and the Knowledge Archive preserves it for long-term recall across sessions.
+High-value feed items can be harvested into the LifeOS Knowledge Archive (`MEMORY/KNOWLEDGE/`, six object types: People, Companies, Ideas, Blogs, Research, Books) by the KnowledgeHarvester or captured directly by the Algorithm LEARN phase. This closes the loop: the Feed System surfaces intelligence, and the Knowledge Archive preserves it for long-term recall across sessions.
 
 ---
 
@@ -496,7 +495,7 @@ The branch is the whole design. Everything upstream of it is the same for every 
 
 ## See Also
 
-- The feed skill's SKILL.md — Operational reference: API endpoints, workflows, schema
-- `ArbolSystem.md` — Arbol cloud execution: actions, pipelines, flows
-- `LIFEOS/USER/CUSTOMIZATIONS/ARBOL/` — Cloudflare Workers implementation (per-user customization area)
+- The feed skill's SKILL.md — Operational reference: API endpoints, intents, schema
+- `LIFEOS/DOCUMENTATION/Workflows/WorkflowsSystem.md` — Workflows cloud execution: actions, pipelines, flows
+- `LIFEOS/USER/CUSTOMIZATIONS/WORKFLOWS/` — Cloudflare Workers implementation (per-user customization area)
 - `LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md` — Master LifeOS architecture reference

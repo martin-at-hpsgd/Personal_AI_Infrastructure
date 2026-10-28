@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { ApiError, useApi } from "@/lib/api";
 import {
   AreaChart,
   Area,
@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { TrendingUp, Users, Mail, Video, Globe, type LucideIcon } from "lucide-react";
 import { PageShell, PageHeader, Panel, StatTile, type Dim } from "@/components/ui/chrome";
+import { fmtDateTime } from "@/lib/time";
 
 interface GrowthData {
   generatedAt: string;
@@ -201,14 +202,9 @@ function NotConnected({ icon: Icon, accent, label, envVar, note }: { icon: Lucid
 }
 
 export default function GrowthPage() {
-  const [data, setData] = useState<GrowthData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    fetch("/api/life/growth")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setData)
-      .catch((e) => setError(String(e)));
-  }, []);
+  const growth = useApi<GrowthData>("/api/life/growth");
+  const data = growth.data ?? null;
+  const error = growth.error ? (growth.error instanceof ApiError ? String(new Error(`HTTP ${growth.error.status}`)) : String(growth.error)) : null;
 
   if (error) {
     return (
@@ -240,7 +236,7 @@ export default function GrowthPage() {
         actions={
           <div className="text-xs text-ink-3 mono">
             {data.generatedAt && (
-              <>Updated {new Date(data.generatedAt).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })} PT</>
+              <>Updated {fmtDateTime(data.generatedAt)}</>
             )}
             {(data.errors?.length ?? 0) > 0 && <span> · {data.errors.length} source(s) need credentials</span>}
           </div>

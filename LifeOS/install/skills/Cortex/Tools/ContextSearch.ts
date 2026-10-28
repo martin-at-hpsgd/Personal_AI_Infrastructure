@@ -1,9 +1,15 @@
 #!/usr/bin/env bun
+/** Glance caller: cortex-recall. See LIFEOS/DOCUMENTATION/Assay/AssaySystem.md. */
 /// <reference types="bun-types" />
 declare const Bun: any;
 import { readFileSync, statSync, existsSync, readdirSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
+import { rank, keepWhere, type Ranked } from "../../../LIFEOS/ASSAY/Chain";
+import { safeCallerConfig } from "../../../LIFEOS/ASSAY/Assay";
+import { inference } from "../../../LIFEOS/TOOLS/Inference";
+import { textRequest } from "../../../LIFEOS/TOOLS/DeliveredContext";
+import { classifyTranscript, isCompaction } from "../../../LIFEOS/RELAY/bridge/transcriptClass.ts";
 
 const HOME = homedir();
 const LIFEOS_DIR = join(HOME, ".claude");
@@ -19,10 +25,47 @@ const PROJECTS_ROOT = join(LIFEOS_DIR, "projects");
 const WORK_JSON = join(STATE_DIR, "work.json");
 const NAMES_JSON = join(STATE_DIR, "session-names.json");
 
+// A hand-listed stopword set is a crude stand-in for IDF, which would subsume
+// it: a term's weight should fall out of how rare it is in the corpus rather
+// than from a list someone maintains. Kept as-is deliberately — the ranking win
+// measured in public issue #1755 came from normalization and damping, and
+// adding real IDF on top is a separate change with its own evidence to gather.
 const STOPWORDS = new Set([
   "the", "a", "an", "on", "in", "of", "to", "that", "it",
   "is", "was", "we", "you", "i", "and", "or", "for", "with",
 ]);
+
+/**
+ * Per-source score weights, applied after each source is normalized to [0,1].
+ *
+ * Raw scores from different sources are not comparable: `tokenOverlap` over a
+ * session name tops out in the single digits while a ripgrep count over a
+ * megabyte of transcript runs to the hundreds, so summing them at merge let one
+ * verbose transcript outrank an exactly-matching session. Normalizing first
+ * makes the sum meaningful, and the weights then say what a match in each
+ * source is worth: curated session metadata is the strongest evidence, ISA
+ * bodies are strong, and a hit anywhere in a conversation log is the weakest.
+ *
+ * Fixes public issue #1755 (@xmasyx), whose own recall benchmark moved from 0%
+ * to 83% with this plus the length damping below.
+ */
+const SOURCE_WEIGHTS: Record<Source, number> = {
+  "work.json": 1.0,
+  "session-names.json": 1.0,
+  "work-dir": 1.0,
+  "isa-body": 0.7,
+  "project-isa": 0.7,
+  jsonl: 0.4,
+};
+
+/** Scale a source's scores into [0,1] by its own max, then weight them. */
+function normalize(results: Result[], weight: number): Result[] {
+  let max = 0;
+  for (const r of results) if (r.score > max) max = r.score;
+  if (max <= 0) return results;
+  for (const r of results) r.score = (r.score / max) * weight;
+  return results;
+}
 
 type Source = "work.json" | "session-names.json" | "work-dir" | "isa-body" | "project-isa" | "jsonl";
 
@@ -88,6 +131,7 @@ interface Result {
   recencyDays: number | null;
   snippet?: string;
   path?: string;
+  relevance?: number | null;
 }
 
 interface Args {
@@ -97,6 +141,9 @@ interface Args {
   pretty: boolean;
   json: boolean;
   help: boolean;
+  judge: boolean;
+  answer: boolean;
+  judgeTop: number;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -107,6 +154,9 @@ function parseArgs(argv: string[]): Args {
     pretty: false,
     json: false,
     help: false,
+    judge: false,
+    answer: false,
+    judgeTop: 20,
   };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -114,6 +164,10 @@ function parseArgs(argv: string[]): Args {
     if (a === "--help" || a === "-h") args.help = true;
     else if (a === "--pretty") args.pretty = true;
     else if (a === "--json") args.json = true;
+    else if (a === "--judge") args.judge = true;
+    else if (a === "--answer") { args.answer = true; args.judge = true; }
+    else if (a === "--judge-top") { const n = parseInt(argv[++i] ?? "", 10); if (!Number.isNaN(n)) args.judgeTop = n; }
+    else if (a.startsWith("--judge-top=")) { const n = parseInt(a.slice("--judge-top=".length), 10); if (!Number.isNaN(n)) args.judgeTop = n; }
     else if (a === "--limit") {
       const n = parseInt(argv[++i] ?? "", 10);
       if (!Number.isNaN(n)) args.limit = n;
@@ -145,6 +199,9 @@ Flags:
   --since DATE     Only results updated on/after DATE (YYYY-MM-DD)
   --pretty         Force pretty terminal output (default if TTY)
   --json           Force single-line JSON (default if piped)
+  --judge          Re-rank top candidates with Glance
+  --judge-top N    Candidates to judge (default 20)
+  --answer         Judge, then have the low API lane answer from the top 3
   --help, -h       Show this help
 
 Examples:
@@ -268,7 +325,9 @@ function searchWorkJson(tokens: string[], since: Date | null, until: Date | null
       effort: entry.effort,
       score: overlap * multiplier,
       recencyDays: days,
-      path: entry.isa ? (entry.isa.startsWith("/") ? entry.isa : join(LIFEOS_DIR, entry.isa)) : undefined,
+      // work.json stores ISA paths relative to ~/.claude/LIFEOS ("MEMORY/WORK/…", "PI/ISA.md"),
+      // not to ~/.claude; joining onto the root pointed every such result at a missing file.
+      path: entry.isa ? (entry.isa.startsWith("/") ? entry.isa : join(LIFEOS_DIR, "LIFEOS", entry.isa)) : undefined,
     });
   }
   out.sort((a, b) => {
@@ -413,7 +472,9 @@ async function searchISABodies(tokens: string[], since: Date | null, until: Date
     results.push({
       source: ["isa-body"],
       slug: dir,
-      score: info.hits * multiplier,
+      // Damped: the tenth mention of a term says far less than the second, so a
+      // long document should not outrank an exact match on length alone.
+      score: Math.log(1 + info.hits) * multiplier,
       recencyDays: days,
       snippet,
       path: info.isaPath,
@@ -464,7 +525,7 @@ async function searchProjectIsas(tokens: string[], since: Date | null, until: Da
     results.push({
       source: ["project-isa"],
       slug: basename(isaPath.replace(/\/ISA\.md$/, "")),
-      score: hits * multiplier,
+      score: Math.log(1 + hits) * multiplier,
       recencyDays: days,
       snippet: sm ? sm[1]!.trim().replace(/\s+/g, " ").slice(0, 160) : undefined,
       phase,
@@ -476,12 +537,23 @@ async function searchProjectIsas(tokens: string[], since: Date | null, until: Da
   return results.slice(0, 50);
 }
 
+/**
+ * True unless the transcript is a compaction call (Tex F19, ISC-237): its first user message, read whole, carries
+ * the compactor task header right after its <chat> view. A principal text turn carries <turn> there and stays. The one
+ * classifier (LIFEOS/RELAY/bridge/transcriptClass.ts) decides; an unreadable file counts as a conversation, so the
+ * filter never hides a real session.
+ */
+function isConversationTranscript(path: string): boolean {
+  return !isCompaction(classifyTranscript(path));
+}
+
 async function searchJsonl(tokens: string[], since: Date | null, until: Date | null = null): Promise<Result[]> {
   if (tokens.length === 0 || !existsSync(PROJECTS_ROOT)) return [];
-  const realDir = PROJECTS_ROOT;
-  if (!realDir.startsWith(join(HOME, ".claude", "projects"))) return [];
+  // A guard here compared PROJECTS_ROOT with the same path rebuilt by hand, so it never
+  // refused anything; removed rather than kept as a check that reads like one (public
+  // discussion #2252, @mj-deving). ripgrep does not follow symlinks, so the walk stays in the tree.
   const pattern = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-  const out = await ripgrep(pattern, realDir, ["--glob", "*.jsonl", "-c"]);
+  const out = await ripgrep(pattern, PROJECTS_ROOT, ["--glob", "*.jsonl", "-c"]);
   const byFile = new Map<string, { hits: number; path: string }>();
   for (const line of out.split("\n")) {
     if (!line) continue;
@@ -492,7 +564,13 @@ async function searchJsonl(tokens: string[], since: Date | null, until: Date | n
     byFile.set(p, { hits, path: p });
   }
   const results: Result[] = [];
-  const sorted = [...byFile.entries()].sort((a, b) => b[1].hits - a[1].hits).slice(0, 30);
+  // Drop non-conversation transcripts BEFORE the top-N cut: a compaction transcript carries the
+  // whole conversation in its first prompt, so it out-hits the real session and used to fill
+  // the 30 slots, which pushed real sessions out before the filter could see them.
+  const sorted = [...byFile.entries()]
+    .sort((a, b) => b[1].hits - a[1].hits)
+    .filter(([p]) => isConversationTranscript(p))
+    .slice(0, 30);
   const re = new RegExp(pattern, "i");
   for (const [path, info] of sorted) {
     let snippet: string | undefined;
@@ -525,7 +603,8 @@ async function searchJsonl(tokens: string[], since: Date | null, until: Date | n
                     else if (Array.isArray(c)) {
                       for (const p of c) if (p?.type === "text") userText += " " + (p.text ?? "");
                     }
-                    userText = userText.trim();
+                    // A principal text turn opens with the thread view: the snippet is the request after it.
+                    userText = textRequest(userText).trim();
                     if (userText && !userText.startsWith("<") && re.test(userText)) {
                       snippet = userText.replace(/\s+/g, " ").slice(0, 200);
                     }
@@ -548,7 +627,7 @@ async function searchJsonl(tokens: string[], since: Date | null, until: Date | n
       source: ["jsonl"],
       slug: uuid,
       sessionUuid: uuid,
-      score: info.hits * multiplier,
+      score: Math.log(1 + info.hits) * multiplier,
       recencyDays: days,
       snippet,
       path,
@@ -601,7 +680,7 @@ function dedupe(all: Result[]): Result[] {
   });
 }
 
-function formatPretty(query: string, results: Result[], stats: Record<string, number>): string {
+function formatPretty(query: string, results: Result[], stats: Record<string, number>, answer?: AnswerResult): string {
   const lines: string[] = [];
   lines.push(`═══ CONTEXT: ${query || "(empty query)"} ═══════════════════════`);
   lines.push("");
@@ -613,6 +692,7 @@ function formatPretty(query: string, results: Result[], stats: Record<string, nu
     return lines.join("\n");
   }
   lines.push(`📋 RESULTS (${results.length}, newest+best first):`);
+  if (answer) lines.push(`Answer: ${answer.answer}${answer.note ? ` (${answer.note})` : ""}`);
   for (const r of results) {
     const head = `  • ${r.slug}`;
     const meta = [
@@ -622,6 +702,7 @@ function formatPretty(query: string, results: Result[], stats: Record<string, nu
       r.effort ? `effort: ${r.effort}` : null,
       r.recencyDays !== null ? `${r.recencyDays.toFixed(1)}d ago` : null,
       `score: ${r.score.toFixed(2)}`,
+      r.relevance !== undefined ? `relevance: ${r.relevance === null ? "error" : r.relevance.toFixed(3)}` : null,
       `sources: ${r.source.join(",")}`,
     ].filter(Boolean).join(" | ");
     lines.push(head);
@@ -633,6 +714,45 @@ function formatPretty(query: string, results: Result[], stats: Record<string, nu
   lines.push(`Searched: work.json=${stats.work}, names=${stats.names}, dirs=${stats.dirs}, isa=${stats.isa}, jsonl=${stats.jsonl}`);
   lines.push("════════════════════════════════════════════════");
   return lines.join("\n");
+}
+
+type AnswerResult = { answer: string; used: string[]; found: boolean; note?: string };
+/** What the engine sees per candidate: the metadata plus the passages that best match the question, so a result is never judged on its slug alone. */
+function compactState(r: Result, tokens: string[]): object { return { name: r.name, task: r.task, slug: r.slug, excerpt: material(r, tokens, 1500) }; }
+/**
+ * The passages of a recalled file that best match the question, capped at 6000 chars. Taking the
+ * file head missed answers that live low in an ISA (its Decisions section) or deep in a transcript.
+ * Paragraphs are scored by query-token overlap and emitted in file order.
+ */
+function material(r: Result, tokens: string[], cap = 6000): string {
+  let text = r.snippet ?? "";
+  if (r.path && existsSync(r.path)) { try { text = readFileSync(r.path, "utf8").slice(0, 5_000_000); } catch {} }
+  if (text.length <= cap) return text;
+  const paras = text.split(/\n\s*\n/).map((body, i) => ({ i, body: body.slice(0, 1500), score: tokenOverlap(tokens, body) }));
+  const picked = paras.filter((p) => p.score > 0).sort((x, y) => y.score - x.score);
+  const out: typeof paras = [];
+  let used = 0;
+  for (const p of picked) { if (used + p.body.length > cap) continue; out.push(p); used += p.body.length; }
+  if (out.length === 0) return text.slice(0, cap);
+  return out.sort((x, y) => x.i - y.i).map((p) => p.body).join("\n…\n");
+}
+
+/** The low API lane answers from the top 3 judged results. Reuses the relevance judgments; no second judgment-layer call. */
+async function answerFrom(query: string, results: Result[], ranked: Ranked<object>[]): Promise<AnswerResult> {
+  const top = results.slice(0, 3);
+  const topSlugs = new Set(top.map((r) => r.slug));
+  const gate = keepWhere(ranked.filter((row) => topSlugs.has((row.item as { slug: string }).slug)), "relevant", { caller: "cortex-recall" });
+  const keptSlugs = new Set(gate.items.map((row) => (row as { slug: string }).slug));
+  const skipped = gate.wouldDrop.map((row) => (row as { slug: string }).slug);
+  const enforce = safeCallerConfig("cortex-recall")?.mode === "enforce";
+  if (enforce && keptSlugs.size === 0) return { answer: "This does not appear to be in memory.", used: [], found: false };
+  const chosen = enforce ? top.filter((r) => keptSlugs.has(r.slug)) : top;
+  const note = !enforce && skipped.length ? { note: `Enforce would have skipped: ${skipped.join(", ")}` } : {};
+  const source = chosen.map((r) => `--- ${r.slug} ---\n${material(r, tokenize(query))}`).join("\n");
+  const response = await inference({ vendor: "openai", level: "low", expectJson: true, allowVendorFallback: false, systemPrompt: "Answer only from the supplied material. Return JSON {answer:string, used:string[], found:boolean}; used lists the slugs you drew on.", userPrompt: `Question: ${query}\n\nMaterial:\n${source}` });
+  if (!response.success || !response.parsed || typeof response.parsed !== "object") return { answer: "I could not answer from the recalled material.", used: [], found: false, ...note };
+  const parsed = response.parsed as Partial<AnswerResult>;
+  return { answer: typeof parsed.answer === "string" ? parsed.answer : "I could not answer from the recalled material.", used: Array.isArray(parsed.used) ? parsed.used.filter((x): x is string => typeof x === "string") : [], found: parsed.found === true, ...note };
 }
 
 function absenceMessage(query: string): string {
@@ -659,8 +779,30 @@ async function main() {
     searchJsonl(tokens, since, until),
   ]);
 
-  const all = [...work, ...names, ...dirs, ...isa, ...projectIsa, ...jsonl];
+  // Normalize per source before merging: dedupe() sums the scores of results
+  // that resolve to the same session, and that sum only means anything once the
+  // sources are on one scale (see SOURCE_WEIGHTS).
+  const all = [
+    ...normalize(work, SOURCE_WEIGHTS["work.json"]),
+    ...normalize(names, SOURCE_WEIGHTS["session-names.json"]),
+    ...normalize(dirs, SOURCE_WEIGHTS["work-dir"]),
+    ...normalize(isa, SOURCE_WEIGHTS["isa-body"]),
+    ...normalize(projectIsa, SOURCE_WEIGHTS["project-isa"]),
+    ...normalize(jsonl, SOURCE_WEIGHTS.jsonl),
+  ];
   let merged = dedupe(all);
+  let ranked: Ranked<object>[] = [];
+  if (args.judge) {
+    const top = merged.slice(0, args.judgeTop);
+    ranked = await rank(top.map((r) => compactState(r, tokens)), "relevant", `Does this prior session or ISA likely contain the answer to: ${args.query}?`, { caller: "cortex-recall" });
+    const bySlug = new Map(top.map((r) => [r.slug, r]));
+    const judged = ranked.map((r) => {
+      const state = r.item as { slug: string };
+      return { ...bySlug.get(state.slug)!, relevance: r.relevance };
+    });
+    merged = [...judged, ...merged.slice(top.length)];
+  }
+  const answer = args.answer ? await answerFrom(args.query, merged, ranked) : undefined;
   if (args.limit > 0) merged = merged.slice(0, args.limit);
 
   const stats = {
@@ -684,9 +826,10 @@ async function main() {
       stats,
       absence,
       results: merged,
+      ...(answer ? { answer } : {}),
     }) + "\n");
   } else {
-    process.stdout.write(formatPretty(args.query, merged, stats) + "\n");
+    process.stdout.write(formatPretty(args.query, merged, stats, answer) + "\n");
   }
   process.exit(0);
 }

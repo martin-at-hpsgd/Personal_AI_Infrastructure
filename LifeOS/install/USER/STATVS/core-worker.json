@@ -1,0 +1,16 @@
+{
+  "r2": {
+    "name": "lifeos-statvs-record"
+  },
+  "control": {
+    "name": "statvs-core-control",
+    "id": "<the database id that `cf d1 create statvs-core-control` printed>"
+  },
+  "index": [
+    {
+      "month": "2026-10",
+      "name": "statvs-idx-2026-10",
+      "id": "<the database id that `cf d1 create statvs-idx-2026-10` printed>"
+    }
+  ]
+}

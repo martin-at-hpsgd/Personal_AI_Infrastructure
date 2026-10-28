@@ -1,13 +1,21 @@
+/**
+ * @version 1.1.1
+ */
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { loadCanonicalRecords } from "./Cortex";
+import { loadBudgets, overBudget as overBudgetStreams, streamGrowth, type OverBudget } from "./lib/JsonlGrowth";
 
 export type Severity = "ok" | "warn" | "critical";
 export interface HealthFinding { id: string; severity: Severity; message: string; evidence?: any; }
 export interface ReviewerEvidence {
-  status: "ok" | "skipped" | "failed" | "parse-failed" | "timed-out" | "missing" | "invalid";
+  status: "ok" | "skipped" | "failed" | "parse-failed" | "timed-out" | "missing" | "invalid" | "unreadable";
   ts?: string; runId?: string; evidence: string; priorSuccesses?: number; error?: string;
+  /** For status "unreadable": which read failed (public issue #1983, @spazbg). */
+  unreadable?: "log" | "runs";
+  /** Trailing consecutive non-ok runs, skips stepped over (public issue #1907, @xmasyx). */
+  streak?: number;
 }
 export interface RetrievalEvidence { status: "ok" | "missing" | "invalid"; ts?: string; queryHash?: string; returnedCount?: number; durationMs?: number; evidence: string; malformedLines?: number[]; }
 
@@ -15,19 +23,22 @@ export const DEFAULT_CORTEX_THRESHOLDS = {
   reviewerStaleMs: 7 * 24 * 60 * 60 * 1000,
   retrievalStaleMs: 24 * 60 * 60 * 1000,
   proposalBacklog: 10,
-  observabilityMaxBytes: 256 * 1024 * 1024,
   observabilityMaxAgeMs: 30 * 24 * 60 * 60 * 1000,
   reviewerRunGraceMs: 10 * 60 * 1000,
   indexStaleMs: 7 * 24 * 60 * 60 * 1000,
 };
-export interface CortexThresholds { reviewerStaleMs: number; retrievalStaleMs: number; proposalBacklog: number; observabilityMaxBytes: number; observabilityMaxAgeMs: number; reviewerRunGraceMs: number; indexStaleMs: number; }
+export interface CortexThresholds { reviewerStaleMs: number; retrievalStaleMs: number; proposalBacklog: number; observabilityMaxAgeMs: number; reviewerRunGraceMs: number; indexStaleMs: number; }
 
 export interface CortexEvidence {
   nowMs: number;
   reviewer?: ReviewerEvidence;
   retrieval?: RetrievalEvidence;
   proposals?: { pending: number; evidence: string; available?: boolean; malformedLines?: number[] };
-  observability?: { bytes: number; oldestMs: number | null; evidence: string; files?: number; available?: boolean };
+  /** newestMs = most recent write under OBSERVABILITY/. Was oldestMs: the oldest
+   *  file's age is retention, not health, and five tiny dispatch.log files tripped
+   *  a permanent warn. Newest-write age is the "telemetry pipeline dead" signal.
+   *  public PR #1920, @mcardinali-data (issue #1915, @jacobo-ortiz; @pybe) */
+  observability?: { bytes: number; newestMs: number | null; evidence: string; files?: number; available?: boolean; overBudget?: OverBudget[] };
   index?: { status: "absent" | "no-index-v1" | "ok" | "mismatch" | "invalid"; manifest?: string; policy?: string; measuredAt?: number; canonicalHash?: string; manifestCanonicalHash?: string; indexHash?: string; manifestIndexHash?: string; indexPath?: string; indexedAt?: string; ageMs?: number };
   thresholds?: CortexThresholds;
 }
@@ -43,21 +54,62 @@ function hasExactKeys(value: Record<string, unknown>, allowed: readonly string[]
 function nonNegativeInteger(value: unknown): value is number { return Number.isInteger(value) && (value as number) >= 0; }
 function nonNegativeFinite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value) && value >= 0; }
 
-function validDispatchSummary(value: unknown): boolean {
-  if (!isPlainObject(value) || !hasExactKeys(value, ["total", "by_type", "succeeded", "failed", "failures", "skipped_guard", "skips", "proposals_auto_applied", "proposals_auto_apply_failed"])) return false;
-  if (![value.total, value.succeeded, value.failed, value.skipped_guard, value.proposals_auto_applied, value.proposals_auto_apply_failed].every(nonNegativeInteger)) return false;
+// Human-readable durations and sizes for finding messages: the statusline
+// uppercases and hard-truncates at 68 chars, so raw ms/bytes cut off the one
+// number that matters. Evidence objects keep the raw numbers.
+// public issue #1925, @pybe
+const AGE_UNITS: [number, string][] = [[86_400_000, "day"], [3_600_000, "hour"], [60_000, "minute"], [1000, "second"]];
+export function fmtAge(ms: number, decimals = 0): string {
+  const [unit, name] = AGE_UNITS.find(([u]) => ms >= u) ?? AGE_UNITS[AGE_UNITS.length - 1];
+  const v = Number((ms / unit).toFixed(decimals));
+  return `${v} ${name}${v === 1 ? "" : "s"}`;
+}
+export function fmtBytes(bytes: number, decimals = 0): string {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let v = bytes, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${Number(v.toFixed(i === 0 ? 0 : decimals))} ${units[i]}`;
+}
+/** Format a measured value and its cap so a breach never renders as equal
+ *  ("30 days, cap 30 days"): precision escalates until the two strings differ. */
+function fmtPair(a: number, b: number, fmt: (n: number, d: number) => string): [string, string] {
+  for (let d = 0; d < 3; d++) { const [x, y] = [fmt(a, d), fmt(b, d)]; if (x !== y) return [x, y]; }
+  return [fmt(a, 3), fmt(b, 3)];
+}
+
+const DISPATCH_REQUIRED = ["total", "by_type", "succeeded", "failed", "failures", "proposals_auto_applied", "proposals_auto_apply_failed"] as const;
+const DISPATCH_OPTIONAL = ["skipped_guard", "skips"] as const;
+const DISPATCH_ALLOWED = [...DISPATCH_REQUIRED, ...DISPATCH_OPTIONAL] as const;
+
+export function validDispatchSummary(value: unknown): boolean {
+  if (!isPlainObject(value) || !hasExactKeys(value, DISPATCH_ALLOWED, DISPATCH_REQUIRED)) return false;
+  // 7.40.4 writer emits skipped_guard + skips. Pre-7.40.4 writers omit both.
+  // Missing pair = zero guard refusals (same fact the new writer records as 0 / []).
+  // One field without the other is a partial/corrupt row — reject. Without this
+  // an upgrade marked the last (successful) pre-upgrade run CRITICAL.
+  // public PR #1933, @jbmml (issue #1930)
+  const hasGuard = Object.prototype.hasOwnProperty.call(value, "skipped_guard");
+  const hasSkips = Object.prototype.hasOwnProperty.call(value, "skips");
+  if (hasGuard !== hasSkips) return false;
+  const skippedGuard = hasGuard ? value.skipped_guard : 0;
+  const skips = hasSkips ? value.skips : [];
+  if (![value.total, value.succeeded, value.failed, skippedGuard, value.proposals_auto_applied, value.proposals_auto_apply_failed].every(nonNegativeInteger)) return false;
   // A guard refusal (ESUSPECT_EROSION — the MemoryWriter blocking a net-drop) is a healthy
   // skip, not a failure: a valid run has every item either succeeded or guard-skipped, and
   // zero hard failures. Fail-closed strictness (failed=0, failures empty) is unchanged.
-  if (value.failed !== 0 || value.proposals_auto_apply_failed !== 0 || value.total !== (value.succeeded as number) + (value.skipped_guard as number) || !Array.isArray(value.failures) || value.failures.length !== 0 || !Array.isArray(value.skips)) return false;
+  if (value.failed !== 0 || value.proposals_auto_apply_failed !== 0 || value.total !== (value.succeeded as number) + (skippedGuard as number) || !Array.isArray(value.failures) || value.failures.length !== 0 || !Array.isArray(skips)) return false;
   if (!isPlainObject(value.by_type) || !Object.keys(value.by_type).every((key) => ["memory", "idea", "knowledge", "proposal"].includes(key)) || !Object.values(value.by_type).every(nonNegativeInteger)) return false;
   const byTypeTotal = Object.values(value.by_type).reduce<number>((sum, count) => sum + (count as number), 0);
   return byTypeTotal === value.total && (value.proposals_auto_applied as number) <= ((value.by_type.proposal as number | undefined) ?? 0);
 }
 
+// `attempts` (primary inference calls; 2 after a timeout retry) is optional so rows
+// written before it existed still validate. public issue #1907, @xmasyx
+const validAttempts = (row: Record<string, unknown>) => row.attempts === undefined || nonNegativeInteger(row.attempts);
+
 function validReviewerSuccess(row: unknown): row is Record<string, unknown> {
-  if (!isPlainObject(row) || !hasExactKeys(row, ["ts", "ok", "runId", "transcript", "exchanges", "inference_duration_ms", "parse_ok", "dispatch_summary"])) return false;
-  return row.ok === true && row.parse_ok === true && typeof row.runId === "string" && row.runId.length > 0 &&
+  if (!isPlainObject(row) || !hasExactKeys(row, ["ts", "ok", "runId", "transcript", "exchanges", "inference_duration_ms", "parse_ok", "attempts", "dispatch_summary"], ["ts", "ok", "runId", "transcript", "exchanges", "inference_duration_ms", "parse_ok", "dispatch_summary"])) return false;
+  return row.ok === true && row.parse_ok === true && validAttempts(row) && typeof row.runId === "string" && row.runId.length > 0 &&
     typeof row.ts === "string" && Number.isFinite(Date.parse(row.ts)) && typeof row.transcript === "string" && row.transcript.length > 0 &&
     nonNegativeInteger(row.exchanges) && nonNegativeFinite(row.inference_duration_ms) && validDispatchSummary(row.dispatch_summary);
 }
@@ -66,8 +118,8 @@ function validReviewerSuccess(row: unknown): row is Record<string, unknown> {
 // curate). Fail-closed: anything claiming skipped that doesn't match this exact
 // shape stays "invalid" (critical), so a broken extractor can't dress up as a skip.
 function validReviewerSkip(row: unknown): row is Record<string, unknown> {
-  if (!isPlainObject(row) || !hasExactKeys(row, ["ts", "ok", "runId", "transcript", "exchanges", "inference_duration_ms", "parse_ok", "skipped", "error"], ["ts", "ok", "runId", "exchanges", "inference_duration_ms", "parse_ok", "skipped"])) return false;
-  return row.ok === true && row.parse_ok === true && row.skipped === true && row.exchanges === 0 &&
+  if (!isPlainObject(row) || !hasExactKeys(row, ["ts", "ok", "runId", "transcript", "exchanges", "inference_duration_ms", "parse_ok", "skipped", "attempts", "error"], ["ts", "ok", "runId", "exchanges", "inference_duration_ms", "parse_ok", "skipped"])) return false;
+  return row.ok === true && row.parse_ok === true && row.skipped === true && row.exchanges === 0 && validAttempts(row) &&
     typeof row.runId === "string" && row.runId.length > 0 && typeof row.ts === "string" && Number.isFinite(Date.parse(row.ts)) &&
     (row.transcript === null || row.transcript === undefined || typeof row.transcript === "string") &&
     (row.error === undefined || typeof row.error === "string");
@@ -84,18 +136,34 @@ export function assessCortexEvidence(input: CortexEvidence): CortexAssessment {
   const thresholds = input.thresholds ?? DEFAULT_CORTEX_THRESHOLDS;
   const add = (id: string, severity: Severity, message: string, evidence?: any) => findings.push({ id, severity, message, ...(evidence === undefined ? {} : { evidence }) });
   if (!input.reviewer) add("reviewer-evidence-missing", "warn", "No reviewer evidence supplied.");
-  else if (["failed", "parse-failed", "timed-out", "invalid"].includes(input.reviewer.status)) add(input.reviewer.status === "invalid" ? "reviewer-evidence-invalid" : `reviewer-latest-${input.reviewer.status}`, "critical", `Latest reviewer run is ${input.reviewer.status}.`, input.reviewer);
+  // A check that cannot read its own evidence says so instead of crashing the whole
+  // assessment before later checks run (public issue #1983, @spazbg).
+  else if (input.reviewer.status === "unreadable") add(input.reviewer.unreadable === "runs" ? "reviewer-runs-unreadable" : "reviewer-log-unreadable", "warn", `Reviewer evidence could not be read: ${input.reviewer.evidence}`, input.reviewer);
+  else if (input.reviewer.status === "invalid") add("reviewer-evidence-invalid", "critical", "Latest reviewer run is invalid.", input.reviewer);
+  // One failed/timed-out run is a warn; two or more in a row (skips stepped over) is
+  // critical. A single timeout under cap pressure used to flip the whole memory loop
+  // to critical for the next half hour. public issue #1907, @xmasyx
+  else if (["failed", "parse-failed", "timed-out"].includes(input.reviewer.status)) { const streak = input.reviewer.streak ?? 1; add(`reviewer-latest-${input.reviewer.status}`, streak >= 2 ? "critical" : "warn", `Latest reviewer run is ${input.reviewer.status}${streak >= 2 ? ` (${streak} in a row)` : ""}.`, input.reviewer); }
   else if (input.reviewer.status === "missing") add("reviewer-evidence-missing", "warn", "No latest reviewer evidence is available.", { ...input.reviewer, staleThresholdMs: thresholds.reviewerStaleMs });
   else if (!input.reviewer.ts || !Number.isFinite(Date.parse(input.reviewer.ts))) add("reviewer-evidence-invalid", "critical", "Reviewer success lacks a valid timestamp.", input.reviewer);
-  else { const ageMs = input.nowMs - Date.parse(input.reviewer.ts); if (ageMs < 0) add("reviewer-future", "warn", "Reviewer timestamp is in the future and cannot prove freshness.", { ...input.reviewer, ageMs }); else if (ageMs > thresholds.reviewerStaleMs) add("reviewer-stale", "warn", `Latest reviewer evidence exceeds ${thresholds.reviewerStaleMs}ms freshness window.`, { ...input.reviewer, ageMs, thresholdMs: thresholds.reviewerStaleMs }); }
+  else { const ageMs = input.nowMs - Date.parse(input.reviewer.ts); if (ageMs < 0) add("reviewer-future", "warn", "Reviewer timestamp is in the future and cannot prove freshness.", { ...input.reviewer, ageMs }); else if (ageMs > thresholds.reviewerStaleMs) add("reviewer-stale", "warn", `Latest reviewer run older than ${fmtAge(thresholds.reviewerStaleMs)}.`, { ...input.reviewer, ageMs, thresholdMs: thresholds.reviewerStaleMs }); }
   if (!input.retrieval) add("retrieval-evidence-missing", "warn", "No retrieval evidence supplied.");
   else if (input.retrieval.status === "invalid") add("retrieval-evidence-malformed", "warn", "Retrieval evidence is malformed.", input.retrieval);
-  else if (input.retrieval.status === "missing") add("retrieval-missing", "warn", `No retrieval evidence within ${thresholds.retrievalStaleMs}ms freshness window.`, { ...input.retrieval, thresholdMs: thresholds.retrievalStaleMs });
+  else if (input.retrieval.status === "missing") add("retrieval-missing", "warn", `No retrieval evidence in the last ${fmtAge(thresholds.retrievalStaleMs)}.`, { ...input.retrieval, thresholdMs: thresholds.retrievalStaleMs });
   else if (!input.retrieval.ts || !Number.isFinite(Date.parse(input.retrieval.ts)) || typeof input.retrieval.queryHash !== "string" || input.retrieval.queryHash.length === 0 || !nonNegativeInteger(input.retrieval.returnedCount) || !nonNegativeFinite(input.retrieval.durationMs)) add("retrieval-evidence-invalid", "warn", "Retrieval evidence lacks a valid affirmative operation result.", input.retrieval);
-  else { const ageMs = input.nowMs - Date.parse(input.retrieval.ts); if (ageMs < 0) add("retrieval-future", "warn", "Retrieval timestamp is in the future and cannot prove freshness.", { ...input.retrieval, ageMs }); else if (ageMs > thresholds.retrievalStaleMs) add("retrieval-stale", "warn", `Retrieval evidence exceeds ${thresholds.retrievalStaleMs}ms freshness window.`, { ...input.retrieval, ageMs, thresholdMs: thresholds.retrievalStaleMs }); }
+  else { const ageMs = input.nowMs - Date.parse(input.retrieval.ts); if (ageMs < 0) add("retrieval-future", "warn", "Retrieval timestamp is in the future and cannot prove freshness.", { ...input.retrieval, ageMs }); else if (ageMs > thresholds.retrievalStaleMs) add("retrieval-stale", "warn", `Retrieval evidence older than ${fmtAge(thresholds.retrievalStaleMs)}.`, { ...input.retrieval, ageMs, thresholdMs: thresholds.retrievalStaleMs }); }
   if (!input.proposals || input.proposals.available === false) add("proposal-evidence-missing", "warn", "Proposal evidence is absent.", input.proposals); else { if (input.proposals.malformedLines?.length) add("proposal-evidence-malformed", "warn", "Proposal JSONL is malformed.", input.proposals); if (input.proposals.pending > thresholds.proposalBacklog) add("proposal-backlog-high", "warn", `Pending proposal backlog ${input.proposals.pending} exceeds threshold ${thresholds.proposalBacklog}.`, { ...input.proposals, threshold: thresholds.proposalBacklog }); }
-  if (!input.observability || input.observability.available === false) add("observability-evidence-missing", "warn", "Observability evidence is absent.", input.observability); else { if (input.observability.bytes > thresholds.observabilityMaxBytes) add("observability-bytes-exceeded", "warn", `Observability logs use ${input.observability.bytes} bytes, above ${thresholds.observabilityMaxBytes}.`, { ...input.observability, maxBytes: thresholds.observabilityMaxBytes }); if (input.observability.oldestMs != null) { const ageMs = input.nowMs - input.observability.oldestMs; if (ageMs > thresholds.observabilityMaxAgeMs) add("observability-age-exceeded", "warn", `Oldest observability log is ${ageMs}ms old, above ${thresholds.observabilityMaxAgeMs}.`, { ...input.observability, ageMs, maxAgeMs: thresholds.observabilityMaxAgeMs }); } }
-  if (!input.index || input.index.status === "absent") add("index-evidence-missing", "warn", "Index state is ambiguous.", input.index); else if (input.index.status === "mismatch" || input.index.status === "invalid") add(input.index.status === "mismatch" ? "index-integrity-mismatch" : "index-manifest-invalid", "critical", "Index integrity evidence failed.", input.index); else if (input.index.status === "ok" && (input.index.ageMs == null || input.index.ageMs < 0)) add("index-freshness-invalid", "warn", "Index freshness is not measurable.", input.index); else if (input.index.status === "ok" && input.index.ageMs! > thresholds.indexStaleMs) add("index-stale", "warn", "Index exceeds freshness threshold.", input.index);
+  if (!input.observability || input.observability.available === false) add("observability-evidence-missing", "warn", "Observability evidence is absent.", input.observability); else {
+    // Growth per stream, not the folder total: a total fires late and names nothing
+    // (observability-growth ISA, 2026-10-07). Budgets: USER/CONFIG/observability-budgets.json.
+    for (const o of input.observability.overBudget ?? []) { const [grew, cap] = fmtPair(o.bytes, o.budget, fmtBytes); add(`observability-over-budget:${o.stream}`, "warn", `${o.stream} grew ${grew} in 24h, budget ${cap}.`, o); }
+    // Newest write, not oldest file (public PR #1920, @mcardinali-data): a quiet
+    // pipeline is the failure; old files are retention.
+    if (input.observability.newestMs != null) { const ageMs = input.nowMs - input.observability.newestMs; if (ageMs > thresholds.observabilityMaxAgeMs) { const [age, cap] = fmtPair(ageMs, thresholds.observabilityMaxAgeMs, fmtAge); add("observability-stale", "warn", `No observability write for ${age}, cap ${cap} — telemetry pipeline may be dead; check hook wiring.`, { ...input.observability, ageMs, maxAgeMs: thresholds.observabilityMaxAgeMs }); } }
+  }
+  // Name the file the operator can restore (public issue #2025, @MatiasBarboza): the
+  // marker has no runtime writer, so "ambiguous" alone left a permanent warn with no remedy.
+  if (!input.index || input.index.status === "absent") add("index-evidence-missing", "warn", 'Index state is ambiguous: neither an index manifest nor LIFEOS/CORTEX_INDEX_POLICY.json exists. Restore the shipped marker ({"schema":"lifeos-cortex-index-policy/v1","policy":"no-index-v1"}) to declare the no-index-v1 baseline.', input.index); else if (input.index.status === "mismatch" || input.index.status === "invalid") add(input.index.status === "mismatch" ? "index-integrity-mismatch" : "index-manifest-invalid", "critical", "Index integrity evidence failed.", input.index); else if (input.index.status === "ok" && (input.index.ageMs == null || input.index.ageMs < 0)) add("index-freshness-invalid", "warn", "Index freshness is not measurable.", input.index); else if (input.index.status === "ok" && input.index.ageMs! > thresholds.indexStaleMs) add("index-stale", "warn", "Index exceeds freshness threshold.", input.index);
   const overall: Severity = findings.some(f => f.severity === "critical") ? "critical" : findings.some(f => f.severity === "warn") ? "warn" : "ok";
   return { overall, findings, thresholds };
 }
@@ -114,18 +182,27 @@ function runMs(runId?: string): number {
 
 function reviewerEvidence(obs: string, nowMs: number, thresholds: CortexThresholds): ReviewerEvidence {
   const log = join(obs, "reviewer-runs.jsonl");
-  const parsed = readJsonl(log);
+  // Both reads guarded: an EISDIR/ENOTDIR/EACCES here used to abort the whole
+  // script before any later check ran (public issue #1983, @spazbg).
+  let parsed: ReturnType<typeof readJsonl>;
+  try { parsed = readJsonl(log); } catch (err) { return { status: "unreadable", unreadable: "log", evidence: log, error: err instanceof Error ? err.message : String(err) }; }
   const latest = parsed.rows.at(-1);
   if (parsed.malformedLines.length) return { status: "parse-failed", evidence: log, error: `malformed JSONL lines: ${parsed.malformedLines.join(",")}` };
   const runsDir = join(obs, "reviewer-runs");
-  const dirs = existsSync(runsDir) ? readdirSync(runsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : [];
+  let dirs: string[];
+  try { dirs = existsSync(runsDir) ? readdirSync(runsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : []; }
+  catch (err) { return { status: "unreadable", unreadable: "runs", evidence: runsDir, error: err instanceof Error ? err.message : String(err) }; }
   const latestDir = dirs.at(-1);
   const latestDirMs = runMs(latestDir);
   const latestRowMs = latest?.ts ? Date.parse(latest.ts) : runMs(latest?.runId);
+  // Trailing non-ok streak, stepping over skips (public issue #1907, @xmasyx).
+  let streak = 0;
+  for (let i = parsed.rows.length - 1; i >= 0; i--) { const r = parsed.rows[i]; if (r?.skipped === true) continue; if (r?.ok === false || r?.parse_ok === false) streak++; else break; }
   if (latestDir && Number.isFinite(latestDirMs) && (!Number.isFinite(latestRowMs) || latestDirMs > latestRowMs)) {
     const path = join(runsDir, latestDir);
-    if (existsSync(join(path, "parse-error.txt"))) return { status: "parse-failed", ts: new Date(latestDirMs).toISOString(), runId: latestDir, evidence: join(path, "parse-error.txt"), priorSuccesses: parsed.rows.filter((r) => r.ok === true).length };
-    if (nowMs - latestDirMs > thresholds.reviewerRunGraceMs) return { status: "timed-out", ts: new Date(latestDirMs).toISOString(), runId: latestDir, evidence: path, error: `no terminal reviewer row within ${thresholds.reviewerRunGraceMs}ms`, priorSuccesses: parsed.rows.filter((r) => r.ok === true).length };
+    // The run dir without a terminal row is itself one more non-ok run.
+    if (existsSync(join(path, "parse-error.txt"))) return { status: "parse-failed", ts: new Date(latestDirMs).toISOString(), runId: latestDir, evidence: join(path, "parse-error.txt"), priorSuccesses: parsed.rows.filter((r) => r.ok === true).length, streak: streak + 1 };
+    if (nowMs - latestDirMs > thresholds.reviewerRunGraceMs) return { status: "timed-out", ts: new Date(latestDirMs).toISOString(), runId: latestDir, evidence: path, error: `no terminal reviewer row within ${thresholds.reviewerRunGraceMs}ms`, priorSuccesses: parsed.rows.filter((r) => r.ok === true).length, streak: streak + 1 };
   }
   if (!latest) return { status: "missing", evidence: `${log} and ${runsDir}` };
   const error = String(latest.error ?? "");
@@ -135,23 +212,24 @@ function reviewerEvidence(obs: string, nowMs: number, thresholds: CortexThreshol
   }
   const validSuccess = validReviewerSuccess(latest);
   const status: ReviewerEvidence["status"] = latest.ok === false || latest.parse_ok === false ? (/timeout/i.test(error) ? "timed-out" : latest.parse_ok === false ? "parse-failed" : "failed") : validSuccess ? "ok" : "invalid";
-  return { status, ts: latest.ts, runId: latest.runId, evidence: `${log}:latest`, error: latest.error, priorSuccesses: parsed.rows.slice(0, -1).filter((r) => r.ok === true).length };
+  return { status, ts: latest.ts, runId: latest.runId, evidence: `${log}:latest`, error: latest.error, priorSuccesses: parsed.rows.slice(0, -1).filter((r) => r.ok === true).length, streak };
 }
 
-function observabilityEvidence(obs: string): CortexEvidence["observability"] {
-  if (!existsSync(obs)) return { bytes: 0, oldestMs: null, files: 0, evidence: obs, available: false };
-  let bytes = 0; let oldestMs: number | null = null; let files = 0;
+function observabilityEvidence(obs: string, budgetsPath: string, nowMs: number): CortexEvidence["observability"] {
+  if (!existsSync(obs)) return { bytes: 0, newestMs: null, files: 0, evidence: obs, available: false };
+  let bytes = 0; let newestMs: number | null = null; let files = 0;
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) walk(path);
       else if (entry.isFile() && (entry.name.endsWith(".jsonl") || entry.name.endsWith(".log"))) {
-        const st = statSync(path); bytes += st.size; files++; oldestMs = oldestMs == null ? st.mtimeMs : Math.min(oldestMs, st.mtimeMs);
+        const st = statSync(path); bytes += st.size; files++; newestMs = newestMs == null ? st.mtimeMs : Math.max(newestMs, st.mtimeMs); // public PR #1920, @mcardinali-data
       }
     }
   };
   walk(obs);
-  return { bytes, oldestMs, files, evidence: obs, available: files > 0 };
+  const overBudget = overBudgetStreams(streamGrowth(obs, nowMs), loadBudgets(budgetsPath));
+  return { bytes, newestMs, files, evidence: obs, available: files > 0, overBudget };
 }
 
 export function canonicalCorpusDigest(memoryRoot: string): { digest: string; files: number; bytes: number } {
@@ -208,5 +286,5 @@ export function collectCortexEvidence(options: CollectCortexOptions): CortexEvid
   const manifest = options.indexManifest ?? join(memoryRoot, "INDEX/index-manifest.json");
   return { nowMs, thresholds, reviewer: reviewerEvidence(obs, nowMs, thresholds),
     retrieval: retrieval.malformedLines.length ? { status: "invalid", evidence: retrievalLog, malformedLines: retrieval.malformedLines } : validRetrievalRow(retrievalLast) ? { status: "ok", ts: retrievalLast.ts as string, queryHash: retrievalLast.query_hash as string, returnedCount: retrievalLast.returned_count as number, durationMs: retrievalLast.duration_ms as number, evidence: `${retrievalLog}:latest` } : retrievalLast ? { status: "invalid", evidence: `${retrievalLog}:latest` } : { status: "missing", evidence: retrievalLog },
-    proposals: { pending: proposals.rows.filter(row => row.status === "pending").length, evidence: proposalLog, available: proposals.exists, malformedLines: proposals.malformedLines }, observability: observabilityEvidence(obs), index: indexEvidence(memoryRoot, manifest, join(options.root, "LIFEOS/CORTEX_INDEX_POLICY.json"), nowMs) };
+    proposals: { pending: proposals.rows.filter(row => row.status === "pending").length, evidence: proposalLog, available: proposals.exists, malformedLines: proposals.malformedLines }, observability: observabilityEvidence(obs, join(options.root, "LIFEOS/USER/CONFIG/observability-budgets.json"), nowMs), index: indexEvidence(memoryRoot, manifest, join(options.root, "LIFEOS/CORTEX_INDEX_POLICY.json"), nowMs) };
 }

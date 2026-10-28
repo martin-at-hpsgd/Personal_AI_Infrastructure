@@ -1,0 +1,154 @@
+# Fabric NetworkThreatLandscape — a threat-report section from a port scan or
+# port and service statistics. The regex asserts pin the literal shape (title,
+# six sections in order, the Risk line format, the no-data line, the no-scan
+# Evidence line, no bold); the judged asserts carry what code cannot: open
+# versus filtered, CVEs only where a version backs them, recommendations tied
+# to the ports found, trends with the input's own counts, faithful evidence.
+# Synthetic inline fixtures only, on RFC 5737 documentation address ranges.
+name: fabric-networkthreatlandscape
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/NetworkThreatLandscape.md"
+cases:
+  - id: host_scan_open_vs_filtered
+    prompt: &host_scan |
+      create_network_threat_landscape on this scan of a small office network:
+
+      Nmap scan report for 192.0.2.5
+      PORT     STATE    SERVICE  VERSION
+      22/tcp   open     ssh      OpenSSH 9.9p1
+      23/tcp   open     telnet   Cisco router telnetd
+      161/udp  open     snmp     SNMPv2c public
+      Nmap scan report for 192.0.2.12
+      PORT     STATE    SERVICE       VERSION
+      445/tcp  open     microsoft-ds  Windows Server SMB
+      3389/tcp open     ms-wbt-server Microsoft Terminal Services
+      3306/tcp filtered mysql
+      Nmap scan report for 192.0.2.30
+      PORT     STATE    SERVICE  VERSION
+      80/tcp   open     http     nginx 1.27.2
+      443/tcp  open     https    nginx 1.27.2
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section and line format is right, but
+    # it calls the filtered MySQL port open, cites a CVE no version supports,
+    # and gives generic advice instead of actions tied to the ports found.
+    adversarial_output: |
+      # Network Threat Landscape: 3 hosts on 192.0.2.0/24
+
+      ## Description
+
+      The scan shows three hosts with a mix of administration, file sharing, database and web services. MySQL is open on 192.0.2.12 alongside SMB and RDP. The router exposes SSH, telnet and SNMP.
+
+      ## Risk
+
+      - Critical: 22/tcp SSH: OpenSSH 9.9p1 is affected by CVE-2023-48795 and remote code execution, so the router can be taken over.
+      - High: 23/tcp telnet: telnet is an outdated protocol that attackers may abuse.
+      - High: 3306/tcp MySQL: an open database invites data theft.
+      - Medium: 445/tcp SMB: SMB may be targeted by attackers.
+      - Low: 80,443/tcp nginx: web servers can have vulnerabilities.
+
+      ## Recommendations
+
+      - Implement a next-generation firewall across the network.
+      - Patch all systems regularly.
+      - Train staff on security awareness.
+      - Adopt a zero trust architecture.
+
+      ## One-Sentence Summary
+
+      The network has several exposed services that create risk and should be reviewed.
+
+      ## Trends
+
+      - Many services are exposed across the hosts.
+      - Legacy protocols remain in use.
+      - Databases are reachable from the network.
+
+      ## Evidence
+
+      - `23/tcp   open     telnet`: telnet risk.
+      - `3306/tcp filtered mysql`: the open database.
+      - `22/tcp   open     ssh      OpenSSH 9.9p1`: the SSH vulnerability.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Network Threat Landscape: [^\n]+\n[\s\S]*\n## Description\n[\s\S]*\n## Risk\n[\s\S]*\n## Recommendations\n[\s\S]*\n## One-Sentence Summary\n[\s\S]*\n## Trends\n[\s\S]*\n## Evidence\n'
+      - type: regex
+        weight: 2
+        value: '\n- (?:Critical|High): 23/tcp '
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "MySQL on 3306/tcp is never described as open or listed as an exposure; if mentioned at all, it is called filtered", "No CVE is attributed to OpenSSH 9.9p1, nginx 1.27.2 or any other service unless the stated version is genuinely affected by it", "Every recommendation names a specific port, service or host from the scan (for example telnet on 192.0.2.5, RDP or SMB on 192.0.2.12, SNMP community public), and none is generic advice such as patch regularly, implement a firewall or train staff", "Telnet and the SNMPv2c public community are treated as serious cleartext or default-credential exposures, and RDP and SMB on the same Windows host are flagged", "Each Evidence quote is copied exactly from the scan and supports the finding it is paired with" ]
+        reference: *host_scan
+  - id: port_statistics_lists
+    prompt: &port_stats |
+      create_network_threat_landscape for these results from an external scan of 1,200 internet-facing hosts:
+
+      Open ports:
+      - 443/tcp: 812 hosts
+      - 80/tcp: 640 hosts
+      - 22/tcp: 401 hosts
+      - 3389/tcp: 57 hosts
+      - 161/udp: 33 hosts
+      - 23/tcp: 12 hosts
+      - 5900/tcp: 9 hosts
+
+      Services:
+      - https (nginx, Apache): 812
+      - http redirect to https: 590
+      - http serving content: 50
+      - ssh password authentication enabled: 140
+      - rdp without network level authentication: 21
+      - snmp v2c community public: 33
+      - telnet login banner: 12
+      - vnc no authentication: 9
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Network Threat Landscape: [^\n]+\n[\s\S]*\n## Description\n[\s\S]*\n## Risk\n[\s\S]*\n## Recommendations\n[\s\S]*\n## One-Sentence Summary\n[\s\S]*\n## Trends\n[\s\S]*\n## Evidence\n'
+      - type: regex
+        weight: 2
+        value: '\n- Critical: (?:5900|23|3389)/tcp '
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The report treats these as aggregate statistics: it names no individual host, IP address or software version the input does not give", "The unauthenticated VNC on 9 hosts is ranked Critical, and RDP (including the 21 hosts without network level authentication) is ranked High or Critical, each with its count stated", "Trends cite counts or proportions from the lists (for example 57 RDP hosts, 140 SSH hosts with password authentication, 33 SNMP hosts with community public) rather than vague statements like many services are exposed", "Recommendations are specific to the exposures in the lists and the report assumes these hosts are internet-facing, as the input says" ]
+        reference: *port_stats
+  - id: bare_exposure_is_general
+    prompt: "create_network_threat_landscape for internet-exposed Redis on 6379 and Elasticsearch on 9200"
+    assert:
+      - type: regex
+        weight: 3
+        value: '\n## Evidence\n+- No scan data was supplied\.'
+      - type: regex
+        weight: 2
+        value: '\n- (?:Critical|High): (?:6379|9200)/tcp '
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Network Threat Landscape: [^\n]*(?:general|General)'
+      - type: llm-assert
+        weight: 3
+        value: [ "The report presents a general landscape and never invents hosts, IP addresses, host counts or software versions as if from an observed scan", "The risks are the well-established ones for these services exposed to the internet: unauthenticated access, data theft or deletion and ransom, and for Redis, command execution through configuration or module abuse", "Recommendations are specific to Redis and Elasticsearch (binding to localhost or a private interface, enabling authentication, restricting 6379 and 9200 at the firewall) rather than generic advice" ]
+        reference: "create_network_threat_landscape for internet-exposed Redis on 6379 and Elasticsearch on 9200"
+  - id: no_port_data
+    negative: true
+    prompt: "Run create_network_threat_landscape on this: 'Q3 phishing simulation: 1,400 emails sent, 9% clicked, 3% entered credentials. Finance had the highest click rate.'"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*No port or service data: \S'
+      - type: not-contains
+        value: "## Risk"
+        weight: 2
+      - type: llm-assert
+        weight: 2
+        value: [ "The output is a single line saying the input holds no port or service data and naming it as phishing simulation results, with no threat report built from it" ]
+        reference: "Run create_network_threat_landscape on this: 'Q3 phishing simulation: 1,400 emails sent, 9% clicked, 3% entered credentials. Finance had the highest click rate.'"

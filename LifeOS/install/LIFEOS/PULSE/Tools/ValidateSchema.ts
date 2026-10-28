@@ -45,7 +45,7 @@ try {
   process.exit(1);
 }
 
-// If the file is a Data Plane wrapper {schemaVersion, data, _meta}, validate the inner data.
+// If the file is a page wrapper {schemaVersion, data, _meta} (the format the Data Plane, retired 2026-10-14, wrote), validate the inner data.
 if (raw && typeof raw === "object" && "schemaVersion" in raw && "data" in raw && "_meta" in raw) {
   raw = (raw as { data: unknown }).data;
 }

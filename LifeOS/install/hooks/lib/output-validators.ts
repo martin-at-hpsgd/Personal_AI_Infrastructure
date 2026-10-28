@@ -1,4 +1,5 @@
 /**
+ * @version 1.2.6
  * output-validators.ts - Validation for voice and tab title outputs
  *
  * Single source of truth for what constitutes valid/invalid output
@@ -176,6 +177,27 @@ export function getQuestionFallback(): string {
 }
 
 
+// ─── Gerund ───────────────────────────────────────────────────
+
+// A final consonant doubles only after one stressed short vowel: every one-syllable
+// CVC word (stop, scan, grab), plus the few longer verbs stressed on the last
+// syllable. A length rule cannot tell "audit" from "debug" (2026-10-09: "Auditted",
+// "openning", "setupping"), so the longer ones are named.
+const DOUBLE_FINAL = new Set(['debug', 'refer', 'prefer', 'begin', 'commit', 'submit', 'admit', 'omit', 'permit', 'forget', 'regret', 'upset', 'control', 'patrol', 'compel', 'unzip', 'equip', 'rerun']);
+const IRREGULAR_GERUND: Record<string, string> = { setup: 'setting up' };
+
+/** Imperative verb → gerund, lowercase: "Fix" → "fixing", "audit" → "auditing". */
+export function toGerund(verb: string): string {
+  const v = verb.toLowerCase();
+  if (IRREGULAR_GERUND[v]) return IRREGULAR_GERUND[v];
+  // Already a gerund only when what precedes "ing" could be a verb: "bring" and "string" are not.
+  if (v.endsWith('ing') && /[aeiouy]/.test(v.slice(0, -3)) && v.length > 4) return v;
+  if (v.endsWith('ie')) return v.slice(0, -2) + 'ying';
+  if (v.endsWith('e') && !/[eoy]e$/.test(v)) return v.slice(0, -1) + 'ing';
+  if (DOUBLE_FINAL.has(v) || /^[^aeiou]*[aeiou][bdfgklmnprstvz]$/.test(v)) return v + v.slice(-1) + 'ing';
+  return v + 'ing';
+}
+
 // ─── Past Tense Conversion ─────────────────────────────────────
 
 const IRREGULAR_PAST: Record<string, string> = {
@@ -183,12 +205,18 @@ const IRREGULAR_PAST: Record<string, string> = {
   making: 'Made', finding: 'Found', getting: 'Got', setting: 'Set',
   doing: 'Did', sending: 'Sent', keeping: 'Kept', putting: 'Put',
   losing: 'Lost', telling: 'Told', understanding: 'Understood',
+  rebuilding: 'Rebuilt', rewriting: 'Rewrote', rethinking: 'Rethought', thinking: 'Thought',
+  bringing: 'Brought', giving: 'Gave', seeing: 'Saw', hiding: 'Hid', redoing: 'Redid',
+  shrinking: 'Shrank', taking: 'Took', choosing: 'Chose', breaking: 'Broke', rerunning: 'Reran',
 };
 
 /**
  * Convert a gerund to past tense: "Fixing" → "Fixed", "Building" → "Built".
  */
 export function gerundToPastTense(gerund: string): string {
+  // "Setting up" → "Set up": only the first word is the verb.
+  const sp = gerund.indexOf(' ');
+  if (sp > 0) return gerundToPastTense(gerund.slice(0, sp)) + gerund.slice(sp);
   const lower = gerund.toLowerCase();
 
   // Check irregular map first

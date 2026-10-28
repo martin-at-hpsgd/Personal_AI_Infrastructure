@@ -1,0 +1,8 @@
+[
+  {
+    "path": "_docs (this entry matches no file; keep it or delete it)",
+    "reason": "Allowlist for LIFEOS/TOOLS/SkillHygieneGate.ts and the private-skill write tooth in hooks/lib/system-file-guard-core.ts. The file must be a JSON array of {path, reason, added, scope?}. `path` is repo-relative from ~/.claude (e.g. skills/_MYSKILL/Tools/Scrub.ts); a trailing slash means directory prefix. `scope` is \"all\" (default: suppress deny-list AND name hits) or \"names\" (suppress only plain-name hits, for attribution-by-design files). Add an entry only for a file that legitimately embeds a deny-listed token by function, such as release tooling that greps for the patterns.",
+    "added": "1970-01-01",
+    "scope": "names"
+  }
+]

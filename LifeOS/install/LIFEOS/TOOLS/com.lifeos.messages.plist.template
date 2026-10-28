@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.lifeos.messages.plist.template - Source template. Install via:
+    bun ~/.claude/LIFEOS/TOOLS/InstallMessagesSync.ts
+  Runs the compiled Messages reader every 300s: copies new inbound iMessages
+  from ~/Library/Messages/chat.db (read-only) into a private 0600 inbox the
+  10-minute heartbeat reads. The program is the compiled binary, never bun,
+  so Full Disk Access is granted to this one reader alone. Headless; one
+  counts-only row per run in MEMORY/OBSERVABILITY/messages-reader.jsonl.
+  Template stays clean of principal-specific paths.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeos.messages</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{BIN}}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>StandardOutPath</key>
+  <string>{{CLAUDE_DIR}}/LIFEOS/MEMORY/OBSERVABILITY/messages-reader-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{CLAUDE_DIR}}/LIFEOS/MEMORY/OBSERVABILITY/messages-reader-launchd.log</string>
+  <key>WorkingDirectory</key>
+  <string>{{CLAUDE_DIR}}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>LIFEOS_ROOT</key>
+    <string>{{CLAUDE_DIR}}</string>
+    <key>LIFEOS_NOTIFICATION_CHANNEL</key>
+    <string>headless</string>
+  </dict>
+</dict>
+</plist>

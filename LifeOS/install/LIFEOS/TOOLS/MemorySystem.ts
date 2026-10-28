@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.26
  * MemorySystem — single public API for the LifeOS memory subsystem.
  *
  * LifeOS autonomic memory subsystem, F12.
  *
  * The 30-second story this code implements:
  *
- *   {{DA_NAME}} has one memory system. Every item in it has a type — memory, idea,
+ *   The DA has one memory system. Every item in it has a type — memory, idea,
  *   knowledge, or proposal. A background reviewer reads recent conversation
  *   and emits typed items. The system routes each item to the right place
  *   based on type. Memory items load into every prompt. Ideas and knowledge
@@ -43,17 +44,24 @@ import {
   existsSync,
   fsyncSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readFileSync,
+  realpathSync,
   renameSync,
+  rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve as pathResolve, join as pathJoin } from "node:path";
-import { homedir, hostname } from "node:os";
+import { getClaudeDir } from "./Paths"; // public issue #1665 @rogdex24, #1584 @ramazanpolat — aliased resolve sites missed by the 09-03 sweep
+import { basename, dirname, resolve as pathResolve, join as pathJoin, sep as pathSep } from "node:path";
+import { homedir, hostname, tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 
 import { invariant, InvariantViolation } from "./Invariant";
+import { assertAnswerArtifact } from "./AnswerArtifact";
 
 import {
   TYPE_REGISTRY,
@@ -77,14 +85,15 @@ import { setEntries as memoryWriterSetEntries, read as memoryWriterRead } from "
 import { classifyScope } from "./ProposalScope";
 import { addUpgrade } from "./Upgrades";
 import { getTier } from "./MutationTier";
-import { getRelevantContext, type RelevantResultItem } from "./MemoryRetriever";
+import { getRelevantContext, type RelevantResultItem, bumpMemoryGeneration } from "./MemoryRetriever";
 import { mintId, slugFromPath, SCHEMA_VERSION } from "./KnowledgeSchema";
 import { stripPrivateContent } from "./CaptureEnvelope";
-import { assertInsideUserData } from "./lib/ForeignDataCheck";
+import { assertInsideUserData, userDataRoot } from "./lib/ForeignDataCheck";
+import { atomicWrite, LockBusyError, withLock } from "./lib/Boundary";
 
 // ── Constants ──
 
-const CLAUDE_ROOT = pathResolve(homedir(), ".claude");
+const CLAUDE_ROOT = getClaudeDir();
 
 // ── Result types ──
 
@@ -231,91 +240,74 @@ export function staleLockReason(lockPath: string): LockReason | null {
 }
 
 /**
- * Break a stale lock race-safely: rename it aside, then re-create with O_EXCL so
- * at most one of several concurrent recoverers wins. Returns the new fd, or null
- * if we lost the race (another writer got there first — respect it).
+ * What sat at the lock path before this attempt, read without any liveness probe, so a successful
+ * call can report that it recovered a stale lock. Null when there was no lock.
  */
-function breakStaleLock(lockPath: string): number | null {
-  const asidePath = `${lockPath}.stale.${process.pid}`;
+function priorLockReason(lockPath: string): LockReason | null {
+  let raw: string;
+  try { raw = readFileSync(lockPath, "utf8"); } catch { return null; }
   try {
-    renameSync(lockPath, asidePath);
-  } catch {
-    return null; // someone else already moved it
-  }
-  try {
-    const fd = openSync(lockPath, "wx");
-    try { unlinkSync(asidePath); } catch { /* best-effort */ }
-    return fd;
-  } catch {
-    try { unlinkSync(asidePath); } catch { /* best-effort */ }
-    return null;
-  }
+    const stamp = JSON.parse(raw) as { pid?: unknown; host?: unknown };
+    if (stamp.host === hostname() && typeof stamp.pid === "number") return "holder-process-gone";
+  } catch { /* unreadable or pre-stamp lockfile */ }
+  return "expired-unverifiable-holder";
 }
 
 // ── Append-write primitive for Tier B types ──
 
-/** Exported for `test/tools/MemorySystem.lock.test.ts` (acquire / recover / release). */
+/**
+ * Append `content` to a Tier-B note under its per-note lock. The lock is the shared Boundary.withLock:
+ * a stale lock is broken only after re-checking it is still the exact lock judged stale, so two
+ * recoverers acting on one stale observation never both enter.
+ * `timeoutMs: 0` keeps the old contract: a live holder refuses the write rather than queueing it.
+ * Exported for `test/tools/MemorySystem.lock.test.ts` (acquire / recover / release).
+ */
 export function appendToTierBFile(filePath: string, content: string): { ok: true; bytes: number } | AddError {
   const lockPath = `${filePath}.lock`;
-  let fd: number | null = null;
+  const prior = priorLockReason(lockPath);
   try {
-    mkdirSync(dirname(filePath), { recursive: true });
-    fd = openSync(lockPath, "wx");
+    const bytes = withLock(lockPath, () => appendUnderLock(filePath, content), { timeoutMs: 0, staleMs: LOCK_STALE_MS });
+    if (prior !== null) logLockEvent("stale_lock_recovered", lockPath, prior, `Recovered stale lock at ${lockPath}`);
+    return { ok: true, bytes };
   } catch (e: any) {
-    if (e?.code !== "EEXIST") {
-      return { ok: false, code: "EWRITE_FAILED", message: `Failed to acquire lock: ${e?.message}` };
-    }
-    const reason = staleLockReason(lockPath);
-    if (reason === null || reason === "unverifiable-holder-within-ttl") {
+    if (e instanceof InvariantViolation) throw e; // impossible states die loud, never as typed errors
+    if (e instanceof LockBusyError) {
       // `null` means the holder is provably alive — a distinct operator signal
       // from "we could not verify it", so it must not be collapsed into one code.
+      const reason = existsSync(lockPath) ? staleLockReason(lockPath) : null;
       logLockEvent("lock_contended", lockPath, reason ?? "holder-alive", `Lock held: ${lockPath}`);
       return { ok: false, code: "EWRITE_FAILED", message: `Lock held: ${lockPath}` };
     }
-    fd = breakStaleLock(lockPath);
-    if (fd === null) {
-      logLockEvent("lock_contended", lockPath, "holder-alive", `Lost the recovery race for ${lockPath}`);
-      return { ok: false, code: "EWRITE_FAILED", message: `Lock held: ${lockPath}` };
-    }
-    logLockEvent("stale_lock_recovered", lockPath, reason, `Recovered stale lock at ${lockPath}`);
-  }
-
-  // Stamp the holder so the next contender can prove liveness instead of
-  // waiting out the TTL. Best-effort: a failed stamp only costs evidence.
-  try {
-    writeFileSync(lockPath, JSON.stringify({ pid: process.pid, host: hostname(), ts: new Date().toISOString() }), "utf8");
-  } catch { /* the lock still holds; the next contender falls back to age */ }
-
-  try {
-    const tmpPath = `${filePath}.tmp`;
-    const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
-    const newContent = existing.length > 0 && !existing.endsWith("\n")
-      ? existing + "\n" + content
-      : existing + content;
-
-    // A tier-B append may add content but never lose or reorder what was
-    // already on disk — this rewrite-then-rename path would corrupt silently.
-    invariant(newContent.startsWith(existing), "tier-B append must preserve existing content as a prefix");
-    invariant(newContent.endsWith(content), "tier-B append must end with the appended content");
-
-    writeFileSync(tmpPath, newContent, "utf8");
-    const fdSync = openSync(tmpPath, "r+");
-    try { fsyncSync(fdSync); } finally { closeSync(fdSync); }
-    renameSync(tmpPath, filePath);
-
-    return { ok: true, bytes: Buffer.byteLength(content, "utf8") };
-  } catch (e: any) {
-    if (e instanceof InvariantViolation) throw e; // impossible states die loud, never as typed errors
     return { ok: false, code: "EWRITE_FAILED", message: `Append failed: ${e?.message}`, underlying: e };
-  } finally {
-    try { if (fd !== null) closeSync(fd); } catch { /* ignore */ }
-    try { unlinkSync(lockPath); } catch { /* ignore */ }
   }
+}
+
+/** The append itself; runs only while the note's lock is held. Returns the bytes appended. */
+function appendUnderLock(filePath: string, content: string): number {
+  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+  const newContent = existing.length > 0 && !existing.endsWith("\n")
+    ? existing + "\n" + content
+    : existing + content;
+
+  // A tier-B append may add content but never lose or reorder what was
+  // already on disk — this rewrite-then-rename path would corrupt silently.
+  invariant(newContent.startsWith(existing), "tier-B append must preserve existing content as a prefix");
+  invariant(newContent.endsWith(content), "tier-B append must end with the appended content");
+  assertAnswerArtifact(newContent);
+
+  // Keep an existing note's mode; a new note is owner-only. Boundary.atomicWrite writes a fresh,
+  // exclusively created temp file and renames it over the note, so nothing planted is written through.
+  let priorMode: number | undefined;
+  try { priorMode = statSync(filePath).mode & 0o777; } catch { /* new note: owner-only */ }
+  // Older builds used a predictable `.tmp` sibling; drop one left behind (unlink removes a symlink itself, never its target).
+  try { unlinkSync(`${filePath}.tmp`); } catch { /* absent is the normal case */ }
+  atomicWrite(filePath, newContent, { mode: priorMode ?? 0o600 });
+  return Buffer.byteLength(content, "utf8");
 }
 
 // ── Proposal queue ──
 
-function enqueueProposal(item: TypedItem & { type: "proposal" }): { ok: true; id: string } | AddError {
+function enqueueProposal(item: TypedItem & { type: "proposal" }): { ok: true; id: string; status: "queued" | "rerouted-to-upgrades" } | AddError {
   const id = generateProposalId();
   const path = resolveStoragePath(item);
   // P1 2026-05-25: persist the subtype discriminator onto the queue row so
@@ -334,8 +326,8 @@ function enqueueProposal(item: TypedItem & { type: "proposal" }): { ok: true; id
   // ── Scope gate (2026-07-31) ────────────────────────────────────────────────
   // `target_kind` decides WHICH curated file a proposal belongs to; it says
   // nothing about WHO needs the rule loaded. Without a scope axis every
-  // rule-shaped signal landed in an @-imported file. Audit of OPERATIONAL_RULES'
-  // tail: 7 of 10 entries were skill- or project-scoped, carried into every turn
+  // rule-shaped signal landed in an @-imported file. An audit of OPERATIONAL_PREFERENCES'
+  // tail found most entries were skill- or project-scoped, carried into every turn
   // for the benefit of one skill.
   //
   // Only the kinds whose target is @-imported are gated. `projects` is exempt by
@@ -354,7 +346,12 @@ function enqueueProposal(item: TypedItem & { type: "proposal" }): { ok: true; id
         session_id: item.source_session ?? undefined,
         evidence: [`memory-proposal:${id}`],
       });
-      return { ok: true, id: r.id || id };
+      // GHSA-hm8c-cj5x-pw2q, @elhoim: no upgrade ID means nothing was recorded.
+      if (!r.id) {
+        return { ok: false, code: "EINVAL_ITEM", message: `Scope-gated proposal was not recorded as an upgrade: ${r.reason ?? "unknown"}` };
+      }
+      // GHSA-hm8c-cj5x-pw2q, @elhoim: no queue row exists for this ID.
+      return { ok: true, id: r.id, status: "rerouted-to-upgrades" };
     }
   }
 
@@ -376,7 +373,8 @@ function enqueueProposal(item: TypedItem & { type: "proposal" }): { ok: true; id
       }) + "\n",
       "utf8",
     );
-    return { ok: true, id };
+    bumpMemoryGeneration();
+    return { ok: true, id, status: "queued" };
   } catch (e: any) {
     return { ok: false, code: "EWRITE_FAILED", message: `Proposal enqueue failed: ${e?.message}` };
   }
@@ -403,7 +401,7 @@ function generateProposalId(): string {
  * subprocess) is responsible for trimming. add() surfaces the at-cap error
  * verbatim so the caller can re-submit with explicit eviction choices.
  */
-function addMemoryItem(item: TypedItem & { type: "memory" }, path: string): AddResult {
+function addMemoryItem(item: TypedItem & { type: "memory" }, path: string, expectedFingerprint?: string): AddResult {
   const current = memoryWriterRead(path);
   if ("code" in current) {
     return { ok: false, code: "EINVAL_ITEM", message: `Memory file unreadable: ${current.message}` };
@@ -431,7 +429,24 @@ function addMemoryItem(item: TypedItem & { type: "memory" }, path: string): AddR
     newEntries = [...current.entries, item.content.trim()];
   }
 
-  const writeResult = memoryWriterSetEntries(path, newEntries, { updatedBy: "MemorySystem.add" });
+  // Deliberate consolidation is the ONE case allowed to net-drop entries. The
+  // reviewer is instructed to merge-and-drop at >=80% occupancy, but nothing
+  // could ever express that intent, so MemoryWriter's erosion guard refused
+  // every consolidation write and the hot layer could only grow past the
+  // threshold (public issue #1905, @ksjayeshks). Bounded deliberately: the flag
+  // is honored ONLY for an explicit op:"set" AND only at/above the threshold,
+  // so it can never become a general erosion bypass.
+  const writeResult = memoryWriterSetEntries(path, newEntries, {
+    updatedBy: "MemorySystem.add",
+    sessionId: item.source_session ?? undefined,
+    // Pass the INTENT only. MemoryWriter decides whether it earns anything,
+    // in-lock against the just-read prior state — an occupancy check made here
+    // could go stale against a concurrent write, and reusing allowDrastic would
+    // have lifted the catastrophic-shrink guard too, letting a model-set flag
+    // authorize 48 -> 1 (public issue #1905, @ksjayeshks).
+    consolidation: item.op === "set" && item.consolidate === true,
+    expectedFingerprint,
+  });
   if (!writeResult.ok) {
     return {
       ok: false,
@@ -451,6 +466,7 @@ function addMemoryItem(item: TypedItem & { type: "memory" }, path: string): AddR
       dropped_malformed: writeResult.dropped_malformed,
       dropped_overlength: writeResult.dropped_overlength,
       dropped_duplicates: writeResult.dropped_duplicates,
+      fingerprint: writeResult.detail?.fingerprint,
     },
   };
 }
@@ -497,7 +513,7 @@ function renderRelatedBlock(related: RelatedLink[] | undefined): string {
  * envelope, not the per-type source requirement (Forge #7). `slug` is the note's
  * filename slug (for the stable id).
  */
-function renderInitialNote(item: TypedItem, slug: string): string {
+export function renderInitialNote(item: TypedItem, slug: string): string {
   const ts = new Date().toISOString();
   const isIdea = item.type === "idea";
   const isKnowledge = item.type === "knowledge";
@@ -524,7 +540,8 @@ function renderInitialNote(item: TypedItem, slug: string): string {
     `quality: ${quality}`,
     `quality_inferred: true`,
   ];
-  if (item.confidence != null) lines.push(`confidence: ${item.confidence}`);
+  const confidence = item.confidence ?? (canonicalType === "research" ? 0.7 : undefined);
+  if (confidence != null) lines.push(`confidence: ${confidence}`);
   lines.push(`source_kind: internal`);
   if (item.source_session && item.source_session !== "none") lines.push(`source_session: ${item.source_session}`);
   lines.push(
@@ -539,7 +556,9 @@ function renderInitialNote(item: TypedItem, slug: string): string {
     item.content.trim(),
     "",
   );
-  return lines.join("\n");
+  const note = lines.join("\n");
+  assertAnswerArtifact(note);
+  return note;
 }
 
 function renderAppendedSection(item: TypedItem & { type: "idea" | "knowledge" }): string {
@@ -652,6 +671,7 @@ function addNoteTypeItem(item: TypedItem & { type: "idea" | "knowledge" }, path:
   }
 
   logTierBWrite(path, totalBytes, item.type);
+  bumpMemoryGeneration();
   return {
     ok: true,
     type: item.type,
@@ -679,7 +699,7 @@ export function sanitizeTypedItemForPersistence(item: TypedItem): SanitizedItemR
 
   const raw = item as any;
   const schemas: Record<string, readonly string[]> = {
-    memory: ["type", "actor", "op", "content", "entries", "provenance", "confidence"],
+    memory: ["type", "actor", "op", "content", "entries", "provenance", "confidence", "consolidate"],
     idea: ["type", "title", "content", "source_session", "confidence", "related"],
     knowledge: ["type", "entity_type", "name", "content", "source_session", "confidence", "related"],
     proposal: ["type", "target_file", "target_kind", "edit", "confidence", "rationale", "observed_across_sessions", "source_session"],
@@ -769,8 +789,11 @@ export function sanitizeTypedItemForPersistence(item: TypedItem): SanitizedItemR
       if (raw.actor !== "principal" && raw.actor !== "assistant") return invalid("memory actor is invalid");
       if (raw.op !== undefined && raw.op !== "add" && raw.op !== "set") return invalid("memory op is invalid");
       if (raw.provenance !== undefined && !["explicit", "deduced", "inferred"].includes(raw.provenance)) return invalid("memory provenance is invalid");
+      if (raw.consolidate !== undefined && typeof raw.consolidate !== "boolean") return invalid("memory consolidate must be a boolean");
+      if (raw.consolidate === true && raw.op !== "set") return invalid("memory consolidate requires op:\"set\"");
       if (raw.op === "set") {
         if (!Array.isArray(cleaned.entries) || cleaned.entries.length === 0) return invalid("memory entries must be a non-empty array");
+        cleaned.consolidate = raw.consolidate === true;
       } else if (cleaned.content === undefined) {
         return invalid("memory content must be a non-empty string");
       }
@@ -807,7 +830,7 @@ export function sanitizeTypedItemForPersistence(item: TypedItem): SanitizedItemR
  * item's resolved storage path's mutation tier matches the type's declared
  * tier — a defense-in-depth check against registry/classifier drift.
  */
-export function add(item: TypedItem): AddResult {
+export function add(item: TypedItem, opts: { expectedFingerprint?: string } = {}): AddResult {
   if (!item || typeof item !== "object" || !("type" in item)) {
     return { ok: false, code: "EINVAL_ITEM", message: "Item missing 'type' field" };
   }
@@ -863,13 +886,13 @@ export function add(item: TypedItem): AddResult {
 
   switch (entry.write_mode) {
     case "set-overwrite":
-      return addMemoryItem(item as TypedItem & { type: "memory" }, path);
+      return addMemoryItem(item as TypedItem & { type: "memory" }, path, opts.expectedFingerprint);
     case "append":
       return addNoteTypeItem(item as TypedItem & { type: "idea" | "knowledge" }, path);
     case "queue": {
       const r = enqueueProposal(item as TypedItem & { type: "proposal" });
       if (!r.ok) return r;
-      return { ok: true, type: "proposal", path, detail: { id: r.id, status: "queued" } };
+      return { ok: true, type: "proposal", path, detail: { id: r.id, status: r.status } };
     }
   }
 }
@@ -905,21 +928,105 @@ export function find(query: string, options: FindOptions = {}): FindResult[] {
 
 // ── CLI ──
 
+// The smoke test never touches the memory root this process would use. It used to mutate the live
+// PRINCIPAL_MEMORY.md and write knowledge notes, the proposal queue, the ledger and snapshots, then
+// overwrite the memory file with a byte copy taken at the start, undoing any concurrent write and any
+// redaction made meanwhile. Now `test` builds a throwaway install
+// under the temp directory, re-runs itself there with every root pointed at it, and removes it.
+const SMOKE_ROOT_ENV = "LIFEOS_MEMORY_SMOKE_ROOT";
+const SMOKE_PREFIX = "lifeos-memory-smoke-";
+
+/** True when `real` is a directory this smoke test made: directly under the real temp dir, with the smoke prefix. */
+function isSmokeSandbox(real: string): boolean {
+  let tmpReal: string;
+  try { tmpReal = realpathSync(tmpdir()); } catch { return false; }
+  return dirname(real) === tmpReal && basename(real).startsWith(SMOKE_PREFIX) && basename(real).length > SMOKE_PREFIX.length;
+}
+
+/** `p`, or its deepest existing ancestor joined with the rest, resolved through symlinks. */
+function realOrAncestor(p: string): string {
+  const tail: string[] = [];
+  let d = pathResolve(p);
+  for (;;) {
+    try { return pathJoin(realpathSync(d), ...tail); } catch { /* not there yet */ }
+    const up = dirname(d);
+    if (up === d) return pathResolve(p);
+    tail.unshift(basename(d));
+    d = up;
+  }
+}
+
+const insideDir = (p: string, root: string) => p === root || p.startsWith(root + pathSep);
+
+/** Lay out a synthetic install in `sb`: .claude/LIFEOS/{USER,MEMORY} are symlinks into .config/LIFEOS/USER, as live. */
+function seedSmokeSandbox(sb: string): void {
+  invariant(isSmokeSandbox(sb), `smoke sandbox ${sb} is not a ${SMOKE_PREFIX} directory under the temp dir`);
+  const user = pathJoin(sb, ".config", "LIFEOS", "USER");
+  const lifeos = pathJoin(sb, ".claude", "LIFEOS");
+  for (const d of ["PRINCIPAL", "DIGITAL_ASSISTANT", "MEMORY/OBSERVABILITY", "MEMORY/KNOWLEDGE"]) {
+    mkdirSync(pathJoin(user, d), { recursive: true, mode: 0o700 });
+  }
+  mkdirSync(lifeos, { recursive: true, mode: 0o700 });
+  symlinkSync(user, pathJoin(lifeos, "USER"));
+  symlinkSync(pathJoin(user, "MEMORY"), pathJoin(lifeos, "MEMORY"));
+  const memory = (entries: string[]) =>
+    `---\nschema_version: 1\nlast_updated: 2026-01-01T00:00:00.000Z\nlast_updated_by: smoke-seed\n---\n\n# Memory\n\n<!-- BEGIN ENTRIES -->\n${entries.join("\n")}\n<!-- END ENTRIES -->\n`;
+  atomicWrite(pathJoin(user, "PRINCIPAL", "PRINCIPAL_MEMORY.md"), memory([
+    "NAME: Smoke Principal ~explicit",
+    "PREFERENCE: smoke fixtures are synthetic ~explicit",
+    "RULE: smoke rule one ~explicit",
+  ]));
+  atomicWrite(pathJoin(user, "DIGITAL_ASSISTANT", "DA_MEMORY.md"), memory(["ROLE: smoke assistant ~explicit"]));
+  atomicWrite(pathJoin(user, "PRINCIPAL", "PRINCIPAL_IDENTITY.md"), "# Smoke identity\n\nSynthetic.\n");
+}
+
+/** Outer stage: run the checks in a throwaway install and remove it afterwards. */
+function runSmokeInSandbox(): number {
+  const tmpReal = realpathSync(tmpdir());
+  const sb = realpathSync(mkdtempSync(pathJoin(tmpReal, SMOKE_PREFIX)));
+  try {
+    seedSmokeSandbox(sb);
+    const claude = pathJoin(sb, ".claude");
+    const env: Record<string, string> = {
+      PATH: process.env.PATH ?? "/usr/bin:/bin",
+      TMPDIR: tmpReal,
+      HOME: sb,
+      CLAUDE_CONFIG_DIR: claude,
+      LIFEOS_CONFIG_DIR: pathJoin(sb, ".config", "LIFEOS"),
+      CORTEX_MEMORY_ROOT: pathJoin(claude, "LIFEOS", "MEMORY"),
+      CORTEX_LEDGER_ROOT: claude,
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+      [SMOKE_ROOT_ENV]: sb,
+    };
+    console.log(`MemorySystem smoke test: throwaway install at ${sb}`);
+    const r = spawnSync(process.execPath, [import.meta.path, "test"], { cwd: sb, env, stdio: "inherit" });
+    return r.status ?? 1;
+  } finally {
+    invariant(isSmokeSandbox(sb), `refusing to remove ${sb}: not a smoke sandbox`);
+    rmSync(sb, { recursive: true, force: true });
+  }
+}
+
 async function smokeTest(): Promise<number> {
+  const marker = process.env[SMOKE_ROOT_ENV];
+  if (!marker) return runSmokeInSandbox();
+
+  // Inner stage: refuse unless every root this process resolved sits inside a smoke sandbox.
+  let root: string;
+  try { root = realpathSync(marker); } catch { root = ""; }
+  const roots = [getClaudeDir(), userDataRoot(), PRINCIPAL_MEMORY_PATH, TIER_B_AUDIT_PATH].map(realOrAncestor);
+  if (!root || !isSmokeSandbox(root) || !roots.every((p) => insideDir(p, root))) {
+    console.error(`✗ MemorySystem smoke test refused: ${SMOKE_ROOT_ENV}=${marker} is not a smoke sandbox holding every memory root`);
+    return 2;
+  }
+
   console.log("MemorySystem smoke test starting…");
   let pass = 0, fail = 0;
   const check = (name: string, ok: boolean, detail?: string) => {
     if (ok) { pass++; console.log(`  ✓ ${name}${detail ? ` — ${detail}` : ""}`); }
     else    { fail++; console.error(`  ✗ ${name}${detail ? ` — ${detail}` : ""}`); }
   };
-
-  // SAFETY: this smoke mutates the LIVE PRINCIPAL_MEMORY.md (MemoryWriter is
-  // allowlisted to the two real paths, so a temp file isn't possible). Back up
-  // the raw bytes now and restore them byte-exact in `finally` no matter what —
-  // a fragile per-step "restore to captured entries" once clobbered the live
-  // file to 0 across interleaved runs. Raw-byte backup/restore cannot.
-  const MEM_BACKUP = existsSync(PRINCIPAL_MEMORY_PATH) ? readFileSync(PRINCIPAL_MEMORY_PATH, "utf8") : null;
-  try {
 
   // 1. ISC-153 — unknown type rejected
   const r1 = add({ type: "nonsense" as any, content: "..." } as any);
@@ -1031,7 +1138,7 @@ async function smokeTest(): Promise<number> {
   // 5. ISC-156 — proposal enqueues
   const r5 = add({
     type: "proposal",
-    target_file: pathJoin(homedir(), ".claude/LIFEOS/USER/PRINCIPAL/PRINCIPAL_IDENTITY.md"),
+    target_file: pathJoin(getClaudeDir(), "LIFEOS/USER/PRINCIPAL/PRINCIPAL_IDENTITY.md"),
     edit: "RULE: This is a smoke-test proposal — DO NOT APPLY.",
     confidence: 0.42,
     rationale: "smoke test",
@@ -1053,17 +1160,6 @@ async function smokeTest(): Promise<number> {
   }
   console.error("✗ MemorySystem smoke test FAILED");
   return 1;
-
-  } finally {
-    // Byte-exact restore of the live memory file — guarantees the smoke leaves
-    // PRINCIPAL_MEMORY.md exactly as it found it, even if a check threw.
-    if (MEM_BACKUP !== null) {
-      writeFileSync(PRINCIPAL_MEMORY_PATH, MEM_BACKUP, "utf8");
-      const after = memoryWriterRead(PRINCIPAL_MEMORY_PATH);
-      const n = "code" in after ? "?" : after.entries.length;
-      console.log(`  ↺ live memory restored byte-exact (${n} entries)`);
-    }
-  }
 }
 
 async function main() {

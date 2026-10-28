@@ -4,6 +4,7 @@
  */
 import type { Ctx, SourceResult, TokenStore } from "./types";
 import {
+  dayKey,
   dayKeyLA,
   isoNowLA,
   loadTokens,
@@ -203,8 +204,11 @@ export async function pull(ctx: Ctx): Promise<SourceResult> {
     oura = refreshed.oura;
   }
 
-  const endDate = dayKeyLA(ctx.now.getTime());
-  const startDate = dayKeyLA(ctx.now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  // The window runs through tomorrow in UTC, which is today or later in every zone, so the newest
+  // score is always asked for wherever the principal is; Oura's own `day` tag files each record.
+  // Ending on "today" in one zone missed the morning's score when the principal was in a different zone.
+  const endDate = dayKey(ctx.now.getTime() + 24 * 60 * 60 * 1000, "UTC");
+  const startDate = dayKey(ctx.now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000, "UTC");
 
   let token = oura.access_token;
   let results = await Promise.all(
@@ -275,5 +279,105 @@ export async function pull(ctx: Ctx): Promise<SourceResult> {
     lastSuccess: isoNowLA(ctx.now),
     ms: Date.now() - startedAt,
     note: transientFailures.length > 0 ? `partial: transient failures on ${transientFailures.join(", ")}` : undefined,
+  };
+}
+
+// ── Backfill ──
+//
+// The hourly pull keeps a 7-day window; Oura's cloud keeps the whole ring
+// history, often years of it. `backfill` walks every endpoint from
+// `since` to today following `next_token` (1000 items a page) and writes one
+// DayFile per day, so the Pulse Year / Lifetime tabs read real years. Days that
+// already have a file are left alone unless `overwrite` — the same API wrote them.
+
+async function fetchAllPages(
+  endpoint: Endpoint,
+  token: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ items: OuraItem[]; status: number; pages: number }> {
+  const items: OuraItem[] = [];
+  let next: string | null = null;
+  let pages = 0;
+  do {
+    const url =
+      `${BASE}/${endpoint}?start_date=${startDate}&end_date=${endDate}` +
+      (next ? `&next_token=${encodeURIComponent(next)}` : "");
+    const response = await timedFetch(url, { headers: { Authorization: `Bearer ${token}` } }, FETCH_TIMEOUT_MS);
+    if (!response.ok) return { items, status: response.status, pages };
+    const json = (await response.json()) as OuraItem;
+    if (Array.isArray(json.data)) items.push(...(json.data as OuraItem[]));
+    next = str(json.next_token);
+    pages += 1;
+  } while (next !== null && pages < 200);
+  return { items, status: 200, pages };
+}
+
+export type BackfillResult = {
+  ok: boolean;
+  error: string | null;
+  since: string;
+  until: string;
+  records: number;
+  pages: number;
+  daysSeen: number;
+  written: number;
+  skipped: number;
+  firstDay: string | null;
+  lastDay: string | null;
+};
+
+export async function backfill(
+  ctx: Ctx,
+  since: string,
+  opts: { overwrite?: boolean; dryRun?: boolean } = {},
+): Promise<BackfillResult> {
+  const base: BackfillResult = {
+    ok: false, error: null, since, until: dayKeyLA(ctx.now.getTime()),
+    records: 0, pages: 0, daysSeen: 0, written: 0, skipped: 0, firstDay: null, lastDay: null,
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) return { ...base, error: `--since must be YYYY-MM-DD, got "${since}"` };
+  if (str(ctx.env.OURA_CLIENT_ID) === null || str(ctx.env.OURA_CLIENT_SECRET) === null) {
+    return { ...base, error: "OURA_CLIENT_ID / OURA_CLIENT_SECRET not set in ~/.claude/.env" };
+  }
+  let tokens = await loadTokens(ctx);
+  if (tokens.oura === undefined) return { ...base, error: "no Oura tokens — run: bun LIFEOS/TOOLS/HealthSync.ts auth oura" };
+  if (tokens.oura.expires_at <= Math.floor(Date.now() / 1000) + REFRESH_SKEW_S) {
+    const refreshed = await refreshTokens(ctx, tokens);
+    if (refreshed === null || refreshed.oura === undefined) return { ...base, error: "Oura token refresh failed — re-run auth oura" };
+    tokens = refreshed;
+  }
+  const token = tokens.oura!.access_token;
+
+  // Endpoints run one at a time: the whole history is ~20 requests, and
+  // sequential keeps us far inside Oura's rate limit with no retry logic needed.
+  const dayBuckets: Record<string, Partial<Record<Endpoint, OuraItem[]>>> = {};
+  let records = 0;
+  let pages = 0;
+  for (const endpoint of ENDPOINTS) {
+    const r = await fetchAllPages(endpoint, token, since, base.until);
+    pages += r.pages;
+    if (r.status === 401 || r.status === 403) return { ...base, error: `Oura auth/scope rejection (${r.status}) on ${endpoint}` };
+    if (r.status !== 200) return { ...base, error: `Oura HTTP ${r.status} on ${endpoint} after ${r.pages} pages` };
+    for (const [day, items] of Object.entries(groupOuraByDay(r.items))) {
+      (dayBuckets[day] ??= {})[endpoint] = items;
+      records += items.length;
+    }
+  }
+
+  const days = Object.keys(dayBuckets).sort();
+  let written = 0;
+  let skipped = 0;
+  const { existsSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  for (const day of days) {
+    const path = join(ctx.dataDir, "oura", `${day}.json`);
+    if (existsSync(path) && !opts.overwrite) { skipped += 1; continue; }
+    if (!opts.dryRun) await writeDayFile(ctx, "oura", day, summarizeOuraDay(dayBuckets[day]));
+    written += 1;
+  }
+  return {
+    ...base, ok: true, records, pages, daysSeen: days.length, written, skipped,
+    firstDay: days[0] ?? null, lastDay: days[days.length - 1] ?? null,
   };
 }

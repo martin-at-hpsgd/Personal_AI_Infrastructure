@@ -15,8 +15,7 @@ observability = true
 
 [voice]
 enabled = false
-# voice_id = "YOUR_ELEVENLABS_VOICE_ID"
-# api_key_env = "ELEVENLABS_API_KEY"
+# Speaks on Fish Audio: FISH_API_KEY in .env, fish_reference_id under [da.voices.main] in LIFEOS_CONFIG.toml.
 
 [notifications]
 enabled = true

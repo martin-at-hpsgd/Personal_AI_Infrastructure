@@ -1,0 +1,23 @@
+{
+  "intent": "NucleiTemplate",
+  "cases": [
+    {
+      "id": "plain_exposed_actuator",
+      "pattern": "write_nuclei_template_rule",
+      "input": "I need a scanner check for this. Here's what we found on a client's staging box (fictional writeup):\n\nAcme Logistics runs \"RouteBoard\", a Spring Boot app, at https://routeboard.example.com. The /actuator/env endpoint is reachable with no auth. A GET returns JSON like:\n\nGET /actuator/env HTTP/1.1\nHost: routeboard.example.com\n\nHTTP/1.1 200 OK\nContent-Type: application/vnd.spring-boot.actuator.v3+json\n\n{\"activeProfiles\":[\"staging\"],\"propertySources\":[{\"name\":\"server.ports\",\"properties\":{\"local.server.port\":{\"value\":8080}}},{\"name\":\"systemEnvironment\",\"properties\":{\"JAVA_HOME\":{\"value\":\"/usr/lib/jvm/java-17\"},\"DB_HOST\":{\"value\":\"198.51.100.24\"}}}]}\n\nWe want to find this on other hosts of theirs. Can you turn it into something Nuclei can run across the whole estate?",
+      "expects": "A single working Nuclei YAML template that requests /actuator/env via {{BaseURL}} (never a hardcoded hostname) and matches on status 200 plus distinctive body markers from the response (activeProfiles, propertySources), with reasonable info-or-low severity metadata, and only the YAML in the reply as the pattern's output instructions require."
+    },
+    {
+      "id": "named_job_authenticated_bypass_header",
+      "pattern": "write_nuclei_template_rule",
+      "input": "Write a nuclei template rule for this one. This is a fictional internal advisory from a lab engagement, synthetic target:\n\nProduct: \"Glyph CMS\" admin panel, build 4.1.0, found at https://admin.glyphcms.example.com/admin/dashboard. The panel normally returns HTTP 401 for an unauthenticated GET to /admin/dashboard. We discovered that sending the request with the header `X-Internal-Trust: true` makes the app skip its auth middleware entirely and return HTTP 200 with the dashboard HTML, which always contains the string `id=\"glyph-admin-root\"`. No other request difference is needed; cookies, body, and method are unchanged (GET). We want a template id and proper severity (this is a full auth bypass, so high or critical), with matchers on both the status code and the body string so it doesn't false-positive on a panel that's legitimately public.",
+      "expects": "A working Nuclei YAML template for the described header-based auth-bypass: it sends the GET with the exact header against {{BaseURL}}/admin/dashboard, matches on status 200 and the body string together (and condition), carries a sensible template id and high/critical severity reflecting a full auth bypass, and nothing beyond the YAML as the pattern's output instructions require."
+    },
+    {
+      "id": "hard_messy_vague_ssrf_lead",
+      "pattern": "write_nuclei_template_rule",
+      "input": "ok so our scanner flagged something weird on one of the partner sites, not sure if its even real. heres the raw notes someone pasted in slack, barely formatted, fictional target obviously:\n\n\"poked at https://import.harbor-metrics.example.net/api/v2/fetch-preview today. it takes a 'url' query param and the server goes and fetches whatever you put there then echoes back the first 200 bytes of the response body as json under a 'preview' key. tried url=http://198.51.100.77:9999/ and got back a preview with some redis-ish banner text in it which is definitely not something a public web page should return. also tried a bogus url and it just came back with preview:null and no error, so no obvious error-based signal, and the response content-type is always application/json either way. not sure if this is interactsh-detectable as-is since there's no obvious out-of-band call forced, it just fetches whatever url param is given and surfaces it back inline. can you make this into a rule, I don't really know the right terminology for what this is\"\n\nsame slack thread, few messages later, somebody else: \"also heads up the param might be case sensitive, saw it fail silently with URL= instead of url=\"",
+      "expects": "A working Nuclei YAML template for the server-side request forgery the notes actually describe: a GET to /api/v2/fetch-preview with the exact lowercase url query param against {{BaseURL}}, pointed at an interactsh (or self-contained) callback so a blind or semi-blind fetch is detectable, with at least two matchers (e.g. the interaction plus the application/json content type or absence of an error marker) to guard against false positives, since the pattern exists to turn a vague, imprecisely worded report into a correct, runnable detection, not to just restate the uncertainty back."
+    }
+  ]
+}

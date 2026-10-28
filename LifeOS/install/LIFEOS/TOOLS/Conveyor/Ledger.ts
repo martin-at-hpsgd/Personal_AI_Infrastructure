@@ -17,14 +17,13 @@
 
 import { appendFileSync, mkdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { homedir } from 'os';
 
-// Derivative legs per the ratified produce map (master ISA D-12):
-// youtube = long-form UL-bumper edit + full-metadata upload; shorts = _VIDEO Clips;
-// social = _SOCIALPOST → _WRITING audit → _BROADCAST payloads; omny = podcast audio;
-// discord = community post.
-export const LEGS = ['youtube', 'shorts', 'social', 'omny', 'discord'] as const;
-export type Leg = typeof LEGS[number];
+// Publish legs (LEGS) and produce steps (STEPS) are owned by ContentTypes.ts,
+// which also holds the per-type profile that decides which of each an item
+// gets. Re-exported here so ledger consumers keep one import.
+import { profileFor, type Leg, type RunName, type Step } from './ContentTypes';
+import { getLifeosDir } from '../Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+export { LEGS, STEPS, profileFor, isContentType, type Leg, type Step, type RunName } from './ContentTypes';
 export type LegStatus = 'pending' | 'running' | 'done' | 'failed' | 'changes-requested';
 export type Stage = 'inbox' | 'prep' | 'produce' | 'review' | 'publishing' | 'done';
 
@@ -45,7 +44,12 @@ export interface ContentItem {
   type: string;
   content_hash: string;
   stage: Stage;
-  legs: Record<Leg, LegStatus>;
+  /** Publish legs this item goes out on — the type profile's subset of LEGS. Pre-typing rows carry all five. */
+  legs: Partial<Record<Leg, LegStatus>>;
+  /** Produce components for this item, from the type profile. Absent on rows older than typed intake. */
+  steps?: Partial<Record<Step, LegStatus>>;
+  /** Named run the executor uses (`regular` | `sponsored` | `podcast`); absent on legacy rows = regular. */
+  run?: RunName;
   created: string;
   updated: string;
   [k: string]: unknown;
@@ -59,7 +63,7 @@ export interface ContentState {
 
 export function eventsPath(): string {
   return join(
-    process.env.LIFEOS_DIR || join(homedir(), '.claude', 'LIFEOS'),
+    getLifeosDir(),
     'MEMORY',
     'STATE',
     'content-pipeline',
@@ -158,10 +162,18 @@ export function readState(logPath = eventsPath()): ContentState {
 
 // -- Constructors and lookup -------------------------------------------------
 
-function pendingLegs(): Record<Leg, LegStatus> {
-  const legs = {} as Record<Leg, LegStatus>;
-  for (const leg of LEGS) legs[leg] = 'pending';
+/** The type profile's legs, all pending. Unknown/legacy types get every leg. */
+export function pendingLegs(type: unknown): Partial<Record<Leg, LegStatus>> {
+  const legs: Partial<Record<Leg, LegStatus>> = {};
+  for (const leg of profileFor(type).legs) legs[leg] = 'pending';
   return legs;
+}
+
+/** The type profile's produce steps, all pending, in execution order. */
+export function pendingSteps(type: unknown): Partial<Record<Step, LegStatus>> {
+  const steps: Partial<Record<Step, LegStatus>> = {};
+  for (const step of profileFor(type).steps) steps[step] = 'pending';
+  return steps;
 }
 
 export function newItemEvent(input: {
@@ -186,12 +198,37 @@ export function newItemEvent(input: {
       type: input.type,
       content_hash: input.content_hash,
       stage: 'inbox',
-      legs: pendingLegs(),
+      legs: pendingLegs(input.type),
+      steps: pendingSteps(input.type),
+      run: profileFor(input.type).run,
       created: ts,
       updated: ts,
       ...(input.extra || {}),
     },
     src: input.src,
+  };
+}
+
+/**
+ * Re-type an item before produce starts: legs, steps, and run are re-derived
+ * from the new profile. Callers gate on stage (inbox/prep only) — the ledger
+ * never refuses a write, the write path does.
+ */
+export function setTypeEvent(id: string, type: string, src: string): ContentEvent {
+  const ts = new Date().toISOString();
+  return {
+    v: 1,
+    ts,
+    id,
+    op: 'upsert',
+    fields: {
+      type,
+      legs: pendingLegs(type),
+      steps: pendingSteps(type),
+      run: profileFor(type).run,
+      updated: ts,
+    },
+    src,
   };
 }
 

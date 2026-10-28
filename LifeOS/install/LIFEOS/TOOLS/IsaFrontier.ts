@@ -1,9 +1,12 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.0.10
+ */
 // IsaFrontier.ts — dependency edges, takeable-frontier computation, and the
 // concurrent-session claim protocol for ISAs.
 //
 // The ISA stays the single markdown artifact and the AI stays its sole writer:
-// this tool NEVER writes the ISA file. Edges ride inside claim descriptions as
+// this tool NEVER writes the ISA file. Edges ride inside criterion descriptions as
 // a trailing `(after: ID, ID)` parenthetical — opaque free text to every
 // existing parser (isa-utils, ISAGate, Bunker). Lock state lives centrally at
 // MEMORY/STATE/isa-locks/<sha1(isa-path)>/<claim-id>.lock so project repos stay
@@ -11,7 +14,7 @@
 // concurrent sessions share one machine.
 //
 // Commands:
-//   frontier <isa> [--json]                    takeable claims (open, unblocked, unlocked)
+//   frontier <isa> [--json]                    takeable criteria (open, unblocked, unlocked)
 //   claim    <isa> --id C4 --session S         atomic take; exit 2 on conflict
 //   release  <isa> --id C4 --session S         release own lock (--force overrides)
 //   status   <isa> [--json]                    full map: closed/open/blocked/taken/stale
@@ -23,11 +26,13 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync, realpathSync, renameSync } from 'fs';
 import { resolve, join } from 'path';
 import { createHash } from 'crypto';
-import { homedir } from 'os';
+// IsaClaims imports only fs/crypto, already used here; it never loads the hook graph.
+import { parseIsaClaimsText, isaBody, claimText, stripBulletPrefix } from './lib/IsaClaims';
+import { getClaudeDir } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const STALE_TTL_MS_DEFAULT = 2 * 60 * 60 * 1000; // 2h — a session gone this long has died or moved on
 
-// ── Claim + edge parsing ──────────────────────────────────────────────────
+// ── Criterion + edge parsing ──────────────────────────────────────────────────
 // Mirrors the heading alternation in hooks/lib/isa-utils.ts CRITERIA_HEADING_RE.
 // Kept as a copy, not an import, so this standalone CLI doesn't drag in
 // isa-utils' hook graph (work-events, ascent, execSync side effects). The copy
@@ -36,13 +41,10 @@ const STALE_TTL_MS_DEFAULT = 2 * 60 * 60 * 1000; // 2h — a session gone this l
 export const FRONTIER_CRITERIA_HEADING_RE =
   /^(?:##\s+(?:ISC\s+)?Criteria\b[^\n]*|##\s+Claims\b[^\n]*|##\s+IDEAL\s+STATE\s+CRITERIA\b[^\n]*|###\s+Criteria\b[^\n]*|##\s+Features\b[^\n]*)$/im;
 
-// Claim IDs: ISC-N (incl. split IDs like ISC-2.1), domain-prefixed (H-AVAIL,
-// CRS-PAGE), short v8 forms (C1, A3, EQ-12). Dots included so split claims work.
-const ID_PATTERN = '(ISC-[\\w.-]+|[A-Z]{1,6}-[A-Z0-9][\\w.-]*|[A-Z]{1,4}-?\\d+(?:\\.\\d+)*)';
-// Nested leaves are indented checkboxes; top-level claims start at column 0.
-const CLAIM_LINE_RE = new RegExp(`^(\\s*)- \\[([ x])\\]\\s*${ID_PATTERN}\\s*[:—–-]?\\s*(.*)$`);
+// Criterion IDs: ISC-N (incl. split IDs like ISC-2.1), domain-prefixed (H-AVAIL,
+// CRS-PAGE), short v8 forms (C1, A3, EQ-12). Dots included so split criteria work.
 // Edges are the TRAILING parenthetical only (optionally followed by `.`), and
-// backticked code spans are ignored — a claim that merely QUOTES the syntax
+// backticked code spans are ignored — a criterion that merely QUOTES the syntax
 // (like this build's own C1) must not parse as edged. Found by dogfooding:
 // the first live run read its own documentation as a dependency.
 const AFTER_RE = /\(after:\s*([^)]+)\)\s*\.?\s*$/i;
@@ -65,28 +67,24 @@ export interface LockInfo {
 }
 
 export function parseClaims(content: string): FrontierClaim[] {
-  const headingMatch = FRONTIER_CRITERIA_HEADING_RE.exec(content);
-  if (!headingMatch || headingMatch.index === undefined) return [];
-  const rest = content.slice(headingMatch.index + headingMatch[0].length);
-  const endMatch = rest.match(/\n##\s+(?!#)|\n---\s*\n/);
-  const body = endMatch ? rest.slice(0, endMatch.index) : rest;
-
+  const lines = isaBody(content).split(/\r?\n/);
   const claims: FrontierClaim[] = [];
-  for (const line of body.split('\n')) {
-    const m = line.match(CLAIM_LINE_RE);
-    if (!m) continue;
-    const description = m[4].trim();
+  for (const claim of parseIsaClaimsText(content, { includeParents: true }).claims) {
+    const line = lines[claim.line - 1]!;
+    const description = claim.source === 'table'
+      ? line.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).filter(cell => claimText(cell)?.id !== claim.id).join(' | ').trim()
+      : claimText(stripBulletPrefix(line))!.body;
     const afterMatch = description.replace(CODE_SPAN_RE, '').match(AFTER_RE);
     const after = afterMatch
       ? afterMatch[1].split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
       : [];
     claims.push({
-      id: m[3],
-      checked: m[2] === 'x',
+      id: claim.id,
+      checked: claim.checked,
       description,
       after,
       dropped: /\[DROPPED/i.test(description),
-      indent: m[1].length,
+      indent: line.match(/^\s*/)![0].length,
     });
   }
   return claims;
@@ -106,16 +104,21 @@ export function countCheckboxLines(content: string): number {
 
 // ── Edge validation ───────────────────────────────────────────────────────
 
+// IDs are structural independently of dependency edges. Keep this separate
+// from validateEdges so callers that do not use (after:) still enforce it.
+export function validateClaimIds(claims: FrontierClaim[]): string[] {
+  const duplicates = new Set<string>();
+  const seen = new Set<string>();
+  for (const c of claims) {
+    if (seen.has(c.id)) duplicates.add(c.id);
+    seen.add(c.id);
+  }
+  return [...duplicates].map((id) => `duplicate ISC ID: ${id}`);
+}
+
 export function validateEdges(claims: FrontierClaim[]): string[] {
   const errors: string[] = [];
   const ids = new Set(claims.map((c) => c.id));
-  const dupes = new Set<string>();
-  const seen = new Set<string>();
-  for (const c of claims) {
-    if (seen.has(c.id)) dupes.add(c.id);
-    seen.add(c.id);
-  }
-  for (const d of dupes) errors.push(`duplicate claim ID: ${d}`);
 
   for (const c of claims) {
     for (const b of c.after) {
@@ -151,17 +154,27 @@ export function validateEdges(claims: FrontierClaim[]): string[] {
   return errors;
 }
 
-// ── Lock protocol ─────────────────────────────────────────────────────────
-
-function paiRoot(): string {
-  return process.env.LIFEOS_ROOT || join(homedir(), '.claude');
+/** Next whole-number ISC ID from criterion definitions, never frontmatter counts. */
+export function nextIscId(claims: FrontierClaim[]): string {
+  let max = 0;
+  for (const { id } of claims) {
+    const match = /^ISC-(\d+)$/i.exec(id);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return `ISC-${max + 1}`;
 }
 
-export function lockDirFor(isaPath: string, root = paiRoot()): string {
+// ── Lock protocol ─────────────────────────────────────────────────────────
+
+function lifeosRoot(): string {
+  return process.env.LIFEOS_ROOT || getClaudeDir();
+}
+
+export function lockDirFor(isaPath: string, root = lifeosRoot()): string {
   // realpathSync, never bare resolve: LIFEOS/MEMORY is a symlink, so the same
   // ISA reached by its two legal paths must hash to ONE lock dir or two
   // sessions each "atomically" win the same claim (Forge F1; the exact class
-  // OPERATIONAL_RULES § Path boundary checks names). Fallback to resolve only
+  // OPERATIONAL_PREFERENCES § Path boundary checks names). Fallback to resolve only
   // when the file doesn't exist yet (library callers in tests).
   let canonical: string;
   try { canonical = realpathSync(resolve(isaPath)); } catch { canonical = resolve(isaPath); }
@@ -169,7 +182,7 @@ export function lockDirFor(isaPath: string, root = paiRoot()): string {
   return join(root, 'LIFEOS', 'MEMORY', 'STATE', 'isa-locks', hash);
 }
 
-export function readLocks(isaPath: string, ttlMs = STALE_TTL_MS_DEFAULT, root = paiRoot()): LockInfo[] {
+export function readLocks(isaPath: string, ttlMs = STALE_TTL_MS_DEFAULT, root = lifeosRoot()): LockInfo[] {
   const dir = lockDirFor(isaPath, root);
   if (!existsSync(dir)) return [];
   const locks: LockInfo[] = [];
@@ -199,7 +212,7 @@ export function claimLock(
   claimId: string,
   session: string,
   ttlMs = STALE_TTL_MS_DEFAULT,
-  root = paiRoot(),
+  root = lifeosRoot(),
 ): ClaimResult {
   const dir = lockDirFor(isaPath, root);
   mkdirSync(dir, { recursive: true });
@@ -251,7 +264,7 @@ export function releaseLock(
   claimId: string,
   session: string,
   force = false,
-  root = paiRoot(),
+  root = lifeosRoot(),
 ): { ok: boolean; reason?: string } {
   const file = join(lockDirFor(isaPath, root), `${claimId}.lock`);
   if (!existsSync(file)) return { ok: true }; // idempotent
@@ -268,7 +281,7 @@ export function releaseLock(
 }
 
 // ── Frontier computation (pure) ───────────────────────────────────────────
-// A claim is TAKEABLE iff: open (unchecked, not dropped) ∧ every blocker is
+// A criterion is TAKEABLE iff: open (unchecked, not dropped) ∧ every blocker is
 // resolved (checked or dropped) ∧ no fresh lock held by another session.
 
 export interface FrontierView {
@@ -315,15 +328,15 @@ function main(): void {
   if (!Number.isFinite(ttlMs) || ttlMs <= 0) { console.error(`✗ invalid --ttl-hours: ${arg('--ttl-hours')}`); process.exit(1); }
   const content = readFileSync(isaPath, 'utf-8');
   const claims = parseClaims(content);
-  const errors = validateEdges(claims);
+  const errors = [...validateClaimIds(claims), ...validateEdges(claims)];
   const boxCount = countCheckboxLines(content);
   const undercount = boxCount - claims.length;
 
   if (cmd === 'validate') {
     if (errors.length) { for (const e of errors) console.error(`✗ ${e}`); process.exit(1); }
-    if (undercount > 0) console.error(`⚠ ${undercount} checkbox line(s) carry no parseable claim ID — invisible to the graph`);
+    if (undercount > 0) console.error(`⚠ ${undercount} checkbox line(s) carry no parseable ISC ID — invisible to the graph`);
     const edged = claims.filter((c) => c.after.length > 0).length;
-    console.log(`✓ ${claims.length} claims, ${edged} with edges, no cycles, all IDs resolve`);
+    console.log(`✓ ${claims.length} criteria, ${edged} with edges, no cycles, all IDs resolve`);
     return;
   }
   if (errors.length) { for (const e of errors) console.error(`✗ ${e}`); process.exit(1); }
@@ -332,7 +345,7 @@ function main(): void {
     const id = arg('--id');
     const session = arg('--session');
     if (!id || !session) { console.error(`✗ ${cmd} requires --id and --session`); process.exit(1); }
-    if (!claims.some((c) => c.id === id)) { console.error(`✗ unknown claim ID: ${id}`); process.exit(1); }
+    if (!claims.some((c) => c.id === id)) { console.error(`✗ unknown ISC ID: ${id}`); process.exit(1); }
     if (cmd === 'claim') {
       const open = computeFrontier(claims, readLocks(isaPath, ttlMs));
       if (!open.takeable.some((c) => c.id === id)) {
@@ -367,7 +380,7 @@ function main(): void {
     console.log(`  (${view.blocked.length} blocked — run status for detail)`);
   }
   for (const l of view.staleLocks) console.log(`  ⚠ STALE LOCK ${l.claimId} (${l.session}, ${l.ts || 'unreadable'}) — takeable`);
-  if (cmd === 'status' && undercount > 0) console.log(`  ⚠ ${undercount} checkbox line(s) carry no parseable claim ID — invisible to the graph`);
+  if (cmd === 'status' && undercount > 0) console.log(`  ⚠ ${undercount} checkbox line(s) carry no parseable ISC ID — invisible to the graph`);
 }
 
 if (import.meta.main) main();

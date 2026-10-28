@@ -1,3 +1,6 @@
+/**
+ * @version 1.0.0
+ */
 export interface CaptureTimestamps {
   captured_at: string;
   source_at?: string;

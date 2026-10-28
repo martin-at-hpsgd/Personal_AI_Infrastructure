@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useApi } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { wikiPageUrl } from "@/lib/wiki-links";
 import KnowledgeGraph from "@/components/wiki/KnowledgeGraph";
@@ -24,15 +24,7 @@ interface GraphData {
 export default function GraphPage() {
   const router = useRouter();
 
-  const { data, isLoading } = useQuery<GraphData>({
-    queryKey: ["wiki-graph"],
-    queryFn: async () => {
-      const res = await fetch("/api/wiki/graph");
-      if (!res.ok) throw new Error("Failed to fetch graph data");
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
+  const { data, isLoading } = useApi<GraphData>("/api/wiki/graph", { staleTime: 60_000 });
 
   const handleNodeClick = (slug: string, category: string) => {
     router.push(wikiPageUrl(category, slug));

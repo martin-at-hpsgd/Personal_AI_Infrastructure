@@ -404,17 +404,14 @@ export default function KnowledgeGraph({ nodes, edges, onNodeClick, hiddenCatego
 
     // Tooltip element
     const tooltipEl = document.createElement("div");
-    tooltipEl.className = "graph-tooltip";
+    tooltipEl.className = "graph-tooltip glass-raised";
     Object.assign(tooltipEl.style, {
       position: "absolute",
       pointerEvents: "none",
-      background: "rgba(2, 6, 23, 0.95)",
-      border: "1px solid rgba(51, 65, 85, 0.5)",
       borderRadius: "8px",
       padding: "8px 12px",
       opacity: "0",
       zIndex: "100",
-      backdropFilter: "blur(8px)",
       fontFamily: "'concourse-t3', sans-serif",
       transition: "opacity 0.15s",
     });
@@ -424,11 +421,19 @@ export default function KnowledgeGraph({ nodes, edges, onNodeClick, hiddenCatego
       const state = stateRef.current;
       if (!state) return;
       const color = colorMapRef.current?.[n.category] || CATEGORY_COLORS[n.category] || "#94a3b8";
-      tooltipEl.innerHTML =
-        `<div style="font-family: 'advocate-c14', sans-serif; font-size: 10px; letter-spacing: 0.05em; color: ${color}">${n.category.replace("-", " ").toUpperCase()}</div>` +
-        `<div style="font-size: 12px; color: #f1f5f9; margin-top: 2px">${n.title}</div>` +
-        (n.backlinkCount > 0 ? `<div style="font-size: 10px; color: #64748b; margin-top: 2px">${n.backlinkCount} backlinks</div>` : "") +
-        `<div style="font-size: 9px; color: #475569; margin-top: 3px">${state.focused === n.id ? "click again to open" : "click to focus · drag to move"}</div>`;
+      // GHSA-f3j2-2rq6-34g4 (@elhoim): treat note metadata as text in the tooltip.
+      const row = (style: string, content: string): HTMLDivElement => {
+        const el = document.createElement("div");
+        el.setAttribute("style", style);
+        el.textContent = content;
+        return el;
+      };
+      tooltipEl.replaceChildren(
+        row(`font-family: 'advocate-c14', sans-serif; font-size: 10px; letter-spacing: 0.05em; color: ${color}`, n.category.replace("-", " ").toUpperCase()),
+        row("font-size: 12px; color: var(--ink-1); margin-top: 2px", n.title),
+        ...(n.backlinkCount > 0 ? [row("font-size: 10px; color: var(--ink-2); margin-top: 2px", `${n.backlinkCount} backlinks`)] : []),
+        row("font-size: 9px; color: var(--ink-3); margin-top: 3px", state.focused === n.id ? "click again to open" : "click to focus · drag to move"),
+      );
       tooltipEl.style.opacity = "1";
       tooltipEl.style.left = mx + 12 + "px";
       tooltipEl.style.top = my - 12 + "px";
@@ -586,7 +591,7 @@ export default function KnowledgeGraph({ nodes, edges, onNodeClick, hiddenCatego
   }, [draw]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-ground">
+    <div ref={containerRef} className="relative w-full h-full">
       <canvas ref={canvasRef} className="w-full h-full" />
     </div>
   );

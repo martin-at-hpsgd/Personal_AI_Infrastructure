@@ -1,0 +1,4 @@
+# preferences.env here is a shipped template with no secret in it (a context name and a
+# Chrome profile directory). The published tree ignores *.env to keep secrets out, which
+# dropped this template at publish (EM-20, RC 8.635.0); this re-includes only this file.
+!preferences.env

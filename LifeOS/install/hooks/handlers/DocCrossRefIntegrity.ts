@@ -39,11 +39,13 @@
  * - Emits doc.integrity event to events.jsonl
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';
-import { join, basename } from 'path';
-import { paiPath, getLifeosDir, getClaudeDir } from '../lib/paths';
+import { readFileSync, writeFileSync, existsSync, readdirSync, realpathSync } from 'fs';
+import { join, basename, relative, sep, isAbsolute } from 'path';
+import { lifeosPath, getLifeosDir, getClaudeDir } from '../lib/paths';
+import { invariant } from '../../LIFEOS/TOOLS/Invariant';
 import { getIdentity } from '../lib/identity';
 import { inference } from '../../LIFEOS/TOOLS/Inference';
+import { redact } from '../../LIFEOS/TOOLS/lib/Boundary';
 import type { ParsedTranscript } from '../../LIFEOS/TOOLS/TranscriptParser';
 import { isDesktopChannel, logSkippedVoice, getNotificationChannel } from '../lib/notification-channel';
 import { PULSE_BASE } from '../../LIFEOS/PULSE/endpoint';
@@ -161,7 +163,7 @@ function getModifiedFiles(transcriptPath: string): Set<string> {
 
 function isSystemDocModified(modifiedFiles: Set<string>): boolean {
   for (const path of modifiedFiles) {
-    if (path.includes('PAI/') && path.endsWith('.md')) return true;
+    if (path.includes('LIFEOS/') && path.endsWith('.md')) return true;
   }
   return false;
 }
@@ -187,6 +189,24 @@ function isSystemFileModified(modifiedFiles: Set<string>): boolean {
   const CLAUDE_EXCLUDED = ['projects/', '.git/', 'node_modules/', 'history.jsonl'];
 
   for (const filePath of modifiedFiles) {
+    // --- Check ~/.claude/LIFEOS/ paths FIRST ---
+    // LIFEOS_DIR sits inside CLAUDE_DIR by default, so the shorter prefix used
+    // to win and this arm was unreachable: editing LIFEOS/DOCUMENTATION never
+    // ran the cross-ref check. The arm also carried a double `LIFEOS/` prefix
+    // and a lowercase `/Tools/` for a `TOOLS/` tree. public issue #2043, @MatiasBarboza
+    if (filePath.startsWith(LIFEOS_DIR + '/')) {
+      const relPath = filePath.slice(LIFEOS_DIR.length + 1);
+      if (LIFEOS_EXCLUDED.some(ex => relPath.includes(ex))) continue;
+
+      if (relPath.startsWith('DOCUMENTATION/') && relPath.endsWith('.md')) return true;
+      if (relPath.startsWith('TOOLS/') && relPath.endsWith('.ts')) return true;
+      // .tsx counts as system source too (ported from public PR #1742, @elhoim).
+      if (relPath.includes('skills/') && (relPath.endsWith('.md') || relPath.endsWith('.ts') || relPath.endsWith('.tsx') || relPath.endsWith('.yaml') || relPath.endsWith('.yml'))) return true;
+      if (relPath.includes('/Tools/') && relPath.endsWith('.ts')) return true;
+      if (relPath.includes('/Intents/') && relPath.endsWith('.md')) return true;
+      continue;
+    }
+
     // --- Check ~/.claude/ paths ---
     if (filePath.startsWith(CLAUDE_DIR + '/')) {
       const relPath = filePath.slice(CLAUDE_DIR.length + 1);
@@ -202,20 +222,31 @@ function isSystemFileModified(modifiedFiles: Set<string>): boolean {
       if (relPath.startsWith('commands/') && relPath.endsWith('.md')) return true;
       continue;
     }
-
-    // --- Check ~/.claude/LIFEOS/ paths ---
-    if (filePath.startsWith(LIFEOS_DIR + '/')) {
-      const relPath = filePath.slice(LIFEOS_DIR.length + 1);
-      if (LIFEOS_EXCLUDED.some(ex => relPath.includes(ex))) continue;
-
-      // .tsx counts as system source too (ported from public PR #1742, @elhoim).
-      if ((relPath.startsWith('PAI/') || relPath.includes('skills/')) && (relPath.endsWith('.md') || relPath.endsWith('.ts') || relPath.endsWith('.tsx') || relPath.endsWith('.yaml') || relPath.endsWith('.yml'))) return true;
-      if (relPath.includes('/Tools/') && relPath.endsWith('.ts')) return true;
-      if (relPath.includes('/Workflows/') && relPath.endsWith('.md')) return true;
-      continue;
-    }
   }
   return false;
+}
+
+/**
+ * Public-install awareness (public issue #2043, @MatiasBarboza — landing note).
+ * The release scrubs private hooks out of the payload but the shipped docs may
+ * still name them, so on an install that is NOT the source tree a doc reference
+ * to an absent hook is only real drift when settings.json still REGISTERS that
+ * hook (registered-but-absent = broken install; unregistered-and-absent =
+ * scrubbed by design). The source tree reports every absent reference. The
+ * test is existence of the private release skill — the same marker
+ * InstallEngine.detectDevTree uses — never a hook-name pattern.
+ */
+function isSourceTree(): boolean {
+  return existsSync(join(getClaudeDir(), 'skills', '_LIFEOS'));
+}
+
+function registeredHookNames(): Set<string> {
+  const names = new Set<string>();
+  try {
+    const raw = readFileSync(join(getClaudeDir(), 'settings.json'), 'utf-8');
+    for (const m of raw.matchAll(/([\w-]+\.hook\.ts)/g)) names.add(m[1]);
+  } catch { /* no settings → nothing registered */ }
+  return names;
 }
 
 // ============================================================================
@@ -228,6 +259,8 @@ function isSystemFileModified(modifiedFiles: Set<string>): boolean {
 function checkHookFileRefs(docsToCheck: string[], hooksOnDisk: Set<string>): DriftItem[] {
   const drift: DriftItem[] = [];
   const hookRefRegex = /(\w+)\.hook\.ts/g;
+  const sourceTree = isSourceTree();
+  const registered = sourceTree ? null : registeredHookNames();
 
   for (const docFile of docsToCheck) {
     const docPath = join(DOCS_DIR, docFile);
@@ -238,6 +271,8 @@ function checkHookFileRefs(docsToCheck: string[], hooksOnDisk: Set<string>): Dri
 
     while ((match = hookRefRegex.exec(content)) !== null) {
       const hookName = match[0]; // e.g., "LoadContext.hook.ts"
+      // Public install: an unregistered absent hook was scrubbed by design (#2043).
+      if (registered && !registered.has(hookName) && !hooksOnDisk.has(hookName)) continue;
       if (!hooksOnDisk.has(hookName)) {
         drift.push({
           doc: docFile,
@@ -317,8 +352,11 @@ function checkLibFileRefs(docsToCheck: string[], libsOnDisk: Set<string>): Drift
  */
 function checkSystemDocRefs(docsToCheck: string[], systemDocsOnDisk: Set<string>): DriftItem[] {
   const drift: DriftItem[] = [];
-  // Match backtick-wrapped or plain doc references under LifeOS/ (legacy skills/LifeOS/ included)
-  const sysDocRefRegex = /(?:`|'|")(?:~\/\.(?:claude|config\/PAI)\/)?(?:skills\/)?LifeOS\/([\w/]+\.md)(?:`|'|")/g;
+  // Match backtick-wrapped or plain doc references under LifeOS/ (legacy skills/LifeOS/ included).
+  // The `skills/` prefix is CAPTURED (group 1) and resolved under the LifeOS
+  // skill, instead of being discarded so the ref resolved against the wrong
+  // root. public issue #2043 (3), @MatiasBarboza
+  const sysDocRefRegex = /(?:`|'|")(?:~\/\.(?:claude|config\/PAI)\/)?(skills\/)?LifeOS\/([\w/]+\.md)(?:`|'|")/g;
 
   for (const docFile of docsToCheck) {
     // docsToCheck holds paths relative to DOCS_DIR — the five sibling checks
@@ -331,18 +369,21 @@ function checkSystemDocRefs(docsToCheck: string[], systemDocsOnDisk: Set<string>
     let match: RegExpExecArray | null;
 
     while ((match = sysDocRefRegex.exec(content)) !== null) {
-      const refTarget = match[1]; // e.g., "DOCUMENTATION/LifeosSystemArchitecture.md" or "USER/SECURITY/SecurityPosture.md"
-      const targetBasename = basename(refTarget);
-      // Check SYSTEM_DIR first (for nested paths like USER/SECURITY/SecurityPosture.md),
-      // then DOCS_DIR (for bare basenames that refer to files relocated under DOCUMENTATION/).
-      const systemPath = join(SYSTEM_DIR, refTarget);
-      const docsPath = join(DOCS_DIR, refTarget);
-      if (!existsSync(systemPath) && !existsSync(docsPath)) {
+      const skillPrefixed = !!match[1];
+      const refTarget = match[2]; // e.g., "DOCUMENTATION/LifeosSystemArchitecture.md" or "USER/SECURITY/SecurityPosture.md"
+      const shown =`${skillPrefixed ? 'skills/' : ''}LifeOS/${refTarget}`;
+      // skills/LifeOS/<ref> lives under the LifeOS skill, not SYSTEM_DIR (#2043).
+      // Otherwise check SYSTEM_DIR first (nested paths like USER/SECURITY/SecurityPosture.md),
+      // then DOCS_DIR (bare basenames that refer to files relocated under DOCUMENTATION/).
+      const candidates = skillPrefixed
+        ? [join(getClaudeDir(), 'skills', 'LifeOS', refTarget)]
+        : [join(SYSTEM_DIR, refTarget), join(DOCS_DIR, refTarget)];
+      if (!candidates.some((p) => existsSync(p))) {
         drift.push({
           doc: docFile,
           pattern: 'system_doc_ref',
-          reference: `LifeOS/${refTarget}`,
-          issue: `References "LifeOS/${refTarget}" but file does not exist`,
+          reference: shown,
+          issue: `References "${shown}" but file does not exist`,
         });
       }
     }
@@ -419,7 +460,7 @@ interface InferenceEdit {
 }
 
 const INFERENCE_SYSTEM_PROMPT = `You are a documentation accuracy checker. You receive:
-1. A list of source files that were modified (with their current content)
+1. A list of source files that were modified, by path and line count only (their content is withheld)
 2. Documentation sections that reference those files
 
 Your job: identify where documentation is now FACTUALLY INCORRECT given the source changes.
@@ -445,17 +486,24 @@ Return ONLY the JSON array, no other text.`;
 /**
  * Build context for inference: what changed and what docs say about it.
  * Keeps context small for fast inference (~500ms target).
+ *
+ * Confidentiality boundary (ISA 20261015-boundary-primitives, probe 7): modified files are named by their
+ * path (relative to the Claude dir, else the basename) and line count, never their content, so no config
+ * or source body reaches the model. Doc sections are read only through confinedDocPath, so a doc
+ * symlinked out of the docs tree is never read, and the whole context passes through Boundary.redact.
  */
-function buildInferenceContext(
+export function buildInferenceContext(
   modifiedFiles: Set<string>,
   docsToCheck: string[],
+  docsDir: string = DOCS_DIR,
+  claudeDir: string = getClaudeDir(),
 ): string {
   const parts: string[] = [];
 
-  // Collect modified system files with their content — must match isSystemFileModified scope
+  // Collect modified system files (paths only) — must match isSystemFileModified scope
   const relevantFiles = Array.from(modifiedFiles).filter(f =>
     f.includes('/hooks/') ||
-    f.includes('/PAI/') ||
+    f.includes('/LIFEOS/') ||
     f.includes('skills/') ||
     f.endsWith('settings.json') ||
     f.includes('/agents/') ||
@@ -466,11 +514,11 @@ function buildInferenceContext(
   for (const filePath of relevantFiles.slice(0, 5)) { // Cap at 5 files
     try {
       if (!existsSync(filePath)) continue;
+      // Read locally for the line count only; the body never enters the context.
       const content = readFileSync(filePath, 'utf-8');
-      const lines = content.split('\n');
-      // Take the doc comment header + enough code to understand behavior
-      const snippet = lines.slice(0, 60).join('\n');
-      parts.push(`=== SOURCE FILE: ${basename(filePath)} ===\n${snippet}\n`);
+      const lineCount = content === '' ? 0 : content.split('\n').length - (content.endsWith('\n') ? 1 : 0);
+      const shown = filePath.startsWith(claudeDir + sep) ? relative(claudeDir, filePath) : basename(filePath);
+      parts.push(`=== MODIFIED FILE: ${shown} (${lineCount} lines) ===\n`);
     } catch {
       // Skip unreadable
     }
@@ -483,9 +531,11 @@ function buildInferenceContext(
     // Same DOCS_DIR-relative contract as the deterministic checks. This site
     // had the same wrong root, so the doc half of the inference context was
     // always empty — inference only ever saw source files, never the prose it
-    // was asked to correct.
-    const docPath = join(DOCS_DIR, docFile);
-    if (!existsSync(docPath)) continue;
+    // was asked to correct. Only a doc whose real path stays inside the real
+    // docs tree is read, so a doc symlinked out of it is skipped.
+    let docPath: string | null = null;
+    try { docPath = confinedDocPath(docFile, docsDir); } catch { /* vanished or looped mid-read: skipped */ }
+    if (!docPath) continue;
 
     try {
       const content = readFileSync(docPath, 'utf-8');
@@ -540,7 +590,8 @@ function buildInferenceContext(
     }
   }
 
-  return parts.join('\n');
+  // Redact the whole context before it leaves: doc prose can carry labelled values and secret shapes.
+  return redact(parts.join('\n'));
 }
 
 /**
@@ -594,10 +645,10 @@ async function runInferenceAnalysis(
         continue;
       }
 
-      // Verify old_text exists in the doc
-      const docPath = join(SYSTEM_DIR, edit.doc);
-      if (!existsSync(docPath)) {
-        console.error(`${TAG} [INFERENCE] Doc not found: ${edit.doc}, skipping edit`);
+      // The model names the doc; only a doc we sent it, inside the docs tree by realpath, may be edited.
+      const docPath = resolveDocEditPath(edit.doc, docsToCheck);
+      if (!docPath) {
+        console.error(`${TAG} [INFERENCE] Doc not in the checked docs tree: ${String(edit.doc).slice(0, 120)}, skipping edit`);
         continue;
       }
 
@@ -624,14 +675,38 @@ async function runInferenceAnalysis(
 }
 
 /**
+ * The file a model-proposed edit may touch, or null. `doc` is model output, so it is trusted for nothing:
+ * it must name a Markdown doc this run sent the model (`inventory`, DOCS_DIR-relative; a leading
+ * `DOCUMENTATION/` is accepted), contain no absolute or `..` part, and resolve by realpath to a file
+ * inside the docs tree, so a symlinked path component cannot lead out of it.
+ */
+export function resolveDocEditPath(doc: unknown, inventory: readonly string[], docsDir: string = DOCS_DIR): string | null {
+  if (typeof doc !== 'string' || !doc || doc.includes('\0') || isAbsolute(doc)) return null;
+  const rel = doc.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^DOCUMENTATION\//, '');
+  if (!rel.endsWith('.md') || rel.split('/').some((part) => part === '..' || part === '.' || part === '')) return null;
+  if (!inventory.includes(rel)) return null;
+  const candidate = join(docsDir, rel);
+  if (!existsSync(candidate)) return null;
+  const realDocs = realpathSync(docsDir);
+  const real = realpathSync(candidate);
+  if (!real.startsWith(realDocs + sep)) return null;
+  return real;
+}
+
+/**
  * Apply inference-generated edits to documentation files.
  * Each edit is a surgical find-and-replace with full audit logging.
  */
-function applyInferenceEdits(edits: InferenceEdit[]): string[] {
+export function applyInferenceEdits(edits: InferenceEdit[], inventory: readonly string[], docsDir: string = DOCS_DIR): string[] {
   const applied: string[] = [];
 
   for (const edit of edits) {
-    const docPath = join(SYSTEM_DIR, edit.doc);
+    // Re-resolved here, not trusted from validation: the tree can change between the two (symlink swap).
+    const docPath = resolveDocEditPath(edit.doc, inventory, docsDir);
+    if (!docPath) {
+      console.error(`${TAG} [INFERENCE-APPLY] refused ${String(edit.doc).slice(0, 120)}: not an inventoried doc inside the docs tree`);
+      continue;
+    }
     try {
       const content = readFileSync(docPath, 'utf-8');
       if (!content.includes(edit.old_text)) {
@@ -639,7 +714,10 @@ function applyInferenceEdits(edits: InferenceEdit[]): string[] {
         continue;
       }
 
-      const updated = content.replace(edit.old_text, edit.new_text);
+      // Function replacer: new_text is model-written, and a string replacement
+      // would expand `$&`, `$'`, `` $` `` and `$$` inside it (public issue #2271, @jacobo-ortiz).
+      const updated = content.replace(edit.old_text, () => edit.new_text);
+      invariant(docPath.startsWith(realpathSync(docsDir) + sep), `inference edit escaped the docs tree: ${docPath}`);
       writeFileSync(docPath, updated);
 
       const summary = `[INFERENCE] ${edit.doc}: ${edit.reason} ("${edit.old_text.slice(0, 40)}..." → "${edit.new_text.slice(0, 40)}...")`;
@@ -658,11 +736,38 @@ function applyInferenceEdits(edits: InferenceEdit[]): string[] {
 // ============================================================================
 
 /**
- * Update Pattern 6: Last Updated timestamps in modified docs.
+ * The DOCUMENTATION-relative path of an edited file, or null when the file is
+ * not under the docs tree. Keyed by relative path, never basename: the docs
+ * tree is almost entirely nested, so a basename join resolved nothing for any
+ * doc that carries the marker (2026-09-03 /LI audit, finding 6).
  */
-function updateLastUpdatedTimestamp(docFile: string): string | null {
-  const docPath = join(DOCS_DIR, docFile);
-  if (!existsSync(docPath)) return null;
+export function docsRelativePath(absPath: string, docsDir: string = DOCS_DIR): string | null {
+  return absPath.startsWith(docsDir + sep) ? relative(docsDir, absPath) : null;
+}
+
+/**
+ * Update Pattern 6: Last Updated timestamps in modified docs. `docFile` is
+ * DOCS_DIR-relative and comes only from the session's own Write/Edit calls,
+ * so an untouched doc is never restamped.
+ */
+/**
+ * The real path of a DOCUMENTATION-relative file, or null when it is missing or its real path (every symlink,
+ * final component included, dereferenced) leaves the real docs tree. The
+ * deterministic rewrites write only to the returned path.
+ */
+export function confinedDocPath(docFile: string, docsDir: string = DOCS_DIR): string | null {
+  if (!docFile || docFile.includes('\0') || isAbsolute(docFile)) return null;
+  if (docFile.replace(/\\/g, '/').split('/').some((part) => part === '..')) return null;
+  const candidate = join(docsDir, docFile);
+  if (!existsSync(candidate)) return null;
+  const realDocs = realpathSync(docsDir);
+  const real = realpathSync(candidate);
+  return real.startsWith(realDocs + sep) ? real : null;
+}
+
+export function updateLastUpdatedTimestamp(docFile: string, docsDir: string = DOCS_DIR): string | null {
+  const docPath = confinedDocPath(docFile, docsDir);
+  if (!docPath) return null;
 
   const content = readFileSync(docPath, 'utf-8');
   const today = new Date().toISOString().split('T')[0];
@@ -670,6 +775,7 @@ function updateLastUpdatedTimestamp(docFile: string): string | null {
 
   const match = content.match(timestampRegex);
   if (match && !content.includes(`**Last Updated:** ${today}`)) {
+    invariant(docPath.startsWith(realpathSync(docsDir) + sep), `Last Updated rewrite escaped the docs tree: ${docPath}`);
     const updated = content.replace(timestampRegex, `$1${today}`);
     writeFileSync(docPath, updated);
     return `Updated "Last Updated" in ${docFile}: ${match[0]} -> **Last Updated:** ${today}`;
@@ -679,11 +785,28 @@ function updateLastUpdatedTimestamp(docFile: string): string | null {
 }
 
 /**
+ * One count line plus at most `cap` items per pattern — a DOCUMENTATION edit
+ * used to print ~70 stale-reference lines at SessionEnd (audit finding 6).
+ */
+const DRIFT_PRINT_CAP = 10;
+function printDrift(label: string, unit: string, items: DriftItem[]): void {
+  if (items.length === 0) {
+    console.error(`${TAG} [OK] ${label}: all valid`);
+    return;
+  }
+  console.error(`${TAG} [DRIFT] ${label}: ${items.length} ${unit} found`);
+  for (const item of items.slice(0, DRIFT_PRINT_CAP)) {
+    console.error(`${TAG}   - ${item.doc}: ${item.issue}`);
+  }
+  if (items.length > DRIFT_PRINT_CAP) console.error(`${TAG}   … and ${items.length - DRIFT_PRINT_CAP} more`);
+}
+
+/**
  * Update Pattern 5: Hook count in DOCUMENTATION/Hooks/HookSystem.md.
  */
-function updateHookCount(actualCount: number): string | null {
-  const docPath = join(DOCS_DIR, 'Hooks/HookSystem.md');
-  if (!existsSync(docPath)) return null;
+export function updateHookCount(actualCount: number, docsDir: string = DOCS_DIR): string | null {
+  const docPath = confinedDocPath('Hooks/HookSystem.md', docsDir);
+  if (!docPath) return null;
 
   const content = readFileSync(docPath, 'utf-8');
   const countRegex = /(\*\*Status:\*\* Production - )\d+( hooks? active)/;
@@ -693,6 +816,7 @@ function updateHookCount(actualCount: number): string | null {
     const oldCount = parseInt(content.match(/\*\*Status:\*\* Production - (\d+)/)?.[1] || '0', 10);
     if (oldCount !== actualCount) {
       const updated = content.replace(countRegex, `$1${actualCount}$2`);
+      invariant(docPath.startsWith(realpathSync(docsDir) + sep), `hook-count rewrite escaped the docs tree: ${docPath}`);
       writeFileSync(docPath, updated);
       return `Updated hook count in Hooks/HookSystem.md: ${oldCount} -> ${actualCount}`;
     }
@@ -716,7 +840,7 @@ export async function handleDocCrossRefIntegrity(
   const modifiedFiles = getModifiedFiles(hookInput.transcript_path);
   console.error(`${TAG} Modified files in session: ${modifiedFiles.size}`);
 
-  // Run if ANY meaningful LifeOS system file was modified (skills, hooks, tools, config, components, workflows, SYSTEM docs)
+  // Run if ANY meaningful LifeOS system file was modified (skills, hooks, tools, config, components, intents, SYSTEM docs)
   const hasDocChanges = isSystemDocModified(modifiedFiles);
   const hasHookChanges = isHookModified(modifiedFiles);
   const hasAnySystemChange = isSystemFileModified(modifiedFiles);
@@ -748,76 +872,43 @@ export async function handleDocCrossRefIntegrity(
 
   // Pattern 2: Hook file references
   const hookDrift = checkHookFileRefs(docsToCheck, hooksOnDisk);
-  if (hookDrift.length > 0) {
-    console.error(`${TAG} [DRIFT] Hook file references: ${hookDrift.length} broken refs found`);
-    for (const item of hookDrift) {
-      console.error(`${TAG}   - ${item.doc}: ${item.issue}`);
-    }
-    allDrift.push(...hookDrift);
-  } else {
-    console.error(`${TAG} [OK] Hook file references: all valid`);
-  }
+  printDrift('Hook file references', 'broken refs', hookDrift);
+  allDrift.push(...hookDrift);
 
   // Pattern 3: Handler file references
   const handlerDrift = checkHandlerFileRefs(docsToCheck, handlersOnDisk);
-  if (handlerDrift.length > 0) {
-    console.error(`${TAG} [DRIFT] Handler file references: ${handlerDrift.length} broken refs found`);
-    for (const item of handlerDrift) {
-      console.error(`${TAG}   - ${item.doc}: ${item.issue}`);
-    }
-    allDrift.push(...handlerDrift);
-  } else {
-    console.error(`${TAG} [OK] Handler file references: all valid`);
-  }
+  printDrift('Handler file references', 'broken refs', handlerDrift);
+  allDrift.push(...handlerDrift);
 
   // Pattern 4: Lib file references
   const libDrift = checkLibFileRefs(docsToCheck, libsOnDisk);
-  if (libDrift.length > 0) {
-    console.error(`${TAG} [DRIFT] Lib file references: ${libDrift.length} broken refs found`);
-    for (const item of libDrift) {
-      console.error(`${TAG}   - ${item.doc}: ${item.issue}`);
-    }
-    allDrift.push(...libDrift);
-  } else {
-    console.error(`${TAG} [OK] Lib file references: all valid`);
-  }
+  printDrift('Lib file references', 'broken refs', libDrift);
+  allDrift.push(...libDrift);
 
   // Pattern 1: System doc cross-references
   const sysDocDrift = checkSystemDocRefs(docsToCheck, systemDocsOnDisk);
-  if (sysDocDrift.length > 0) {
-    console.error(`${TAG} [DRIFT] System doc references: ${sysDocDrift.length} broken refs found`);
-    for (const item of sysDocDrift) {
-      console.error(`${TAG}   - ${item.doc}: ${item.issue}`);
-    }
-    allDrift.push(...sysDocDrift);
-  } else {
-    console.error(`${TAG} [OK] System doc references: all valid`);
-  }
+  printDrift('System doc references', 'broken refs', sysDocDrift);
+  allDrift.push(...sysDocDrift);
 
   // Pattern 5: Hook counts
   const hookCountDrift = checkHookCounts(docsToCheck, hooksOnDisk.size);
-  if (hookCountDrift.length > 0) {
-    console.error(`${TAG} [DRIFT] Hook counts: ${hookCountDrift.length} mismatches found`);
-    for (const item of hookCountDrift) {
-      console.error(`${TAG}   - ${item.doc}: ${item.issue}`);
-    }
-    allDrift.push(...hookCountDrift);
-  } else {
-    console.error(`${TAG} [OK] Hook counts: accurate`);
-  }
+  printDrift('Hook counts', 'mismatches', hookCountDrift);
+  allDrift.push(...hookCountDrift);
 
   // Step 5: Apply safe deterministic updates
   const updatesApplied: string[] = [];
 
-  // Update Last Updated timestamps for modified SYSTEM docs
+  // Update Last Updated timestamps — only in docs THIS session wrote or edited,
+  // resolved by their DOCS_DIR-relative path (audit finding 6: basename keying
+  // never resolved a nested doc, and could only ever have hit the wrong one).
   for (const path of modifiedFiles) {
-    if (path.includes('PAI/') && path.endsWith('.md')) {
-      const docFile = basename(path);
-      const result = updateLastUpdatedTimestamp(docFile);
-      if (result) {
-        console.error(`${TAG} [UPDATED] ${result}`);
-        updatesApplied.push(result);
-      }
+    if (!path.endsWith('.md')) continue;
+    const docFile = docsRelativePath(path);
+    if (!docFile) continue;
+    const result = updateLastUpdatedTimestamp(docFile);
+    if (result) {
+      console.error(`${TAG} [UPDATED] ${result}`);
+      updatesApplied.push(result);
     }
   }
 
@@ -847,7 +938,7 @@ export async function handleDocCrossRefIntegrity(
     console.error(`${TAG} === Running inference analysis ===`);
     const inferenceEdits = await runInferenceAnalysis(modifiedFiles, docsToCheck);
     if (inferenceEdits.length > 0) {
-      const inferenceApplied = applyInferenceEdits(inferenceEdits);
+      const inferenceApplied = applyInferenceEdits(inferenceEdits, docsToCheck);
       updatesApplied.push(...inferenceApplied);
     } else {
       console.error(`${TAG} [INFERENCE] No semantic corrections needed`);
@@ -871,7 +962,7 @@ export async function handleDocCrossRefIntegrity(
   // Step 10: Voice notification — ONLY when actual documentation edits were applied
   // No voice for "queued for review" or "in sync" — that's noise
   if (updatesApplied.length > 0) {
-    // The 3s delay below exists to let the main 🗣️ {{DA_NAME}} voice line play first. On
+    // The 3s delay below exists to let the DA's main 🗣️ voice line play first. On
     // SessionEnd there is no main voice line to sequence against — the session
     // is ending — so it was 3 seconds of a 30s teardown budget spent ordering
     // audio nobody is waiting for. Sequence only where sequencing is real.

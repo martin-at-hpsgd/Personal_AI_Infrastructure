@@ -1,0 +1,8 @@
+{
+  "contentRepo": "",
+  "contentLabel": "content-idea",
+  "maxIssues": 5,
+  "maxUpgrades": 5,
+  "maxDigestItems": 10,
+  "windowDays": 7
+}

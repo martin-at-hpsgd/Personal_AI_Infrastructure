@@ -2,7 +2,7 @@
 status: RETIRED 2026-07-11 — historical doctrine. Modes/tiers were abolished with Algorithm v8 and system prompt v3.0.0 (one adaptive format). Kept as record only; nothing routes here.
 last_updated: 2026-05-13
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 mode: ideate
 ---
 
@@ -26,7 +26,7 @@ When triggered, OBSERVE sets `mode: ideate` in ISA frontmatter and loads this do
 ## Pulse surface
 
 - Tab: **Ideate**
-- Dashboard: `NoveltyDashboard` (`LIFEOS/PULSE/Observability/src/app/novelty/page.tsx`)
+- Dashboard: `NoveltyDashboard` (`LIFEOS/PULSE/Observability/src/app/novelty/page.tsx` (not in the public release))
 - Filter: `algorithmStates.filter(s => s.mode === "ideate")`
 
 ## The Nine Phases
@@ -119,14 +119,13 @@ principal_stated_goal: "<verbatim if user stated one>"
 - **OBSERVE:** trigger detection, parameter resolution, ISA scaffold.
 - **THINK:** risks/premortem; for ideate, "what failure modes does the generative loop have?" — e.g., mode collapse, domain narrowness.
 - **PLAN:** scope strategy; for ideate, often `breadth-then-depth`.
-- **BUILD:** load `Skill("Ideate")` — the 9-phase cognitive cycle engine.
 - **EXECUTE:** run cycles; Meta-Learner adjusts between cycles.
 - **VERIFY:** evaluate generated ideas against TEST scoring; check capability invocations met tier floors.
 - **LEARN:** route winning ideas to KNOWLEDGE; log meta-learner adjustments.
 
 ## Examples
 
-- "ideate post ideas about Human 3.0" → `mode: ideate`, `preset: dream`, E2-E3
+- "ideate post ideas about my core theme" → `mode: ideate`, `preset: dream`, E2-E3
 - "id8 a way to compress mode taxonomy" → `mode: ideate`, `preset: directed`, E3
 - "dream up novel UI patterns for ISA editing" → `mode: ideate`, `preset: dream`, E3
 - "surgical brainstorm: what to cut from the v6.5.0 doctrine" → `mode: ideate`, `preset: surgical`, E3
@@ -135,5 +134,5 @@ principal_stated_goal: "<verbatim if user stated one>"
 
 - All modes: [`README.md`](README.md)
 - Parameter schema: [`../parameter-schema.md`](../parameter-schema.md)
-- Ideate skill (router): `~/.claude/skills/Ideate/SKILL.md`
+- Ideate skill: retired 2026-09-22, absorbed into BeCreative's evolve-ideas intent, which moved to HillClimb's Ideate intent (`skills/HillClimb/Intents/Ideate.md`) on 2026-10-11
 - Current Algorithm doctrine: `../v6.5.0.md`

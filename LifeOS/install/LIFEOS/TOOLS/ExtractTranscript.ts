@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.4.6
  * ExtractTranscript.ts
  *
  * CLI tool for extracting transcripts from audio/video files using OpenAI Whisper API
@@ -19,6 +20,7 @@ import OpenAI from "openai";
 import { existsSync, statSync, readdirSync, mkdirSync, createReadStream } from "fs";
 import { join, basename, extname, dirname } from "path";
 import { writeFile } from "fs/promises";
+import { CROSS_VENDOR } from "./models";
 
 // Supported audio/video formats
 const SUPPORTED_FORMATS = [
@@ -157,10 +159,8 @@ async function transcribeFile(
 
   // OpenAI has 25MB file size limit - use local split helper for large files
   if (fileSizeMB > 25) {
-    console.log("File exceeds 25MB limit - using faster local alternative...");
-    console.log("Note: For large files, consider using faster-whisper locally");
     throw new Error(
-      `File size (${fileSizeMB.toFixed(2)} MB) exceeds OpenAI's 25MB limit. Please use a local transcription tool or split the file manually.`
+      `File size (${fileSizeMB.toFixed(2)} MB) exceeds OpenAI's 25MB limit. Run \`bun SplitAndTranscribe.ts "${filePath}" ${options.format}\`, which chunks the file and transcribes each part.`
     );
   }
 
@@ -174,7 +174,7 @@ async function transcribeFile(
     // Call OpenAI Whisper API
     const transcription = await openai.audio.transcriptions.create({
       file: fileStream,
-      model: "whisper-1",
+      model: CROSS_VENDOR.openaiTranscribe,
       response_format: options.format === "txt" ? "text" : options.format as any,
       language: "en",
     });

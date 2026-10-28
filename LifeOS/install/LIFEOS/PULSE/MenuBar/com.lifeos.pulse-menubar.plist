@@ -6,12 +6,19 @@
     <string>com.lifeos.pulse-menubar</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/Applications/LifeOS Pulse.app/Contents/MacOS/LifeOS Pulse</string>
+        <string>__HOME__/Library/Application Support/LifeOS/Helpers.noindex/LifeOS Pulse.app/Contents/MacOS/LifeOS Pulse</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
+    <!-- Crash recovery only. An unconditional KeepAlive cannot tell a crash from
+         the "Quit Menu Bar" item, which terminates with status 0, so launchd
+         relaunched the app within seconds and the icon could not be removed at
+         all. (public issue #1909, @xmasyx) -->
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>EnvironmentVariables</key>
     <dict>
         <key>LIFEOS_PULSE_DIR</key>

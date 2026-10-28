@@ -1,3 +1,4 @@
+<!-- isa-example claims=18 probes=6 era=legacy -->
 <!-- Fictitious example. "rsync-verify" is a teaching project name; any resemblance to real tools is coincidental. -->
 
 ---
@@ -12,13 +13,15 @@ started: 2026-03-15T16:45:00Z
 updated: 2026-03-21T22:00:00Z
 ---
 
+## Ideal State
+
+### L3 · One sentence
+
+A backup that reports success only when the destination bytes provably match the source, without making a clean run more than 1.5 times slower.
+
 ## Problem
 
 The `rsync-verify` CLI copies a source directory to a backup destination and reports completion. It does not currently verify that the destination bytes match the source. Bit rot, partial copies, and silent FS corruption have caused three "successful" backups in the last quarter to land unrestorable. Operators want a `--verify` mode that hashes both sides and surfaces mismatches before the run reports success.
-
-## Goal
-
-Add a `--verify` flag that, after the rsync copy step completes, walks both source and destination, computes SHA-256 per file, compares hashes, and either exits 0 with a pass summary or exits 2 with a per-file mismatch report. The verification step must not double the run-time of a clean backup more than 1.5×.
 
 ## Criteria
 
@@ -57,45 +60,17 @@ Add a `--verify` flag that, after the rsync copy step completes, walks both sour
 
 ## Test Strategy
 
-```yaml
-- isc: ISC-1
-  type: integration
-  check: clean backup verifies pass
-  threshold: exit 0
-  tool: ./test/integration/clean-tree.sh && rsync-verify --verify ./tmp/src ./tmp/dst; echo $?
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-1 | bash | clean backup verifies pass | exit 0 | ./test/integration/clean-tree.sh && rsync-verify --verify ./tmp/src ./tmp/dst |  |
+| ISC-2 | bash | corrupted backup fails verify | exit 2 | ./test/integration/clean-tree.sh && printf '\x00' >> ./tmp/dst/file7.bin && { rsync-verify --verify ./tmp/src ./tmp/dst; test $? -eq 2; } |  |
+| ISC-7 | bash | verify-mode ≤ 1.5× no-verify | ratio ≤ 1.5 | bash benchmarks/10gb-tree.sh |  |
+| ISC-9 | bash | peak RSS during 50GB hash | ≤ 256MB | bash benchmarks/large-file-rss.sh |  |
+| ISC-15 | bash | --remote rejected with clear error | stderr contains "ERROR" + exit 1 | err=$(rsync-verify --verify ssh://host/path ./dst 2>&1 >/dev/null); test $? -eq 1 && printf '%s' "$err" \| grep -q "ERROR" |  |
+| ISC-17 | bash | file contents never appear in any log stream | 0 occurrences of test fixture content marker | ! rsync-verify --verify ./tmp/src ./tmp/dst 2>&1 \| rg -q "TEST_FIXTURE_SENTINEL_BYTES" |  |
 
-- isc: ISC-2
-  type: integration
-  check: corrupted backup fails verify
-  threshold: exit 2
-  tool: ./test/integration/clean-tree.sh && printf '\x00' >> ./tmp/dst/file7.bin && rsync-verify --verify ./tmp/src ./tmp/dst; echo $?
-
-- isc: ISC-7
-  type: performance
-  check: verify-mode ≤ 1.5× no-verify
-  threshold: ratio ≤ 1.5
-  tool: bash benchmarks/10gb-tree.sh
-
-- isc: ISC-9
-  type: memory
-  check: peak RSS during 50GB hash
-  threshold: ≤ 256MB
-  tool: bash benchmarks/large-file-rss.sh
-
-- isc: ISC-15
-  type: anti-probe
-  check: --remote rejected with clear error
-  threshold: stderr contains "ERROR" + exit 1
-  tool: rsync-verify --verify ssh://host/path ./dst 2>&1; echo $?
-
-- isc: ISC-17
-  type: privacy
-  check: file contents never appear in any log stream
-  threshold: 0 occurrences of test fixture content marker
-  tool: rsync-verify --verify ./tmp/src ./tmp/dst 2>&1 | rg "TEST_FIXTURE_SENTINEL_BYTES" | wc -l
-```
 
 <!--
-E2 medium ISA. Required sections: Problem, Goal, Criteria, Test Strategy.
+E2 medium ISA. Required sections: Ideal State (L3 alone), Problem, Criteria, Test Strategy.
 Vision, Out of Scope, Principles, Constraints, Features, Decisions, Changelog, Verification omitted — the work surface is single-domain (one CLI, one feature) and the tier completeness gate doesn't require them. ISC count of 18 meets the E2 floor of 16. Four anti-criteria (ISC-15, 16, 17, 18) cover scope, regression, privacy, and a future-compat lock — typical E2 anti-criteria density.
 -->

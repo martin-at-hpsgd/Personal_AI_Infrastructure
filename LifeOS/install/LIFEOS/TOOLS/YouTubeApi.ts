@@ -19,6 +19,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  * Commands:
  *   channel              Get channel statistics
  *   videos [count]       Get recent videos with stats (default: 10)
+ *   catalog              Emit every channel video as JSON lines, newest first
  *   video <id|title>     Get stats for specific video
  *   search <query>       Search channel videos
  *
@@ -27,12 +28,13 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  *   YOUTUBE_CHANNEL_ID   Channel ID (required for channel/videos/search)
  *
  * @author LifeOS System
- * @version 1.0.0
+ * @version 1.0.3
  */
 
 import { readFileSync } from 'fs'
-import { homedir } from 'os'
 import { join } from 'path'
+import { getClaudeDir } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { parseEnv } from './Env';
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -58,20 +60,15 @@ function loadEnv(): Record<string, string> {
   // Canonical .env is ~/.claude/.env. LIFEOS_CONFIG_DIR names the LIFEOS
   // directory, NOT the dir holding .env — joining it produced the dead path
   // ~/.claude/LIFEOS/.env that nothing creates (public issue #1490).
-  const envPath = join(homedir(), '.claude', '.env')
-  const env: Record<string, string> = {}
+  const envPath = join(getClaudeDir(), '.env')
   try {
     const content = readFileSync(envPath, 'utf-8')
-    for (const line of content.split('\n')) {
-      const match = line.match(/^([^#=]+)=(.*)$/)
-      if (match) {
-        env[match[1].trim()] = match[2].trim().replace(/^["']|["']$/g, '')
-      }
-    }
+    // public issue #2100, @bowlax: use unified parseEnv to handle CRLF and export prefix
+    return parseEnv(content)
   } catch {
     // Ignore if file doesn't exist
   }
-  return env
+  return {}
 }
 
 const env = loadEnv()
@@ -87,11 +84,10 @@ if (!API_KEY) {
 // API helpers
 async function apiGet<T>(endpoint: string, params: Record<string, string>): Promise<T> {
   const url = new URL(`${BASE_URL}${endpoint}`)
-  url.searchParams.set('key', API_KEY)
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v)
   }
-  const res = await fetch(url.toString())
+  const res = await fetch(url.toString(), { headers: { 'X-Goog-Api-Key': API_KEY }, signal: AbortSignal.timeout(30000) })
   if (!res.ok) {
     const err = await res.json()
     throw new Error(err.error?.message || `API error: ${res.status}`)
@@ -171,6 +167,46 @@ async function getRecentVideos(count: number = 10): Promise<void> {
     const likes = formatNum(s?.likeCount || 0).padStart(8)
     console.log(`${title} ${colors.green}${views}${colors.reset} ${colors.yellow}${likes}${colors.reset}`)
   }
+}
+
+async function getCatalog(): Promise<void> {
+  const channels = await apiGet<any>('/channels', { part: 'contentDetails', id: CHANNEL_ID })
+  const playlistId = channels.items?.[0]?.contentDetails?.relatedPlaylists?.uploads
+  if (!playlistId) throw new Error('Channel uploads playlist missing')
+  interface SearchResponse {
+    nextPageToken?: string
+    items: Array<{
+      contentDetails: { videoId: string }
+      snippet: {
+        title: string
+        description: string
+        publishedAt: string
+        thumbnails: Record<string, { url: string; width?: number; height?: number }>
+      }
+    }>
+  }
+
+  let pageToken: string | undefined
+  do {
+    const params: Record<string, string> = {
+      part: 'snippet,contentDetails',
+      playlistId,
+      maxResults: '50'
+    }
+    if (pageToken) params.pageToken = pageToken
+    const page = await apiGet<SearchResponse>('/playlistItems', params)
+    for (const video of page.items) {
+      const thumbnail = video.snippet.thumbnails.maxres ?? video.snippet.thumbnails.high ?? video.snippet.thumbnails.medium ?? video.snippet.thumbnails.default
+      console.log(JSON.stringify({
+        id: video.contentDetails.videoId,
+        title: video.snippet.title,
+        description: video.snippet.description,
+        publishedAt: video.snippet.publishedAt,
+        thumbnailUrl: thumbnail?.url ?? null
+      }))
+    }
+    pageToken = page.nextPageToken
+  } while (pageToken)
 }
 
 async function getVideoStats(query: string): Promise<void> {
@@ -258,12 +294,14 @@ ${colors.cyan}Usage:${colors.reset}
 ${colors.cyan}Commands:${colors.reset}
   channel              Get channel statistics
   videos [count]       Get recent videos with stats (default: 10)
+  catalog              Emit every channel video as JSON lines, newest first
   video <id|title>     Get stats for specific video
   search <query>       Search channel videos
 
 ${colors.cyan}Examples:${colors.reset}
   bun YouTubeApi.ts channel
   bun YouTubeApi.ts videos 5
+  bun YouTubeApi.ts catalog > channel-catalog.jsonl
   bun YouTubeApi.ts video "ThreatLocker"
   bun YouTubeApi.ts search "AI agents"
 `)
@@ -278,6 +316,9 @@ switch (cmd) {
     break
   case 'videos':
     await getRecentVideos(parseInt(args[0]) || 10)
+    break
+  case 'catalog':
+    await getCatalog()
     break
   case 'video':
     if (!args[0]) {

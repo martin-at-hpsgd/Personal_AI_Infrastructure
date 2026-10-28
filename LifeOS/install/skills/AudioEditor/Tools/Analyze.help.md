@@ -43,4 +43,4 @@ bun ~/.claude/skills/AudioEditor/Tools/Analyze.ts <transcript.json> [--output <p
 
 ## Requirements
 
-- `ANTHROPIC_API_KEY` environment variable
+- Runs through `LIFEOS/TOOLS/Inference.ts`, which handles model access; no API key of its own

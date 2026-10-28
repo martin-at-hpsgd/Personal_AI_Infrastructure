@@ -1,8 +1,12 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.4.0 (2026-10-14: watches every DeriveDenyHashes input via denyHashInputs())
  * DerivedSync.ts - Detect manual USER source edits and regenerate derived LifeOS artifacts.
  *
  * No-op runs are intentionally silent because launchd WatchPaths can fire often.
+ *
+ * The Pulse Data Plane page rebuilds this used to trigger were retired on 2026-10-14:
+ * nothing had rendered their output since Pulse's pages moved to the Next app.
  */
 
 import { createHash } from "node:crypto";
@@ -18,6 +22,9 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { mirrorAll } from "./HeaderMirror";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { denyHashInputs, isDenyHashInput } from "./DeriveDenyHashes";
 
 type SpawnReadable = ReadableStream<Uint8Array> | null;
 type SpawnProcess = {
@@ -40,9 +47,9 @@ type StateFile = {
   lastRun: string;
 };
 
-type ActionKind = "telos-summary" | "pai-state" | "data-plane-page" | "deny-hashes";
+type ActionKind = "telos-summary" | "lifeos-state" | "deny-hashes" | "interview-due";
 
-type PlannedAction = {
+export type PlannedAction = {
   kind: ActionKind;
   cmd: string[];
   timeoutMs: number;
@@ -77,12 +84,10 @@ type RunSummary = {
 };
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const CLAUDE_DIR = join(HOME, ".claude");
+const CLAUDE_DIR = getClaudeDir();
 const LIFEOS_DIR = join(CLAUDE_DIR, "LIFEOS");
 const USER_DIR = join(LIFEOS_DIR, "USER");
 const TOOLS_DIR = join(LIFEOS_DIR, "TOOLS");
-const PULSE_PAGES_DIR = join(LIFEOS_DIR, "PULSE", "pages");
-const ADAPTER_CLI = join(LIFEOS_DIR, "PULSE", "Tools", "AdapterCli.ts");
 const STATE_DIR = join(LIFEOS_DIR, "MEMORY", "STATE");
 const OBSERVABILITY_DIR = join(LIFEOS_DIR, "MEMORY", "OBSERVABILITY");
 const STATE_PATH = join(STATE_DIR, "derived-sync.json");
@@ -90,7 +95,6 @@ const LOCK_PATH = join(STATE_DIR, "derived-sync.lock");
 const LOG_PATH = join(OBSERVABILITY_DIR, "derived-sync.jsonl");
 const LOCK_STALE_MS = 5 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
-const SWEEP_TIMEOUT_MS = 180 * 1000;
 
 function usage(): string {
   return [
@@ -125,7 +129,7 @@ function existingMarkdownFiles(dir: string): string[] {
     });
 }
 
-function watchedSourceFiles(): string[] {
+export function watchedSourceFiles(): string[] {
   const files = [
     ...existingFile(sourcePath("TELOS", "TELOS.md")),
     ...existingMarkdownFiles(sourcePath("TELOS", "IDEAL_STATE")),
@@ -141,7 +145,10 @@ function watchedSourceFiles(): string[] {
     ...existingFile(sourcePath("PROJECTS.md")),
     ...existingFile(sourcePath("DEFINITIONS.md")),
     ...existingFile(sourcePath("CANONICAL_CONTENT.md")),
-    ...existingFile(sourcePath("CONFIG", "OPERATIONAL_RULES.md")),
+    ...existingFile(sourcePath("CONFIG", "OPERATIONAL_PREFERENCES.md")),
+    // Every input of the salted-hash leak filter, from DeriveDenyHashes own list:
+    // a hand list here missed private identity, gear, network and the passphrase-class values.
+    ...denyHashInputs(),
   ];
 
   const unique = new Set<string>();
@@ -154,6 +161,7 @@ function watchedSourceFiles(): string[] {
   // Loop prevention invariant: derived outputs are never in this structural watch list.
   unique.delete(sourcePath("TELOS", "PRINCIPAL_TELOS.md"));
   unique.delete(sourcePath("TELOS", "LIFEOS_STATE.json"));
+  unique.delete(sourcePath("SECURITY", "DENY_HASHES.json"));
   const sorted: string[] = [];
   unique.forEach((path) => sorted.push(path));
   return sorted.sort();
@@ -201,35 +209,14 @@ function isStateSource(path: string): boolean {
   return path.startsWith(sourcePath("TELOS", "IDEAL_STATE") + "/") || path.startsWith(sourcePath("TELOS", "CURRENT_STATE") + "/");
 }
 
-/** Corpus files DeriveDenyHashes.ts reads — a change means the salted-hash leak
- * filter must regenerate so new contacts/domains/hostnames become covered. */
+/** Inputs DeriveDenyHashes.ts reads (its own declared list): a change means the salted-hash leak
+ * filter must regenerate so new contacts/domains/hostnames/passphrases become covered. */
 function isDenyCorpusSource(path: string): boolean {
-  return /\/(PRINCIPAL_IDENTITY|RESUME|CONTACTS|GEAR)\.md$/.test(path)
-    || /\/TELOS\/TELOS\.md$/.test(path)
-    || path.includes("/MEMORY/_NETWORK/");
+  return isDenyHashInput(path);
 }
 
-function parseManifestId(path: string): string | null {
-  const text = readFileSync(path, "utf-8");
-  const match = text.match(/^\s*id\s*=\s*"([^"]+)"\s*$/m);
-  if (!match) return null;
-  return match[1];
-}
-
-function pageIds(): string[] {
-  if (!existsSync(PULSE_PAGES_DIR)) return [];
-  const stat = statSync(PULSE_PAGES_DIR);
-  if (!stat.isDirectory()) return [];
-  const ids: string[] = [];
-  for (const name of readdirSync(PULSE_PAGES_DIR).sort()) {
-    if (!name.endsWith(".manifest.toml")) continue;
-    const id = parseManifestId(join(PULSE_PAGES_DIR, name));
-    if (id) ids.push(id);
-  }
-  return ids;
-}
-
-function plannedActions(changed: string[]): PlannedAction[] {
+/** The regenerations a set of changed watched sources calls for, in run order. */
+export function plannedActions(changed: string[]): PlannedAction[] {
   const actions: PlannedAction[] = [];
   const telosSources = changed.filter(isTelosSource);
   const stateSources = changed.filter(isStateSource);
@@ -245,7 +232,7 @@ function plannedActions(changed: string[]): PlannedAction[] {
 
   if (stateSources.length > 0) {
     actions.push({
-      kind: "pai-state",
+      kind: "lifeos-state",
       cmd: ["bun", join(TOOLS_DIR, "UpdateLifeosState.ts")],
       timeoutMs: DEFAULT_TIMEOUT_MS,
       triggeredBy: stateSources,
@@ -262,15 +249,16 @@ function plannedActions(changed: string[]): PlannedAction[] {
     });
   }
 
-  if (changed.length > 0) {
-    for (const id of pageIds()) {
-      actions.push({
-        kind: "data-plane-page",
-        cmd: ["bun", ADAPTER_CLI, id],
-        timeoutMs: SWEEP_TIMEOUT_MS,
-        triggeredBy: changed,
-      });
-    }
+  // An interview stamps `last_reviewed` on USER markdown, so any such edit recomputes the
+  // statusline's "Interview due" verdict, last, after the derived files it reads are current.
+  const reviewable = changed.filter((p) => p.startsWith(sourcePath() + "/") && p.endsWith(".md"));
+  if (reviewable.length > 0) {
+    actions.push({
+      kind: "interview-due",
+      cmd: ["bun", join(TOOLS_DIR, "InterviewDue.ts")],
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+      triggeredBy: reviewable,
+    });
   }
 
   return actions;
@@ -308,12 +296,6 @@ async function runAction(action: PlannedAction): Promise<ActionResult> {
     return { log, ok: false, error: `timeout after ${action.timeoutMs}ms for ${shellCommand(action.cmd)}: ${detail}` };
   }
   if (exit !== 0) {
-    // A page manifest whose sourceGlobs match nothing on this install is a
-    // permanent config state, not a sync failure — skip clean so the launchd
-    // job isn't perpetually red over pages that can never build.
-    if (action.kind === "data-plane-page" && stdout.includes('"status": "no-sources"')) {
-      return { log: { ...log, exit: 0 }, ok: true };
-    }
     const detail = stderr.trim() || stdout.trim() || "no child output";
     return { log, ok: false, error: `exit ${exit} for ${shellCommand(action.cmd)} after ${ms}ms: ${detail}` };
   }
@@ -384,6 +366,8 @@ function printStatus(): void {
 }
 
 async function runSync(dryRun: boolean, force: boolean): Promise<number> {
+  // Mirror frontmatter facts into auto-loaded bodies BEFORE hashing, so the mirror write never re-triggers a run.
+  if (!dryRun) mirrorAll();
   const state = readState();
   const watched = watchedSourceFiles();
   const hashes = currentHashes(watched);
@@ -407,23 +391,16 @@ async function runSync(dryRun: boolean, force: boolean): Promise<number> {
       actionLogs.push(result.log);
       if (!result.ok) {
         hadFailure = true;
-        // Sweep failures don't poison hash state: AdapterRunner keeps its own
-        // per-page source-hash cache and writes <page>.error.json, so a
-        // permanently-broken page would otherwise force every watched source
-        // to re-fire on every WatchPaths event, forever.
-        if (action.kind !== "data-plane-page") {
-          for (const source of action.triggeredBy) {
-            failedActionSources.add(source);
-          }
+        // A failed action keeps its sources' previous hashes, so the next run retries it.
+        for (const source of action.triggeredBy) {
+          failedActionSources.add(source);
         }
         console.error(`[DerivedSync] action failed: ${result.error ?? "unknown action failure"}`);
       }
     } catch (err) {
       hadFailure = true;
-      if (action.kind !== "data-plane-page") {
-        for (const source of action.triggeredBy) {
-          failedActionSources.add(source);
-        }
+      for (const source of action.triggeredBy) {
+        failedActionSources.add(source);
       }
       const ms = 0;
       actionLogs.push({ cmd: shellCommand(action.cmd), exit: null, ms });
@@ -484,4 +461,4 @@ async function main(): Promise<void> {
   process.exit(exitCode);
 }
 
-main();
+if (import.meta.main) await main();

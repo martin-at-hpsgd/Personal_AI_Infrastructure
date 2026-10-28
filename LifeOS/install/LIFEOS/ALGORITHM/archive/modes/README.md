@@ -2,7 +2,7 @@
 status: RETIRED 2026-07-11 — historical doctrine. Modes/tiers were abolished with Algorithm v8 and system prompt v3.0.0 (one adaptive format). Kept as record only; nothing routes here.
 last_updated: 2026-07-14T22:45:00Z
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 canonical: true
 ---
 
@@ -23,7 +23,7 @@ These are the six pills across the top of the Pulse Agents page. Categorization 
 | 3 | **Ideate** | `ideate` | `NoveltyDashboard` | Algorithm mode | [`ideate.md`](ideate.md) | 9-phase evolutionary ideation (CONSUME → DREAM → … → META-LEARN) |
 | 4 | **Loop** | `loop` | `LoopDashboard` | Algorithm mode (continuation) | [`loop.md`](loop.md) | Goal-driven iteration with fresh-context substrate; Goal is absorbed (no peer "goal mode") |
 | 5 | **Native** | `native` | `NativeDashboard` | Response-mode crossover | [`native.md`](native.md) | NATIVE-mode work — one-line-legible ideal state, no ISA |
-| 6 | **Ladder** | n/a | `LadderPage` (`/ladder`) | External project | — | Improvement pipeline from `~/Projects/Ladder` (sources → ideas → … → results) |
+| 6 | **Ladder** | n/a | `LadderPage` (`/ladder`) | External project | — | Improvement pipeline from an external project directory (sources → ideas → … → results) |
 
 **Right-side tab:** **Actions** (lightning bolt) — observability event timeline, not a mode. Routes to `ObservabilityDashboard`.
 
@@ -73,7 +73,7 @@ Set by `TheRouter.hook.ts` (retired 2026-07-11) at UserPromptSubmit. When the Th
 
 ### External pipeline (Ladder)
 
-Not a LifeOS mode. The `/ladder` Pulse page reads pipeline state from the Ladder project at `~/Projects/Ladder` and renders six-stage flow (sources → ideas → hypotheses → experiments → algorithms → results).
+Not a LifeOS mode. The `/ladder` Pulse page reads pipeline state from an external project directory and renders six-stage flow (sources → ideas → hypotheses → experiments → algorithms → results).
 
 ---
 
@@ -109,9 +109,9 @@ E-level sets the tier; mode sets the execution pattern. Both can be set simultan
 
 - Pulse tab source of truth: `LIFEOS/PULSE/Observability/src/app/agents/page.tsx` lines 23-30
 - Dashboard components: `LIFEOS/PULSE/Observability/src/components/activity/{UnifiedWorkDashboard,OptimizeDashboard,LoopDashboard,NativeDashboard,NoveltyDashboard}.tsx`
-- Ladder page: `LIFEOS/PULSE/Observability/src/app/ladder/page.tsx`
-- Loop skill: `~/.claude/skills/Loop/SKILL.md`
-- Ideate skill (router stub): `~/.claude/skills/Ideate/SKILL.md`
+- Ladder page: `LIFEOS/PULSE/Observability/src/app/ladder/page.tsx` (not in the public release)
+- Loop skill: folded into HillClimb on 2026-10-09, now `~/.claude/skills/HillClimb/Intents/Loop.md`
+- Ideate skill: retired 2026-09-22, absorbed into BeCreative's evolve-ideas intent, which moved to HillClimb's Ideate intent (`skills/HillClimb/Intents/Ideate.md`) on 2026-10-11
 - Parameter schema: `../parameter-schema.md`
 - Capabilities: the system-prompt skill list is the sole inventory (capabilities.md removed at v7.0.0)
 - Target types: `../target-types.md`

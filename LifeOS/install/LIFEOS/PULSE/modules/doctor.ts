@@ -38,7 +38,7 @@ const CAP_TITLES: Record<string, string> = {
 };
 
 interface CapResult {
-  state: "live" | "broken" | "declined" | "stale";
+  state: "live" | "broken" | "declined" | "stale" | "off";
   checkedAt: string;
   ttlHours: number;
   detail: string;

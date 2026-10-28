@@ -1,0 +1,155 @@
+# Fabric AuditConsent — whether the consent in an agreement or interaction is
+# real. The code asserts pin what is literal (the sections and tables, the
+# channel and verdict values, a None channel ending the audit, the Answer line,
+# the no-consent-claim line); the judged asserts carry evidence tied to the
+# input, the channel rule, even-handed verdicts, and changes that name the term
+# they change. Synthetic inline fixtures only: every product, co-op and person
+# in the prompts is fictional.
+name: fabric-auditconsent
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AuditConsent.md"
+cases:
+  - id: terms_continued_use_opt_out_by_deletion
+    prompt: |
+      audit_consent on this terms update:
+
+      "Updated terms for Brindle Notes, effective March 1. By continuing to use Brindle Notes after March 1, you agree that we may share the contents of your notes with our advertising partners. If you do not agree, you may delete your account at any time. Deleting your account permanently deletes all of your notes. Exporting notes is not available."
+    # SYNTHETIC ADVERSARIAL FIXTURE: the sections, rows, channel and verdict are
+    # all the right shape and value, but the evidence is generic, it invents an
+    # emailed 30-day notice the text never mentions, and the changes are generic
+    # advice that name no term to change.
+    adversarial_output: |
+      ## Audit: Brindle Notes users consenting to share note contents with advertisers
+
+      **Consent claim:** Brindle Notes says users agree to share their notes with advertising partners by continuing to use the app.
+
+      ### Power map
+
+      | Dimension | Requester: Brindle Notes | Consenter: users | Asymmetry |
+      |---|---|---|---|
+      | Economic | Large company | Individual users | High |
+      | Information | Knows more | Knows less | High |
+      | Social | Brand reputation | Peer pressure | Medium |
+      | Structural | Controls the platform | Few alternatives | High |
+
+      ### Consent channel
+
+      **Channel:** Conduct: continued use of the app after users were emailed 30 days' notice of the change.
+
+      ### Five consent tests
+
+      | Test | Status | Evidence |
+      |---|---|---|
+      | Information | Partial | Terms of service are often long and complex |
+      | Alternatives | Partial | Users have other options but switching is hard |
+      | Capacity | Pass | Users are generally adults |
+      | No manipulation | Partial | Tech companies use dark patterns |
+      | Revocability | Fail | Users may find it hard to withdraw |
+
+      ### Verdict
+
+      **Verdict:** COERCED: there is a significant power imbalance between big tech and its users.
+
+      ### What would make this genuine
+
+      - Increase transparency.
+      - Empower users with more control over their data.
+      - Follow industry best practices for privacy.
+
+      ### Minimum viable consent
+
+      Greater transparency and user empowerment.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Audit:[^\n]+\n[\s\S]*\*\*Consent claim:\*\*[\s\S]*### Power map[\s\S]*\| *Economic *\|[\s\S]*### Consent channel[\s\S]*### Five consent tests[\s\S]*\| *Revocability *\|[\s\S]*### Verdict[\s\S]*### What would make this genuine[\s\S]*### Minimum viable consent'
+      - type: regex
+        weight: 2
+        value: '\| *Revocability *\| *Fail *\|'
+      - type: regex
+        weight: 2
+        value: '\*\*Verdict:\*\*[ \t]+(?:MANUFACTURED|COERCED|ILLUSORY):'
+      - type: not-regex
+        weight: 1
+        value: '\*\*Channel:\*\*[ \t]+Agreement'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 3
+        value: [ "The test evidence names the actual terms in the text (note contents shared with advertising partners, continued use counted as agreement, opting out only by deleting the account, deletion erasing every note, no export) rather than general remarks about terms of service or tech companies, and it states no fact the text does not give (such as an email or a notice period)" ]
+        reference: "An audit built only from the Brindle Notes terms: continued use after March 1 is treated as agreement to share note contents with advertisers; the only way to refuse is to delete the account, which deletes all notes, and export is not offered."
+      - type: llm-assert
+        weight: 3
+        value: [ "Every change under What would make this genuine names a specific term or practice and what it becomes (for example an explicit opt-in instead of continued use, a way to refuse without deleting the account, an export before the change), and none is generic advice such as increasing transparency or empowering users" ]
+        reference: "An audit built only from the Brindle Notes terms: continued use after March 1 is treated as agreement to share note contents with advertisers; the only way to refuse is to delete the account, which deletes all notes, and export is not offered."
+
+  - id: neighbors_fence_genuine
+    prompt: |
+      audit_consent: "Two neighbors got three quotes for replacing the fence between their yards. One proposed splitting the cheapest quote evenly. The other took a week to think it over, asked for a lower fence, which was agreed, and then both signed a one-page note with the price, the split, and a line saying either could back out before the deposit was paid. The second neighbor could also have declined and kept the old fence."
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Verdict:\*\*[ \t]+(?:GENUINE|PRESSURED BUT FUNCTIONAL):'
+      - type: regex
+        weight: 2
+        value: '\*\*Channel:\*\*[ \t]+(?:Agreement|Words):'
+      - type: regex
+        weight: 1
+        value: '\| *Alternatives *\| *Pass *\|'
+      - type: llm-assert
+        weight: 3
+        value: [ "The audit treats this as consent that holds and calls it GENUINE, or PRESSURED BUT FUNCTIONAL only with a concrete reason from the text, without inventing concerns or treating ordinary differences between the neighbors as coercion", "The evidence cites what the text gives: shared quotes, a week to decide, a change that was negotiated, a signed note, the right to back out before the deposit, and the option to keep the old fence" ]
+        reference: "Two neighbors split a fence after shared quotes, a week to decide, a negotiated change, a signed note with a back-out clause, and the option to decline: consent that holds."
+
+  - id: silence_at_meeting_no_channel
+    prompt: |
+      audit_consent: "The board of a housing co-op says members consented to a new monthly parking fee of 40 dollars because it was mentioned at the annual meeting and no one objected. Eleven of the co-op's 230 members attended. The fee starts next month and will be added automatically to every member's bill."
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Channel:\*\*[ \t]+None:'
+      - type: not-contains
+        weight: 2
+        value: "### Five consent tests"
+      - type: not-contains
+        weight: 2
+        value: "**Verdict:**"
+      - type: contains
+        weight: 1
+        value: "### What would make this genuine"
+      - type: llm-assert
+        weight: 3
+        value: [ "The audit says that silence at a meeting attended by eleven of 230 members carried no consent, and it does not treat the absence of objection as agreement", "What would make this genuine gives members a real way to agree or refuse the fee (a vote with notice, written consent, or an opt-out), tied to how the fee was imposed" ]
+        reference: "A co-op board treats no objection at a meeting attended by 11 of 230 members as consent to a new fee billed automatically: no channel carried consent."
+
+  - id: question_job_offer_arbitration
+    prompt: "Did I really consent to mandatory arbitration when I signed my job offer? It was the only offer I got after eight months of looking, the arbitration clause was on page 14 of a 20-page packet, and HR said the packet was standard and couldn't be changed. I signed it the same day."
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Answer:\*\*[ \t]+\S'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Audit:[^\n]+\n[\s\S]*### Power map[\s\S]*### Five consent tests[\s\S]*### Verdict'
+      - type: llm-assert
+        weight: 3
+        value: [ "The Answer line answers the question directly in its first sentence (yes, no, or in what sense the person consented)", "The audit weighs the facts given (the only offer after eight months, the clause on page 14 of 20, no room to change it, signed the same day) and does not call the consent invalid on economic need alone; any failing verdict rests on need combined with the buried clause and the refusal to negotiate", "The changes name concrete terms, such as an opt-out window for the arbitration clause, a separate signature for it, or time to review before signing" ]
+        reference: "A job offer signed the same day after eight months of searching, with a non-negotiable arbitration clause on page 14 of a 20-page packet."
+
+  - id: recipe_no_consent_claim
+    prompt: |
+      audit_consent: "Simmer one cup of red lentils in four cups of stock for twenty minutes, add cumin and a squeeze of lemon, and blend until smooth."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*No consent claim:\*\*'
+      - type: not-contains
+        weight: 2
+        value: "## Audit:"
+      - type: llm-assert
+        weight: 2
+        value: [ "The output says in one line that the text is a recipe in which no one is asked to agree to anything, and it builds no audit" ]
+        reference: "A lentil soup recipe: no consent claim."

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.4.5
  * LifeOS Logo - Figlet-style A + I
  *
  * Classic ASCII art style like figlet/toilet

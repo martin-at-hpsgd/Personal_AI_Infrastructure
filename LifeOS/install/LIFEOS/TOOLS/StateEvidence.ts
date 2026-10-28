@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.0.8
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -28,6 +31,7 @@ import { readFileSync, readdirSync, existsSync, writeFileSync, renameSync, mkdir
 import { join } from "path";
 import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
+import { getClaudeDir, getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -36,7 +40,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const CACHE_DIR = join(LIFEOS_DIR, "USER", "CACHE");
 export const EVIDENCE_CACHE_PATH = join(CACHE_DIR, "state-evidence.json");
 
@@ -45,7 +49,9 @@ const HEALTH_CURRENT = join(LIFEOS_DIR, "USER", "HEALTH", "current.json");
 const CONDUIT_DIR = join(LIFEOS_DIR, "USER", "CONDUIT", "daily");
 const WORK_STATE = join(LIFEOS_DIR, "MEMORY", "STATE", "work.json");
 const EXPENSES = join(LIFEOS_DIR, "USER", "FINANCES", "expenses.json");
-const REPO_DIR = join(HOME, ".claude");
+const STRIPE_MRR = join(LIFEOS_DIR, "USER", "FINANCES", "stripe-mrr.json");
+const CASHFLOW = join(LIFEOS_DIR, "USER", "FINANCES", "cashflow.json");
+const REPO_DIR = getClaudeDir();
 
 // ---------- types ----------
 
@@ -185,7 +191,7 @@ interface OuraDay {
  * True resting HR for a day: Oura's lowest_heart_rate from the raw sleep
  * periods (long_sleep preferred). Distinct from avg_sleep_hr — average HR
  * DURING sleep runs systematically higher than RHR, and conflating the two
- * was the apples-to-oranges Max flagged (2026-08-11 review, finding 1).
+ * was the apples-to-oranges Astra flagged (2026-08-11 review, finding 1).
  */
 function restingHr(m: OuraDay["metrics"]): number | null {
   const periods = m?.raw?.sleep ?? [];
@@ -199,7 +205,7 @@ function restingHr(m: OuraDay["metrics"]): number | null {
 }
 
 interface HealthCurrent {
-  sources?: Record<string, { status?: string; lastError?: string | null; note?: string }>;
+  sources?: Record<string, { status?: string; lastError?: string | null; note?: string; lastSuccess?: string | null }>;
 }
 
 export function gatherHealth(now: Date = new Date()): DomainEvidence {
@@ -258,12 +264,16 @@ export function gatherHealth(now: Date = new Date()): DomainEvidence {
       sources.push(unavailable(id, "not present in health current.json"));
       continue;
     }
-    sources.push({
-      id,
-      status: "dead",
-      last_observation: null,
-      reason: entry.status ?? entry.lastError ?? entry.note ?? "unknown",
-    });
+    // Liveness comes from the sync record, the way oura gets it from its day
+    // files; it was hardcoded "dead" for every entry, ok ones included
+    // (public issue #2178, @jacobo-ortiz).
+    if (entry.status === "ok" && entry.lastSuccess) {
+      sources.push(liveness(id, entry.lastSuccess.slice(0, 10), 3, now));
+    } else if (entry.status === "failed") {
+      sources.push({ id, status: "dead", last_observation: entry.lastSuccess?.slice(0, 10) ?? null, reason: entry.lastError ?? "sync failed" });
+    } else {
+      sources.push(unavailable(id, entry.status ?? entry.note ?? entry.lastError ?? "unknown"));
+    }
   }
 
   return { metrics, sources };
@@ -391,13 +401,15 @@ export function gatherWork(now: Date = new Date()): DomainEvidence {
     metrics.phases_14d = phases;
 
     const newest = aged.length ? Math.min(...aged.map((x) => x.age)) : null;
+    // The newest session's updatedAt, as a local calendar day like the other sources.
+    const newestMs = aged.length ? Math.max(...aged.map((x) => Date.parse(x.s.updatedAt as string))) : null;
     sources.push(
-      newest === null
+      newest === null || newestMs === null
         ? unavailable("work-registry", "no sessions with a parseable updatedAt")
         : {
             id: "work-registry",
             status: newest <= 7 ? "live" : "stale",
-            last_observation: null,
+            last_observation: todayISO(new Date(newestMs)),
             ...(newest > 7 ? { reason: `${newest}d since last session update` } : {}),
           },
     );
@@ -499,6 +511,37 @@ export function gatherMoney(now: Date = new Date()): DomainEvidence {
   metrics.oldest_observation_30d = updated;
 
   sources.push(liveness("expenses", updated, 14, now));
+
+  // Revenue side (issue #915): StripeMrrSnapshot.ts writes this file — daily in the
+  // delta-daily workflow's evidence step, on demand otherwise. This gather stays local-only;
+  // the network leg lives in the snapshot tool, and a stale snapshot is marked
+  // stale by liveness rather than read as a live signal.
+  interface MrrSnapshot { updated?: string; mrr_usd?: number; active_subscriptions?: number }
+  const mrr = readJson<MrrSnapshot>(STRIPE_MRR);
+  if (mrr && typeof mrr.mrr_usd === "number") {
+    metrics.stripe_mrr_usd = round(mrr.mrr_usd);
+    metrics.stripe_active_subscriptions = mrr.active_subscriptions ?? null;
+    sources.push(liveness("stripe_mrr", mrr.updated ?? null, 3, now));
+  } else {
+    metrics.stripe_mrr_usd = null;
+    metrics.stripe_active_subscriptions = null;
+    sources.push(unavailable("stripe_mrr", "stripe-mrr.json missing — run LIFEOS/TOOLS/StripeMrrSnapshot.ts"));
+  }
+
+  // Books (QBO retired 2026-08-15): a private statement parser (USER/FINANCES/Tools) parses
+  // the statement PDFs/exports the principal already downloads into cashflow.json.
+  // Statements arrive monthly, so liveness tolerates 45 days.
+  interface Cashflow { updated?: string; latest?: { month: string; ending_balance: number } | null; bank_months?: unknown[] }
+  const cf = readJson<Cashflow>(CASHFLOW);
+  if (cf && cf.latest) {
+    metrics.bank_latest_month = cf.latest.month;
+    metrics.bank_ending_balance = cf.latest.ending_balance;
+    sources.push(liveness("statement_cashflow", cf.updated ?? null, 45, now));
+  } else {
+    metrics.bank_latest_month = null;
+    metrics.bank_ending_balance = null;
+    sources.push(unavailable("statement_cashflow", "cashflow.json missing — write it from your bank statements (no parser ships)"));
+  }
   return { metrics, sources };
 }
 

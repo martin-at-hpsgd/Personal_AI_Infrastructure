@@ -1,0 +1,4 @@
+{
+  "_comment": "Maps finder families to the risk in your ThreatModel register that a finding belongs to. Inert until you ratify it: set ratified_by (your name) and ratified_at (an ISO date) at the top level, then add rules such as { \"source\": \"manual\", \"risk_ref\": \"R-001\" } or, for a scanner family, { \"source\": \"workflows-scanner\", \"family\": \"tls\", \"risk_ref\": \"R-002\" }. Every risk_ref must exist in SECURITY/THREATMODEL/risk-register.json or the rule is dropped.",
+  "rules": []
+}

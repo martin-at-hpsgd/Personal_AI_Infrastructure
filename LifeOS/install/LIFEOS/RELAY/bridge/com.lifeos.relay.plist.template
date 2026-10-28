@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.lifeos.relay.plist.template — Source template. Install via:
+    bun {{HOME}}/.claude/LIFEOS/RELAY/bridge/Install.ts
+
+  Per-instance service. Relay: holds the spectrum-ts iMessage stream and answers
+  the principal's texts with the real DA, behind hooks/TextingGuard.hook.ts.
+  KeepAlive daemon, crash-loop rate-limited (ThrottleInterval 30s).
+  Credentials: ~/.claude/.env (PHOTON_PROJECT_ID / PHOTON_PROJECT_SECRET).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeos.relay</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{HOST}}</string>
+    <string>--</string>
+    <string>{{BUN}}</string>
+    <string>{{HOME}}/.claude/LIFEOS/RELAY/bridge/index.ts</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/STATE/com.lifeos.relay.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/STATE/com.lifeos.relay.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>{{HOME}}/.claude/LIFEOS/RELAY/bridge</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{HOME}}/bin:{{HOME}}/.local/bin:{{BUN_DIR}}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>LIFEOS_NOTIFICATION_CHANNEL</key>
+    <string>headless</string>
+  </dict>
+</dict>
+</plist>

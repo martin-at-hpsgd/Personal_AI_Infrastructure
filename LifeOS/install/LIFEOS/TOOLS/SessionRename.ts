@@ -1,12 +1,15 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.4.0
  * SessionRename — rename a session in work.json and session-names.json.
  *
- * Sessions are auto-named from the first prompt verbatim (truncated) at
- * creation time. That slug becomes the directory name and the JSON key; it
- * never updates retroactively when the conversation pivots topics. This CLI
- * lets the principal (or {{DA_NAME}}, on demand) clean up a session label without
- * touching the slug, the ISA path, the work directory, or the JSONL history.
+ * Sessions are auto-named from the first prompt at creation time. That slug
+ * becomes the directory name and the JSON key and never changes. The NAME of a
+ * native session is re-checked by PromptProcessing every couple of minutes and
+ * follows a topic pivot (2026-10-10). This CLI lets the principal (or the assistant, on
+ * demand) set a name by hand without touching the slug, the ISA path, the work
+ * directory, or the JSONL history. A name set here is pinned: recalibration
+ * never overrides it.
  *
  * What gets updated:
  *   - work.json row's `sessionName` field (the human-readable label that
@@ -33,16 +36,12 @@
  *   bun SessionRename.ts list                          (show 10 most-recent sessions)
  */
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { resolve as pathResolve, join as pathJoin } from "node:path";
-import { homedir } from "node:os";
 // Registry access goes through the isa-utils choke point (2026-06-10) — the
 // event-sourced write path. This file previously carried a duplicate
 // tmp+rename implementation; that was the one writer outside writeRegistry.
 import { readRegistry, writeRegistry } from "../../hooks/lib/isa-utils";
+import { setSessionName, pinSessionName } from "../../hooks/lib/session-identity";
 
-const CLAUDE_ROOT = pathResolve(homedir(), ".claude");
-const SESSION_NAMES_JSON = pathJoin(CLAUDE_ROOT, "LIFEOS/MEMORY/STATE/session-names.json");
 
 interface WorkSession {
   task?: string;
@@ -64,21 +63,6 @@ function loadWork(): WorkRegistry {
 
 function writeWork(reg: WorkRegistry): void {
   writeRegistry(reg as { sessions: Record<string, any> }, "SessionRename");
-}
-
-function loadNames(): Record<string, string> {
-  if (!existsSync(SESSION_NAMES_JSON)) return {};
-  try {
-    return JSON.parse(readFileSync(SESSION_NAMES_JSON, "utf8")) as Record<string, string>;
-  } catch {
-    return {};
-  }
-}
-
-function writeNames(names: Record<string, string>): void {
-  const tmp = `${SESSION_NAMES_JSON}.tmp`;
-  writeFileSync(tmp, JSON.stringify(names, null, 2), "utf8");
-  renameSync(tmp, SESSION_NAMES_JSON);
 }
 
 function findBySlug(reg: WorkRegistry, slug: string): { slug: string; session: WorkSession } | null {
@@ -125,12 +109,14 @@ function renameSession(target: { slug: string; session: WorkSession }, newName: 
   row.sessionName = newName;
   writeWork(reg);
 
-  // Also update session-names.json if the row carries a sessionUUID
+  // The one writer (session-identity.ts) moves session-names.json, the tab
+  // label and the harness JSONL together and repaints the tab, so the rename
+  // lands on every surface at once. The row is authoritative: no " 2" suffix.
   let sessionNamesUpdated = false;
   if (row.sessionUUID) {
-    const names = loadNames();
-    names[row.sessionUUID] = newName;
-    writeNames(names);
+    setSessionName(row.sessionUUID, newName, { source: "SessionRename", disambiguate: false });
+    // A hand-set name is the principal's; the follow-up namer leaves it alone.
+    pinSessionName(row.sessionUUID);
     sessionNamesUpdated = true;
   }
 

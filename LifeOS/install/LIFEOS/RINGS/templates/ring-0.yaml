@@ -1,0 +1,19 @@
+# Ring 0: the principal, on their own channels. Copy to LIFEOS/USER/SECURITY/RINGS/ and fill in.
+ring: 0
+name: Principal
+description: The principal on their own channels. The whole system, under the Permission Boundaries table.
+members:
+  - name: Your name
+    people: ["<People id from `people who <you> --json`>"]
+pending: []
+answers:
+  can: ["Anything, under the Permission Boundaries table"]
+  never: []
+skills: ["*"]
+data: ["*"]
+actions: ["permission-boundaries"]
+model:
+  lane: subscription
+caps: {}
+logging:
+  stream: relay

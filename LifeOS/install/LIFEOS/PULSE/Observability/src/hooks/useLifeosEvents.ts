@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { localOnlyApiCall } from "@/lib/local-api";
+import { useApi } from "@/lib/api";
 
 // ─── Types ───
 
@@ -22,35 +22,17 @@ const POLL_INTERVAL = 3_000;
 
 export function useLifeosEvents() {
   const [events, setEvents] = useState<LifeosEvent[]>([]);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastHashRef = useRef("");
+  // Polls every POLL_INTERVAL; the query pauses while the browser tab is hidden. Errors are expected when data is unavailable.
+  const recent = useApi<LifeosEvent[] | { events: LifeosEvent[] }>("/api/events/recent", { refetchInterval: POLL_INTERVAL, retry: false });
 
   useEffect(() => {
-    let active = true;
-    const makeKey = (e: LifeosEvent) => `${e.timestamp}|${e.session_id}|${e.type}|${e.source}`;
-
-    const poll = async () => {
-      try {
-        const data = await localOnlyApiCall<LifeosEvent[] | { events: LifeosEvent[] }>("/api/events/recent");
-        // Handle both {events: [...]} and flat [...] response formats
-        const eventList = Array.isArray(data) ? data : data.events;
-        if (active && eventList?.length) {
-          setEvents(eventList.slice(-MAX_BUFFER));
-        }
-      } catch {
-        // Polling errors are expected when data is unavailable
-      }
-      if (active) {
-        pollTimerRef.current = setTimeout(poll, POLL_INTERVAL);
-      }
-    };
-
-    poll();
-    return () => {
-      active = false;
-      clearTimeout(pollTimerRef.current);
-    };
-  }, []);
+    const data = recent.data;
+    if (!data) return;
+    // Handle both {events: [...]} and flat [...] response formats
+    const eventList = Array.isArray(data) ? data : data.events;
+    if (eventList?.length) setEvents(eventList.slice(-MAX_BUFFER));
+  }, [recent.data, recent.dataUpdatedAt]);
 
   // ─── Filtering ───
 

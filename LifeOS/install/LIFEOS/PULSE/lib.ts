@@ -87,9 +87,15 @@ export interface JobState {
 }
 
 export interface DaemonState {
+  /** Written every run-loop pass (≤ MAX_SLEEP_MS apart); readers treat its age as loop liveness. */
+  lastTick?: number
   version: 1
   jobs: Record<string, JobState>
   startedAt: number
+  /** Names of jobs enabled in config, written at boot. state.jobs keeps history for
+   *  disabled jobs (#1768), so state-only readers need this to ignore a disabled
+   *  job's leftover failure counter (public issue #2204, @bak3r). */
+  enabledJobs?: string[]
 }
 
 // ── Env Var Resolution ──
@@ -416,10 +422,30 @@ export async function readState(path: string): Promise<DaemonState> {
   return { version: 1, jobs: {}, startedAt: Date.now() }
 }
 
+// Every caller shared one `<path>.tmp`, which is only atomic while the writes
+// are one at a time. The heartbeat (public issue #2064, @0bsolescence) added a
+// second writer on a timer: write A, write B, rename A, rename B — and B's
+// rename hits ENOENT on a tmp file A already moved, so a heartbeat and a job
+// persist landing in the same tick lost one write and logged an error. Each
+// write now gets its own tmp name, and writes to one path are chained so the
+// last caller's state is the one on disk.
+let writeSeq = 0
+const writeQueues = new Map<string, Promise<void>>()
+
 export async function writeState(path: string, state: DaemonState): Promise<void> {
-  const tmp = path + ".tmp"
-  await Bun.write(tmp, JSON.stringify(state, null, 2))
-  await rename(tmp, path)
+  // Serialize at call time, not write time: the snapshot is what this caller
+  // asked to persist, even if `state` mutates while an earlier write drains.
+  const body = JSON.stringify(state, null, 2)
+  const tmp = `${path}.${process.pid}.${++writeSeq}.tmp`
+  const prev = writeQueues.get(path) ?? Promise.resolve()
+  const next = prev.then(async () => {
+    await Bun.write(tmp, body)
+    await rename(tmp, path)
+  })
+  // The queue tail never carries a rejection — one failed write must not fail
+  // every write behind it — but the caller still sees its own.
+  writeQueues.set(path, next.catch(() => {}))
+  return next
 }
 
 // ── Logging ──
@@ -451,8 +477,8 @@ async function dispatchSingle(output: string, target: OutputTarget, jobName: str
       // the one choke point every job's output passes through: the earlier
       // round of fixes added `voice_enabled: false` to individual cadence
       // TOOLS and never touched this dispatcher, so `output = "voice"` in a
-      // job config kept reaching the VoiceServer (life-morning-brief spoke
-      // every 07:00 through 2026-08-14). The content still reaches the log.
+      // job config kept reaching the VoiceServer (a scheduled morning job
+      // spoke aloud every day). The content still reaches the log.
       // Opt back in per-install with PULSE_CRON_VOICE=1.
       case "voice": {
         if (process.env.PULSE_CRON_VOICE !== "1") {
@@ -544,7 +570,16 @@ export function isSentinel(output: string): boolean {
 // inherited PATH is sparse (observed on Linux when Pulse runs under a
 // minimal-env service manager). /bin/bash is the POSIX fallback — present on
 // macOS natively and on every mainstream Linux distro.
-const BASH_PATH = Bun.which("bash") ?? "/bin/bash"
+// On native Windows, System32\bash.exe is WSL's launcher and sits first on PATH;
+// prefer Git for Windows' bash. public issue #2225, @aveneri
+const BASH_PATH =
+  (process.platform === "win32"
+    ? ["bin", "usr\\bin"]
+        .map((d) => join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", d, "bash.exe"))
+        .find((p) => existsSync(p))
+    : undefined) ??
+  Bun.which("bash") ??
+  "/bin/bash"
 
 // Drain a child's pipes and await exit under a hard deadline (public issue
 // #1546, @jacobo-ortiz). A bare `await new Response(proc.stdout).text()` after
@@ -595,21 +630,22 @@ export async function spawnScript(command: string, timeoutMs = 60_000): Promise<
 export async function spawnClaude(prompt: string, opts: { model: string; timeoutMs?: number }): Promise<string> {
   // BILLING: Use subscription via OAuth, NOT API key. Two requirements:
   //   1. Remove --bare flag — `--bare` forces ANTHROPIC_API_KEY auth and skips
-  //      OAuth/keychain entirely. That was the root cause of the Apr 2026 Haiku
-  //      $22.66 line item on the Anthropic invoice (heartbeat + tasks + memory
+  //      OAuth/keychain entirely. That was the root cause of an unexpected Haiku
+  //      line item on the Anthropic invoice (heartbeat + tasks + memory
   //      consolidation all used --bare, all billed API).
   //   2. Strip ANTHROPIC_API_KEY from env — bun auto-loads ~/.claude/.env, and if the
   //      key is present `claude` CLI prefers it over subscription even without
   //      --bare. Mirrors LIFEOS/TOOLS/Inference.ts:114.
-  // Flag set mirrors Inference.ts: --tools '' and --setting-sources '' keep the
+  // Flag set mirrors Inference.ts: --tools '' and --safe-mode keep the
   // subprocess lightweight (no hooks, no CLAUDE.md auto-discovery), so we still
   // get the cost-reduction benefit --bare was intended to provide.
+  // public PR #2120, @pai-scaffolde: replace --setting-sources '' with --safe-mode
   const args = [
     "--print",
     "--model", opts.model,
     "--tools", "",
     "--output-format", "text",
-    "--setting-sources", "",
+    "--safe-mode",
     "--system-prompt", "",
   ]
   const claudePath = Bun.which("claude") ?? join(homedir(), ".local", "bin", "claude")
@@ -621,7 +657,10 @@ export async function spawnClaude(prompt: string, opts: { model: string; timeout
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
   // Headless subprocess: never the desktop voice channel (2026-08-14 leak).
-  env.LIFEOS_NOTIFICATION_CHANNEL = env.LIFEOS_NOTIFICATION_CHANNEL || "headless"
+  // Unset AND `desktop` collapse to headless (public issue #1975, @emarcelcom).
+  env.LIFEOS_NOTIFICATION_CHANNEL = !env.LIFEOS_NOTIFICATION_CHANNEL || env.LIFEOS_NOTIFICATION_CHANNEL === "desktop"
+    ? "headless"
+    : env.LIFEOS_NOTIFICATION_CHANNEL
 
   const proc = Bun.spawn([claudePath, ...args], {
     stdin: new Blob([prompt]),
@@ -643,3 +682,28 @@ export async function spawnClaude(prompt: string, opts: { model: string; timeout
 
 // ported from public PR #1748, @elhoim
 export { MODULE_DEFAULTS, resolveModules } from "./lib/modules"
+
+/**
+ * LAN body bound. Pulse raises Bun's request-body cap to 16 GB so a local share upload can
+ * stream a multi-GB recording, and Bun's cap is server-wide. That is fine on loopback; under
+ * LIFEOS_PULSE_BIND_ALL it would let any LAN host send 16 GB to any route. So a request from a
+ * non-loopback peer keeps Bun's own 128 MB default: a declared Content-Length over it is
+ * refused, and so is a body with no Content-Length at all (chunked), whose size is unknown
+ * until it has been read. Loopback peers (local CLIs, the browser on this Mac, tailscale serve
+ * and the voice tunnel, which both forward from 127.0.0.1) are untouched.
+ */
+export const LAN_BODY_LIMIT = 128 * 1024 * 1024;
+
+export function isLoopbackPeer(address: string | null | undefined): boolean {
+  if (!address) return true; // no socket address (unix socket, in-process request) — local
+  const a = address.trim().toLowerCase().replace(/^::ffff:/, "");
+  return a === "::1" || /^127(?:\.\d{1,3}){3}$/.test(a);
+}
+
+export function isOversizeLanBody(req: Request, peerAddress: string | null | undefined): boolean {
+  if (isLoopbackPeer(peerAddress)) return false;
+  const declared = req.headers.get("content-length");
+  if (declared === null) return req.body !== null && req.headers.has("transfer-encoding");
+  const len = Number(declared);
+  return !Number.isFinite(len) || len > LAN_BODY_LIMIT;
+}

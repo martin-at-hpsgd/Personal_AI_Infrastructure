@@ -1,0 +1,4 @@
+{
+  "_about": "Brand background colour for `AddBg.ts --brand` (LIFEOS/TOOLS/AddBg.ts). Set brandColor to your own #RRGGBB; a missing file or key makes --brand exit with an error naming it.",
+  "brandColor": "#F5F5F0"
+}

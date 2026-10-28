@@ -1,0 +1,130 @@
+# Fabric ExtractInsights — the most surprising insights in anything, as N
+# eight-word hyphen bullets under one "# INSIGHTS: {read}" heading. The regex
+# asserts pin the literal shape (heading, bullet count, eight words a bullet,
+# no numbered list, distinct openings, the thin-source line); the judged
+# asserts carry what code cannot: insight over description, faithfulness to
+# the source, specificity, complete thoughts. Synthetic inline fixtures only.
+name: fabric-extractinsights
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExtractInsights.md"
+cases:
+  - id: pasted_essay_ten_insights
+    prompt: 'extract_insights from this: "The fictional Marlow County library system dropped overdue fines three years ago, and returns went up, not down. Staff expected the opposite. What they found was that fines mostly landed on the poorest families, and a child who got one fine usually stopped borrowing for good; the fine taught them the library was not for people like them. Collecting the fees also cost more in staff time and card processing than the fees brought in. When fines ended, hundreds of books came back that had been hidden in closets for years, because people were no longer afraid to walk in. The biggest driver of on-time returns turned out to be a reminder text two days before the due date, not the threat of a penalty. Freed from arguing over fines at the desk, staff started running reading programs, and circulation rose faster than any ad campaign had managed. The director now says the library was charging a price for something that used to be a shared duty, and that a lost book costs far less than a lost reader. Borrowers who felt trusted began donating to their branches."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: right heading, ten bullets of exactly
+    # eight words, distinct openings, but most bullets describe the text or
+    # state platitudes, and two make claims the text never makes.
+    adversarial_output: |
+      # INSIGHTS: Library Late Fees
+
+      - The article discusses library late fees and outcomes.
+      - Libraries are important community spaces for everyone today.
+      - Change is hard but often worth the effort.
+      - Marlow County saved millions by firing library staff.
+      - Reading books makes children smarter and more successful.
+      - It covers fines, reminders, staff, and borrower trust.
+      - Technology like texting can help solve many problems.
+      - Every community should consider what works for them.
+      - Good policies come from listening to the public.
+      - Late fees were removed and returns went up.
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*# INSIGHTS: \S[^\n]*\n[ \t]*\n(?:- [^\n]+\n(?:[ \t]*\n)?){9}- [^\n]+(?![\s\S]*\n- )'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# INSIGHTS: [^\n]+\n[ \t]*\n(?:- \S+(?:[ \t]+\S+){6,8}[ \t]*\n(?:[ \t]*\n)?){9}- \S+(?:[ \t]+\S+){6,8}[ \t]*(?:\n|$)'
+      # Exactly eight words a bullet. Not a prerequisite: the suite runs single-shot
+      # with no tools, while a real run passes ExtractInsightsCheck.ts before delivery,
+      # so an off-by-one slip costs weight here instead of voiding the judged checks.
+      - type: regex
+        weight: 2
+        required: false
+        value: '(?:^|\n)# INSIGHTS: [^\n]+\n[ \t]*\n(?:- \S+(?:[ \t]+\S+){7}[ \t]*\n(?:[ \t]*\n)?){9}- \S+(?:[ \t]+\S+){7}[ \t]*(?:\n|$)'
+      - type: not-regex
+        weight: 1
+        value: '(?:^|\n)[ \t]*\d+[.)][ \t]'
+      - type: not-regex
+        weight: 1
+        value: '\n- (\S+)[ \t][\s\S]*\n- \1[ \t]'
+      - type: llm-assert
+        weight: 4
+        value: [ "No bullet describes the text (such as 'the article discusses' or 'it covers') instead of stating an idea from it", "Every bullet states something the text actually argues or shows, and no bullet makes a claim the text does not make", "No bullet is a platitude that would fit most other texts as well, such as that change is hard or that listening to the public matters", "Each bullet is a complete thought, not a fragment", "The early bullets carry the text's surprising ideas, such as fines driving children away for good, fees costing more to collect than they raised, or reminders beating penalties, rather than only its headline that returns went up" ]
+        reference: 'extract_insights from this: "The fictional Marlow County library system dropped overdue fines three years ago, and returns went up, not down. Staff expected the opposite. What they found was that fines mostly landed on the poorest families, and a child who got one fine usually stopped borrowing for good; the fine taught them the library was not for people like them. Collecting the fees also cost more in staff time and card processing than the fees brought in. When fines ended, hundreds of books came back that had been hidden in closets for years, because people were no longer afraid to walk in. The biggest driver of on-time returns turned out to be a reminder text two days before the due date, not the threat of a penalty. Freed from arguing over fines at the desk, staff started running reading programs, and circulation rose faster than any ad campaign had managed. The director now says the library was charging a price for something that used to be a shared duty, and that a lost book costs far less than a lost reader. Borrowers who felt trusted began donating to their branches."'
+  - id: bare_topic_expert_insights
+    prompt: "extract insights on sleep"
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*# INSIGHTS: \S[^\n]*\n[ \t]*\n(?:- [^\n]+\n(?:[ \t]*\n)?){9}- [^\n]+(?![\s\S]*\n- )'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# INSIGHTS: [^\n]+\n[ \t]*\n(?:- \S+(?:[ \t]+\S+){6,8}[ \t]*\n(?:[ \t]*\n)?){9}- \S+(?:[ \t]+\S+){6,8}[ \t]*(?:\n|$)'
+      # Exactly eight words a bullet. Not a prerequisite: the suite runs single-shot
+      # with no tools, while a real run passes ExtractInsightsCheck.ts before delivery,
+      # so an off-by-one slip costs weight here instead of voiding the judged checks.
+      - type: regex
+        weight: 2
+        required: false
+        value: '(?:^|\n)# INSIGHTS: [^\n]+\n[ \t]*\n(?:- \S+(?:[ \t]+\S+){7}[ \t]*\n(?:[ \t]*\n)?){9}- \S+(?:[ \t]+\S+){7}[ \t]*(?:\n|$)'
+      - type: not-icontains
+        weight: 1
+        value: "step-by-step"
+      - type: llm-assert
+        weight: 4
+        value: [ "Most bullets state things about sleep that most people do not already know, rather than common advice such as getting eight hours or avoiding screens before bed", "No bullet merely describes what sleep is or what the topic covers", "Every bullet is consistent with well-established sleep science, and none cites a specific study, statistic or researcher that looks invented", "Each bullet is a complete thought, not a fragment" ]
+        reference: "extract insights on sleep"
+  - id: question_gets_answered
+    prompt: "extract insights: why do some open-source projects outlive their founders?"
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*# INSIGHTS: \S[^\n]*\n[ \t]*\n(?:- [^\n]+\n(?:[ \t]*\n)?){9}- [^\n]+(?![\s\S]*\n- )'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# INSIGHTS: [^\n]+\n[ \t]*\n(?:- \S+(?:[ \t]+\S+){6,8}[ \t]*\n(?:[ \t]*\n)?){9}- \S+(?:[ \t]+\S+){6,8}[ \t]*(?:\n|$)'
+      # Exactly eight words a bullet. Not a prerequisite: the suite runs single-shot
+      # with no tools, while a real run passes ExtractInsightsCheck.ts before delivery,
+      # so an off-by-one slip costs weight here instead of voiding the judged checks.
+      - type: regex
+        weight: 2
+        required: false
+        value: '(?:^|\n)# INSIGHTS: [^\n]+\n[ \t]*\n(?:- \S+(?:[ \t]+\S+){7}[ \t]*\n(?:[ \t]*\n)?){9}- \S+(?:[ \t]+\S+){7}[ \t]*(?:\n|$)'
+      - type: llm-assert
+        weight: 4
+        value: [ "Every bullet is part of an answer to why some open-source projects outlive their founders, not a restatement of the question or a general fact about open source", "The bullets name concrete, non-obvious causes (for example governance that does not depend on one person, many maintainers with commit rights, a foundation or company that funds the work, or being a dependency too many others rely on) rather than generic praise of community", "The heading names the question being answered, or close to it" ]
+        reference: "extract insights: why do some open-source projects outlive their founders?"
+  - id: count_override_five
+    prompt: 'extract 5 insights from this: "A fictional shipping firm let warehouse crews pick their own shift start times. Absences fell by a third. The crews that chose the earliest starts made the fewest picking errors, which managers had not predicted, and turnover dropped most among parents. The firm also found that the scheduling software it had paid for was solving a problem the crews could solve themselves in a ten-minute meeting. Within a month, crews were also covering for absent coworkers without being asked."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*# INSIGHTS: \S[^\n]*\n[ \t]*\n(?:- [^\n]+\n(?:[ \t]*\n)?){4}- [^\n]+(?![\s\S]*\n- )'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# INSIGHTS: [^\n]+\n[ \t]*\n(?:- \S+(?:[ \t]+\S+){6,8}[ \t]*\n(?:[ \t]*\n)?){4}- \S+(?:[ \t]+\S+){6,8}[ \t]*(?:\n|$)'
+      # Exactly eight words a bullet. Not a prerequisite: the suite runs single-shot
+      # with no tools, while a real run passes ExtractInsightsCheck.ts before delivery,
+      # so an off-by-one slip costs weight here instead of voiding the judged checks.
+      - type: regex
+        weight: 2
+        required: false
+        value: '(?:^|\n)# INSIGHTS: [^\n]+\n[ \t]*\n(?:- \S+(?:[ \t]+\S+){7}[ \t]*\n(?:[ \t]*\n)?){4}- \S+(?:[ \t]+\S+){7}[ \t]*(?:\n|$)'
+      - type: llm-assert
+        weight: 3
+        value: [ "Every bullet reflects what the supplied text says about the shipping firm and adds no claim it does not make", "At least one bullet carries a less obvious point from the text, such as early-start crews making fewest errors, turnover falling most among parents, or the paid software being unnecessary" ]
+        reference: 'extract 5 insights from this: "A fictional shipping firm let warehouse crews pick their own shift start times. Absences fell by a third. The crews that chose the earliest starts made the fewest picking errors, which managers had not predicted, and turnover dropped most among parents. The firm also found that the scheduling software it had paid for was solving a problem the crews could solve themselves in a ten-minute meeting. Within a month, crews were also covering for absent coworkers without being asked."'
+  - id: thin_source_not_padded
+    prompt: 'extract insights from this: "A fictional bakery began opening an hour later on weekdays. Its weekly sales did not change."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)Only [1-9] of 10: \S'
+      - type: regex
+        weight: 1
+        value: '^\s*# INSIGHTS: \S'
+      - type: llm-assert
+        weight: 3
+        value: [ "Every bullet stays within what the two sentences support, with no invented reasons, numbers or customer behavior presented as fact", "The response does not pad the list with weak or repeated points to look complete" ]
+        reference: 'extract insights from this: "A fictional bakery began opening an hour later on weekdays. Its weekly sales did not change."'

@@ -1,0 +1,23 @@
+{
+  "intent": "RhetoricalLens",
+  "cases": [
+    {
+      "id": "plain_vendor_post",
+      "pattern": "lens_rhetorical",
+      "input": "Why does this paragraph from a vendor's blog make me want to buy their product even though I know it's marketing? Here it is:\n\n\"Last March, our founder got a call at 2 a.m. A customer's payroll data was sitting on an open storage bucket, and nobody on their team knew. It took us eleven minutes to find it and four to close it. We built Harborlight so that call never has to be made again. Security teams are drowning in alerts, and the old tools just add to the pile. You didn't get into this field to triage noise. You got into it to stop breaches. Every day without continuous bucket monitoring is a day you are betting the company on luck. Join the 400 teams who sleep through the night.\"",
+      "expects": "A rhetorical reading of how this paragraph works on a security-literate reader, not a summary of its pitch: how the 2 a.m. story builds credibility and fear, the flattering 'you got into this field to stop breaches' move, the thin logic behind 'betting on luck' and the unsupported '400 teams', and what kind of reader it would fail to convince. It quotes the actual language and stays specific to this text."
+    },
+    {
+      "id": "named_lens_essay",
+      "pattern": "lens_rhetorical",
+      "input": "Run the rhetorical lens on this passage from a draft essay I'm editing:\n\n\"For twenty years I've watched the security industry sell fear and call it protection. I've sat in the rooms. I've seen the slide that says 'the average breach costs $4 million' shown to a CFO who then approves a tool that does nothing about the actual way they get breached, which is a contractor reusing a password. We keep asking whether the tools are good enough. That's the wrong question. The right question is why we keep buying tools in the first place. Maybe it's because buying feels like doing something. And maybe, now that AI can read every log and write every rule, the era of buying our way out of risk is finally over. If you're still shopping for a silver bullet in 2026, you're not behind the times. You're the reason the times are what they are.\"",
+      "expects": "An analysis of how the passage argues, organized around credibility, emotional movement, argument structure, timing and implied reader, with quoted examples of the repetition, the reframing question, the insider claim and the closing accusation. It notes honestly where the logic leaps (for example from 'AI can read logs' to 'buying is over') and where the ethos is shakiest, since this is the author's own draft and he wants the craft made visible."
+    },
+    {
+      "id": "hard_fragment_thread",
+      "pattern": "lens_rhetorical",
+      "input": "rhetorical analysis of this, it's all I have, a forwarded chunk of a thread, no idea who wrote it:\n\n\"...and honestly??? ppl keep saying the Calder Ridge thing was 'unprecedented' lol. it wasnt. it was totally predictable if u read the 3 reports nobody reads. but sure. blame the vendor. THEY (and you know who) want you to think its complicated bc if its simple then someone should be fired. im not saying anyone did anything. im just asking questions. who benefited?? who had the access?? anyway. do your own research. 1/\"",
+      "expects": "An honest analysis of the little text there is, pointing to specifics like the dismissive 'lol', the unnamed 'THEY', the insinuation under 'just asking questions' and the unexplained 'three reports', without inventing an author, a context or facts about the Calder Ridge event that the fragment does not give. Where a section such as kairos or audience has too little to go on, it says what can and cannot be read from the text rather than padding."
+    }
+  ]
+}

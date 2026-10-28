@@ -16,7 +16,7 @@ system prompt, `settings.json`, and one hook. Full model:
 |-------|-------|--------------|
 | **L1 — Constitutional rule** | `LIFEOS/LIFEOS_SYSTEM_PROMPT.md` § Security Protocol | The model reads external content as data, refuses embedded instructions, reports injection attempts to you. This is the actual defense. |
 | **L2 — Native `permissions.deny`** | `settings.json` `permissions.deny` block | The Claude Code harness blocks irrecoverable shell/file ops *before* any model decision. Deterministic — edit these directly in `settings.json`. |
-| **L3 — `Safety.hook.ts`** | `hooks/Safety.hook.ts` + `hooks/lib/safety-classifier.ts` | One hook, two events. Its PermissionRequest path shape-classifies outgoing tool calls (allow safe shapes, stay neutral on dangerous ones so the harness prompts); its PostToolUse path tags every WebFetch/WebSearch result as data before it reaches the model. Advisory — L1 does the enforcing. |
+| **L3 — `Safety.hook.ts`** | `hooks/Safety.hook.ts` (not in the public release) + `hooks/lib/safety-classifier.ts` (not in the public release) | One hook, two events. Its PermissionRequest path shape-classifies outgoing tool calls (allow safe shapes, stay neutral on dangerous ones so the harness prompts); its PostToolUse path tags every WebFetch/WebSearch result as data before it reaches the model. Advisory — L1 does the enforcing. |
 
 The permission classifier's allow-cache is `MEMORY/STATE/permission-cache.json`
 (sha-keyed, auto-managed — don't edit by hand); its decision log is

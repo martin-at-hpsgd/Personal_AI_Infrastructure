@@ -1,0 +1,7 @@
+# Wake inputs: files under the LifeOS root that change between turns, while the transcript stays still.
+# A frame is replayed only while every one of these is older than it, in Admission.enter() and in statusline-fast alike,
+# so a change here shows on the next run instead of up to 30 seconds later. One path per line, relative to the LifeOS
+# root; <session> is this session's id. Generated from the sections' `wake:` inputs in Registry.ts, which Registry.test.ts
+# holds equal to this file; Fast.test.ts runs a parity case for every line.
+MEMORY/STATE/micro-integrity/<session>.json
+MEMORY/STATE/doctrine-mark/<session>.json

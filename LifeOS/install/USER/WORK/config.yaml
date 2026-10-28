@@ -1,0 +1,41 @@
+# WORK/config.yaml — Work System UX settings (template)
+#
+# Read by hooks/lib/work-config.ts loadWorkConfig() with a small hand-rolled
+# parser, so keep the exact shape below: one top-level `WORK:` block, keys in
+# UPPERCASE, two-space indent, lists as `- item` lines. Every key is optional
+# and falls back to the default shown. Pulse's tab-freshness module also
+# watches this file (LIFEOS/PULSE/modules/tab-freshness.ts).
+#
+# The GitHub repo binding does NOT live here. It lives in WORK/work_repo.json,
+# which only the work-tracking skill's SetWorkRepo tool should write (it
+# gh-verifies the repo is PRIVATE and stamps the attestation). Until that file
+# exists the Work module stays disabled with the reason "missing", which is the
+# correct fresh-install state.
+
+WORK:
+  # Kanban lanes, in display order. Default: the five below.
+  KANBAN_COLUMNS:
+    - Queued
+    - Blocked
+    - In-Progress
+    - In-Review
+    - Complete
+
+  # How often Pulse polls the issues API. Minimum 10; default 60.
+  POLL_INTERVAL_SECONDS: 60
+
+  # Issue label naming the acting agent. Default "Agent:principal".
+  AGENT_LABEL: "Agent:principal"
+
+  # Capture switches (true/false). CAPTURE_NATIVE and CAPTURE_SWEEP default
+  # true; CAPTURE_GOALS defaults false because TELOS goal text leaves the
+  # machine when it is on.
+  CAPTURE_NATIVE: true
+  CAPTURE_SWEEP: true
+  CAPTURE_GOALS: false
+
+  # Map a project name (lowercased, spaces removed) to the issue property label
+  # it should carry. Anything unmapped gets "Property:internal".
+  PROJECT_PROPERTY:
+    website: Property:website
+    newsletter: Property:newsletter

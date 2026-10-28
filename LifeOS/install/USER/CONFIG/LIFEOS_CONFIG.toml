@@ -13,7 +13,7 @@
 [principal]
 name = "Your Name"                 # required — your display name
 pronunciation = ""                 # optional — phonetic spelling if needed
-timezone = "America/Los_Angeles"   # required — IANA timezone
+timezone = "{{TIMEZONE}}"   # required — IANA timezone; the installer writes the machine's zone here
 hometown = ""                      # optional
 currency = "USD"                   # optional — ISO 4217, drives Pulse Finances tab formatting
 
@@ -24,19 +24,18 @@ display_name = ""
 color = "#3B82F6"
 
 [da.voices.main]
-voice_id = "21m00Tcm4TlvDq8ikWAM"  # required — ElevenLabs voice_id (public default; set yours in Interview)
-voice_name = "Rachel"
-stability = 0.85
-similarity_boost = 0.7
-style = 0.3
-speed = 1.0
-use_speaker_boost = true
-volume = 1.0
+fish_reference_id = "YOUR_FISH_REFERENCE_ID"  # your Fish Audio voice model id (Interview sets it); voice stays off until FISH_API_KEY is set
+fish_speed = 1.0
 
 [integrations.cloudflare]
 # Token lives in ~/.claude/.env (never here). Account ID is non-secret.
 token_env_var = "CLOUDFLARE_API_TOKEN"
 
 [paths]
+# user_dir and projects_dir are resolved by LifeosConfig.ts. The values below are
+# the fallback defaults. If CLAUDE_CONFIG_DIR or LIFEOS_SKILLS_DIR env vars are
+# set (for project-scoped installs), those override these hardcoded paths. Edit
+# these only to relocate within the default install root.
+# public issue #1665, @rogdex24
 user_dir = "~/.claude/LIFEOS/USER"
 projects_dir = "~/Projects"

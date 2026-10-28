@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.2.11
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -26,6 +29,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -39,7 +43,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 // ============================================================================
 
 const HOME = homedir() || os.homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || path.join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const DEFAULT_WORK_DIR = path.join(LIFEOS_DIR, "MEMORY", "WORK");
 const DEFAULT_ARCH_DOC = path.join(LIFEOS_DIR, "DOCUMENTATION", "LifeosSystemArchitecture.md");
 const ARCH_DECISIONS_HEADING = "## Architecture Decisions";
@@ -595,7 +599,7 @@ function assertSelftest(condition: boolean, label: string): void {
 }
 
 function runSelftest(): string {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pai-arch-decision-harvest-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "lifeos-arch-decision-harvest-"));
   try {
     const { workDir, docPath } = writeSelftestFixture(tempDir);
     const options: CliOptions = { apply: false, includeIncomplete: false, keywords: false, docPath, workDir };

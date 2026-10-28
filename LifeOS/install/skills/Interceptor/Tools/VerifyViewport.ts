@@ -26,7 +26,7 @@
  * moving or resizing any window.
  *
  * The operator's Chrome is never touched: separate process, separate profile,
- * no shared state. Authenticated and stealth work stays on the normal
+ * no shared state. Authenticated work stays on the normal
  * extension-driven test profile; this instance is for public pages whose
  * behavior depends on the rendering lifecycle.
  *
@@ -43,9 +43,14 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, copyFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, copyFileSync, writeFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+
+if (process.env.CODEX_SANDBOX === 'seatbelt') {
+  console.error('[VerifyViewport] Codex sandbox blocks macOS desktop services. Re-run through approved execution outside the sandbox; no browser was launched.')
+  process.exit(10)
+}
 
 const HOME = homedir()
 const PORT = Number(process.env.INTERCEPTOR_VERIFY_CDP_PORT ?? 9333)
@@ -65,10 +70,33 @@ const WINDOW_ARGS = HEADFUL
   ? (process.env.INTERCEPTOR_VERIFY_WINDOW ?? '--window-position=-3800,120 --window-size=1200,800')
   : '--headless=new --window-size=1200,800'
 
+/**
+ * Chrome for Testing first, the operator's Google Chrome last. A second process of
+ * Google Chrome shares its bundle id, so AppleScript "Google Chrome" (Raycast's
+ * Create Quicklink autofill, any tab-reading automation) can answer from this
+ * headless instance instead of the operator's real window (2026-10-03).
+ * Install or update: bunx @puppeteer/browsers install chrome@stable --path ~/.local/share/interceptor/cft
+ */
+const CFT_ROOT = join(HOME, '.local', 'share', 'interceptor', 'cft', 'chrome')
+function chromeForTesting(): string | undefined {
+  if (!existsSync(CFT_ROOT)) return undefined
+  const builds = readdirSync(CFT_ROOT).filter((d) => d.startsWith('mac')).sort((a, b) =>
+    b.localeCompare(a, undefined, { numeric: true }))
+  for (const d of builds) {
+    for (const arch of ['chrome-mac-arm64', 'chrome-mac-x64']) {
+      const bin = join(CFT_ROOT, d, arch, 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing')
+      if (existsSync(bin)) return bin
+    }
+  }
+  return undefined
+}
+const OPERATOR_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const CHROME_CANDIDATES = [
   process.env.INTERCEPTOR_CHROME_BIN,
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  chromeForTesting(),
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  OPERATOR_CHROME,
+  // Brave last: a Brave-only machine still verifies without INTERCEPTOR_CHROME_BIN.
   '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser'
 ].filter(Boolean) as string[]
 
@@ -183,6 +211,7 @@ async function endpointAlive(): Promise<boolean> {
 function launch(): void {
   const chrome = CHROME_CANDIDATES.find((p) => existsSync(p))
   if (!chrome) die(`no Chromium binary found. Set INTERCEPTOR_CHROME_BIN.`, 2)
+  if (chrome === OPERATOR_CHROME) console.error('[VerifyViewport] warning: falling back to Google Chrome; a second copy breaks Raycast and AppleScript tab reads. Install Chrome for Testing (see CFT_ROOT).')
 
   mkdirSync(join(USER_DATA_DIR, 'NativeMessagingHosts'), { recursive: true })
   // A custom --user-data-dir gets its own (empty) NativeMessagingHosts dir. Seed it
@@ -300,6 +329,19 @@ async function main() {
   const cmd = process.argv[2]
 
   if (cmd === 'stop') {
+    // Detach every CDP context on our port BEFORE killing the browser: the
+    // daemon otherwise keeps a phantom context that `cdp status` lists forever
+    // and the next `ensure` attaches to a dead port. The prune loop in ensure()
+    // deliberately skips CDP_CONTEXT; here everything on PORT goes, ours included.
+    // public issue #2012, @dsather
+    try {
+      const { out } = await sh('interceptor', ['macos', 'cdp', 'status'])
+      for (const c of parseCdpList(out)) {
+        if (c.port === PORT && c.contextId) {
+          await sh('interceptor', ['macos', 'cdp', 'detach', '--context', c.contextId])
+        }
+      }
+    } catch { /* daemon down or no CDP contexts — nothing to detach */ }
     await sh('pkill', ['-f', USER_DATA_DIR])
     console.log('[VerifyViewport] stopped')
     return
@@ -357,7 +399,8 @@ async function main() {
     await assertLifecycleLive()
     await setViewport(width, height)
     await navigate(url)
-    await sleep(800)
+    // Pages with long entrance animations need a longer settle before capture.
+    await sleep(Number(flag('settle') ?? 800))
     const r = await cdp('Page.captureScreenshot', {
       format: 'png',
       captureBeyondViewport: process.argv.includes('--full')

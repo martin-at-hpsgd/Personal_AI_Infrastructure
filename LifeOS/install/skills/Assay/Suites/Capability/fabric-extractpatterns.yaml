@@ -1,0 +1,133 @@
+# Fabric ExtractPatterns — recurring patterns across a body of material, ranked
+# by frequency, with Meta evidence, a one-sentence Analysis, a Best N argued
+# from the input and Advice for Builders. The code asserts pin what is literal
+# (the title, the five sections in order, the Best heading, the none-found
+# line); the judged asserts carry what code cannot: patterns that truly recur,
+# counts that match the input, specificity over theme labels, grounded topic
+# cases, advice tied to patterns, and the typed hint.
+# Synthetic inline fixtures only: every person, product and review is fictional.
+name: fabric-extractpatterns
+type: capability
+pass_threshold: 0.75
+trials: 2
+# A rich input yields up to 50 patterns plus one Meta line each; 90s was too short.
+subject_timeout_ms: 240000
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExtractPatterns.md"
+cases:
+  - id: interviews_recurring_patterns_counted
+    prompt: |
+      Run extract_patterns on these eight customer interviews about a fictional invoicing app.
+
+      Ana: I export everything to a spreadsheet before the monthly partner meeting. I still write payment reminders myself because the automatic ones sound cold. My accountant keeps asking for a CSV format the app doesn't have.
+      Ben: Every month I rebuild the revenue report in a spreadsheet. I check cash on my phone at night before bed.
+      Chloe: Reports go to a spreadsheet first, then to my partner. I send overdue reminders by hand; the templates are too blunt.
+      Dev: I copy the numbers into a spreadsheet to make the monthly summary. Most nights around midnight I open the app on my phone to see who paid.
+      Eli: My accountant wants exports in a format the app can't produce. I end up rebuilding the report in a spreadsheet anyway.
+      Fay: I'd love a dark mode. Reminders I write myself, the automatic tone is off-putting.
+      Gus: Can it take crypto payments? My bookkeeper asks for exports we can't generate. I send reminders personally.
+      Hana: I check the app on my phone late at night to see if invoices were paid.
+    # SYNTHETIC ADVERSARIAL FIXTURE: title, all five sections in order and a
+    # Best 5 of five bullets, so every code assert passes. But it lists Fay's
+    # one-off dark-mode wish as a pattern credited to people who never said it,
+    # inflates the spreadsheet count to 8 of 8, uses theme labels instead of
+    # behaviors, and gives advice that would fit any startup.
+    adversarial_output: |
+      # Patterns: 8 Fictional Customer Interviews on an Invoicing App
+
+      ## Patterns
+
+      - Reporting is a major pain point for customers.
+      - Users want a dark mode for the app.
+      - Communication with clients needs improvement overall.
+      - Mobile usage is an important theme.
+      - Integrations with outside tools matter to people.
+
+      ## Meta
+
+      - 8 of 8 interviews mentioned reporting.
+      - 3 of 8 interviews: Fay, Ben, Hana.
+      - 4 of 8 interviews raised communication.
+      - 3 of 8 interviews: Ben, Dev, Hana.
+      - 3 of 8 interviews: Ana, Eli, Gus.
+
+      ## Analysis
+
+      Customers want a more modern, better-designed product that improves their overall experience across the board.
+
+      ## Best 5
+
+      - Reporting was raised by every single interviewee, which makes it the clearest and most important theme in the data.
+      - Dark mode is a highly requested feature across several interviews and would improve the experience.
+      - Communication matters because good client relationships are key to success in any business.
+      - Mobile is important because people increasingly use their phones for everything they do.
+      - Integrations are always valuable for software products in a connected world.
+
+      ## Advice for Builders
+
+      - Talk to your users early and often to learn what they need.
+      - Focus on product-market fit before scaling your company.
+      - Build a great user experience that delights customers.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Patterns: [^\n]+\n[\s\S]*\n## Patterns[ \t]*\n[\s\S]*\n## Meta[ \t]*\n[\s\S]*\n## Analysis[ \t]*\n[\s\S]*\n## Best [1-5][ \t]*\n[\s\S]*\n## Advice for Builders[ \t]*\n'
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "Every listed pattern recurs in at least two of the interviews, and the one-off requests (Fay's dark mode, Gus's crypto payments) are not listed as patterns", "The Meta counts and names match the interviews: rebuilding reports in a spreadsheet 5 of 8 (Ana, Ben, Chloe, Dev, Eli), writing payment reminders by hand 4 of 8 (Ana, Chloe, Fay, Gus), checking the app on a phone late at night 3 of 8 (Ben, Dev, Hana), the accountant or bookkeeper asking for exports the app cannot produce 3 of 8 (Ana, Eli, Gus); no interviewee is credited with something they did not say", "Patterns are ordered most frequent first, so the spreadsheet pattern comes first", "Each pattern states the specific recurring behavior (who does what, and why where the interviews say), not a theme label such as 'Reporting is a pain point'", "Each Best bullet argues its pick from the interviews' own evidence, such as the count or what the interviewees said", "Each Advice for Builders bullet is an action that follows from one of the patterns found, not generic startup advice" ]
+        reference: |
+          The eight interviews, verbatim:
+          Ana: I export everything to a spreadsheet before the monthly partner meeting. I still write payment reminders myself because the automatic ones sound cold. My accountant keeps asking for a CSV format the app doesn't have.
+          Ben: Every month I rebuild the revenue report in a spreadsheet. I check cash on my phone at night before bed.
+          Chloe: Reports go to a spreadsheet first, then to my partner. I send overdue reminders by hand; the templates are too blunt.
+          Dev: I copy the numbers into a spreadsheet to make the monthly summary. Most nights around midnight I open the app on my phone to see who paid.
+          Eli: My accountant wants exports in a format the app can't produce. I end up rebuilding the report in a spreadsheet anyway.
+          Fay: I'd love a dark mode. Reminders I write myself, the automatic tone is off-putting.
+          Gus: Can it take crypto payments? My bookkeeper asks for exports we can't generate. I send reminders personally.
+          Hana: I check the app on my phone late at night to see if invoices were paid.
+          Recurring: spreadsheet rebuilds 5 of 8 (Ana, Ben, Chloe, Dev, Eli); hand-written reminders 4 of 8 (Ana, Chloe, Fay, Gus); late-night phone checks 3 of 8 (Ben, Dev, Hana); accountant or bookkeeper export requests 3 of 8 (Ana, Eli, Gus). One-offs that must not be patterns: dark mode (Fay), crypto payments (Gus). Other patterns are fine when they recur in at least two interviews with matching names.
+  - id: nothing_recurs_none_found
+    prompt: 'Extract patterns from this: "Reminder: the quarterly planning meeting has moved to Thursday at 14:00 in room B."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Patterns: [^\n]+\n+## Patterns[ \t]*\n+None found:[ \t]*\S'
+      - type: not-contains
+        value: "## Meta"
+        weight: 2
+      - type: llm-assert
+        weight: 2
+        value: [ "The output says nothing in the input recurs and says what the input is (a single meeting notice), inventing no pattern" ]
+        reference: "A single one-line scheduling notice; nothing can recur."
+  - id: bare_topic_grounded_in_named_cases
+    prompt: "extract_patterns: what do long-lived open-source projects have in common"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Patterns: [^\n]+\n[\s\S]*\n## Patterns[ \t]*\n[\s\S]*\n## Meta[ \t]*\n[\s\S]*\n## Analysis[ \t]*\n[\s\S]*\n## Best [1-5][ \t]*\n[\s\S]*\n## Advice for Builders[ \t]*\n'
+      - type: llm-assert
+        weight: 3
+        value: [ "Meta grounds each pattern in named, real long-lived open-source projects (for example Linux, PostgreSQL, Python, Debian, SQLite, Apache HTTP Server), not unnamed or invented cases", "The patterns are specific mechanisms such long-lived projects share (governance, maintainer succession, funding, release discipline, compatibility promises), not platitudes such as 'community matters'", "The Advice for Builders addresses people starting or running open-source projects and each item follows from a pattern listed" ]
+        reference: "extract_patterns: what do long-lived open-source projects have in common"
+  - id: hint_only_complaints
+    prompt: |
+      Extract patterns from these app reviews of a fictional meditation app, only the complaints.
+
+      Review 1: The voices are so soothing. Shame the yearly price doubled.
+      Review 2: Audio cuts out whenever my screen locks. Annoying mid-session.
+      Review 3: Too expensive for what it is, and the audio stops when the phone sleeps.
+      Review 4: Lovely calm narration, I use it every night.
+      Review 5: The narrators' voices are the best part.
+      Review 6: Price went up without warning. Cancelling.
+      Review 7: Sessions stop playing as soon as the screen turns off.
+      Review 8: Soothing voices and good variety of sessions.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Patterns: [^\n]+\n[\s\S]*\n## Patterns[ \t]*\n[\s\S]*\n## Meta[ \t]*\n[\s\S]*\n## Analysis[ \t]*\n[\s\S]*\n## Best [1-5][ \t]*\n[\s\S]*\n## Advice for Builders[ \t]*\n'
+      - type: llm-assert
+        weight: 3
+        value: [ "Only complaints appear as patterns; the praise for soothing voices is not listed as a pattern", "Both recurring complaints are present with counts and reviews that match: the price rising or being too high (reviews 1, 3 and 6) and audio stopping when the screen locks or the phone sleeps (reviews 2, 3 and 7)", "The title names the read as the complaints in the reviews, or close to it" ]
+        reference: "Complaints: price (reviews 1, 3, 6), audio stops on screen lock (reviews 2, 3, 7). Praise (not to be listed): soothing voices (1, 4, 5, 8)."

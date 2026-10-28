@@ -1,0 +1,31 @@
+# Ring 1: the inner circle. Trusted people who still never reach Ring 0's tools or data.
+ring: 1
+name: Inner circle
+description: Chat, a short list of skills run on our side by a confined runner, and a message passed to the principal.
+members: []
+#  - name: A trusted friend
+#    people: ["<People id>", "<another record id for the same person>"]
+pending: []
+answers:
+  can:
+    - Friendly chat and small talk
+    - General knowledge, explanations, advice and recommendations
+    - Public information that is already on the open web
+  never:
+    - The principal's schedule, calendar, availability or whereabouts
+    - Their finances, health, home, family or relationships
+    - Their contacts, or anything about other people
+    - Business details such as customers, deals, revenue or plans
+    - Anything from their files, email, messages, memory or systems
+    - Security details such as accounts, passwords or how anything is set up
+skills: ["web-research", "weather", "pass-a-message"]
+data: ["public"]
+actions: ["pass-message-to-principal"]
+model:
+  lane: metered-api
+  level: low
+caps:
+  replies_per_day: 50
+logging:
+  stream: relay
+  record_text: true

@@ -1,0 +1,24 @@
+{
+  "name": "A_EXAMPLE_SUMMARIZE",
+  "version": "1.0.0",
+  "description": "Summarize text content into a concise summary using LLM inference. Demonstrates the LLM capability and passthrough pipe pattern.",
+  "input": {
+    "type": "object",
+    "required": ["content"],
+    "properties": {
+      "content": { "type": "string" },
+      "title": { "type": "string" }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": ["summary", "word_count"],
+    "properties": {
+      "summary": { "type": "string" },
+      "word_count": { "type": "integer" }
+    }
+  },
+  "requires": ["llm"],
+  "tags": ["example", "llm", "text"],
+  "license": "MIT"
+}

@@ -1,0 +1,251 @@
+{
+  "schema": "glance-question-system/v1",
+  "id": "support-ticket-triage",
+  "problem": "Decide, for each new support ticket, whether to page the on-call engineer now or queue the ticket for the next business day.",
+  "caller": "ticket-triage",
+  "fit": {
+    "verdict": "glance",
+    "reason": "Whether a message describes an urgent product failure is a judgment about reading; the customer tier and the incident link are lookups code already has."
+  },
+  "decisions": [
+    {
+      "id": "page",
+      "description": "Page the on-call engineer now, or queue the ticket for the next business day.",
+      "outcomes": ["page", "queue"],
+      "positive": "page",
+      "default": "queue",
+      "costs": {
+        "false_positive": "An engineer is woken for a ticket that could have waited until morning.",
+        "false_negative": "A customer with a real outage waits a full business day for a first reply.",
+        "favor": "recall"
+      }
+    }
+  ],
+  "state": {
+    "subject": {
+      "description": "Ticket subject line as the customer typed it.",
+      "source": "ticket subject field",
+      "max_chars": 200,
+      "untrusted": true
+    },
+    "body": {
+      "description": "Ticket body text as the customer typed it.",
+      "source": "ticket body field",
+      "max_chars": 1500,
+      "untrusted": true
+    }
+  },
+  "deterministic": [
+    {
+      "id": "from_internal_domain",
+      "type": "boolean",
+      "description": "The sender address belongs to the company's own domain.",
+      "computed_by": "compare the sender domain with the company domain list"
+    },
+    {
+      "id": "open_incident_linked",
+      "type": "boolean",
+      "description": "The ticket's account already has an open incident with an owner.",
+      "computed_by": "look the account up in the open-incident table"
+    },
+    {
+      "id": "customer_tier",
+      "type": "enum",
+      "values": ["free", "standard", "enterprise"],
+      "description": "The customer's plan tier.",
+      "computed_by": "billing table lookup by account id"
+    }
+  ],
+  "stages": [
+    {
+      "id": "read",
+      "questions": [
+        {
+          "id": "is_support_request",
+          "kind": "noul",
+          "instructions": "The message asks the company for help with a problem using the product.",
+          "purpose": "Catches marketing mail, auto-replies and vendor pitches that reach the support inbox and would otherwise be judged as if they were customers.",
+          "reads": ["subject", "body"],
+          "threshold": {
+            "value": 0.75,
+            "favor": "recall",
+            "why": "A real customer request discarded as noise is the costly error, so only a confident no may drop a ticket."
+          }
+        },
+        {
+          "id": "route",
+          "kind": "choice",
+          "instructions": "Which topic best describes what the customer needs from the company?",
+          "purpose": "Separates outages and security reports, which can page, from billing and how-to questions, which never do.",
+          "reads": ["subject", "body"],
+          "options": {
+            "outage": "The customer reports that the product is down or unusable for them or their users.",
+            "security": "The customer reports a way that accounts, data or access could be reached by someone who should not reach them.",
+            "billing": "The customer asks about an invoice, a charge, a refund or a plan change.",
+            "how_to": "The customer asks how to do something the product supports.",
+            "none": "None of these describes the message."
+          },
+          "no_match": "none",
+          "threshold": {
+            "value": 0.6,
+            "favor": "recall",
+            "why": "An unclear route escalates instead of queueing, which protects the missed-outage error."
+          }
+        },
+        {
+          "id": "page_now",
+          "kind": "noul",
+          "instructions": "A reasonable on-call engineer would want to be paged about this message right now.",
+          "purpose": "Holistic baseline: the one-question answer the composed system has to beat.",
+          "reads": ["subject", "body"],
+          "threshold": {
+            "value": 0.5,
+            "favor": "balanced",
+            "why": "The baseline is read at its plain yes or no verdict, so both errors count the same."
+          },
+          "baseline": { "decision": "page", "map": { "yes": "page", "no": "queue" } }
+        }
+      ]
+    },
+    {
+      "id": "assess",
+      "when": {
+        "all": [
+          { "q": "is_support_request", "is": "yes" },
+          { "not": { "q": "route", "choice": "how_to" } }
+        ]
+      },
+      "questions": [
+        {
+          "id": "severity",
+          "kind": "score",
+          "instructions": "How much damage is the problem described in the message doing to the customer right now?",
+          "purpose": "Ranks how bad an outage report is, so a cosmetic complaint does not page and a total failure does.",
+          "reads": ["subject", "body"],
+          "criteria": [
+            "The product works and the customer describes a cosmetic flaw or a minor annoyance.",
+            "One feature misbehaves and the customer can still finish their work another way.",
+            "An important feature is broken and the customer's work is held up.",
+            "The product is unusable for the customer or for all of their users."
+          ],
+          "threshold": {
+            "value": 0.6,
+            "favor": "recall",
+            "why": "A low bar for confidence keeps borderline outage reports in play rather than dropping them."
+          }
+        },
+        {
+          "id": "customer_blocked",
+          "kind": "noul",
+          "instructions": "The customer states that the problem stops them from finishing their work.",
+          "purpose": "Adds the customer's own account of impact, which matters most for enterprise accounts.",
+          "reads": ["subject", "body"],
+          "threshold": {
+            "value": 0.7,
+            "favor": "recall",
+            "why": "Impact stated by the customer is a weighted signal, so it should count when the engine is reasonably sure."
+          }
+        },
+        {
+          "id": "reports_data_exposure",
+          "kind": "noul",
+          "instructions": "The message reports that customer data has been exposed to a third party.",
+          "purpose": "Catches a data exposure written up as an ordinary question, which must page whatever else is true.",
+          "reads": ["subject", "body"],
+          "threshold": {
+            "value": 0.7,
+            "favor": "recall",
+            "why": "A missed exposure is the worst error in this system, so a moderately confident yes is enough to page."
+          }
+        }
+      ]
+    }
+  ],
+  "policy": {
+    "page": [
+      {
+        "id": "internal-sender",
+        "if": { "fact": "from_internal_domain", "eq": true },
+        "then": "queue",
+        "why": "Staff and test tickets never page."
+      },
+      {
+        "id": "incident-already-open",
+        "if": { "fact": "open_incident_linked", "eq": true },
+        "then": "queue",
+        "why": "An open incident already has an owner working on it."
+      },
+      {
+        "id": "not-a-request",
+        "if": { "q": "is_support_request", "is": "no" },
+        "then": "queue",
+        "why": "Mail that is not a request for help is never a page."
+      },
+      {
+        "id": "any-exposure-or-security",
+        "if": {
+          "any": [
+            { "q": "reports_data_exposure", "is": "yes" },
+            { "q": "route", "choice": "security" }
+          ]
+        },
+        "then": "page",
+        "why": "Any sign of exposed data or a security report pages, whatever the other answers say."
+      },
+      {
+        "id": "serious-outage",
+        "if": {
+          "all": [
+            { "q": "route", "choice": "outage" },
+            { "q": "severity", "score_gte": 2 }
+          ]
+        },
+        "then": "page",
+        "why": "An outage report where important work is held up pages."
+      },
+      {
+        "id": "enterprise-combined-signal",
+        "if": { "fact": "customer_tier", "eq": "enterprise" },
+        "weighted": {
+          "terms": [
+            { "q": "severity", "weight": 0.6 },
+            { "q": "customer_blocked", "weight": 0.4 }
+          ],
+          "gte": 0.6
+        },
+        "then": "page",
+        "why": "Enterprise accounts page on a lower combined signal than the single-question rules above."
+      },
+      {
+        "id": "unclear-route-or-severity",
+        "if": {
+          "any": [
+            { "q": "route", "is": "uncertain" },
+            { "q": "severity", "is": "uncertain" }
+          ]
+        },
+        "then": "escalate",
+        "why": "When the engine cannot say what the message is about, a stronger reader decides instead of a default."
+      }
+    ]
+  },
+  "escalation": {
+    "to": "model-judge",
+    "description": "A reasoning model reads the whole ticket and returns page or queue with its reason.",
+    "max_rate": 0.15
+  },
+  "calibration": {
+    "ground_truth": {
+      "source": "on-call acknowledgement outcome recorded by the paging tool: paged and acted on, or paged and dismissed as not urgent",
+      "join_key": "ticket id"
+    },
+    "min_labels": 100,
+    "promotion": "Enforce only after every question clears its threshold on at least 100 labelled tickets with balanced accuracy at or above 0.85 and escalation under the declared ceiling."
+  },
+  "budget": { "volume_per_day": 200, "fail": "open" },
+  "provenance": {
+    "designed_by": "example fixture",
+    "designed_at": "2026-09-28",
+    "notes": "Synthetic support-triage system used to test the question-system tools."
+  }
+}

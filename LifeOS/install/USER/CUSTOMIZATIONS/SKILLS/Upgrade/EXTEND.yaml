@@ -1,0 +1,8 @@
+# Customization manifest read by LIFEOS/TOOLS/LoadSkillConfig.ts.
+# `skill` must equal the skill directory name; `extends` lists the config
+# files in this directory that merge over the skill's base copies.
+skill: Upgrade
+extends: []
+merge_strategy: append
+enabled: true
+description: "Per-install source overrides for the Upgrade skill"

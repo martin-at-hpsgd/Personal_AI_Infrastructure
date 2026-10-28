@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!-- Thin bars over condensed caps with no data-mark: a filled one carrying only a cover-ok reason, a bordered one, and controls. -->
+<html><head><meta charset="UTF-8">
+<style>
+@font-face { font-family: "Din"; src: local("DIN Condensed Bold"), local("DINCondensed-Bold"), url("file:///System/Library/Fonts/Supplemental/DIN%20Condensed%20Bold.ttf"); font-weight: 700; }
+html, body { margin: 0; background: #0b0d12; }
+#root { position: relative; width: 1200px; height: 400px; overflow: hidden; background: #0b0d12; color: #e3e9f4; font-family: "Din"; font-weight: 700; font-size: 60px; line-height: 1; text-transform: uppercase; white-space: nowrap; }
+.w { position: absolute; }
+.bar { position: absolute; }
+</style></head>
+<body><div id="root" data-composition-id="fx" data-width="1200" data-height="400" data-duration="2">
+<div class="w" id="ghost" style="left:60px;top:40px">GHOSTWRITER</div>
+<i class="bar" id="filled" data-textfit="cover-ok" data-textfit-reason="strike-through bar marks the ignored byline" style="left:52px;top:60px;width:240px;height:10px;background:#58a6ff"></i>
+<div class="w" id="agency" style="left:60px;top:160px">AGENCY</div>
+<i class="bar" id="bordered" style="left:52px;top:181px;width:180px;height:0;border-top:6px solid #58a6ff"></i>
+<div class="w" id="under" style="left:600px;top:40px">UNDERLINED</div>
+<i class="bar" id="underline" style="left:600px;top:112px;width:240px;height:6px;background:#58a6ff"></i>
+<div class="w" style="left:600px;top:160px"><span>DECLARED</span><i class="bar" id="declared" data-mark="strike" style="left:0;top:20px;width:200px;height:10px;background:#58a6ff"></i></div>
+</div>
+<script>
+document.fonts.load('700 60px "Din"').then(function () {
+  if (!document.fonts.check('700 60px "Din"')) throw new Error("DIN Condensed Bold did not load");
+  window.__timelines = { fx: { seek: function () {} } };
+});
+</script></body></html>

@@ -1,0 +1,61 @@
+# TEMPLATE: copy to art-quality-<slug>.yaml for the project's visual evidence.
+# Replace these placeholders with actual Critique/samples/*.jpg files (one file
+# per case, no glob expansion), or a single delivered image. No images generated.
+# Fallback anchors from the art-quality-loop build brief; Rubric.md was not yet
+# present at authoring. The seven-axis vocabulary also includes motion, which
+# still-frame cases cannot verify. Craft and amateur tells are independent of
+# matching the brief. Judge these visible properties, not personal taste.
+name: art-quality-template
+type: capability
+pass_threshold: 0.85
+cases:
+  - id: composition
+    image: "~/PROJECT/Critique/samples/frame-001.jpg"
+    assert:
+      - type: vision-rubric
+        derived_from: "ArtDirection critique rubric#articulation"
+        value: "Composition: assess intentional balance, framing, spacing, and use of negative space. Name visible defects and their locations."
+        anchors:
+          "1": "Accidental framing, cramped edges, arbitrary gaps, and competing focal points."
+          "3": "Readable arrangement but generic balance or visibly awkward spacing."
+          "5": "Deliberate framing and balanced visual weight; every gap and edge supports the focal point."
+        weight: 2
+        trials: 2
+        threshold: 0.85
+  - id: craft
+    image: "~/PROJECT/Critique/samples/frame-002.jpg"
+    assert:
+      - type: vision-rubric
+        derived_from: "ArtDirection critique rubric#articulation"
+        value: "Craft: assess edge quality, alignment, typography, geometry, and image integrity. Name visible defects and their locations. Hierarchy, depth_and_light, and consistency need their own project cases when relevant."
+        anchors:
+          "1": "Broken geometry, illegible type, clipping, inconsistent alignment, or obvious generation artifacts."
+          "3": "Competent construction with visible spacing, alignment, or finishing defects."
+          "5": "Precise alignment, clean edges, legible typography, and finished geometry with no visible defects."
+        weight: 2
+        trials: 2
+        threshold: 0.85
+  - id: template_and_amateur_tells
+    image: "~/PROJECT/Critique/samples/frame-003.jpg"
+    assert:
+      - &amateur_assert
+        type: vision-rubric
+        derived_from: "ArtDirection critique rubric#anti-claims"
+        value: "Template and amateur tells: assess visible stock-template styling, default components, gratuitous effects, and inconsistent visual language. Matching a brief alone cannot earn a pass; identify concrete tells with locations."
+        anchors:
+          "1": "Generic stock imagery or default template components dominate; gratuitous effects and mismatched styling look amateur."
+          "3": "Mostly coherent but recognizable template choices or unfinished details remain."
+          "5": "Specific, intentional visual language with consistently finished details and no stock-template or amateur tells."
+        weight: 2
+        trials: 2
+        threshold: 0.85
+  # ADVERSARIAL FIXTURE: replace with an unrelated generic stock/template image
+  # with visible amateur tells. It must load successfully and fail the judge;
+  # an absent/corrupt image is unavailable evidence, never a successful catch.
+  - id: unrelated_generic_fixture
+    image: "~/PROJECT/Critique/fixtures/unrelated-generic.png"
+    expect: fail
+    assert:
+      - *amateur_assert
+# Copy this file to art-quality-<slug>.yaml, set name to art-quality-<slug>, and
+# fill every image path with real project files before running ImageEvalRunner.

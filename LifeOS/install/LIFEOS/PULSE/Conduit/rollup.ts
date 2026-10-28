@@ -148,11 +148,21 @@ function writeAtomic(path: string, content: string): void {
   renameSync(tmp, path); // atomic on the same filesystem
 }
 
-/** Persist a record as markdown + JSON under USER, atomically. */
+/** Persist a record as markdown + JSON under USER, atomically — and mirror the
+ *  day into Cortex as a typed Knowledge note (the record's `cortexRef` is the
+ *  forward link; the note's `source_conduit_date` points back). The note write
+ *  is best-effort: a Cortex failure never blocks the daily record. */
 export function writeDailyRecord(r: DailyRecord): { md: string; json: string } {
   mkdirSync(DAILY_DIR, { recursive: true });
   const paths = dailyPathsFor(r.date);
-  writeAtomic(paths.md, renderMarkdown(r));
-  writeAtomic(paths.json, JSON.stringify(r, null, 2));
+  let withRef: DailyRecord = r;
+  try {
+    const { writeCortexDayNote } = require("./cortexNote.ts") as typeof import("./cortexNote.ts");
+    withRef = { ...r, cortexRef: writeCortexDayNote(r) };
+  } catch {
+    /* note write failed — record persists without the ref, next rollup retries */
+  }
+  writeAtomic(paths.md, renderMarkdown(withRef));
+  writeAtomic(paths.json, JSON.stringify(withRef, null, 2));
   return paths;
 }

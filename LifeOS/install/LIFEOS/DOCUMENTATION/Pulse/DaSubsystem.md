@@ -1,5 +1,5 @@
 ---
-version: 1.1.5
+version: 1.1.17
 ---
 
 # LifeOS Digital Assistant Subsystem
@@ -9,10 +9,10 @@ version: 1.1.5
 **The DA subsystem formalizes how LifeOS instantiates, manages, and evolves a Digital Assistant. It turns DA_IDENTITY from a flat markdown file into a living schema with interview-based creation, heartbeat-driven proactivity, natural-language scheduling, identity growth, and multi-DA awareness.**
 
 **Version:** 1.0 (Design)
-**Location:** Integrated into Pulse at `LIFEOS/PULSE/Assistant/module.ts` (+ `Assistant/checks/`, `Assistant/state/`) + `LIFEOS/USER/DIGITAL_ASSISTANT/`
+**Location:** Integrated into Pulse at `LIFEOS/PULSE/Assistant/module.ts` (+ `Assistant/checks/`, `Assistant/state/`) + `LIFEOS/USER/DIGITAL_ASSISTANT/`. The `Assistant/` runtime is private infrastructure and is not in the release payload; `pulse.ts` loads it only when present.
 **Status:** Implemented. 🔒 **Private — the whole `LIFEOS/PULSE/Assistant/` tree is excluded from the public release** (`ShadowRelease.ts` staging exclude), so these paths do not exist on a public install. This document ships as the design of record; the implementation does not.
 
-> **Path note.** This design was drafted against a planned `modules/da.ts`. It landed instead as the `Assistant/` subsystem — `Assistant/module.ts` is the real entry point. Where the prose below says `modules/da.ts`, read `Assistant/module.ts`.
+> **Path note.** This design was drafted against a planned `modules/da.ts`. It landed instead as the `Assistant/` subsystem — `Assistant/module.ts` is the real entry point. Where the prose below says `modules/da.ts`, read `Assistant/module.ts`. Where it names `checks/da-heartbeat.ts`, `da-tasks.ts`, `da-diary.ts` or `da-growth.ts`, read `Assistant/checks/heartbeat.ts`, `tasks.ts`, `diary.ts` or `growth.ts`. The HTTP routes written as `/da/...` are served as `/assistant/...` (health, identity, personality, tasks, cron, diary, opinions, avatar).
 
 ---
 
@@ -108,7 +108,7 @@ das:
   worker-da:
     role: worker
     enabled: true
-    created: "2026-04-03"
+    created: "2025-03-01"
     channels:
       - background              # Only runs as background agent, no chat
 ```
@@ -143,28 +143,21 @@ backstory: >
 
 # ── Voice ──────────────────────────────────────────────
 voice:
-  provider: elevenlabs
+  provider: fish
   main:
-    voice_id: <your-elevenlabs-voice-id>
-    stability: 0.85
-    similarity_boost: 0.7
-    style: 0.3
+    voice_id: <your-voice-id>        # marks the voice; the Fish model is fish_reference_id in LIFEOS_CONFIG.toml
     speed: 1.1
     volume: 1.2
   algorithm:                    # Optional: separate voice for algorithm phases
-    voice_id: 21m00Tcm4TlvDq8ikWAM   # example — any ElevenLabs library voice
-    stability: 0.3
-    similarity_boost: 0.75
-    style: 0.8
+    voice_id: <another-voice-id>
     speed: 1.2
     volume: 1.0
 
 # ── Personality ────────────────────────────────────────
 personality:
   base_description: >
-    Slightly masculine androgynous young voice, Japanese-accented,
-    rapid speech pattern, futuristic AI friend who thinks fast and
-    talks fast, warm but efficient
+    Clear, friendly young voice with a quick speech pattern,
+    an AI friend who thinks fast and talks fast, warm but efficient
   traits:
     enthusiasm: 75              # 0-100 scale
     energy: 80
@@ -407,7 +400,7 @@ Layer 1: Context Gathering ($0, deterministic)
 Context Bundle (structured JSON, ~500 tokens)
     |
     v
-Layer 2: Evaluation (single Haiku call, ~$0.001)
+Layer 2: Evaluation (single Sonnet call)
     |
     Input: context bundle + DA personality + "should I act?"
     |
@@ -431,7 +424,7 @@ The heartbeat replaces the disabled `proactive-suggestions` job:
 enabled = true
 primary = "your-da"                 # Which DA identity to use
 heartbeat_schedule = "*/30 * * * *"   # Every 30 minutes
-heartbeat_model = "haiku"       # Cost-efficient evaluation
+heartbeat_model = "sonnet"       # Evaluation model; each run is one vendor-priced call
 heartbeat_cost_ceiling = 0.01   # Max per evaluation
 diary_schedule = "0 23 * * *"   # Daily diary at 11 PM
 growth_schedule = "0 4 * * 0"   # Weekly growth review, Sunday 4 AM
@@ -488,9 +481,9 @@ Respond with ONLY a JSON object:
 | Component | Cost | Frequency |
 |---|---|---|
 | Layer 1 (context gathering) | $0 | Every 30 min |
-| Layer 2 (Haiku evaluation) | ~$0.001 | Every 30 min |
-| Daily total (48 evaluations) | ~$0.048 | Per day |
-| Monthly total | ~$1.44 | Per month |
+| Layer 2 (Sonnet evaluation) | Vendor-priced | Every 30 min |
+| Daily total (48 evaluations) | 48 Sonnet calls at the vendor’s current price | Per day |
+| Monthly total | about 1,440 Sonnet calls at the vendor’s current price | Per month |
 
 Most evaluations will return NO_ACTION. The two-layer design ensures the LLM call receives minimal, pre-filtered context.
 
@@ -537,7 +530,7 @@ interface ScheduledTask {
     channel?: string            // voice | ntfy | email
     // For "prompt":
     prompt?: string             // Claude prompt to execute
-    model?: string              // haiku | sonnet
+    model?: string              // sonnet | opus
     // For "script":
     command?: string            // Shell command
   }
@@ -563,7 +556,7 @@ User: "every Friday at 3pm, check newsletter stats"
   -> Parser extracts:
      description: "check newsletter stats"
      schedule: { type: "recurring", cron: "0 15 * * 5" }
-     action: { type: "prompt", prompt: "Check UL newsletter stats...", model: "haiku" }
+     action: { type: "prompt", prompt: "Check newsletter stats..." }
 
 User: "in 2 hours, remind me to call the dentist"
   -> Parser extracts:
@@ -573,6 +566,8 @@ User: "in 2 hours, remind me to call the dentist"
 ```
 
 ### Task Evaluation (Check Script)
+
+Built as `Assistant/checks/tasks.ts` (private; not in the public release). The path below is the original design path.
 
 ```
 LIFEOS/PULSE/checks/da-tasks.ts
@@ -608,9 +603,6 @@ bun LIFEOS/TOOLS/DASchedule.ts cancel <task-id>
 
 # List completed tasks
 bun LIFEOS/TOOLS/DASchedule.ts history
-
-# Purge old completed tasks
-bun LIFEOS/TOOLS/DASchedule.ts purge --older-than 30d
 ```
 
 During a Claude Code session, the DA can also manage tasks conversationally:
@@ -678,8 +670,8 @@ Example entry:
 ```
 
 The diary job reads:
-- Today's ratings from `LEARNING/SIGNALS/ratings.jsonl`
-- Today's work from `MEMORY/WORK/` (completed ISAs)
+- Today's satisfaction and feedback from the Errata ledger (`bun LIFEOS/ERRATA/Errata.ts list --json --since <date>`)
+- Today's work from `LIFEOS/MEMORY/WORK/` (completed ISAs)
 - Today's events from 
 
 ### 5b. Opinion Formation (`opinions.yaml`)
@@ -708,8 +700,8 @@ opinions:
     first_observed: "2025-12-01"
     last_confirmed: "2026-04-01"
 
-  - topic: "Late night productivity"
-    belief: "The principal does their best deep work after 10 PM"
+  - topic: "Commit message style"
+    belief: "The principal prefers short imperative commit subjects"
     confidence: 0.70
     source: observation
     evidence_count: 15
@@ -743,6 +735,8 @@ The identity file itself evolves, but slowly and with guardrails.
 - `autonomy.must_ask` (can only get MORE restrictive autonomously)
 
 ### Growth Engine Implementation
+
+Built as `Assistant/checks/growth.ts` (private; not in the public release). The path below is the original design path.
 
 ```
 LIFEOS/PULSE/checks/da-growth.ts
@@ -795,13 +789,13 @@ The identity file must stay bounded. Target size: under 200 lines of YAML.
 The DA module follows the same pattern as iMessage, Siri, and other Pulse modules:
 
 ```typescript
-// LIFEOS/PULSE/Assistant/module.ts
+// LIFEOS/PULSE/Assistant/module.ts (maintainer-side; not shipped in the public release)
 
 export interface DAConfig {
   enabled: boolean
   primary: string                       // DA name from registry
   heartbeat_schedule: string            // Cron expression
-  heartbeat_model: string               // haiku | sonnet
+  heartbeat_model: string               // sonnet | opus
   heartbeat_cost_ceiling: number        // USD per evaluation
   diary_schedule: string                // Cron expression
   growth_schedule: string               // Cron expression
@@ -821,7 +815,7 @@ export function stopDA(): void
 enabled = true
 primary = "your-da"
 heartbeat_schedule = "*/30 * * * *"
-heartbeat_model = "haiku"
+heartbeat_model = "sonnet"
 heartbeat_cost_ceiling = 0.01
 diary_schedule = "0 23 * * *"
 growth_schedule = "0 4 * * 0"
@@ -965,18 +959,17 @@ autonomy:
 
 ### DA-to-DA Communication
 
-DAs do not communicate directly. The primary DA delegates to workers via the existing Task tool:
+DAs do not communicate directly. The primary DA delegates to workers via the existing Agent tool:
 
 ```typescript
 // Primary DA delegates research to worker DA
 Agent({
   prompt: `You are the worker DA, a research worker. ${taskDescription}`,
   subagent_type: "general-purpose",
-  model: "sonnet"
 })
 ```
 
-The worker's DA_IDENTITY.md frontmatter provides the system prompt context. Results flow back to the primary DA through normal Task tool output.
+The worker's DA_IDENTITY.md frontmatter provides the system prompt context. Results flow back to the primary DA through normal Agent tool output.
 
 ### Registry-Aware Heartbeat
 
@@ -1049,7 +1042,7 @@ Tasks:
 - [ ] Test: "remind me at 9am" creates and fires a task
 
 **Acceptance criteria:**
-- Heartbeat runs every 30 min, costs under $0.05/day
+- Heartbeat runs every 30 min, one Sonnet call per run
 - Scheduled tasks survive Pulse restarts
 - Natural language task creation works via session conversation
 
@@ -1061,7 +1054,7 @@ Tasks:
 - [P] Write `checks/da-diary.ts` (daily diary writer)
 - [P] Write `checks/da-growth.ts` (weekly growth engine)
 - [P] Write opinion formation logic
-- [ ] Wire diary to existing SIGNALS/ and events.jsonl
+- [ ] Wire diary to the Errata ledger and events.jsonl
 - [ ] Add growth log viewer to Observatory dashboard
 - [ ] Test: diary captures accurate daily summaries
 - [ ] Test: opinions form, confirm, decay, and prune correctly
@@ -1095,60 +1088,10 @@ Tasks:
 
 ## 9. Migration Plan
 
-### Step-by-Step Migration for the primary DA
-
-```
-Current State:
-  LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md          (flat markdown)
-  LIFEOS/USER/DA_WRITING_STYLE.md     (separate file)
-  LIFEOS_CONFIG.toml → DA section     (voice, personality)
-
-Step 1: Create directory structure
-  mkdir -p LIFEOS/USER/DA/your-da
-
-Step 2: Run migration script
-  bun LIFEOS/TOOLS/MigrateDAIdentity.ts
-  → Reads DA_IDENTITY.md, DA_WRITING_STYLE.md, LIFEOS_CONFIG.toml
-  → Writes your-da/DA_IDENTITY.yaml (structured)
-  → Writes _registry.yaml (your-da as primary)
-  → Generates your-da/DA_IDENTITY.md (for backward compat)
-  → Creates empty your-da/growth.jsonl, your-da/opinions.yaml, your-da/diary.jsonl
-
-Step 3: Update LIFEOS_CONFIG.toml
-  DA section becomes pointer:
-    DA:
-      REGISTRY: LIFEOS/USER/DA/_registry.yaml
-      PRIMARY: your-da
-
-Step 4: Update ConfigRenderer
-  → Reads DA identity from registry path
-  → Template variables still resolve
-
-Step 5: Verify
-  → CLAUDE.md generates correctly
-  → iMessage module uses correct identity
-  → Voice uses correct voice_id
-  → No visible behavioral change
-
-Step 6: Deprecate old files
-  → DA_IDENTITY.md gets header: "# DEPRECATED — See LIFEOS/USER/DA/your-da/DA_IDENTITY.yaml"
-  → DA_WRITING_STYLE.md gets header: "# DEPRECATED — Folded into DA_IDENTITY.yaml"
-  → Both files kept for 30 days, then deleted
-
-Step 7: Enable DA module
-  → Add [da] section to PULSE.toml
-  → Restart Pulse
-  → Heartbeat starts running
-```
-
-### Rollback Plan
-
-If the migration causes issues:
-
-1. ConfigRenderer falls back to reading LIFEOS_CONFIG.toml DA section directly if registry path is missing
-2. Old DA_IDENTITY.md remains importable for 30 days
-3. DA module can be disabled independently: `[da] enabled = false`
-4. No other Pulse modules depend on the DA module
+Retired. The YAML registry migration this section described (`MigrateDAIdentity.ts`,
+`DA_IDENTITY.yaml`, `_registry.yaml`) was never built; the DA identity stays the flat
+`LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md` that every reader uses today. Section
+number kept so cross-references to §10+ stay valid. (public PR #1987, @hjbrandt)
 
 ---
 
@@ -1158,17 +1101,17 @@ If the migration causes issues:
 
 | Feature | Model | Frequency | Cost/Run | Cost/Day |
 |---|---|---|---|---|
-| Heartbeat evaluation | Haiku | 48x (every 30 min) | $0.001 | $0.048 |
+| Heartbeat evaluation | Sonnet | 48x (every 30 min) | Vendor-priced | Vendor-priced |
 | Scheduled task checks | None (script) | 1440x (every min) | $0 | $0 |
-| Daily diary | Haiku | 1x | $0.002 | $0.002 |
+| Daily diary | None (script) | 1x | $0 | $0 |
 | Weekly growth | Sonnet | 0.14x (1/week) | $0.02 | $0.003 |
-| **Total** | | | | **~$0.053/day** |
+| **Total** | | | | **Vendor-priced heartbeat + ~$0.003/day** |
 
-Monthly estimate: ~$1.60. This is intentionally cheap. The heartbeat uses Haiku for evaluation, and most evaluations return NO_ACTION (no dispatch cost).
+The heartbeat uses Sonnet for evaluation, and most evaluations return NO_ACTION with no further dispatch.
 
 ### Comparison to OpenClaw
 
-OpenClaw's heartbeat runs every 30 min with GPT-4, costing roughly $0.03-0.05 per evaluation. At 48 evaluations/day, that is $1.44-2.40/day or $43-72/month. LifeOS's two-layer approach (free context gathering + Haiku evaluation) is 30-50x cheaper.
+LifeOS's two-layer approach keeps context gathering free and reserves one Sonnet evaluation for the action decision.
 
 ---
 
@@ -1176,7 +1119,7 @@ OpenClaw's heartbeat runs every 30 min with GPT-4, costing roughly $0.03-0.05 pe
 
 ### DA Autonomy Guardrails
 
-The `autonomy.must_ask` list in `DA_IDENTITY.md` frontmatter is enforced at the module level. If a heartbeat evaluation suggests an action that requires approval, it is queued (not executed) and the principal is notified.
+The `autonomy.must_ask` list in `DA_IDENTITY.md` frontmatter is read by the Assistant module and rendered on the Pulse card; the queue-not-execute enforcement described next is DESIGNED here and not yet built (2026-09-05 sweep: `module.ts` reads the list, `page.tsx` renders it, no gate keys on it). Until it is built, the system prompt § Permission Boundaries table is what binds. If a heartbeat evaluation suggests an action that requires approval, it is queued (not executed) and the principal is notified.
 
 ### Injection Prevention
 
@@ -1189,7 +1132,7 @@ The `autonomy.must_ask` list in `DA_IDENTITY.md` frontmatter is enforced at the 
 
 - Per-evaluation ceiling (`heartbeat_cost_ceiling`) prevents runaway LLM costs
 - Daily ceiling: 48 * ceiling = max daily heartbeat spend
-- If Haiku is unavailable, heartbeat skips rather than falling back to a more expensive model
+- If the Sonnet invocation is unavailable, heartbeat skips rather than substituting another model
 
 ### Data Isolation
 
@@ -1206,13 +1149,13 @@ The `autonomy.must_ask` list in `DA_IDENTITY.md` frontmatter is enforced at the 
 The DA wakes every 30 minutes and runs a two-layer check. Most ticks cost almost nothing and do nothing:
 
 1. **Layer 1 (free)** gathers context deterministically — the next couple of calendar events, unread VIP mail, active work, tasks due soon, today's diary. It packs this into a small JSON bundle.
-2. **Layer 2 (a cheap Haiku call)** reads the bundle and the DA's personality and answers one question: *should I act?*
+2. **Layer 2 (a Sonnet call)** reads the bundle and the DA's personality and answers one question: *should I act?*
 
 At 2 p.m. on a normal afternoon the answer is `NO_ACTION`. Nothing is spoken; the tick is logged and forgotten. But on a tick where a meeting is 10 minutes out, Layer 2 returns `notify`, and the DA speaks a single reminder. The default is silence; action has to earn its way past the filter.
 
 ### An observation becomes an opinion
 
-Proactivity is one loop; growth is another. Say the principal keeps doing their sharpest work late at night. No single session proves it, but the pattern accrues: the weekly growth engine reads the diary, notices the repetition, and forms a confidence-weighted belief — starting low, climbing about `0.05 × (1 − confidence)` per confirming week, with diminishing returns. A contradiction knocks it back; long silence lets it decay. Nothing about the DA's *name*, *voice*, or *autonomy limits* drifts this way — those change only with the principal's approval. Only the soft, learned edges move.
+Proactivity is one loop; growth is another. Say the principal keeps asking for short commit subjects. No single session proves it, but the pattern accrues: the weekly growth engine reads the diary, notices the repetition, and forms a confidence-weighted belief — starting low, climbing about `0.05 × (1 − confidence)` per confirming week, with diminishing returns. A contradiction knocks it back; long silence lets it decay. Nothing about the DA's *name*, *voice*, or *autonomy limits* drifts this way — those change only with the principal's approval. Only the soft, learned edges move.
 
 ### The heartbeat decision
 
@@ -1220,7 +1163,7 @@ Proactivity is one loop; growth is another. Say the principal keeps doing their 
 flowchart TD
     A[Heartbeat tick — every 30 min] --> B[Layer 1: gather context — free]
     B --> C[Context bundle ~500 tokens]
-    C --> D[Layer 2: Haiku evaluation]
+    C --> D[Layer 2: Sonnet evaluation]
     D --> E{Act?}
     E -->|NO_ACTION| F[Log only, stay silent]
     E -->|notify| G[Speak via voice channel]

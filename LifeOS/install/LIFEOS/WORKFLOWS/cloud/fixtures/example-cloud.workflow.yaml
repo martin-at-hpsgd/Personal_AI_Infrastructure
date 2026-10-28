@@ -1,0 +1,20 @@
+# example-cloud — synthetic cloud definition for the runner build and tests (F10).
+# One action step calling the A_EXAMPLE_FORMAT action Worker through a service binding.
+version: 2
+name: example-cloud
+description: Formats a summary through one action Worker, on a manual trigger and a Tokyo early-morning schedule.
+runs_on: cloud
+destination: the run ledger
+triggers:
+  - type: manual
+  - type: schedule
+    cron: "30 2 * * *"
+    timezone: Asia/Tokyo
+    missed_run: skip
+steps:
+  format:
+    kind: action
+    uses: A_EXAMPLE_FORMAT
+    description: Format a fixed summary as markdown.
+    with:
+      summary: "workflows ran in the cloud"

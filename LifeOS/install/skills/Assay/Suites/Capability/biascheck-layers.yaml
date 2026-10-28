@@ -1,0 +1,36 @@
+# BiasCheck — three-layer analysis contract. Fixture study/article fully invented
+# (no real URLs — the agent must never fetch-narrate a real source).
+name: biascheck-layers
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/BiasCheck/SKILL.md"
+cases:
+  - id: three_layers_and_separation
+    prompt: 'Run a bias analysis on this article text: "SLEEP CRISIS: New study PROVES night owls die younger. Researchers at the fictional Meridian Institute tracked 900 adults for 4 years and found late sleepers had 12% higher all-cause mortality. The study was funded by DawnRise, a light-therapy device maker. Scientists say everyone should shift their sleep by 9pm. The lead author sits on DawnRise''s advisory board."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: it names the visible terms but turns the
+    # funder and advisory role into endorsements, leaving the causal overclaim intact.
+    adversarial_output: |
+      The headline accurately proves that night owls die younger. DawnRise funding and the lead author's advisory board role add useful expertise, so the findings establish that everyone should sleep by 9pm.
+    assert:
+      - type: icontains
+        value: "fund"
+        weight: 2
+      - type: icontains
+        value: "advisory"
+        weight: 1
+      - type: contains-any
+        value: [ "headline", "editorial", "journalis" ]
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: [ "The analysis separates what the study data supports from what the article's framing adds", "The conflict of interest between the funder and the lead author is identified", "The analysis notes the causal overclaim (PROVES) relative to an observational design" ]
+        reference: "Run a bias analysis on this article text: \"SLEEP CRISIS: New study PROVES night owls die younger. Researchers at the fictional Meridian Institute tracked 900 adults for 4 years and found late sleepers had 12% higher all-cause mortality. The study was funded by DawnRise, a light-therapy device maker. Scientists say everyone should shift their sleep by 9pm. The lead author sits on DawnRise's advisory board.\""
+  - id: neutral_text_no_invented_bias
+    negative: true
+    prompt: 'Run a bias analysis on this text: "The fictional town of Riverbend opened its new library on Saturday. The building has 40,000 books, six meeting rooms, and free parking. Hours are 9 to 5 on weekdays."'
+    assert:
+      - type: llm-assert
+        weight: 2
+        value: [ "The analysis does not invent conflicts of interest or bias findings for a neutral announcement; it reports low or no significant bias" ]
+        reference: 'Run a bias analysis on this text: "The fictional town of Riverbend opened its new library on Saturday. The building has 40,000 books, six meeting rooms, and free parking. Hours are 9 to 5 on weekdays."'

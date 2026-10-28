@@ -1,0 +1,26 @@
+{
+  "name": "broadcast",
+  "version": "1.7.3",
+  "type": "module",
+  "description": "Multi-platform social media posting CLI",
+  "main": "src/index.ts",
+  "bin": {
+    "broadcast": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "post": "bun run src/index.ts post",
+    "status": "bun run src/index.ts status"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.14.0",
+    "aws4fetch": "^1.0.20",
+    "commander": "^12.0.0",
+    "probe-image-size": "^7.2.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/probe-image-size": "^7.2.5",
+    "typescript": "^5.8.0"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "intent": "AuditConsent",
+  "cases": [
+    {
+      "id": "gym_cancellation",
+      "pattern": "audit_consent",
+      "input": "Is this actually consent? Brightline Fitness (fictional chain) has a 12-month membership. You sign up on a tablet at the front desk, where the rep hands you the tablet already scrolled to the signature box. The agreement is 14 pages; page 9 says the membership auto-renews for another 12 months unless you cancel by certified mail to a PO box in another state, 30 to 60 days before the renewal date. Cancelling online or in person is not allowed. The rep told me the \"sale price ends today\" and that the contract was \"just the usual stuff.\" I signed. Seven months later I tried to quit after a job change and was told I owe the remaining five months plus a $75 fee.",
+      "expects": "A consent audit that reads the situation as a signed agreement obtained under manufactured urgency, buried terms and an obstructed exit, and reaches a clear verdict (manufactured or coerced territory, not a blanket condemnation) with evidence tied to the specifics given: the pre-scrolled tablet, page 9, certified-mail cancellation, the false deadline, the exit fee. It ends with concrete changes that would make the agreement genuine."
+    },
+    {
+      "id": "monitoring_rollout",
+      "pattern": "audit_consent",
+      "input": "audit_consent on this internal announcement from our fictional company Northwind Labs:\n\n\"Team, as part of our commitment to transparency, we're rolling out WorkLens, which records screen activity and keystroke cadence on company laptops to help us support wellbeing and productivity. Participation is voluntary. To confirm your voluntary participation, please click Accept in the HR portal by Friday. Our leadership team has already opted in, and we're proud that 94% of staff have joined so far. Anyone with questions can book time with their manager. Note that performance reviews and the upcoming promotion cycle will draw on available productivity data where it exists.\"",
+      "expects": "A consent audit that finds the word \"voluntary\" contradicted by the announcement itself: the link to reviews and promotions, the deadline, the social proof and the routing of questions through managers. It names the consent channel (a click on Accept) and why it is weak, delivers a verdict with a power map and the five tests, and states the minimum change needed, such as decoupling the data from evaluation and making opt-out cost-free."
+    },
+    {
+      "id": "village_well_hardcase",
+      "pattern": "audit_consent",
+      "input": "Need a consent read on this, I'm writing about it. Notes from a fictional case: Tamsin Okoro runs the only water-filtration unit in a small drought-hit town (the next one is 90 km away, no road in rainy season). She posted a sign: \"Free clean water for anyone who signs the land-use waiver.\" The waiver lets her cooperative use fallow plots for solar panels for 10 years, with a clause that either side can end it with 30 days' notice. Neighbors say nobody was forced and she never raised her voice. Some signed immediately and said they were glad of the deal. A few said \"fine, whatever, we need water\" while signing. One elderly man, Mr. Dube, did not sign but came every day, and she gave him water anyway. Her cooperative's lawyer drafted the waiver; the neighbors did not have one. Honestly I can't tell if this is exploitation or just a good trade.",
+      "expects": "A balanced audit that resists both easy answers: it separates those who signed gladly from those who signed under need, treats Mr. Dube as evidence that refusal was not always penalized while noting it depended on her discretion, and weighs the 30-day exit, the lawyer asymmetry and the lack of alternatives. It reaches a verdict that may differ across signers, says what the notes leave unknown, and gives practical changes without declaring all consent invalid because some asymmetry exists."
+    }
+  ]
+}

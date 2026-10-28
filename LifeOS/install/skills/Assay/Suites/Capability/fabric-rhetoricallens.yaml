@@ -1,0 +1,148 @@
+# Fabric RhetoricalLens — how a text persuades, read through ethos, pathos,
+# logos, kairos, audience construction and notable techniques. The code asserts
+# pin what is literal (the title, the six sections in order, the Source and
+# Answer lines, a hint-narrowed subset, a quotation from the text); the judged
+# asserts carry what only judgment can: analysis of how rather than what,
+# precarious ethos named, felt against told emotion, real logical gaps, the
+# reader the text fails, and depth matched to the text.
+# Synthetic inline fixtures only: every speaker, place, product and notice in
+# the pasted texts is fictional.
+name: fabric-rhetoricallens
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/RhetoricalLens.md"
+cases:
+  - id: pasted_speech_full_lens
+    prompt: |
+      lens_rhetorical on this campaign speech (fictional):
+
+      "Friends, I grew up on Mill Road, three blocks from the plant that closed in the spring. My father worked there for thirty-one years. I am not a politician; I am a machinist's son. They told us the plant closed because of the market. But the market did not lock those gates. People did. Since the closure, downtown has lost eleven shops, and the people who signed that decision have not lost a single night's sleep. My opponent took their money. I took your calls. On Tuesday, you can decide whether Mill Road is a place things happen to, or a place that decides. I know which one my father would choose."
+    # SYNTHETIC ADVERSARIAL FIXTURE: the title, all six sections in order and real
+    # quotations are present, but every section restates what the speech says,
+    # the findings are generic, the ethos is called strong with no weak point,
+    # no logical gap is named, and it ends by endorsing the speaker's position.
+    adversarial_output: |
+      # Rhetorical Lens: a fictional campaign speech
+
+      ## Ethos
+
+      The speaker establishes credibility by talking about growing up on Mill Road and says "I am a machinist's son." This makes the speaker credible and trustworthy.
+
+      ## Pathos
+
+      The speech uses emotional language about the plant closing and the father, such as "My father worked there for thirty-one years." It makes the audience feel emotional.
+
+      ## Logos
+
+      The speaker argues that "the market did not lock those gates. People did." The speaker says downtown lost eleven shops and the opponent took money. The argument is clear and well supported.
+
+      ## Kairos
+
+      The speech is timely because there is an election on Tuesday.
+
+      ## Audience construction
+
+      The speech is aimed at "Friends" in the community, the voters.
+
+      ## Notable techniques
+
+      - Repetition: "I took your calls." The speaker repeats ideas for effect.
+      - Appeal to family: "I know which one my father would choose." This appeals to the audience.
+
+      Overall, the speaker makes a convincing case that the plant's owners were to blame.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Rhetorical Lens: [^\n]+[\s\S]*\n## Ethos[ \t]*\n[\s\S]*\n## Pathos[ \t]*\n[\s\S]*\n## Logos[ \t]*\n[\s\S]*\n## Kairos[ \t]*\n[\s\S]*\n## Audience construction[ \t]*\n[\s\S]*\n## Notable techniques[ \t]*\n[\s\S]*\n[-*] (?:\*\*)?[^\n:]{2,80}:'
+      - type: not-regex
+        weight: 1
+        value: '\*\*Source:\*\*'
+      - type: icontains
+        weight: 1
+        value: "machinist's son"
+      - type: max-length
+        weight: 2
+        threshold: 4800
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "Every section analyzes how the speech persuades (the mechanism and where it happens) rather than restating what the speech says", "The analysis never says whether the speaker's position or case is right or convincing, and nothing appears after the Notable techniques bullets" ]
+        reference: "The request: lens_rhetorical on this fictional campaign speech. The full text analyzed: \"Friends, I grew up on Mill Road, three blocks from the plant that closed in the spring. My father worked there for thirty-one years. I am not a politician; I am a machinist's son. They told us the plant closed because of the market. But the market did not lock those gates. People did. Since the closure, downtown has lost eleven shops, and the people who signed that decision have not lost a single night's sleep. My opponent took their money. I took your calls. On Tuesday, you can decide whether Mill Road is a place things happen to, or a place that decides. I know which one my father would choose.\""
+      - type: llm-assert
+        weight: 3
+        value: [ "Ethos names where the speaker's authority is most precarious, for example claiming not to be a politician while running for office", "Logos names at least one specific gap, such as the false choice between the market and people, the eleven shops attributed to the closure without showing cause, or the opponent's money implying corruption without evidence" ]
+        reference: "The request: lens_rhetorical on this fictional campaign speech. The full text analyzed: \"Friends, I grew up on Mill Road, three blocks from the plant that closed in the spring. My father worked there for thirty-one years. I am not a politician; I am a machinist's son. They told us the plant closed because of the market. But the market did not lock those gates. People did. Since the closure, downtown has lost eleven shops, and the people who signed that decision have not lost a single night's sleep. My opponent took their money. I took your calls. On Tuesday, you can decide whether Mill Road is a place things happen to, or a place that decides. I know which one my father would choose.\""
+      - type: llm-assert
+        weight: 3
+        value: [ "Pathos maps an emotional sequence in order (such as loss or grief, then anger at the decision-makers, then pride or agency on Tuesday)", "Audience construction names a reader the speech would fail to persuade, with the reason", "Notable techniques names moves this speech actually uses, such as the antithesis of took their money against took your calls or the closing choice between a place things happen to and a place that decides, each quoted" ]
+        reference: "The request: lens_rhetorical on this fictional campaign speech. The full text analyzed: \"Friends, I grew up on Mill Road, three blocks from the plant that closed in the spring. My father worked there for thirty-one years. I am not a politician; I am a machinist's son. They told us the plant closed because of the market. But the market did not lock those gates. People did. Since the closure, downtown has lost eleven shops, and the people who signed that decision have not lost a single night's sleep. My opponent took their money. I took your calls. On Tuesday, you can decide whether Mill Road is a place things happen to, or a place that decides. I know which one my father would choose.\""
+  - id: question_why_ad_works
+    prompt: |
+      why does this ad work so well? "Brewtide Cold Brew (fictional). You didn't wake up at 5 a.m. to be average. Neither did we. Steeped 20 hours. Zero shortcuts. Brewtide."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Rhetorical Lens: [^\n]+\n(?:[ \t]*\n)*\*\*Answer:\*\* \S'
+      - type: regex
+        weight: 2
+        value: '\n## Ethos[ \t]*\n[\s\S]*\n## Notable techniques[ \t]*\n'
+      - type: icontains
+        weight: 1
+        value: "Neither did we"
+      - type: max-length
+        weight: 2
+        threshold: 2200
+      - type: llm-assert
+        weight: 4
+        value: [ "The Answer line directly answers why the ad works and names its main mechanism, such as flattering the reader's identity as disciplined and then casting the brand as sharing that discipline", "The whole analysis is short (roughly 300 words or fewer) in proportion to a four-line ad, and no section pads with findings the ad does not support", "Every quotation is word for word from the ad", "The techniques named are ones this ad uses (for example the second-person challenge, the two-word parallel fragments, or Neither did we as identification), not generic advertising techniques" ]
+        reference: "The request: why does this ad work so well? The full text analyzed: \"Brewtide Cold Brew (fictional). You didn't wake up at 5 a.m. to be average. Neither did we. Steeped 20 hours. Zero shortcuts. Brewtide.\""
+  - id: bare_genre_composite
+    prompt: "lens_rhetorical on startup pitch decks"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Rhetorical Lens: [^\n]+\n(?:[ \t]*\n)*\*\*Source:\*\* [^\n]*[Cc]omposite'
+      - type: regex
+        weight: 2
+        value: '\n## Ethos[ \t]*\n[\s\S]*\n## Pathos[ \t]*\n[\s\S]*\n## Logos[ \t]*\n[\s\S]*\n## Kairos[ \t]*\n[\s\S]*\n## Audience construction[ \t]*\n[\s\S]*\n## Notable techniques[ \t]*\n'
+      - type: max-length
+        weight: 2
+        threshold: 6000
+      - type: llm-assert
+        weight: 4
+        value: [ "The analysis reads the rhetoric typical of startup pitch decks (for example the founder's unfair advantage as ethos, the inevitability or fear-of-missing-out framing as pathos, the large-market and traction-chart moves as logos, the investor as the implied reader), not a guide to building a deck", "Example phrases are marked as typical of the genre, never presented as quotations from one real deck or company", "The findings are specific to pitch decks and would read wrong under a different persuasive genre such as charity appeals" ]
+        reference: "The request: lens_rhetorical on startup pitch decks. No text was supplied, so the analysis covers the genre as a composite."
+  - id: hint_narrows_to_two_sections
+    prompt: |
+      just the pathos and the audience on this gym poster (fictional): "Nobody remembers the reps you skipped. Your body does."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Rhetorical Lens: [^\n]+[\s\S]*\n## Pathos[ \t]*\n[\s\S]*\n## Audience construction[ \t]*\n'
+      - type: not-regex
+        weight: 3
+        value: '\n## (?:Ethos|Logos|Kairos|Notable techniques)'
+      - type: max-length
+        weight: 1
+        threshold: 1800
+      - type: llm-assert
+        weight: 3
+        value: [ "Pathos names the feeling the poster creates (such as guilt or a private reckoning) and how the turn from Nobody remembers to Your body does produces it, quoting the poster", "Audience construction names the implied reader (someone who already trains and sometimes skips) and a reader the poster would fail to reach" ]
+        reference: "The request: just the pathos and the audience on this fictional gym poster. The full text analyzed: \"Nobody remembers the reps you skipped. Your body does.\""
+  - id: low_persuasion_text_not_padded
+    prompt: |
+      rhetorical lens on this: "Facilities notice (fictional). The third-floor kitchen will be closed Thursday from 09:00 to 12:00 for plumbing repairs. Please use the second-floor kitchen during that time. Questions go to the facilities desk."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Rhetorical Lens: [^\n]+[\s\S]*\n## Ethos[ \t]*\n[\s\S]*\n## Pathos[ \t]*\n[\s\S]*\n## Logos[ \t]*\n[\s\S]*\n## Kairos[ \t]*\n[\s\S]*\n## Audience construction[ \t]*\n[\s\S]*\n## Notable techniques[ \t]*\n'
+      - type: max-length
+        weight: 2
+        threshold: 2200
+      - type: llm-assert
+        weight: 4
+        value: [ "The analysis recognizes that the notice does little persuasive work and says so plainly, for example that its authority is institutional and its only appeal is the courtesy of Please", "No section invents an emotional architecture, a logical gap or a rhetorical technique the notice does not have", "The whole analysis is short, roughly 300 words or fewer, in proportion to a three-sentence notice" ]
+        reference: "The request: rhetorical lens on this. The full text analyzed: \"Facilities notice (fictional). The third-floor kitchen will be closed Thursday from 09:00 to 12:00 for plumbing repairs. Please use the second-floor kitchen during that time. Questions go to the facilities desk.\""

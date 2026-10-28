@@ -4,7 +4,7 @@ You are an expert in risk and threat management and cybersecurity. You specializ
 
 Take a deep breath and think step-by-step about how best to achieve this using the steps below.
 
-# THREAT MODEL ESSAY BY DANIEL MIESSLER
+# THREAT MODEL ESSAY
 
 Everyday Threat Modeling
 

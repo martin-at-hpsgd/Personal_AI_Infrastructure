@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.4
  * DoctrineReplay — sampled doctrine-coverage replay over archived ISAs.
  *
  * The regression corpus the Algorithm never had: 80+ doctrine versions shipped
@@ -19,11 +20,11 @@
  *   bun DoctrineReplay.ts sample [--n 24] [--out <path>]   # emit manifest JSON
  *   bun DoctrineReplay.ts sample --json                    # manifest to stdout only
  */
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const WORK_DIR = join(homedir(), ".claude/LIFEOS/MEMORY/WORK");
+const WORK_DIR = lifeosPath("MEMORY", "WORK");
 
 type ISAMeta = {
   slug: string;
@@ -40,7 +41,7 @@ type ISAMeta = {
 };
 
 const DOMAIN_RULES: Array<[string, RegExp]> = [
-  ["core-system", /\b(hook|algorithm|router|system prompt|doctrine|isa (format|skill|system)|classifier|claude\.md|bpe|memory system)\b/i],
+  ["core-system", /\b(hook|algorithm|router|system prompt|doctrine|isa (format|skill|system)|classifier|claude\.md|bpe|ble|memory system)\b/i],
   ["web-deploy", /\b(site|website|deploy|cloudflare|worker|pages|astro|hono|domain|dns|wrangler)\b/i],
   ["experiential", /\b(art|design|logo|wallpaper|thumbnail|song|music|story|essay|blog|post|video|image)\b/i],
   ["ops-infra", /\b(network|unifi|camera|backup|launchd|service|install|mac mini|ssh|server|credential|token|rotate)\b/i],
@@ -50,6 +51,23 @@ const DOMAIN_RULES: Array<[string, RegExp]> = [
 function classifyDomain(text: string): string {
   for (const [name, re] of DOMAIN_RULES) if (re.test(text)) return name;
   return "other";
+}
+
+/** Trimmed checkbox lines that have no deeper-indented checkbox as their next
+ *  non-blank line — i.e. the leaves. Mirrors hooks/lib/isa-utils. (#1938) */
+function leafCheckboxLines(body: string): string[] {
+  const lines = body.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)- \[[ x]\]/);
+    if (!m) continue;
+    let j = i + 1;
+    while (j < lines.length && !lines[j].trim()) j++;
+    const next = j < lines.length ? lines[j].match(/^(\s*)- \[[ x]\]/) : null;
+    if (next && next[1].length > m[1].length) continue;
+    out.push(lines[i].trimStart());
+  }
+  return out;
 }
 
 function fm(body: string, key: string): string {
@@ -64,8 +82,11 @@ function collect(): ISAMeta[] {
     try {
       const st = statSync(p);
       const body = readFileSync(p, "utf8");
-      const iscCount = (body.match(/^- \[[ x]\] ISC-/gm) || []).length;
-      const antiCount = (body.match(/^- \[[ x]\] Anti-/gm) || []).length;
+      // Count LEAF checkboxes at any indent: a nested parent aggregation is not
+      // an atomic criterion (ISAFormat § nesting). public issue #1938, @mj-deving
+      const leaves = leafCheckboxLines(body);
+      const iscCount = leaves.filter((l) => /^- \[[ x]\] ISC-/.test(l)).length;
+      const antiCount = leaves.filter((l) => /^- \[[ x]\] Anti-/.test(l)).length;
       const started = fm(body, "started") || st.mtime.toISOString();
       out.push({
         slug: dir,
@@ -147,6 +168,7 @@ function main() {
 
   const json = JSON.stringify(manifest, null, 2);
   if (outIdx >= 0) {
+    mkdirSync(dirname(args[outIdx + 1]), { recursive: true }); // absent on a fresh clone: git cannot track an empty dir (public PR #2030, @abseg)
     writeFileSync(args[outIdx + 1], json, "utf8");
     console.log(`manifest → ${args[outIdx + 1]} (${picked.length}/${n} sampled from ${all.length})`);
   }

@@ -81,7 +81,7 @@ export function FreshnessIndicator({
       </div>
 
       {hover && dated.length > 0 && (
-        <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-lg border border-line-2 bg-surface-1 backdrop-blur-sm shadow-xl p-3">
+        <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-lg glass-raised p-3">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-2 mb-2">
             Data sources
           </div>

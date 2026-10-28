@@ -8,16 +8,22 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 /**
  * Upgrades — Pulse API module for the unified system-improvement queue.
  *
- * ONE queue, five sources, one lifecycle. Merges:
+ * ONE queue, every source, one lifecycle. Merges:
  *   1. Upgrade records — LIFEOS/MEMORY/UPGRADES/records/*.md, written by
  *      Upgrades.ts (directive/correction capture via SatisfactionCapture,
- *      Upgrade-skill scans, /algo runs, manual adds)
+ *      Upgrade-skill scans, /algo runs, manual adds, and CoachReview.ts's
+ *      source=coach DA-behavior recs — carrying quote/category/recurrence)
  *   2. Pending deriver hypotheses — WISDOM/FRAMES/_hypotheses/*.md, mapped in
  *      as source=autonomous (the deriver's format is unchanged; accept/reject
- *      proxy to the hypotheses module's graduate/reject, so PromoteFixture
+ *      proxy to the hypotheses module's graduate/reject, so fixture promotion
  *      and frame-graduation behavior is identical to the old /hypotheses tab)
  *
- * Doctrine constraint ({{PRINCIPAL_NAME}}, 2026-05-08): Pulse reads clean sources only —
+ * Coach records (source=coach, from CoachReview.ts) surface here too — they
+ * carry the same lifecycle, so the page's source filter narrows to them and
+ * their disposition rides the same accept/reject path. The standalone /coach
+ * surface was folded into this queue (2026-08-16).
+ *
+ * Doctrine constraint (2026-05-08): Pulse reads clean sources only —
  * USER/ or MEMORY/, nothing hard-coded. Every byte served comes from files.
  *
  * Routes:
@@ -42,7 +48,7 @@ const HYP_PREFIX = "hyp:";
 interface QueueItem {
   id: string;                  // upgrade id, or "hyp:<slug>" for deriver hypotheses
   claim: string;
-  source: string;              // directive | correction | upgrade-skill | algo-run | autonomous | manual
+  source: string;              // directive | correction | upgrade-skill | algo-run | autonomous | manual | coach
   status: string;
   created: string;
   expires_in_days: number | null;
@@ -52,6 +58,15 @@ interface QueueItem {
   ledger_id: string | null;
   has_patch: boolean;          // autonomous healing-fixture hypotheses only
   recommendation: string;
+  quote: string;               // coach only — the correction in the principal's words (card headline)
+  category: string;            // coach only — voice | format | process | verification | delegation | judgment
+  recurrence_count: number;    // coach only — how many times the correction recurred (1 = once)
+}
+
+/** A `recurred:` note is appended by CoachReview each time a fresh correction
+ *  folds onto a coach record. The card's recurrence count is those + the original. */
+function recurrenceCount(r: UpgradeRecord): number {
+  return 1 + (r.notes ?? []).filter((n) => /^recurred:/.test(n)).length;
 }
 
 function fromRecord(r: UpgradeRecord): QueueItem {
@@ -69,6 +84,9 @@ function fromRecord(r: UpgradeRecord): QueueItem {
     ledger_id: r.ledger_id,
     has_patch: false,
     recommendation: r.recommendation ?? "",
+    quote: r.quote ?? "",
+    category: r.category ?? "",
+    recurrence_count: recurrenceCount(r),
   };
 }
 
@@ -86,6 +104,9 @@ function fromHypothesis(h: ReturnType<typeof listPending>[number]): QueueItem {
     ledger_id: null,
     has_patch: h.has_patch,
     recommendation: h.suggested_action || "",
+    quote: "",
+    category: "",
+    recurrence_count: 1,
   };
 }
 

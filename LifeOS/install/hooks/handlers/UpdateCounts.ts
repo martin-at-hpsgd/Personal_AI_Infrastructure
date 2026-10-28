@@ -10,7 +10,7 @@
  * Previously this handler ALSO wrote settings.json.counts.{skills,hooks,...}
  * which the statusline + Banner read with mtime caching. That cache was
  * SessionEnd-cadence and stayed stale through every mid-session change.
- * {{PRINCIPAL_NAME}}'s call: kill the cache, read live every render. Statusline + Banner
+ * The principal's call: kill the cache, read live every render. Statusline + Banner
  * now call GetCounts.ts directly. The settings.json.counts field is dead.
  *
  * What this hook still does: Anthropic OAuth usage refresh + workspace cost
@@ -18,18 +18,17 @@
  * not a filesystem-walk cache.
  */
 
-import { readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 import { execSync } from 'child_process';
-import { getLifeosDir } from '../lib/paths';
-import { homedir } from "node:os";
+import { getLifeosDir, getClaudeDir } from '../lib/paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 /**
  * Refresh usage cache from Anthropic OAuth API.
  * Called by stop hook so status line never needs to make this 700ms API call.
  */
-async function refreshUsageCache(paiDir: string): Promise<void> {
-  const usageCachePath = join(paiDir, 'MEMORY/STATE/usage-cache.json');
+async function refreshUsageCache(lifeosDir: string): Promise<void> {
+  const usageCachePath = join(lifeosDir, 'MEMORY/STATE/usage-cache.json');
 
   try {
     // Extract OAuth token — macOS Keychain or Linux credentials file
@@ -40,7 +39,7 @@ async function refreshUsageCache(paiDir: string): Promise<void> {
         { encoding: 'utf-8', timeout: 3000 }
       ).trim();
     } else {
-      const credPath = join(homedir(), '.claude', '.credentials.json');
+      const credPath = join(getClaudeDir(), '.credentials.json');
       credJson = readFileSync(credPath, 'utf-8').trim();
     }
 
@@ -100,6 +99,7 @@ async function refreshUsageCache(paiDir: string): Promise<void> {
       }
     }
 
+    mkdirSync(dirname(usageCachePath), { recursive: true }); // absent on a fresh clone: git cannot track an empty dir (public PR #2030, @abseg)
     writeFileSync(usageCachePath, JSON.stringify(data, null, 2) + '\n');
     console.error(`[UpdateCounts] Usage cache refreshed: 5H=${(data.five_hour as any)?.utilization}% 7D=${(data.seven_day as any)?.utilization}%`);
   } catch {
@@ -112,8 +112,8 @@ async function refreshUsageCache(paiDir: string): Promise<void> {
  * Now does ONLY the OAuth usage cache refresh.
  */
 export async function handleUpdateCounts(): Promise<void> {
-  const paiDir = getLifeosDir();
-  await refreshUsageCache(paiDir);
+  const lifeosDir = getLifeosDir();
+  await refreshUsageCache(lifeosDir);
 }
 
 if (import.meta.main) {

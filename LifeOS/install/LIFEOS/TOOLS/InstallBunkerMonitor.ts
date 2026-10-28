@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.11
  * InstallBunkerMonitor.ts — Materialize com.lifeos.bunkermonitor.plist.template and bootstrap it.
  *
  *   bun ~/.claude/LIFEOS/TOOLS/InstallBunkerMonitor.ts             # install
@@ -11,7 +12,7 @@
  * runs when invoked by hand — the harness is only real if it watches.
  *
  * Substitutes {{HOME}}, {{BUN}}, {{BUN_DIR}}, {{BUNKER}} in the template.
- * Bunker's repo location defaults to ~/.claude/LIFEOS/PULSE/Bunker (its canonical home);
+ * Bunker's repo location defaults to ~/.claude/LIFEOS/PULSE/Bunker (its maintainer-private canonical home);
  * override with BUNKER_DIR env at install time.
  *
  * Idempotent. Re-running install bootouts the prior load before bootstrapping.
@@ -20,13 +21,15 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "node:os";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { installVerb } from "./lib/InstallVerb";
 
 declare const Bun: { spawn: (cmd: string[], opts?: any) => any };
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const BUNKER_DIR = process.env.BUNKER_DIR || join(HOME, ".claude", "LIFEOS", "PULSE", "Bunker");
+const BUNKER_DIR = process.env.BUNKER_DIR || lifeosPath("PULSE", "Bunker");
 const BUNKER_DATA_DIR = join(HOME, ".config", "LIFEOS", "USER", "PULSE", "Bunker");
-const TEMPLATE_PATH = join(HOME, ".claude", "LIFEOS", "TOOLS", "com.lifeos.bunkermonitor.plist.template");
+const TEMPLATE_PATH = lifeosPath("TOOLS", "com.lifeos.bunkermonitor.plist.template");
 const LAUNCH_AGENTS_DIR = join(HOME, "Library", "LaunchAgents");
 const TARGET_PLIST = join(LAUNCH_AGENTS_DIR, "com.lifeos.bunkermonitor.plist");
 const LABEL = "com.lifeos.bunkermonitor";
@@ -125,7 +128,7 @@ async function status(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const arg = process.argv[2];
+  const arg = installVerb(process.argv, "InstallBunkerMonitor");
   if (arg === "--uninstall") return uninstall();
   if (arg === "--status") return status();
   return install();

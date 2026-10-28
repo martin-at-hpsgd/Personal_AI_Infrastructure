@@ -19,9 +19,9 @@ export interface ToolUsage {
   healthIndicator?: string;
 }
 
-export interface SkillWorkflowUsage {
+export interface SkillIntentUsage {
   name: string;
-  type: "skill" | "workflow";
+  type: "skill" | "intent";
   count: number;
 }
 
@@ -119,10 +119,10 @@ export function useAdvancedMetrics(
       .sort((a, b) => b.count - a.count);
   }, [allEvents, currentConfig.duration]);
 
-  const skillsAndWorkflows = useMemo<SkillWorkflowUsage[]>(() => {
+  const skillsAndIntents = useMemo<SkillIntentUsage[]>(() => {
     const now = Date.now();
     const cutoff = now - currentConfig.duration;
-    const usageMap = new Map<string, { type: "skill" | "workflow"; count: number }>();
+    const usageMap = new Map<string, { type: "skill" | "intent"; count: number }>();
 
     allEvents.forEach((event) => {
       if (event.timestamp && event.timestamp >= cutoff) {
@@ -141,13 +141,13 @@ export function useAdvancedMetrics(
           }
         }
 
-        // Workflow detection from Bash commands
+        // Intent detection from Bash commands
         if (event.hook_event_type === "PostToolUse" && event.payload?.tool_name === "Bash") {
           const command = event.payload?.tool_input?.command || "";
           const wfMatch = command.match(/\/SkillWorkflowNotification\s+(\w+)\s+(\w+)/);
           if (wfMatch) {
-            const wfKey = `workflow:${wfMatch[1]}`;
-            if (!usageMap.has(wfKey)) usageMap.set(wfKey, { type: "workflow", count: 0 });
+            const wfKey = `intent:${wfMatch[1]}`;
+            if (!usageMap.has(wfKey)) usageMap.set(wfKey, { type: "intent", count: 0 });
             usageMap.get(wfKey)!.count++;
 
             const skKey = `skill:${wfMatch[2]}`;
@@ -164,8 +164,8 @@ export function useAdvancedMetrics(
           const cmd = event.payload?.tool_input?.command || "";
           const match = cmd.match(/^\/(\w+)/);
           if (match) {
-            const key = `workflow:${match[1]}`;
-            if (!usageMap.has(key)) usageMap.set(key, { type: "workflow", count: 0 });
+            const key = `intent:${match[1]}`;
+            if (!usageMap.has(key)) usageMap.set(key, { type: "intent", count: 0 });
             usageMap.get(key)!.count++;
           }
         }
@@ -175,7 +175,7 @@ export function useAdvancedMetrics(
     return Array.from(usageMap.entries())
       .map(([key, data]) => {
         const [type, name] = key.split(":");
-        return { name, type: type as "skill" | "workflow", count: data.count };
+        return { name, type: type as "skill" | "intent", count: data.count };
       })
       .sort((a, b) => b.count - a.count);
   }, [allEvents, currentConfig.duration]);
@@ -215,7 +215,7 @@ export function useAdvancedMetrics(
     totalTokens,
     activeSessions,
     topTools,
-    skillsAndWorkflows,
+    skillsAndIntents,
     agentActivity,
     estimatedCost,
   };

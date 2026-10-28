@@ -1,0 +1,38 @@
+# ExtractWisdom — content-adaptive extraction contract. Synthetic inline fixtures
+# (single-shot has no tools: content is IN the prompt, testing extraction, not fetch).
+name: extractwisdom-contract
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/ExtractWisdom/SKILL.md"
+cases:
+  - id: extracts_adaptive_sections_with_contrarian
+    prompt: 'Extract wisdom from this text: "A fictional longevity researcher argues in a new talk that exercise research has inverted: the field spent decades proving exercise extends lifespan, but the strongest recent data says the mechanism is almost entirely inflammation control, which means sedentary people who fix inflammation by other means capture most of the benefit. She predicts resistance training will be reframed as an inflammation intervention within a decade, and claims the fitness industry will resist because identity, not evidence, drives its messaging."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: the required heading and keyword appear, but
+    # the supposed insight invents a claim absent from the supplied source.
+    adversarial_output: |
+      ## Contrarian take
+
+      The researcher secretly proved that sleep has no effect on longevity, so every clinic should abandon sleep treatment immediately.
+    assert:
+      - type: contains-any
+        value: [ "## ", "**" ]
+        weight: 1
+      - type: icontains
+        value: "contrarian"
+        weight: 2
+      - type: not-icontains
+        value: "delve"
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: [ "Every extracted insight derives from the provided text rather than being invented", "The output includes at least one contrarian take that pushes against the source's own framing" ]
+        reference: 'Extract wisdom from this text: "A fictional longevity researcher argues in a new talk that exercise research has inverted: the field spent decades proving exercise extends lifespan, but the strongest recent data says the mechanism is almost entirely inflammation control, which means sedentary people who fix inflammation by other means capture most of the benefit. She predicts resistance training will be reframed as an inflammation intervention within a decade, and claims the fitness industry will resist because identity, not evidence, drives its messaging."'
+  - id: no_source_no_fabrication
+    negative: true
+    prompt: "Extract wisdom."
+    assert:
+      - type: llm-assert
+        weight: 2
+        value: [ "The response asks for or notes the missing source content instead of fabricating extracted insights" ]
+        reference: Extract wisdom.

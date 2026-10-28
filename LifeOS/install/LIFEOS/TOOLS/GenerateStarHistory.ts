@@ -1,14 +1,41 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.0.3
+ */
 // GenerateStarHistory.ts — render a self-hosted star-history SVG for a repo.
 // Born 2026-07-17: star-history.com's embed API timed out (10s ceiling on their
 // GitHub fetches) and starchart.cc rate-limits, so the public README carried a
 // broken image. This renders the chart from GitHub's own starred_at data into a
 // static SVG that can never break at view time.
 //
-// Usage: bun LIFEOS/TOOLS/GenerateStarHistory.ts [owner/repo] [out.svg]
+// Usage: bun LIFEOS/TOOLS/GenerateStarHistory.ts [owner/repo | github.com/owner/repo] [out.svg]
 // Auth:  uses `gh` CLI token if available, else unauthenticated (60 req/hr cap).
 
-const repo = process.argv[2] ?? 'danielmiessler/LifeOS';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { getClaudeDir } from './Paths';
+
+// Accepts owner/repo or github.com/owner/repo. Without an argument it uses LIFEOS_REPO (the variable the installer reads),
+// then the repo the release stamped into the installer, then this install's USER/CONFIG/lifeos-repo.json {"repo": "owner/name"}.
+const norm = (r: string) => r.trim().replace(/^(?:https?:\/\/)?github\.com\//, '').replace(/\.git$/, '').replace(/\/+$/, '');
+function upstreamRepo(): string | null {
+  const claude = getClaudeDir();
+  if (process.env.LIFEOS_REPO?.trim()) return norm(process.env.LIFEOS_REPO);
+  try {
+    const m = readFileSync(join(claude, 'skills/LifeOS/install/install.sh'), 'utf8').match(/LIFEOS_REPO="\$\{LIFEOS_REPO:-([^}"]+)\}"/);
+    if (m && norm(m[1]) !== 'OWNER/REPO') return norm(m[1]);
+  } catch {}
+  try {
+    const r = (JSON.parse(readFileSync(join(claude, 'LIFEOS/USER/CONFIG/lifeos-repo.json'), 'utf8')) as { repo?: unknown }).repo;
+    if (typeof r === 'string' && r.trim()) return norm(r);
+  } catch {}
+  return null;
+}
+const repo = process.argv[2] ? norm(process.argv[2]) : upstreamRepo();
+if (!repo) {
+  console.error('No repo: pass owner/repo, set LIFEOS_REPO, or set "repo" in LIFEOS/USER/CONFIG/lifeos-repo.json.');
+  process.exit(1);
+}
 const out = process.argv[3] ?? '/tmp/star-history.svg';
 
 async function ghToken(): Promise<string | null> {
@@ -29,7 +56,7 @@ const headers: Record<string, string> = {
 // Fetch every stargazer's starred_at (100/page).
 const dates: number[] = [];
 for (let page = 1; ; page++) {
-  const res = await fetch(`https://api.github.com/repos/${repo}/stargazers?per_page=100&page=${page}`, { headers });
+  const res = await fetch(`https://api.github.com/repos/${repo}/stargazers?per_page=100&page=${page}`, { headers, signal: AbortSignal.timeout(30000) });
   if (res.status === 422) break; // GitHub caps stargazer pagination at 400 pages (40K)
   if (!res.ok) throw new Error(`GitHub ${res.status} on page ${page}: ${await res.text()}`);
   const batch = await res.json() as Array<{ starred_at: string }>;

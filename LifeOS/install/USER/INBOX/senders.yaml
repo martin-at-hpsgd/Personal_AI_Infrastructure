@@ -1,0 +1,43 @@
+# INBOX/senders.yaml — sender taxonomy for the inbox triage tool (template)
+#
+# Read by LIFEOS/TOOLS/JobGate.ts; read and REWRITTEN by the inbox skill's triage tool when installed, with its own minimal YAML
+# parser, so keep exactly this shape: top-level scalars, then three maps keyed
+# by quoted lowercase strings. The tool regenerates counts and last_updated on
+# every save; you edit `class` values (and add entries) by hand if you like.
+#
+# Classes: human | marketing | notification | financial | transactional | legal | unknown
+#   marketing + notification  -> may be auto-archived (confidence >= 0.7)
+#   human, financial, transactional, legal, unknown -> never auto-archived
+#
+# Entry shapes (all optional `note` values are JSON-quoted strings):
+#   senders:
+#     "someone@example.com":
+#       class: marketing
+#       confidence: 0.9
+#       first_seen: "2026-01-01T00:00:00.000Z"
+#       last_seen: "2026-01-01T00:00:00.000Z"
+#       note: "why"
+#   domains:
+#     "example.com":
+#       class: notification
+#       confidence: 0.8
+#   list_ids:
+#     "list.example.com":
+#       class: marketing
+#       confidence: 0.9
+#
+# Ships empty: the first `triage sweep` populates it from your own mail.
+schema_version: 1
+last_updated: "1970-01-01T00:00:00.000Z"
+total_senders: 0
+by_class:
+  financial: 0
+  human: 0
+  legal: 0
+  marketing: 0
+  notification: 0
+  transactional: 0
+  unknown: 0
+senders:
+domains:
+list_ids:

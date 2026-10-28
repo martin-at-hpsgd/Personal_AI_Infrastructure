@@ -1,13 +1,15 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ApiError, apiFetch, useApi } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 import MarkdownRenderer from "@/components/wiki/MarkdownRenderer";
 import WikiMeta from "@/components/wiki/WikiMeta";
 import { BookOpen, Clock, FileText, Users, Building2, Lightbulb, Bookmark, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { wikiPageUrl } from "@/lib/wiki-links";
+import { fmtDateParts } from "@/lib/time";
 import { PageShell, PageHeader, Panel, PanelHeader, StatTile, Pill, type Dim } from "@/components/ui/chrome";
 
 interface WikiPage {
@@ -15,7 +17,7 @@ interface WikiPage {
   title: string;
   category: string;
   tags?: string[];
-  quality?: number;
+  quality?: number | null;
   lastModified: string;
   wordCount: number;
 }
@@ -43,7 +45,7 @@ interface PageDetail {
   backlinks: Array<{ slug: string; title: string; category: string }>;
   wikilinks: string[];
   tags?: string[];
-  quality?: number;
+  quality?: number | null;
   filePath?: string;
 }
 
@@ -86,13 +88,14 @@ const pageLink = wikiPageUrl;
 
 // Landing page — shown when no doc/knowledge is selected
 function WikiLanding({ data }: { data: WikiIndex }) {
-  const tiles: Array<{ icon: typeof FileText; label: string; count: number; dim?: Dim }> = [
-    { icon: FileText, label: "Total", count: data.stats.totalPages },
-    { icon: BookOpen, label: "System", count: data.stats.totalSystem, dim: "blue" },
-    { icon: Users, label: "People", count: data.stats.totalPeople, dim: "freedom" },
-    { icon: Building2, label: "Companies", count: data.stats.totalCompanies, dim: "money" },
-    { icon: Lightbulb, label: "Ideas", count: data.stats.totalIdeas, dim: "relationships" },
-    { icon: BookOpen, label: "Books", count: data.stats.totalBooks, dim: "creative" },
+  const [filter, setFilter] = useState<string | null>(null);
+  const tiles: Array<{ icon: typeof FileText; label: string; count: number; dim?: Dim; filterKey: string | null }> = [
+    { icon: FileText, label: "Total", count: data.stats.totalPages, filterKey: null },
+    { icon: BookOpen, label: "System", count: data.stats.totalSystem, dim: "blue", filterKey: "system-doc" },
+    { icon: Users, label: "People", count: data.stats.totalPeople, dim: "freedom", filterKey: "person" },
+    { icon: Building2, label: "Companies", count: data.stats.totalCompanies, dim: "money", filterKey: "company" },
+    { icon: Lightbulb, label: "Ideas", count: data.stats.totalIdeas, dim: "relationships", filterKey: "idea" },
+    { icon: BookOpen, label: "Books", count: data.stats.totalBooks, dim: "creative", filterKey: "book" },
   ];
 
   return (
@@ -106,7 +109,15 @@ function WikiLanding({ data }: { data: WikiIndex }) {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {tiles.map((t) => (
-          <StatTile key={t.label} icon={t.icon} label={t.label} value={t.count} dim={t.dim} />
+          <StatTile
+            key={t.label}
+            icon={t.icon}
+            label={t.label}
+            value={t.count}
+            dim={t.dim}
+            active={filter === t.filterKey}
+            onClick={() => setFilter(filter === t.filterKey ? null : t.filterKey)}
+          />
         ))}
       </div>
 
@@ -114,7 +125,10 @@ function WikiLanding({ data }: { data: WikiIndex }) {
       <Panel>
         <PanelHeader title="Recent Changes" icon={Clock} />
         <div className="space-y-1">
-          {data.recentChanges.slice(0, 20).map((page) => {
+          {data.recentChanges
+            .filter((page) => filter === null || page.category === filter)
+            .slice(0, 20)
+            .map((page) => {
             const Icon = CATEGORY_ICONS[page.category] || FileText;
             const color = CATEGORY_COLOR_VAR[page.category] || "var(--ink-3)";
             return (
@@ -134,9 +148,9 @@ function WikiLanding({ data }: { data: WikiIndex }) {
                   {page.title}
                 </span>
                 <span className="ml-auto text-[13px] text-ink-3 shrink-0 tabular-nums" style={{ fontFamily: "'concourse-t3', sans-serif" }}>
-                  {new Date(page.lastModified).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  {fmtDateParts(page.lastModified, { month: "short", day: "numeric" })}
                 </span>
-                {page.quality !== undefined && (
+                {page.quality != null && (
                   <span className={`text-[13px] shrink-0 ${page.quality >= 7 ? "text-ok" : page.quality >= 4 ? "text-warn" : "text-err"}`}>
                     Q{page.quality}
                   </span>
@@ -257,7 +271,7 @@ function BookmarkViewer({ detail }: { detail: BookmarkDetail }) {
           <div>
             <span className="text-ink-3">Saved</span>
             <p className="text-ink-2 mt-0.5" style={{ fontFamily: "'concourse-t3', sans-serif" }}>
-              {new Date(detail.created).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+              {fmtDateParts(detail.created, { year: "numeric", month: "long", day: "numeric" })}
             </p>
           </div>
         )}
@@ -276,6 +290,11 @@ function BookmarkViewer({ detail }: { detail: BookmarkDetail }) {
   );
 }
 
+/** Keep the error text these pages showed before: "Failed to fetch <what>: <status>". */
+const failedFetch = (what: string) => (e: unknown): never => {
+  throw e instanceof ApiError ? new Error(`Failed to fetch ${what}: ${e.status}`) : e;
+};
+
 function LifeosPageInner() {
   const searchParams = useSearchParams();
   const docSlug = searchParams.get("doc");
@@ -289,24 +308,13 @@ function LifeosPageInner() {
   const isViewing = isViewingDoc || isViewingKnowledge || isViewingBookmark;
 
   // Fetch wiki index (for landing page)
-  const { data: indexData } = useQuery<WikiIndex>({
-    queryKey: ["wiki-index"],
-    queryFn: async () => {
-      const res = await fetch("/api/wiki");
-      if (!res.ok) throw new Error("Failed to fetch wiki index");
-      return res.json();
-    },
-    staleTime: 30_000,
-    enabled: !isViewing,
-  });
+  const { data: indexData } = useApi<WikiIndex>(isViewing ? null : "/api/wiki", { staleTime: 30_000 });
 
   // Fetch individual doc
   const { data: docDetail, isError: docError, error: docErr } = useQuery<PageDetail>({
     queryKey: ["wiki-doc", docSlug],
     queryFn: async () => {
-      const res = await fetch(`/api/wiki/doc/${docSlug}`);
-      if (!res.ok) throw new Error(`Failed to fetch doc: ${res.status} ${res.statusText}`);
-      return res.json();
+      return apiFetch<PageDetail>(`/api/wiki/doc/${encodeURIComponent(docSlug)}`).catch(failedFetch("doc"));
     },
     enabled: isViewingDoc,
     retry: false,
@@ -316,9 +324,7 @@ function LifeosPageInner() {
   const { data: knowledgeDetail, isError: knowledgeError, error: knowledgeErr } = useQuery<PageDetail>({
     queryKey: ["wiki-knowledge", knowledgeCategory, knowledgeSlug],
     queryFn: async () => {
-      const res = await fetch(`/api/wiki/knowledge/${knowledgeCategory}/${knowledgeSlug}`);
-      if (!res.ok) throw new Error(`Failed to fetch knowledge note: ${res.status} ${res.statusText}`);
-      return res.json();
+      return apiFetch<PageDetail>(`/api/wiki/knowledge/${encodeURIComponent(knowledgeCategory)}/${encodeURIComponent(knowledgeSlug)}`).catch(failedFetch("knowledge note"));
     },
     enabled: isViewingKnowledge,
     retry: false,
@@ -328,9 +334,7 @@ function LifeosPageInner() {
   const { data: bookmarkDetail, isError: bookmarkError, error: bookmarkErr } = useQuery<BookmarkDetail>({
     queryKey: ["wiki-bookmark", bookmarkSlug],
     queryFn: async () => {
-      const res = await fetch(`/api/wiki/bookmark/${bookmarkSlug}`);
-      if (!res.ok) throw new Error(`Failed to fetch bookmark: ${res.status} ${res.statusText}`);
-      return res.json();
+      return apiFetch<BookmarkDetail>(`/api/wiki/bookmark/${encodeURIComponent(bookmarkSlug)}`).catch(failedFetch("bookmark"));
     },
     enabled: isViewingBookmark,
     retry: false,

@@ -11,6 +11,7 @@
  */
 
 import { join } from "path"
+import { readJsonlCached, readJsonlSince } from "../lib/jsonl-window.ts"
 import { existsSync, readFileSync } from "fs"
 import { homedir } from "node:os";
 
@@ -43,29 +44,12 @@ export function performanceHealth(): Record<string, unknown> {
   }
 }
 
-// ── JSONL Reader ──
-
-function readJsonl<T = any>(filePath: string): T[] {
-  try {
-    if (!existsSync(filePath)) return []
-    const raw = readFileSync(filePath, "utf-8")
-    return raw
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        try { return JSON.parse(line) } catch { return null }
-      })
-      .filter(Boolean) as T[]
-  } catch {
-    return []
-  }
-}
+// JSONL reads go through ../lib/jsonl-window.ts (bounded; 2026-09-04).
 
 // ── Cost API ──
 
 function handleCostApi(url: URL): Response {
-  const sessions = readJsonl(SESSION_COSTS_PATH)
+  const sessions = readJsonlCached(SESSION_COSTS_PATH)
   const daysParam = url.searchParams.get("days")
   const days = daysParam ? parseInt(daysParam, 10) : 30
 
@@ -151,9 +135,19 @@ function handleCostApi(url: URL): Response {
 
 // ── Failures API ──
 
-function handleFailuresApi(): Response {
-  const failures = readJsonl(TOOL_FAILURES_PATH)
-  const activity = readJsonl(TOOL_ACTIVITY_PATH)
+function handleFailuresApi(url: URL): Response {
+  // One cutoff over BOTH logs (`?days`, default 7). tool-failures.jsonl is never
+  // rotated while tool-activity.jsonl is, so whole-file reads divided months of
+  // failures by days of calls (81% shown, 0% real). public issue #2040, @jacobo-ortiz
+  const daysParam = url.searchParams.get("days")
+  const days = daysParam && Number.isFinite(parseInt(daysParam, 10)) && parseInt(daysParam, 10) > 0 ? parseInt(daysParam, 10) : 7
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000
+  const cutoff = new Date(cutoffMs).toISOString()
+  // Bounded window reads (2026-09-04): these two logs were once read WHOLE on
+  // every 30s poll of the Performance tab, and the transient strings bloated
+  // the daemon's memory footprint and left a large RSS behind.
+  const failures = readJsonlSince(TOOL_FAILURES_PATH, cutoffMs)
+  const activity = readJsonlSince(TOOL_ACTIVITY_PATH, cutoffMs)
 
   // Per-tool failure counts
   const failureCounts: Record<string, number> = {}
@@ -174,7 +168,11 @@ function handleFailuresApi(): Response {
   const toolStats = [...allTools].map((tool) => {
     const fails = failureCounts[tool] ?? 0
     const calls = activityCounts[tool] ?? 0
-    const total = calls + fails // activity tracker may not count failures
+    // Failures are NOT mirrored into tool-activity.jsonl: EventLogger writes
+    // activity only from PostToolUse (success path) and failures only from
+    // PostToolUseFailure — a measurement found no failures mirrored at all
+    // (2026-09-03), so calls + fails is the true denominator, not Math.max.
+    const total = calls + fails
     return {
       tool,
       failures: fails,
@@ -212,6 +210,7 @@ function handleFailuresApi(): Response {
     }))
 
   return Response.json({
+    days,
     totalFailures,
     totalCalls,
     overallRate,
@@ -223,12 +222,13 @@ function handleFailuresApi(): Response {
 // ── Summary API ──
 
 function handleSummaryApi(): Response {
-  const sessions = readJsonl(SESSION_COSTS_PATH)
-  const failures = readJsonl(TOOL_FAILURES_PATH)
-  const activity = readJsonl(TOOL_ACTIVITY_PATH)
-
+  const sessions = readJsonlCached(SESSION_COSTS_PATH)
   // Last 7 days
-  const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const cutoff7dMs = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const cutoff7d = new Date(cutoff7dMs).toISOString()
+  // Same one-window rule as handleFailuresApi (public issue #2040, @jacobo-ortiz).
+  const failures = readJsonlSince(TOOL_FAILURES_PATH, cutoff7dMs)
+  const activity = readJsonlSince(TOOL_ACTIVITY_PATH, cutoff7dMs)
   const recent = sessions.filter((s: any) => (s.lastTimestamp || "") >= cutoff7d)
   const recentCost = recent.reduce((acc: number, s: any) => acc + (s.costTotal ?? 0), 0)
 
@@ -262,7 +262,7 @@ export async function handlePerformanceRequest(req: Request): Promise<Response |
   if (req.method !== "GET") return null
 
   if (pathname === "/api/performance/cost") return handleCostApi(url)
-  if (pathname === "/api/performance/failures") return handleFailuresApi()
+  if (pathname === "/api/performance/failures") return handleFailuresApi(url)
   if (pathname === "/api/performance/summary") return handleSummaryApi()
   if (pathname === "/api/performance/anthropic-cost") return handleAnthropicCostApi()
 
@@ -291,21 +291,9 @@ async function handleAnthropicCostApi(): Promise<Response> {
     alerts: string[]
   }
 
-  let history: Snapshot[] = []
-  if (existsSync(ledgerPath)) {
-    try {
-      const raw = readFileSync(ledgerPath, "utf-8")
-      history = raw
-        .split("\n")
-        .filter((l) => l.trim())
-        .map((l) => {
-          try { return JSON.parse(l) as Snapshot } catch { return null }
-        })
-        .filter((x): x is Snapshot => x !== null)
-    } catch {
-      history = []
-    }
-  }
+  // Parsed once per file change: total_entries needs the whole ledger, and it
+  // is appended hourly, not per poll (2026-09-04).
+  const history = readJsonlCached(ledgerPath) as Snapshot[]
 
   const current = history.length > 0 ? history[history.length - 1] : null
   const last24h = history.slice(-24)

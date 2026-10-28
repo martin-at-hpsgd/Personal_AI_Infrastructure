@@ -1,25 +1,28 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.8
  * InstallCommitmentSweep.ts — Materialize com.lifeos.commitmentsweep.plist.template and bootstrap.
  *
  *   bun ~/.claude/LIFEOS/TOOLS/InstallCommitmentSweep.ts             # install
  *   bun ~/.claude/LIFEOS/TOOLS/InstallCommitmentSweep.ts --uninstall # remove
  *
- * Reads template, substitutes __HOME__ with $HOME, writes to ~/Library/LaunchAgents/,
+ * Reads template, substitutes {{BUN}}/{{BUN_DIR}}/{{HOME}}, writes to ~/Library/LaunchAgents/,
  * bootstraps via launchctl bootstrap. Idempotent — re-runs cleanly replace existing.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
 import { spawnSync } from "child_process";
 import * as systemd from "./lib/SystemdUser";
 import { homedir } from "node:os";
+import { getClaudeDir, lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { installVerb } from "./lib/InstallVerb";
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const TEMPLATE = join(HOME, ".claude", "LIFEOS", "TOOLS", "com.lifeos.commitmentsweep.plist.template");
+const TEMPLATE = lifeosPath("TOOLS", "com.lifeos.commitmentsweep.plist.template");
 const TARGET_DIR = join(HOME, "Library", "LaunchAgents");
 const TARGET = join(TARGET_DIR, "com.lifeos.commitmentsweep.plist");
-const STATE_DIR = join(HOME, ".claude", "LIFEOS", "MEMORY", "STATE");
+const STATE_DIR = lifeosPath("MEMORY", "STATE");
 const LABEL = "com.lifeos.commitmentsweep";
 
 function uid(): string {
@@ -51,8 +54,17 @@ function install(): void {
   mkdirSync(TARGET_DIR, { recursive: true });
   mkdirSync(STATE_DIR, { recursive: true });
 
+  // The bun running this installer IS the bun the job should run — resolving it
+  // from process.execPath (same shape as InstallPegWatch.ts) replaces the old
+  // hardcoded /opt/homebrew/bin/bun, which does not exist on Intel Homebrew or
+  // on a ~/.bun install, so launchd failed the job silently every morning.
+  // public issues #1875, @GRyndStone; #1880, @schmetti-dev
+  const bunBin = process.execPath;
   const raw = readFileSync(TEMPLATE, "utf8");
-  const materialized = raw.replaceAll("__HOME__", HOME);
+  const materialized = raw
+    .replaceAll("{{BUN}}", bunBin)
+    .replaceAll("{{BUN_DIR}}", dirname(bunBin))
+    .replaceAll("{{HOME}}", HOME);
   writeFileSync(TARGET, materialized, { mode: 0o644 });
   console.log(`[InstallCommitmentSweep] wrote ${TARGET}`);
 
@@ -91,9 +103,9 @@ async function linuxSpec(): Promise<systemd.UnitSpec> {
   return {
     label: LABEL,
     description: "LifeOS commitment sweep",
-    exec: [bunPath, join(HOME, ".claude", "LIFEOS", "TOOLS", "CommitmentSweep.ts")],
+    exec: [bunPath, lifeosPath("TOOLS", "CommitmentSweep.ts")],
     logPath: join(STATE_DIR, "com.lifeos.commitmentsweep.log"),
-    workingDirectory: join(HOME, ".claude"),
+    workingDirectory: getClaudeDir(),
     schedule: { kind: "calendar", hour: 7, minute: 0 },
   };
 }
@@ -107,6 +119,7 @@ async function linuxMain(args: string[]): Promise<void> {
 }
 
 async function main() {
+  installVerb(process.argv, "InstallCommitmentSweep");
   const args = process.argv.slice(2);
   if (systemd.isLinux()) return linuxMain(args);
   if (args.includes("--uninstall")) {

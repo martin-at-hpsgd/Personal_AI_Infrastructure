@@ -6,7 +6,7 @@ classification: private
 review_cadence: 90d
 last_updated: 2026-01-01
 last_updated_by: bootstrap-template
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 ---
 
 # Ideal State — Health

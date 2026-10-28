@@ -154,7 +154,7 @@ export default function QuickPulseStrip({ pulses }: QuickPulseStripProps) {
                   }}
                 />
                 {/* Hover tooltip */}
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 rounded-md bg-[rgba(20,28,56,0.95)] border border-line-2 text-xs text-ink-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 min-w-[180px] max-w-[280px]">
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2.5 py-1.5 rounded-md glass-raised text-xs text-ink-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 min-w-[180px] max-w-[280px]">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className={`font-mono font-bold text-sm ${barTextColor(pulse.value)}`}>
                       {pulse.value}/10

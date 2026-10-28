@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.7.9
  * ActivityParser - Parse session activity for LifeOS repo update documentation
  *
  * Commands:
@@ -16,13 +17,13 @@
 import { parseArgs } from "util";
 import * as fs from "fs";
 import * as path from "path";
-import { homedir } from "node:os";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const CLAUDE_DIR = path.join(homedir(), ".claude");
+const CLAUDE_DIR = getClaudeDir();
 const MEMORY_DIR = path.join(CLAUDE_DIR, "LIFEOS", "MEMORY");
 const USERNAME = process.env.USER || require("os").userInfo().username;
 const PROJECTS_DIR = path.join(CLAUDE_DIR, "projects", `-Users-${USERNAME}--claude`);  // Claude Code native storage
@@ -43,7 +44,7 @@ interface ParsedActivity {
   session_id: string | null;
   categories: {
     skills: FileChange[];
-    workflows: FileChange[];
+    intents: FileChange[];
     tools: FileChange[];
     hooks: FileChange[];
     architecture: FileChange[];
@@ -72,11 +73,11 @@ const PATTERNS = {
   ],
 
   // Category patterns
-  skills: /skills\/[^/]+\/(SKILL\.md|Workflows\/|Tools\/|Data\/)/,
-  workflows: /Workflows\/.*\.md$/,
+  skills: /skills\/[^/]+\/(SKILL\.md|Intents\/|Tools\/|Data\/)/,
+  intents: /Intents\/.*\.md$/,
   tools: /skills\/[^/]+\/Tools\/.*\.ts$/,
   hooks: /hooks\/.*\.ts$/,
-  architecture: /(ARCHITECTURE|PAISYSTEMARCHITECTURE|SKILLSYSTEM)\.md$/i,
+  architecture: /(ARCHITECTURE|LIFEOSSYSTEMARCHITECTURE|SKILLSYSTEM)\.md$/i,
   documentation: /\.(md|txt)$/,
 };
 
@@ -89,7 +90,7 @@ function categorizeFile(filePath: string): keyof ParsedActivity["categories"] | 
   if (!filePath.includes("/.claude/")) return null;
 
   if (PATTERNS.skills.test(filePath)) return "skills";
-  if (PATTERNS.workflows.test(filePath)) return "workflows";
+  if (PATTERNS.intents.test(filePath)) return "intents";
   if (PATTERNS.tools.test(filePath)) return "tools";
   if (PATTERNS.hooks.test(filePath)) return "hooks";
   if (PATTERNS.architecture.test(filePath)) return "architecture";
@@ -226,7 +227,7 @@ async function parseEvents(sessionFilter?: string): Promise<ParsedActivity> {
   // Categorize changes
   const categories: ParsedActivity["categories"] = {
     skills: [],
-    workflows: [],
+    intents: [],
     tools: [],
     hooks: [],
     architecture: [],
@@ -267,8 +268,8 @@ async function parseEvents(sessionFilter?: string): Promise<ParsedActivity> {
   if (categories.hooks.length > 0) {
     summaryParts.push(`${categories.hooks.length} hook(s)`);
   }
-  if (categories.workflows.length > 0) {
-    summaryParts.push(`${categories.workflows.length} workflow(s)`);
+  if (categories.intents.length > 0) {
+    summaryParts.push(`${categories.intents.length} intent(s)`);
   }
   if (categories.architecture.length > 0) {
     summaryParts.push("architecture changes");
@@ -291,7 +292,7 @@ function emptyActivity(date: string, sessionId: string | null): ParsedActivity {
     session_id: sessionId,
     categories: {
       skills: [],
-      workflows: [],
+      intents: [],
       tools: [],
       hooks: [],
       architecture: [],
@@ -310,7 +311,7 @@ function emptyActivity(date: string, sessionId: string | null): ParsedActivity {
 // ============================================================================
 
 type SignificanceLabel = 'trivial' | 'minor' | 'moderate' | 'major' | 'critical';
-type ChangeType = 'skill_update' | 'structure_change' | 'doc_update' | 'hook_update' | 'workflow_update' | 'config_update' | 'tool_update' | 'multi_area';
+type ChangeType = 'skill_update' | 'structure_change' | 'doc_update' | 'hook_update' | 'intent_update' | 'workflow_update' | 'config_update' | 'tool_update' | 'multi_area';
 
 function determineChangeType(activity: ParsedActivity): ChangeType {
   const { categories } = activity;
@@ -324,7 +325,7 @@ function determineChangeType(activity: ParsedActivity): ChangeType {
   // Priority order for single-category determination
   if (categories.hooks.length > 0) return 'hook_update';
   if (categories.tools.length > 0) return 'tool_update';
-  if (categories.workflows.length > 0) return 'workflow_update';
+  if (categories.intents.length > 0) return 'intent_update';
   if (categories.architecture.length > 0) return 'structure_change';
   if (categories.skills.length > 0) return 'skill_update';
   if (categories.documentation.length > 0) return 'doc_update';
@@ -338,7 +339,7 @@ function determineSignificance(activity: ParsedActivity): SignificanceLabel {
   const hasArchitecture = categories.architecture.length > 0;
   const hasNewSkill = categories.skills.some(c => c.action === 'created' && c.file.endsWith('SKILL.md'));
   const hasNewTool = categories.tools.some(c => c.action === 'created');
-  const hasNewWorkflow = categories.workflows.some(c => c.action === 'created');
+  const hasNewIntent = categories.intents.some(c => c.action === 'created');
 
   // Critical: Breaking changes or major restructuring
   if (hasArchitecture && totalFiles >= 10) return 'critical';
@@ -346,10 +347,10 @@ function determineSignificance(activity: ParsedActivity): SignificanceLabel {
   // Major: New skills, significant features
   if (hasNewSkill) return 'major';
   if (hasArchitecture) return 'major';
-  if ((hasNewTool || hasNewWorkflow) && totalFiles >= 5) return 'major';
+  if ((hasNewTool || hasNewIntent) && totalFiles >= 5) return 'major';
 
-  // Moderate: Multi-file updates, new tools/workflows
-  if (hasNewTool || hasNewWorkflow) return 'moderate';
+  // Moderate: Multi-file updates, new tools/intents
+  if (hasNewTool || hasNewIntent) return 'moderate';
   if (totalFiles >= 5) return 'moderate';
   if (categories.hooks.length > 0) return 'moderate';
 
@@ -384,14 +385,14 @@ function generateTitle(activity: ParsedActivity): string {
     return `Created ${name} Tool for System`;
   }
 
-  // New workflow created
-  if (categories.workflows.some((c) => c.action === "created")) {
-    const newWorkflow = categories.workflows.find((c) => c.action === "created");
-    const name = extractName(newWorkflow!.file);
+  // New intent created
+  if (categories.intents.some((c) => c.action === "created")) {
+    const newIntent = categories.intents.find((c) => c.action === "created");
+    const name = extractName(newIntent!.file);
     if (skills_affected.length === 1) {
-      return `Added ${name} Workflow to ${skills_affected[0]}`;
+      return `Added ${name} Intent to ${skills_affected[0]}`;
     }
-    return `Created ${name} Workflow`;
+    return `Created ${name} Intent`;
   }
 
   // Hook changes - describe what hooks
@@ -409,14 +410,14 @@ function generateTitle(activity: ParsedActivity): string {
   if (skills_affected.length === 1) {
     const skill = skills_affected[0];
     const skillChanges = categories.skills;
-    const hasWorkflowMod = categories.workflows.length > 0;
+    const hasIntentMod = categories.intents.length > 0;
     const hasToolMod = categories.tools.length > 0;
 
-    if (hasWorkflowMod && hasToolMod) {
-      return `Enhanced ${skill} Workflows and Tools`;
+    if (hasIntentMod && hasToolMod) {
+      return `Enhanced ${skill} Intents and Tools`;
     }
-    if (hasWorkflowMod) {
-      return `Updated ${skill} Workflow Configuration`;
+    if (hasIntentMod) {
+      return `Updated ${skill} Intent Configuration`;
     }
     if (hasToolMod) {
       return `Modified ${skill} Tool Implementation`;
@@ -480,7 +481,8 @@ function formatChangeType(changeType: ChangeType): string {
     structure_change: 'Structure Change',
     doc_update: 'Documentation Update',
     hook_update: 'Hook Update',
-    workflow_update: 'Workflow Update',
+    intent_update: 'Intent Update',
+    workflow_update: 'Intent Update',
     config_update: 'Config Update',
     tool_update: 'Tool Update',
     multi_area: 'Multi-Area',
@@ -494,8 +496,8 @@ function generatePurpose(activity: ParsedActivity): string {
   if (categories.tools.some(c => c.action === 'created')) {
     return 'Add new tooling capability to the system';
   }
-  if (categories.workflows.some(c => c.action === 'created')) {
-    return 'Introduce new workflow for improved task execution';
+  if (categories.intents.some(c => c.action === 'created')) {
+    return 'Introduce new intent for improved task execution';
   }
   if (categories.hooks.length > 0) {
     return 'Update hook system for better lifecycle management';
@@ -515,7 +517,7 @@ function generateExpectedImprovement(activity: ParsedActivity): string {
   if (categories.tools.some(c => c.action === 'created')) {
     return 'New capabilities available for system tasks';
   }
-  if (categories.workflows.some(c => c.action === 'created')) {
+  if (categories.intents.some(c => c.action === 'created')) {
     return 'Streamlined execution of related tasks';
   }
   if (categories.hooks.length > 0) {
@@ -590,7 +592,7 @@ ${activity.summary}.
   // Add sections for non-empty categories
   const categoryNames: Record<keyof ParsedActivity["categories"], string> = {
     skills: "Skills",
-    workflows: "Workflows",
+    intents: "Intents",
     tools: "Tools",
     hooks: "Hooks",
     architecture: "Architecture",

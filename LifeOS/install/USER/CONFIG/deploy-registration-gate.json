@@ -1,0 +1,6 @@
+{
+  "_docs": "Optional settings for hooks/DeployRegistrationGate.hook.ts, which checks that a site you just deployed is registered. `project` names a row in USER/PROJECTS.md whose repo holds your analytics registry, and `files` lists the registry files in that repo as {path, label, enclosingObject?}: path is repo-relative with no leading slash and no '..', label is the name shown in a gap, enclosingObject (optional) is the JavaScript object the domain must sit inside. While `project` is empty or `files` is empty the whole analytics-registry leg is skipped, which is the shipped state. `workersDevExempt` lists {prefix, reason} entries for workers.dev-only workers that need no PROJECTS.md row, scanner target or Bunker adoption; an entry without a reason exempts nothing.",
+  "project": "",
+  "files": [],
+  "workersDevExempt": []
+}

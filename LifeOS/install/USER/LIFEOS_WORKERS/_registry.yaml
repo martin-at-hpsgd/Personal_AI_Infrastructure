@@ -1,0 +1,21 @@
+# LifeOS DA Registry: the list of digital assistants on this install.
+# DAInterview.ts (LIFEOS/TOOLS/DAInterview.ts) rewrites this file when you
+# finish the wizard: the first DA it registers becomes `primary`, later ones
+# are workers. Hand edits are fine; keep the two-space indent under `das:`.
+#
+# Shipped empty on purpose. A registry with an entry in it makes the wizard
+# treat your first real DA as a second one.
+version: 1
+primary: ""
+
+das:
+
+# Example entry, shown as comments so it registers nothing. To add a worker by
+# hand, delete this block's leading "# ", move it under `das:` and rename it:
+#
+#   example:
+#     role: worker
+#     enabled: true
+#     created: "YYYY-MM-DD"
+#     channels:
+#       - background

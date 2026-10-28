@@ -1,4 +1,5 @@
 /**
+ * @version 1.0.2
  * events.ts — shared emitter and reader for the unified event log.
  *
  * HookSystem.md § Unified Event System has documented `appendEvent()` as the
@@ -43,7 +44,7 @@
 
 import { appendFileSync, mkdirSync, openSync, readSync, fstatSync, closeSync } from 'fs';
 import { dirname } from 'path';
-import { paiPath } from './paths';
+import { lifeosPath } from './paths';
 
 // UTC via Date, not lib/time.ts: `timestamp` has been UTC in every event ever
 // written to this log, and lib/time.ts's getISOTimestamp() is local-with-offset —
@@ -95,7 +96,7 @@ export const DEFAULT_MAX_SCAN_BYTES = 8 * 1024 * 1024;
 export const DEFAULT_CHUNK_BYTES = 256 * 1024;
 
 export function eventsPath(): string {
-  return paiPath('MEMORY', 'STATE', 'events.jsonl');
+  return lifeosPath('MEMORY', 'STATE', 'events.jsonl');
 }
 
 /**

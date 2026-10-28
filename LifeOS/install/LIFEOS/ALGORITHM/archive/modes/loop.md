@@ -2,7 +2,7 @@
 status: RETIRED 2026-07-11 — historical doctrine. Modes/tiers were abolished with Algorithm v8 and system prompt v3.0.0 (one adaptive format). Kept as record only; nothing routes here.
 last_updated: 2026-05-13
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 mode: loop
 status: doctrine-shipped-runtime-pending
 ---
@@ -185,6 +185,6 @@ The ID-stability rule (v6.5.0) is preserved across iterations: ISC IDs never re-
 - All modes: [`README.md`](README.md)
 - Goal anchor mechanism: `../v6.5.0.md` § "Principal-Stated Goal"
 - Density gate (one-question pattern): `../v6.5.0.md` § "Density × Tier Gate"
-- Loop skill (router): `~/.claude/skills/Loop/SKILL.md`
+- Loop skill (router): folded into HillClimb on 2026-10-09, now `~/.claude/skills/HillClimb/Intents/Loop.md`
 - LoopRunner.ts (pending): LIFEOS/TOOLS/LoopRunner.ts — next ISA, not yet on disk
 - Algorithm v6.6.0 doctrine bump (pending): `../v6.6.0.md` — paired with LoopRunner ship

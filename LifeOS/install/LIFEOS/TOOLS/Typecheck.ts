@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 // ported from public PR #1793, @xmasyx
+// wired into `bun run test` (package.json `typecheck` script) — it had no invoker; public issue #1955, @pybe
 /**
+ * @version 1.0.5
  * Typecheck.ts — `bun build` does not typecheck. This does.
  *
  * WHY IT EXISTS. Bun bundles without checking types, so a field that is read but
@@ -30,7 +32,9 @@
  * loud. Excluded does not mean healthy — it means NOT LOOKED AT.
  *
  * USAGE  bun LIFEOS/TOOLS/Typecheck.ts
- * EXIT   0 = both passes clean · 1 = at least one pass has type errors
+ * EXIT   0 = every pass ran and is clean · 1 = a pass has type errors, a pass was
+ *        skipped because its directory is absent, or nothing ran at all. "I could
+ *        not look" is never a clean exit.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
@@ -103,6 +107,16 @@ interface Pass {
   exclude: string[];
   /** Printed when the pass is skipped because `cwd` does not exist. */
   absentNote: string;
+  /** A required pass that cannot run makes the whole run incomplete (exit 1). */
+  required: boolean;
+}
+
+/** The exit decision, kept pure so it can be tested without spawning tsc. */
+export function verdict(c: { ran: number; failed: number; skippedRequired: string[] }): { code: 0 | 1; message: string } {
+  if (c.skippedRequired.length > 0) return { code: 1, message: `INCOMPLETE: required pass(es) skipped, so nothing can be called clean: ${c.skippedRequired.join(", ")}` };
+  if (c.ran === 0) return { code: 1, message: "INCOMPLETE: no typecheck pass ran" };
+  if (c.failed > 0) return { code: 1, message: `${c.ran} pass(es) run · ${c.failed} with type errors` };
+  return { code: 0, message: `${c.ran} pass(es) run · 0 with type errors` };
 }
 
 const PASSES: Pass[] = [
@@ -112,6 +126,7 @@ const PASSES: Pass[] = [
     include: ["hooks/**/*.ts", "LIFEOS/TOOLS/**/*.ts"],
     exclude: ["node_modules", "**/node_modules/**", "LIFEOS/PULSE/**"],
     absentNote: "install root not found",
+    required: true,
   },
   {
     label: "Pulse server (LIFEOS/PULSE/**)",
@@ -122,9 +137,11 @@ const PASSES: Pass[] = [
     // its own dependencies; folding it in here would only produce noise.
     exclude: ["node_modules", "**/node_modules/**", "Observability/**"],
     absentNote: "LIFEOS/PULSE not present in this install",
+    required: true,
   },
 ];
 
+function main(): void {
 console.log("─".repeat(72));
 console.log("⚠  TOMBSTONE — not everything is being looked at:");
 console.log("   • LIFEOS/PULSE/Observability/**  (standalone Next.js app, own deps)");
@@ -138,6 +155,7 @@ console.log("─".repeat(72));
 
 let failed = 0;
 let ran = 0;
+const skippedRequired: string[] = [];
 
 for (const p of PASSES) {
   console.log(`\n▶ ${p.label}`);
@@ -146,6 +164,7 @@ for (const p of PASSES) {
     // Loud, and counted as neither pass nor fail: "I could not look" is a
     // different statement from "I looked and it was clean".
     console.log(`⏭  skipped — ${p.absentNote}`);
+    if (p.required) skippedRequired.push(p.label);
     continue;
   }
 
@@ -182,5 +201,9 @@ for (const p of PASSES) {
 
 // Every pass always runs, even after a failure: stopping at the first one would
 // hide the second one's errors, and seeing ALL of them is the entire point.
-console.log(`\n${failed === 0 ? "✅" : "❌"} ${ran} pass(es) run · ${failed} with type errors`);
-process.exit(failed > 0 ? 1 : 0);
+const v = verdict({ ran, failed, skippedRequired });
+console.log(`\n${v.code === 0 ? "✅" : "❌"} ${v.message}`);
+process.exit(v.code);
+}
+
+if (import.meta.main) main();

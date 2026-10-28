@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.4.56
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -22,6 +25,7 @@ import { parseArgs } from "util";
 import * as fs from "fs";
 import * as path from "path";
 import { homedir } from "node:os";
+import { getClaudeDir, getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -35,12 +39,12 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 // ============================================================================
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || path.join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const ARCH_SOURCE = path.join(LIFEOS_DIR, "DOCUMENTATION", "LifeosSystemArchitecture.md");
 const SUMMARY_OUTPUT = path.join(LIFEOS_DIR, "DOCUMENTATION", "ARCHITECTURE_SUMMARY.md");
 const ALGORITHM_DIR = path.join(LIFEOS_DIR, "ALGORITHM");
 const MEMORY_SYSTEM_DOC = path.join(LIFEOS_DIR, "DOCUMENTATION", "Memory", "MemorySystem.md");
-const CLAUDE_MD = path.join(HOME, ".claude", "CLAUDE.md");
+const CLAUDE_MD = path.join(getClaudeDir(), "CLAUDE.md");
 
 // ============================================================================
 // Version detection (source-of-truth lookups — no hardcoded versions)
@@ -121,7 +125,7 @@ function detectLifeosVersion(): string {
 // ============================================================================
 // Parsing
 // ============================================================================
-// v7.0.0 BPE cut: extractSections/extractSubsystems/extractPrinciples deleted.
+// v7.0.0 BLE cut: extractSections/extractSubsystems/extractPrinciples deleted.
 // Subsystem Reference duplicated CLAUDE.md (both always resident); Founding
 // Principles + section list live in the master doc (pull); Instruction
 // Hierarchy duplicated the system prompt § Context Hierarchy.
@@ -148,18 +152,19 @@ function extractTopology(content: string): string | null {
 // pipeline falls back to a truncated master-doc cell and warns on stderr so
 // the map gets updated rather than silently drifting.
 const PIPELINE_ROUTER: Record<string, { what: string; doc: string }> = {
-  "Security": { what: "Constitutional security protocol, native denylist, safety-classifier hooks; deployed estate scanned hourly server-side by the Arbol scanner = the Bunker Security plane", doc: "Security/README.md" },
-  "Algorithm": { what: "Outcome-driven ISA execution — articulate done, hill-climb, close claims on tool evidence", doc: "Algorithm/AlgorithmSystem.md" },
+  "Security": { what: "Constitutional security protocol, native denylist, safety-classifier hooks; deployed estate scanned hourly server-side by the Workflows scanner = the Bunker Security plane", doc: "Security/README.md" },
+  "Algorithm": { what: "Outcome-driven ISA execution — articulate done, hill-climb, close criteria on tool evidence", doc: "Algorithm/AlgorithmSystem.md" },
   "Cortex (Memory)": { what: "Cortex, the memory system — autonomic capture, tiered curation, and retrieval across hot-layer, KNOWLEDGE, LEARNING", doc: "Memory/MemorySystem.md" },
+  "Router": { what: "Who runs what, on which model, at what effort — agents named for their model, lanes in one registry, spoken levels as aliases, the route trail beside every dispatch; `bun LIFEOS/ROUTER/Router.ts`", doc: "Router/RouterSystem.md" },
   "Hooks": { what: "Deterministic enforcement and context injection at Claude Code events", doc: "Hooks/HookSystem.md" },
   "Observability": { what: "Tool activity and failures appended to JSONL, read by Pulse", doc: "Observability/ObservabilitySystem.md" },
   "Pulse": { what: "The Life Dashboard server on :31337 — voice, work kanban, wiki, iMessage/Siri", doc: "Pulse/PulseSystem.md" },
   "Work System": { what: "Four capture surfaces feeding private GitHub Issues as system of record", doc: "Work/WorkSystem.md" },
-  "Skills": { what: "Domain capabilities: SKILL.md + workflows + deterministic tools", doc: "Skills/SkillSystem.md" },
+  "Skills": { what: "Domain capabilities: SKILL.md + intents + deterministic tools", doc: "Skills/SkillSystem.md" },
   "Config": { what: "settings.json, CLAUDE.md, system prompt; release tooling stages public artifacts", doc: "Config/ConfigSystem.md" },
-  "Notifications": { what: "Voice notifications via Pulse to ElevenLabs, logged to VOICE events", doc: "Notifications/NotificationSystem.md" },
+  "Notifications": { what: "Voice notifications via Pulse to Fish Audio, logged to VOICE events", doc: "Notifications/NotificationSystem.md" },
   "Doc Integrity": { what: "SessionEnd-hook cross-reference checks; regenerates this summary from the master doc", doc: "Hooks/HookSystem.md" },
-  "Bunker": { what: "Universal application harness — app state-of-record bunker.isa.md; Pulse /bunker tab; Security plane IS the Arbol infra-security scanner (server-side, hourly); reference implementation is private — the release ships the concept doc", doc: "Bunker/BunkerSystem.md" },
+  "Bunker": { what: "Universal application harness — app state-of-record bunker.isa.md; Pulse /bunker tab; Security plane IS the Workflows infra-security scanner (server-side, hourly); reference implementation is private — the release ships the concept doc", doc: "Bunker/BunkerSystem.md" },
   "Atlas": { what: "Graph-based asset management — the current state of everything owned; `atlas` CLI (owns/blast/unregistered), Pulse /atlas", doc: "Atlas/AtlasSystem.md" },
   "Ledger": { what: "Change-tracking authority — versioning, update registry, integrity gate, deploy events (the APPLIED half of the change pipeline)", doc: "Ledger/LedgerSystem.md" },
 };
@@ -214,19 +219,19 @@ function generate(): string {
 
   const archContent = fs.readFileSync(ARCH_SOURCE, "utf-8");
   const topology = extractTopology(archContent);
-  const paiVersion = detectLifeosVersion();
+  const lifeosVersion = detectLifeosVersion();
   const algorithmVersion = detectAlgorithmVersion();
   const systemPromptVersion = detectSystemPromptVersion();
   const memoryVersion = detectMemoryVersion();
 
-  // Build the summary — frontmatter first (pai-freshness-v1 convention).
+  // Build the summary — frontmatter first (lifeos-freshness-v1 convention).
   // Auto-generated derivative; effective freshness inherits from derived_from.
   const nowIso = new Date().toISOString();
   const lines: string[] = [
     "---",
     `last_updated: ${nowIso}`,
     "last_updated_by: ArchitectureSummaryGenerator",
-    "convention: pai-freshness-v1",
+    "convention: lifeos-freshness-v1",
     "derived_from: LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md",
     "generator: LIFEOS/TOOLS/ArchitectureSummaryGenerator.ts",
     "---",
@@ -240,11 +245,13 @@ function generate(): string {
     "LifeOS — the **Life Operating System** — is the AI harness that moves you from your current state to your ideal state: an intent engineering platform that captures what you're ultimately trying to achieve and conveys that intent to your AI on every task, then verifies the output against it.",
     "Everything below is the machinery of that one loop: Current State → Ideal State via verifiable iteration (ISC). Canonical thesis: `LIFEOS/DOCUMENTATION/LifeOs/LifeOsThesis.md`.",
     "",
-    `**Current versions:** LifeOS ${paiVersion} | Algorithm v${algorithmVersion} | System Prompt v${systemPromptVersion} | Cortex (Memory) v${memoryVersion}`,
+    `**Current versions:** LifeOS ${lifeosVersion} | Algorithm v${algorithmVersion} | System Prompt v${systemPromptVersion} | Cortex (Memory) v${memoryVersion}`,
     "",
     "Doc routing lives in CLAUDE.md; founding principles + full section map in the master doc.",
     "",
-    ...(topology ? [condenseTopology(topology), ""] : []),
+    // BLE 2026-08-23: the per-pipeline router table duplicated CLAUDE.md's System Docs routing
+    // (same 13 docs, glossed twice in every turn's context) — one pointer line replaces it.
+    ...(topology ? ["Pipeline wiring: master doc § Pipeline Topology; per-system doc routing lives in CLAUDE.md § LifeOS System Docs.", ""] : []),
     "## Cross-References",
     "",
     "- Full architecture: `LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md`",
@@ -261,8 +268,18 @@ function generate(): string {
 // Commands
 // ============================================================================
 
+const withoutStamp = (s: string): string => s.replace(/^last_updated: .*$/m, "");
+
 function cmdGenerate(): void {
   const summary = generate();
+  // Stamp-only rewrites dirtied git after most sessions; keep the bytes and bump
+  // mtime so RebuildArchSummary's mtime check settles (public issue #2200, @corobis).
+  if (fs.existsSync(SUMMARY_OUTPUT) && withoutStamp(fs.readFileSync(SUMMARY_OUTPUT, "utf-8")) === withoutStamp(summary)) {
+    const now = new Date();
+    fs.utimesSync(SUMMARY_OUTPUT, now, now);
+    console.log(`Unchanged ${SUMMARY_OUTPUT} (mtime bumped)`);
+    return;
+  }
   fs.writeFileSync(SUMMARY_OUTPUT, summary);
   console.log(`Generated ${SUMMARY_OUTPUT}`);
   console.log(`  ${summary.split("\n").length} lines`);
@@ -276,7 +293,7 @@ function cmdCheck(): void {
 
   const sourceMtime = getMtime(ARCH_SOURCE);
   const summaryMtime = getMtime(SUMMARY_OUTPUT);
-  const claudeMdMtime = getMtime(path.join(HOME, ".claude", "CLAUDE.md"));
+  const claudeMdMtime = getMtime(path.join(getClaudeDir(), "CLAUDE.md"));
 
   if (sourceMtime > summaryMtime || claudeMdMtime > summaryMtime) {
     console.log("STALE: Source files are newer than summary");
@@ -287,7 +304,12 @@ function cmdCheck(): void {
   // Only Algorithm-QUALIFIED mentions count ("Algorithm v8.4.0", "ALGORITHM/v8.4.0.md") — the doc
   // legitimately cites hook/Memory/Bunker versions and historical notes, and a bare-semver match
   // flagged all of them as drift, making --check permanently fail (public issue #1501).
-  const archContent = fs.readFileSync(ARCH_SOURCE, "utf-8");
+  let archContent = fs.readFileSync(ARCH_SOURCE, "utf-8");
+  // public PR #2126, @pai-scaffolde: skip the append-only Architecture Decisions log when checking for drift
+  const decisionsIndex = archContent.indexOf('\n## Architecture Decisions');
+  if (decisionsIndex > -1) {
+    archContent = archContent.slice(0, decisionsIndex);
+  }
   const current = detectAlgorithmVersion();
   const cited = [...archContent.matchAll(/(?:Algorithm\s+v|ALGORITHM\/v)(\d+\.\d+\.\d+)/gi)].map(m => m[1]);
   const stale = cited.filter(v => compareSemver(v, current) < 0);

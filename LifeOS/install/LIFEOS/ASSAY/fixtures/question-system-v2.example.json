@@ -1,0 +1,163 @@
+{
+  "schema": "glance-question-system/v2",
+  "id": "refund-triage",
+  "problem": "Decide, for each customer refund request, whether to refund automatically or send it to a person, and draft the reply that tells the customer.",
+  "caller": "refund-triage",
+  "fit": {
+    "verdict": "glance",
+    "reason": "The order number, the amount paid and the delivery time are values written in the message that extraction reads; whether the customer says the goods arrived broken is a judgment about reading; the claim history is a lookup code already has; the reply is written text.",
+    "tiers": ["code", "extract", "decide", "write"]
+  },
+  "decisions": [
+    {
+      "id": "refund",
+      "description": "Refund the order automatically, or send the request to a person to review.",
+      "outcomes": ["auto_refund", "review"],
+      "positive": "auto_refund",
+      "default": "review",
+      "costs": {
+        "false_positive": "Money is returned for an order that did not deserve a refund.",
+        "false_negative": "A customer with a valid small claim waits for a person to read it.",
+        "favor": "precision"
+      }
+    }
+  ],
+  "state": {
+    "message": {
+      "description": "The refund request message as the customer typed it.",
+      "source": "support inbox message body",
+      "max_chars": 1500,
+      "untrusted": true
+    }
+  },
+  "deterministic": [
+    {
+      "id": "is_repeat_claimant",
+      "type": "boolean",
+      "description": "The customer has had three or more refunds in the past year.",
+      "computed_by": "count refunds for the account id in the refund ledger"
+    }
+  ],
+  "extract": [
+    {
+      "id": "order_total",
+      "type": "number",
+      "instructions": "The total amount the customer paid for the order, in dollars.",
+      "unit": "USD",
+      "decimals": 2,
+      "tolerance": 0.5,
+      "purpose": "A small order refunds in code with no model call, so the amount has to be a number code can compare.",
+      "reads": ["message"]
+    },
+    {
+      "id": "order_id",
+      "type": "text",
+      "instructions": "The order number exactly as the customer wrote it.",
+      "purpose": "The reply names the order, and a copied value is checked against the message.",
+      "reads": ["message"]
+    },
+    {
+      "id": "delivery_days",
+      "type": "estimate",
+      "instructions": "How many days the delivery took or is expected to take, counted from the order date.",
+      "min": 0,
+      "max": 60,
+      "purpose": "A delivery that ran two weeks late refunds on its own; the interval says how sure the estimate is.",
+      "reads": ["message"]
+    }
+  ],
+  "derive": [
+    {
+      "id": "cost_per_delivery_day",
+      "op": "div",
+      "of": ["order_total", "delivery_days"],
+      "purpose": "A very expensive order that took only a few days to arrive is read by a person; code divides the two extracted values, and the result is null when the delivery estimate is missing or zero."
+    }
+  ],
+  "stages": [
+    {
+      "id": "read",
+      "when": { "not": { "fact": "order_total", "lte": 20 } },
+      "questions": [
+        {
+          "id": "damage_claimed",
+          "kind": "noul",
+          "instructions": "The customer says the goods arrived damaged.",
+          "purpose": "Separates a damage claim, which a small order refunds, from a delivery complaint or a change of mind.",
+          "reads": ["message"],
+          "threshold": {
+            "value": 0.8,
+            "favor": "precision",
+            "why": "An automatic refund needs a confident yes, because a refund sent in error cannot be recalled."
+          }
+        }
+      ]
+    }
+  ],
+  "policy": {
+    "refund": [
+      {
+        "id": "repeat-claimant",
+        "if": { "fact": "is_repeat_claimant", "eq": true },
+        "then": "review",
+        "why": "A customer with a history of refunds is always read by a person."
+      },
+      {
+        "id": "tiny-order",
+        "if": { "fact": "order_total", "lte": 20 },
+        "then": "auto_refund",
+        "why": "An order of twenty dollars or less refunds without a question, decided on the extracted amount alone."
+      },
+      {
+        "id": "slow-delivery",
+        "if": { "fact": "delivery_days.p10", "gte": 14 },
+        "then": "auto_refund",
+        "why": "A delivery that took at least two weeks even on the optimistic end of the estimate refunds."
+      },
+      {
+        "id": "pricey-and-fast",
+        "if": { "fact": "cost_per_delivery_day", "gte": 1000 },
+        "then": "review",
+        "why": "An order that cost over a thousand dollars per delivery day is read by a person before it refunds."
+      },
+      {
+        "id": "small-damage",
+        "if": {
+          "all": [
+            { "q": "damage_claimed", "is": "yes" },
+            { "fact": "order_total", "lte": 200 }
+          ]
+        },
+        "then": "auto_refund",
+        "why": "A confident damage claim on an order of two hundred dollars or less refunds."
+      }
+    ]
+  },
+  "escalation": {
+    "to": "none",
+    "description": "Nothing escalates: the default sends an unclear request to a person.",
+    "max_rate": 0
+  },
+  "write": {
+    "id": "reply",
+    "purpose": "The text that tells the customer what happens to their request.",
+    "instructions": "Write a two-sentence reply to the customer. Name the order and say whether the refund is on its way or a person will read the request.",
+    "inputs": ["refund", "order_id", "order_total"],
+    "level": "medium",
+    "when": { "refund": ["auto_refund", "review"] }
+  },
+  "calibration": {
+    "ground_truth": {
+      "source": "the refund the support lead approved or declined after reading the request",
+      "join_key": "message id"
+    },
+    "min_labels": 100,
+    "promotion": "Enforce only after the damage question clears its threshold on at least 100 labelled requests with balanced accuracy at or above 0.85."
+  },
+  "budget": { "volume_per_day": 100, "fail": "open" },
+  "provenance": {
+    "designed_by": "example fixture",
+    "designed_at": "2026-10-19",
+    "notes": "Synthetic refund-triage system used to test the v2 pipeline runner."
+  }
+}

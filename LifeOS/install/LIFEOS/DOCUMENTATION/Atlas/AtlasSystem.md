@@ -1,13 +1,17 @@
 ---
-last_updated: 2026-07-22T04:00:00Z
+last_updated: 2026-10-17T22:00:00Z
 last_updated_by: da
-convention: pai-freshness-v1
-version: 1.1.4
+convention: lifeos-freshness-v1
+version: 1.4.0
 ---
 
 # Atlas — the LifeOS Asset Graph
 
-> **Atlas is a graph-based current-state asset management system.** It maintains the current state of everything in the ecosystem as a queryable graph: Cloudflare workers, domains, DNS records, repos, projects, scanner targets, launchd services, machines, gear — one local SQLite system of record, reconciled from sources of authority, surfaced as the ATLAS tab in Pulse. It is the current-state half of the LifeOS thesis made concrete: before you can climb toward an ideal state you need an accurate picture of the state you're in.
+> **Atlas is a graph-based current-state asset management system.** It maintains the current state of everything in the ecosystem as a queryable graph: Cloudflare workers, domains, DNS records, repos, projects, scanner targets, launchd services, machines, gear — one local SQLite graph, reconciled from sources of authority, surfaced as the ATLAS tab in Pulse. It is the current-state half of the LifeOS thesis made concrete: before you can climb toward an ideal state you need an accurate picture of the state you're in.
+
+**Current-state split:** Atlas is the state of owned assets, Conduit (`../Conduit/ConduitSystem.md`) is the principal's observed activity, and Vigil (`../Vigil/VigilSystem.md`) carries events.
+
+**Moving into CENSVS (2026-10-17).** Atlas is migrating into CENSVS (`../Censvs/CensvsSystem.md`, AD-12) as its observed estate kinds: domains, DNS records, services, stores, repos, machines, credentials, ingest surfaces, capabilities, controls, accounts and projects. Atlas is not the authority for any of them. Each asset's truth is the outside source a collector reads (Cloudflare, GitHub, the host, the curated files), and its history moves into the STATVS record as `observe` rows that a collector writes only when an asset appears, changes or expires, plus one row per sync run with its completeness. Atlas keeps its two jobs, collecting and answering graph queries (`owns`, `blast`, `exposed`, `reach`); its `lifecycle_event` table becomes those rows. How each Atlas asset kind maps to a RES kind, and which ones are not nouns at all, is `ATLAS_KIND_MAP` in `LIFEOS/CENSVS/genera.ts`. Credential, ingest, capability and control rows stay on this machine and never ship to the cloud until they can be sealed.
 
 Modeled on CNCF Cartography's design (sync-and-expire collectors, per-source observations, first/last-seen stamps on every fact), rebuilt LifeOS-native: TypeScript, bun:sqlite, no server daemon, no Neo4j. Design hardened by a 2026-07-21 cross-vendor audit (see the maintainer-side `LIFEOS/ATLAS/ISA.md` Decisions — per-instance state, not in the public release payload).
 
@@ -21,10 +25,10 @@ Modeled on CNCF Cartography's design (sync-and-expire collectors, per-source obs
 | Redacted Pulse snapshot | `~/.local/state/lifeos/atlas/snapshot.json` |
 | Event hints | `~/.local/state/lifeos/atlas/events.jsonl` |
 | Hint hook | `hooks/AtlasEventCapture.hook.ts` (PostToolUse: Bash, Write, Edit, MultiEdit) |
-| Background service | `com.lifeos.atlas` — launchd (macOS, 15-min tick + WatchPaths on events file) or systemd --user timer (Linux, 15-min `OnUnitActiveSec`, no WatchPaths equivalent); installed by `LIFEOS/ATLAS/InstallAtlas.ts` |
-| Pulse | module `PULSE/modules/atlas.ts` → `GET /api/atlas`, `GET/POST /api/atlas/insights` → page `/atlas` (tier1 nav): live d3-force graph + Insights + Browse + Gaps tabs |
+| Background service | `com.lifeos.atlas` — launchd (macOS, 15-min tick + WatchPaths on events file) or a systemd --user timer plus a path unit on the events file (Linux, 15-min `OnUnitActiveSec`; the path unit is the WatchPaths equivalent and fires `atlas tick` as soon as `events.jsonl` changes); installed by `LIFEOS/ATLAS/InstallAtlas.ts` |
+| Pulse | module `PULSE/modules/atlas.ts` → `GET /api/atlas`, `GET/POST /api/atlas/insights` → page `/atlas` (tier1 nav): live d3-force graph + Insights + Browse + Gaps + Models tabs |
 | Insights cache | `MEMORY/STATE/atlas-insights.json` (Inference narrative, keyed by metric content hash) |
-| Tests | `LIFEOS/ATLAS/tests/store.test.ts` (sweep invariants) |
+| Tests | `LIFEOS/ATLAS/tests/store.test.ts` (not in the public release) (sweep invariants) |
 
 ## Architecture
 
@@ -38,7 +42,7 @@ Modeled on CNCF Cartography's design (sync-and-expire collectors, per-source obs
 - *Reconciliation:* `atlas tick` runs a full sync when the last one is >1h old (launchd fires every 15 min).
 - *Hints:* the `AtlasEventCapture` hook watches mutating tool calls (wrangler deploys, `gh repo` mutations, edits to PROJECTS.md/GEAR.md/infra-inventory.ts, launchctl ops) and appends `{ts, source}` hints. The launchd WatchPaths fires, `atlas tick` consumes the hints, and runs a *targeted* re-collect of just those sources. **Hints never write facts** — the collector re-pulls truth from the authority. A missed hint costs nothing; the hourly cycle heals.
 
-**No secrets, ever (Anti-claim A1).** No token, key, or cookie value is stored, logged, or exported. Credential-class assets, when added, carry references only, and the snapshot strips their attrs at export. Even value-free, the graph is a map of the estate — hence local-only, outside git, behind FDE.
+**No secrets, ever (anti-criterion A1).** No token, key, or cookie value is stored, logged, or exported. Credential-class assets, when added, carry references only, and the snapshot strips their attrs at export. Even value-free, the graph is a map of the estate — hence local-only, outside git, behind FDE.
 
 ## Collectors (v1)
 
@@ -47,11 +51,14 @@ Modeled on CNCF Cartography's design (sync-and-expire collectors, per-source obs
 | `cloudflare` | CF API (token from `~/.claude/.env`, header auth only) | domains (zones + hostnames + workers.dev hosts), dns_records, workers (with `cron`/`workers_dev`/`queue_consumer` attrs), kv/r2/d1; edges: OWNS, SERVES (custom domain + workers.dev), ROUTE (zone routes), CALLS (service bindings, worker→worker) |
 | `github` | `gh repo list` | repos (visibility, archived, pushed_at) |
 | `projects` | `USER/PROJECTS.md` main table | projects; SERVES → domains, DEPLOYED_FROM → repos |
-| `infra-inventory` | `ARBOL/Shared/infra-inventory.ts` (observed, never replaced) | targets, security-plane system node; MONITORS → domains, REGISTERED_IN |
+| `infra-inventory` | `CUSTOMIZATIONS/WORKFLOWS/Shared/infra-inventory.ts` (observed, never replaced) | targets, security-plane system node; MONITORS → domains, REGISTERED_IN |
 | `launchd` | `~/Library/LaunchAgents/com.{lifeos,pai}.*` (plutil always `-o -`) | services, this machine; RUNS_ON edges |
 | `systemd` | `~/.config/systemd/user/com.{lifeos,pai}.*.{service,timer}` (Linux sibling of `launchd` — unit files parsed directly, no subprocess) | services, this machine; RUNS_ON edges |
 | `gear` | `USER/GEAR.md` tables | devices with category/role |
-| `secrets` | the incident-response credential registry (`GenerateRegistry.ts --json`) + tier shapes (`DetectCriticalKeys.ts --format json`) | credentials (priority/cadence/vendor/dependencies attrs), orphaned credentials; HOLDS edges from this machine and from the config repo when the env file is tracked in it |
+| `injection` | `collectors/injection-surfaces.ts` (structural, ships) + optional private overlay `USER/SECURITY/injection-surfaces.ts` | ingest (trust/channel/persists), capability (blast/reversible), control (layer/mode/fail-open), the `system:agent-context` node; edges: FLOWS_INTO, GRANTS, GUARDED_BY |
+| `secrets` | the incident-response credential registry (`GenerateRegistry.ts --json`) + tier shapes (`DetectCriticalKeys.ts --format json`), both maintainer-side; not in the public release payload, so a public install shows no credential rows | credentials (priority/cadence/vendor/dependencies attrs), orphaned credentials; HOLDS edges from this machine and from the config repo when the env file is tracked in it |
+| `docker` | local Docker daemon (`docker ps -aq` + one batched `docker inspect`; registered only when the `docker` CLI is on PATH — elsewhere `atlas sync docker` fails as an unknown collector, like `systemd` on macOS; degrades to PARTIAL when the daemon is stopped) | containers — all states, not just running — with image/state/ports/networks/mounts/restart-policy/compose-project attrs; RUNS_ON edges to this machine (ported from public PR #2046, @asdf8675309) |
+| `models-lifeos`, `models-projects`, `models-workflows`, `models-cloudflare`, `models-codex`, `models-raycast`, `models-claude-code` (`collectors/Models.ts`; one collector per source so each sweeps on its own) | `~/.claude` code, config and agent frontmatter; every repo `PROJECTS.md` lists; workflow definitions; deployed Workers (plain-text vars and the deployed bundle); codex config; Raycast AI (its model choice is in an encrypted store, reported unreadable); the carrier and alias pins in `settings.json` | `USES` edges from each consumer to a `model:<vendor>:<id>` asset, each labelled by `LIFEOS/TOOLS/ModelEstate.ts` as tracks, pinned, stale or auto-moving; one `model-source:<name>` asset per run carrying that source's coverage (scanned, degraded or unreadable). Only model ids are stored |
 
 `launchd` and `systemd` are platform-exclusive: `Atlas.ts` registers exactly one of them by `process.platform`, so a macOS install's collector set is unchanged and `atlas sync systemd` there fails as an unknown collector rather than reporting a permanently incomplete run.
 
@@ -71,8 +78,12 @@ status                      per-collector runs + counts
 owns <key>                  OWNS closure — what deleting <key> orphans
 blast <key>                 inbound operational closure — what relies on <key>
 exposed <key>               credentials <key> would leak if compromised (priority-ordered)
+injection                   ingestion surfaces by trust class, with control coverage
+reach <key>                 what an injection at <key> could ultimately drive
 stale                       assets no collector sees anymore
 unregistered                domains something SERVES but no curated target MONITORS
+models [--json] [--scope <s>] [--stale]   every model, where it is used, each use's status, source coverage
+insights                    deterministic metric tiles (what the Pulse Insights tab renders)
 sql "SELECT ..."            read-only SQL passthrough
 export                      rewrite the redacted Pulse snapshot
 ```
@@ -81,13 +92,33 @@ export                      rewrite the redacted Pulse snapshot
 
 Values never enter the graph. Collectors read names only, and `exportSnapshot()` blanks credential attrs before anything reaches Pulse.
 
-The join earned itself immediately: the first env↔graph reconciliation surfaced 64 credentials living only in Cloudflare Worker secrets that no inventory had ever seen, and took the estate-wide compromise-tier count from 3 to 11.
+The join earned itself immediately: the first env↔graph reconciliation surfaced dozens of credentials living only in Cloudflare Worker secrets that no inventory had ever seen, and multiplied the estate-wide compromise-tier count several times over.
 
-**Destructive-op doctrine:** `atlas owns`/`atlas blast` are DERIVED EVIDENCE for Algorithm claim 16 — run them for the blast-radius preview, then confirm against the provider's authority API before any delete. Atlas never replaces the authority; the CLI prints this reminder on every owns/blast call.
+**Trust boundaries in the graph (2026-08-19).** Infrastructure is only half the estate. The other half is every place where text somebody else wrote reaches the agent, and everything the agent can do once persuaded — prompt injection is a confused-deputy problem, so both halves have to be in the same graph or neither question is answerable.
 
-## What it catches (live examples from first sync)
+Three asset kinds carry it. `ingest` is an entry point, with a trust class (`untrusted` / `semi` / `principal`), a channel, and — the property that matters most — whether content from it *persists* past the session. `capability` is a consequential action class with a blast domain and whether it can be undone. `control` is an enforcement point with its layer and, crucially, its **mode**: blocking, advisory, or human-gate, plus whether it fails open.
 
-- **Registration gaps:** `atlas unregistered` found 33 serving-but-uncurated domains on first run — apps with traffic but no auth-boundary assertions in the hourly scanner.
+They wire through one node:
+
+```
+ingest --FLOWS_INTO--> system:agent-context --GRANTS--> capability
+    \                                                      /
+     `------------------ GUARDED_BY --> control <---------'
+```
+
+That single context node is the design, not a shortcut. Every untrusted surface converges on one context holding every capability, so the graph states the confused-deputy shape structurally instead of asserting it in prose.
+
+**Which makes reach the wrong ranking.** `atlas reach ingest:feed` returns every capability, and so does every other wired surface. Sorting by reach puts everything at the top and says nothing. What actually varies is the control band — governed (something blocks), advisory-only (something watches), ungoverned (nothing) — and persistence. A poisoned page ruins one turn; a poisoned surface that writes into memory, an archive, a ledger, or a log re-enters context on every later recall with its provenance gone. `atlas injection` ranks by those two and names the ungoverned surfaces rather than counting them, because a number invites a lower number and a list invites a fix.
+
+The registry splits along the release boundary: structural surfaces ship in `collectors/injection-surfaces.ts` (no identity, no hostnames), instance specifics live in a private overlay. The overlay may add a surface or amend one by id, and cannot delete a bundled one — "we removed the row" must never be how a real exposure leaves the census. A malformed overlay throws; a missing one degrades silently, which is the normal case on a public install.
+
+Planning against the output belongs to the `ThreatModel` skill's `InjectionSurfaceMap` intent; the private controls register carries the live findings.
+
+**Destructive-op doctrine:** `atlas owns`/`atlas blast` are DERIVED EVIDENCE for Algorithm criterion 16 — run them for the blast-radius preview, then confirm against the provider's authority API before any delete. Atlas never replaces the authority; the CLI prints this reminder on every owns/blast call.
+
+## What it catches
+
+- **Registration gaps:** `atlas unregistered` lists serving-but-uncurated domains: apps with traffic but no auth-boundary assertions in the hourly scanner.
 - **Blast radius:** `atlas owns domain:example.com` lists the DNS records and hostnames a zone deletion would orphan — the exact query whose absence caused the 2026-07-17 DNS-deletion incident.
 - **Drift:** an asset that stops being observed goes stale visibly (Pulse GAPS tab + lifecycle events) instead of silently vanishing.
 
@@ -100,6 +131,8 @@ The join earned itself immediately: the first env↔graph reconciliation surface
 ## Absence-metric rule (learned 2026-07-22)
 
 **A metric that claims a thing is unused/orphaned/dead must be built on COMPLETE edge coverage — absence of one edge type is never absence of use.** The first insights pass called the overwhelming majority of workers "orphaned" because the collector only captured worker *custom domains*; it was blind to workers.dev origins, zone routes, service bindings, and cron triggers. The true unwired count was a small handful. Two guards now stand: (1) the Cloudflare collector captures all six invocation mechanisms before any orphan query runs; (2) the `unwired_workers` metric requires a worker to have NONE of {SERVES, ROUTE, CALLS-target, cron, workers.dev, queue}; (3) the insights narrative prompt forbids calling anything "unused/dead/orphaned" unless `unwired_workers` or a stale count backs it. When adding a new asset type, enumerate every way it can be connected before writing an absence query over it.
+
+**The same rule, inverted, governs the injection census: presence of a control is never evidence of coverage.** A surface with a `GUARDED_BY` edge is only as protected as that control's *mode*, which is why mode and fail-open are stored on the control and why the census reports blocking and advisory counts separately instead of a single "controlled" boolean. An advisory control is a detector, and a detector catches what an adversary who has not read it would write. Never let a row that says "guarded" stand in for a surface that is actually stopped. Equally: a surface absent from the registry is *unenumerated*, never safe — the census must say so rather than implying its list is the world.
 
 ## Lineage
 

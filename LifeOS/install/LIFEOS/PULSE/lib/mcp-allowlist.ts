@@ -4,7 +4,7 @@
  *
  * The SDK's `settingSources` option does NOT cover MCP config — an SDK session
  * gets zero MCP servers unless `mcpServers` is passed explicitly, so remote
- * channels (iMessage, Siri) silently lost every MCP-backed capability and the
+ * Siri bridge silently lost every MCP-backed capability and the
  * model confabulated plausible-but-wrong explanations for the failures.
  *
  * The fix is deliberately NOT "load everything": remote channels process

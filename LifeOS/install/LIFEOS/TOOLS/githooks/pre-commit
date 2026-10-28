@@ -1,0 +1,57 @@
+#!/bin/bash
+# lifeos-secrets-guard — refuses any commit whose index carries the plaintext env file.
+# Installed by: bun LIFEOS/TOOLS/Secrets.ts install-hook   (source of record: LIFEOS/TOOLS/githooks/pre-commit)
+# The sealed copy .env.age and its .meta.json are the ONLY env-shaped paths allowed in the index.
+#
+# Fail-closed (LOSIntegrity security rank 14, 2026-10-13): a staged-path listing that fails, and a
+# gitleaks that is missing or cannot finish its scan, refuse the commit instead of passing it
+# unchecked. Paths are listed NUL-separated, so a name git would print quoted (non-ASCII, a tab, a
+# newline) is still matched as written. POSIX sh only: this file runs under sh as well as bash.
+
+fail() {
+  printf '%s\n' "✗ lifeos-secrets-guard: $1" >&2
+  exit 1
+}
+
+list=$(mktemp "${TMPDIR:-/tmp}/lifeos-secrets-guard.XXXXXX") || fail "could not create a temp file to list the staged paths; refusing to commit unchecked."
+trap 'rm -f "$list"' EXIT
+trap 'exit 1' HUP INT TERM
+
+# Classification is git's own pathspec matching over whole paths, so a filename boundary is never
+# rewritten (a newline inside a name cannot split one name into an exempt line and another), and
+# no text pipeline sits between the listing and the verdict whose failure could read as "no match".
+# In glob magic `*` never crosses a "/", so each pattern applies to the complete basename.
+# Exempt, matched exactly: the sealed pair and the three template names.
+# T (type change) is listed too: a symlink replaced by a real .env file is a type change.
+git diff --cached --name-only -z --diff-filter=ACMRT -- \
+  ':(top,glob)**/.env' ':(top,glob)**/.env.*' \
+  ':(top,glob,exclude)**/.env.age' ':(top,glob,exclude)**/.env.age.meta.json' \
+  ':(top,glob,exclude)**/.env.example' ':(top,glob,exclude)**/.env.sample' ':(top,glob,exclude)**/.env.template' \
+  >"$list" ||
+  fail "could not list the staged paths (git diff --cached failed); refusing to commit unchecked."
+if [ -s "$list" ]; then
+  echo "✗ lifeos-secrets-guard: refusing to commit plaintext env file(s):" >&2
+  tr '\000' '\n' <"$list" | sed 's/^/    /' >&2
+  echo "  The plaintext .env is local-only. Seal it instead: bun LIFEOS/TOOLS/Secrets.ts seal" >&2
+  exit 1
+fi
+
+# Secret-shaped values in any staged text file (cheap shape check, redacted output).
+# A leak exits 3; anything else non-zero means the scan did not complete.
+command -v gitleaks >/dev/null 2>&1 ||
+  fail "gitleaks is not on PATH, so the staged diff cannot be scanned for secret-shaped values; refusing to commit unchecked. Install it: brew install gitleaks"
+gitleaks protect --staged --no-banner --redact=100 --exit-code 3 >/dev/null 2>&1
+rc=$?
+case $rc in
+  0) ;;
+  3) fail "gitleaks found a secret-shaped value in the staged diff. Run: gitleaks protect --staged --redact=100" ;;
+  *) fail "gitleaks could not complete the staged scan (exit $rc); refusing to commit unchecked. Run: gitleaks protect --staged --redact=100" ;;
+esac
+
+# User-identifying content in SYSTEM files (the deny-list scan that used to run on every Write and
+# shell command; ISA 20261024-native-security). Only the tree that ships SYSTEM files carries it.
+scan="$(git rev-parse --show-toplevel)/LIFEOS/TOOLS/githooks/StagedLeakScan.ts"
+if [ -f "$scan" ]; then
+  bun "$scan" || exit 1
+fi
+exit 0

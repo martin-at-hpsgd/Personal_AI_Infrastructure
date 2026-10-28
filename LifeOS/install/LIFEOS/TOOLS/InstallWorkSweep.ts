@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.6
  * InstallWorkSweep.ts — Materialize the WorkSweep scheduler unit(s) and bootstrap them.
  *
  *   bun ~/.claude/LIFEOS/TOOLS/InstallWorkSweep.ts             # install
@@ -25,6 +26,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "node:os";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { installVerb } from "./lib/InstallVerb";
 
 declare const Bun: { spawn: (cmd: string[], opts?: any) => any };
 
@@ -33,13 +36,13 @@ const LABEL = "com.lifeos.worksweep";
 const IS_LINUX = process.platform === "linux";
 
 // darwin (launchd)
-const TEMPLATE_PATH = join(HOME, ".claude", "LIFEOS", "TOOLS", "com.lifeos.worksweep.plist.template");
+const TEMPLATE_PATH = lifeosPath("TOOLS", "com.lifeos.worksweep.plist.template");
 const LAUNCH_AGENTS_DIR = join(HOME, "Library", "LaunchAgents");
 const TARGET_PLIST = join(LAUNCH_AGENTS_DIR, "com.lifeos.worksweep.plist");
 
 // linux (systemd --user)
-const SERVICE_TEMPLATE_PATH = join(HOME, ".claude", "LIFEOS", "TOOLS", "com.lifeos.worksweep.service.template");
-const TIMER_TEMPLATE_PATH = join(HOME, ".claude", "LIFEOS", "TOOLS", "com.lifeos.worksweep.timer.template");
+const SERVICE_TEMPLATE_PATH = lifeosPath("TOOLS", "com.lifeos.worksweep.service.template");
+const TIMER_TEMPLATE_PATH = lifeosPath("TOOLS", "com.lifeos.worksweep.timer.template");
 const SYSTEMD_USER_DIR = join(HOME, ".config", "systemd", "user");
 const TARGET_SERVICE = join(SYSTEMD_USER_DIR, `${LABEL}.service`);
 const TARGET_TIMER = join(SYSTEMD_USER_DIR, `${LABEL}.timer`);
@@ -205,7 +208,7 @@ async function statusLinux(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const arg = process.argv[2];
+  const arg = installVerb(process.argv, "InstallWorkSweep");
   if (arg === "--uninstall") return IS_LINUX ? uninstallLinux() : uninstall();
   if (arg === "--status") return IS_LINUX ? statusLinux() : status();
   return IS_LINUX ? installLinux() : install();

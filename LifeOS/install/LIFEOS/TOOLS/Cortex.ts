@@ -1,9 +1,12 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.0.3
+ */
 import { existsSync, lstatSync, opendirSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
-import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { createCaptureEnvelope, isEnvelopeValidAt } from "./CaptureEnvelope";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 export const SCHEMA = "lifeos-cortex/v1" as const;
 export const EXIT = { OK: 0, INTERNAL: 1, NOT_FOUND: 3, INVALID_INPUT: 4, WRITE_REFUSED: 5 } as const;
@@ -249,10 +252,27 @@ export function rankBM25(records: CortexRecord[], query: string): Array<{ record
 export const rankCanonicalCorpus = rankBM25;
 export function activeCortexCards(records: CortexRecord[], now = new Date()): CortexCard[] { return activeCortexRecords(records, now).map(record => toCortexCard(record, 0)); }
 export function activeCortexRecords(records: CortexRecord[], now = new Date()): CortexRecord[] { return records.filter((record) => isEnvelopeValidAt({ source: record.provenance.source, channel: "canonical", timestamps: { captured_at: record.created }, valid_from: record.valid_from, valid_until: record.valid_until, session_id: record.provenance.session, content: record.content }, now)); }
+export interface RecordFilters { type?: string; source?: string; session?: string; from?: string; to?: string }
+/**
+ * Apply the listing filters to a record set.
+ *
+ * Presence, never truthiness. `--type ""` is a filter the caller asked for and
+ * nothing matches it; the previous `!type || …` form dropped the clause instead
+ * and silently WIDENED the result set to everything. Same class Honcho fixed in
+ * #881/#882, where empty membership lists failed open in their filter builders.
+ */
+export function applyRecordFilters(records: CortexRecord[], f: RecordFilters): CortexRecord[] {
+  return records.filter((r) =>
+    (f.type === undefined || r.type === f.type) &&
+    (f.source === undefined || r.provenance.source === f.source) &&
+    (f.session === undefined || r.provenance.session === f.session) &&
+    (f.from === undefined || Date.parse(r.created) >= Date.parse(f.from)) &&
+    (f.to === undefined || Date.parse(r.created) <= Date.parse(f.to)));
+}
 function filtered(records: CortexRecord[], parsed: Parsed): CortexRecord[] | null {
   const type=opt(parsed,"--type"), source=opt(parsed,"--source"), session=opt(parsed,"--session"), from=opt(parsed,"--from"), to=opt(parsed,"--to");
-  if ((from && !validTimestamp(from)) || (to && !validTimestamp(to))) return null;
-  return records.filter((r)=>(!type||r.type===type)&&(!source||r.provenance.source===source)&&(!session||r.provenance.session===session)&&(!from||Date.parse(r.created)>=Date.parse(from))&&(!to||Date.parse(r.created)<=Date.parse(to)));
+  if ((from !== undefined && !validTimestamp(from)) || (to !== undefined && !validTimestamp(to))) return null;
+  return applyRecordFilters(records, { type, source, session, from, to });
 }
 function paged(items: CortexCard[], parsed: Parsed) { const page=positiveInt(opt(parsed,"--page"),1), size=positiveInt(opt(parsed,"--page-size"),10,LIMITS.PAGE_SIZE); return page===null||size===null?null:{items:items.slice((page-1)*size,page*size),total:items.length,page,page_size:size}; }
 function expandGraph(records: CortexRecord[], startId: string, maxNodes: number, maxTokens: number) { const byId=new Map(records.map(r=>[r.id,r])); const start=byId.get(startId); if(!start)return null; const queue=[start],seen=new Set<string>(),items:CortexCard[]=[];let est=0;while(queue.length&&items.length<maxNodes){const current=queue.shift()!;if(seen.has(current.id))continue;seen.add(current.id);const next=toCortexCard(current,0);if(est+next.est_tokens>maxTokens)break;items.push(next);est+=next.est_tokens;for(const id of current.related){const linked=byId.get(id);if(linked&&!seen.has(id))queue.push(linked);}}return{items,est_tokens:est,truncated:queue.length>0}; }
@@ -280,7 +300,7 @@ export async function runCortex(args: string[], runtime: CortexRuntime = {}): Pr
   if(command==="search"&&parsed.positionals.length!==1) return fail(command,EXIT.INVALID_INPUT,"invalid_input","search requires exactly one query");
   if(command==="timeline"&&parsed.positionals.length) return fail(command,EXIT.INVALID_INPUT,"invalid_input","timeline accepts no positional arguments");
   if((command==="get"||command==="export")&&(parsed.positionals.length===0||parsed.positionals.length>LIMITS.IDS)) return fail(command,EXIT.INVALID_INPUT,"invalid_input",`${command} requires one or more explicit IDs (maximum ${LIMITS.IDS})`);
-  const requestedRoot=resolve(runtime.memoryRoot??opt(parsed,"--memory-root")??process.env.CORTEX_MEMORY_ROOT??join(homedir(),".claude/LIFEOS/MEMORY"));
+  const requestedRoot=resolve(runtime.memoryRoot??opt(parsed,"--memory-root")??process.env.CORTEX_MEMORY_ROOT??lifeosPath("MEMORY"));
   let memoryRoot=requestedRoot, records:CortexRecord[];try{const corpus=enumerateCanonicalCorpus(requestedRoot);memoryRoot=corpus.root;records=corpus.records;}catch(error){if(error instanceof IntegrityError)return fail(command,EXIT.INVALID_INPUT,"integrity_error",error.message);return fail(command,EXIT.INTERNAL,"internal_error",error instanceof Error?error.message:String(error));}
   if(command==="status")return ok(command,{canonical:{root:memoryRoot,records:records.length},mode:"local-read-only",indexes:[]});
   if(command==="rebuild"){const canonical=canonicalCorpusDigest(records);const rebuilt=canonicalCorpusDigest(JSON.parse(JSON.stringify(records)));return ok(command,{format:"lifeos-cortex-canonical-rebuild/v1",canonical_digest:canonical,rebuilt_digest:rebuilt,equivalent:canonical===rebuilt,records:records.length,indexes:[]});}

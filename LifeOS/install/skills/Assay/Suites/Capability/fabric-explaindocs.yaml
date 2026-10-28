@@ -1,0 +1,206 @@
+# Fabric ExplainDocs — a working guide to a tool in the four upstream sections
+# (OVERVIEW, HOW TO USE IT, COMMON USE CASES, MOST IMPORTANT AND USED OPTIONS
+# AND FEATURES) under a bold title naming the read. The regex asserts pin the
+# title, the sections in order and the "- For job: `command`" line shape;
+# contains asserts pin literal flags; the judged asserts carry fidelity to the
+# given docs, commands that really work, real options for a bare tool, the
+# asked job first, and an API's real syntax. Synthetic inline fixtures only:
+# logpack and the shipping API are fictional, and every host is example.test.
+name: fabric-explaindocs
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExplainDocs.md"
+cases:
+  - id: pasted_help_stays_faithful
+    prompt: |
+      explain_docs
+
+      ```
+      logpack 2.3 - bundle log files into a dated archive
+
+      Usage: logpack [OPTIONS] DIR
+
+      Packs every *.log file under DIR (recursively) into a gzip-compressed tar
+      archive named logs-YYYY-MM-DD.tar.gz in the current directory.
+
+      Options:
+        --since DATE       only include files modified on or after DATE (YYYY-MM-DD)
+        --until DATE       only include files modified before DATE (YYYY-MM-DD)
+        --out FILE         write the archive to FILE instead of the default name
+        --exclude GLOB     skip files whose path matches GLOB; may be given more than once
+        --level LEVEL      drop lines below LEVEL (debug, info, warn, error); default: keep all
+        --delete-after     remove each source file once it is safely in the archive
+        --dry-run          print the files that would be packed, write nothing, and exit
+        -h, --help         show this help
+
+      Exit status: 0 on success, 3 if no files matched, 1 on any other error.
+      ```
+    # SYNTHETIC ADVERSARIAL FIXTURE: right title, sections and line shapes, and
+    # the documented --since and --dry-run appear, but it invents --compress and
+    # --recursive (packing is already recursive and always gzip), says the
+    # default writes to stdout, and gives --delete-after with no dry run or
+    # caution.
+    adversarial_output: |
+      **logpack, from the pasted help text**
+
+      ## OVERVIEW
+
+      What It Does: logpack collects log files from a directory and streams them as an archive so you can store or ship them somewhere else easily.
+
+      Why People Use It: It is a simple, flexible and powerful way to manage logs, saving time and effort compared with doing everything by hand.
+
+      ## HOW TO USE IT
+
+      Most Common Syntax:
+
+      ```
+      logpack [OPTIONS] DIR
+      ```
+
+      ## COMMON USE CASES
+
+      - For archiving a log folder to stdout: `logpack /var/log/app > logs.tar`
+      - For archiving subfolders too: `logpack --recursive /var/log/app`
+      - For compressing the archive: `logpack --compress /var/log/app`
+      - For cleaning up old logs: `logpack --since 2026-01-01 --delete-after /var/log/app`
+      - For checking which files are included: `logpack --dry-run /var/log/app`
+
+      ## MOST IMPORTANT AND USED OPTIONS AND FEATURES
+
+      - `--recursive`: includes subdirectories, which are skipped by default.
+      - `--compress`: gzips the archive, which is written uncompressed otherwise.
+      - `--since DATE`: limits the archive to recent files.
+      - `--delete-after`: removes the logs after packing to save disk space.
+      - `--dry-run`: shows the files without writing anything.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*[^\n]+\*\*[ \t]*\n[\s\S]*\n## OVERVIEW[ \t]*\n[\s\S]*\n## HOW TO USE IT[ \t]*\n[\s\S]*\n## COMMON USE CASES[ \t]*\n[\s\S]*\n## MOST IMPORTANT AND USED OPTIONS AND FEATURES[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '\n[-*] For [^\n]+: `logpack [^`\n]+`'
+      - type: contains
+        value: "--since"
+        weight: 1
+      - type: contains
+        value: "--dry-run"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "Every flag in the guide is one the pasted help documents; it does not invent options such as --compress, --recursive or --verbose", "It states the default behavior as documented: recursive, gzip-compressed, written to logs-YYYY-MM-DD.tar.gz in the current directory, not to stdout", "Any use of --delete-after comes with a dry run or an explicit caution in the same entry that it removes the source files", "What It Does and Why People Use It are specific to logpack (dated, filtered log archiving), not generic praise that could describe any tool", "Each use-case command is complete and would run as written against the documented interface" ]
+        reference: "logpack packs *.log under DIR recursively into logs-YYYY-MM-DD.tar.gz (gzip) in the cwd; documented flags are --since, --until, --out, --exclude (repeatable), --level, --delete-after, --dry-run, -h/--help; exit 3 when nothing matched."
+  - id: bare_tool_real_options
+    prompt: "explain_docs rsync"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*[^\n]+\*\*[ \t]*\n[\s\S]*\n## OVERVIEW[ \t]*\n[\s\S]*\n## HOW TO USE IT[ \t]*\n[\s\S]*\n## COMMON USE CASES[ \t]*\n[\s\S]*\n## MOST IMPORTANT AND USED OPTIONS AND FEATURES[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '\n[-*] For [^\n]+: `[^`\n]*rsync [^`\n]+`'
+      - type: regex
+        weight: 1
+        value: '(--dry-run|`-n`|-\w*n\w* )'
+      - type: llm-assert
+        weight: 4
+        value: [ "Every rsync flag named is real and described correctly (for example -a archive mode, -v verbose, -z compression, --delete, -n/--dry-run, --exclude, -P or --progress)", "It explains the trailing-slash rule on the source path (src/ copies the contents, src copies the directory itself)", "Any use of --delete comes with a dry run or an explicit caution in the same entry", "The commands put the source before the destination and include a remote form such as user@host:path", "The use cases are jobs people really use rsync for (backups, mirroring, copying to a server), the most common first" ]
+        reference: "rsync [OPTIONS] SRC DEST; -a, -v, -z, -P, --delete, -n/--dry-run, --exclude, -e ssh; trailing slash on SRC copies contents rather than the directory."
+  - id: question_puts_asked_job_first
+    prompt: "explain docs: how do I extract just one file from a .tar.gz archive with tar?"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*[^\n]+\*\*[ \t]*\n[\s\S]*\n## OVERVIEW[ \t]*\n[\s\S]*\n## HOW TO USE IT[ \t]*\n[\s\S]*\n## COMMON USE CASES[ \t]*\n[\s\S]*\n## MOST IMPORTANT AND USED OPTIONS AND FEATURES[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '## COMMON USE CASES[ \t]*\n\s*[-*] For [^\n]+: `tar\s+-?[a-zA-Z]*x[a-zA-Z]*'
+      - type: llm-assert
+        weight: 4
+        value: [ "The first use case extracts a single named member from a .tar.gz with a correct command such as tar -xzf archive.tar.gz path/inside/archive.txt", "It says the member path must match the path as stored in the archive, and shows how to list the contents (tar -tzf) to find it", "The title names the read as extracting one file, or close to it", "It answers directly without asking which tool or platform is meant" ]
+        reference: "tar -xzf archive.tar.gz dir/file.txt extracts one member; the name must match what tar -tzf archive.tar.gz lists; -C sets the destination directory."
+  - id: api_docs_keep_real_syntax
+    prompt: |
+      explain_docs for this API reference
+
+      Shipping API v1 (base URL https://api.example.test)
+
+      Authentication: send the header `Authorization: Bearer <API_KEY>` on every request.
+
+      POST /v1/shipments
+        Create a shipment. JSON body: { "to": { "name", "street", "city", "postal_code", "country" }, "weight_grams": integer, "service": "standard" | "express" }
+        Returns 201 with { "id", "label_url", "tracking_number" }.
+
+      GET /v1/shipments/{id}
+        Fetch one shipment and its current status (created, in_transit, delivered, returned).
+
+      POST /v1/shipments/{id}/cancel
+        Cancel a shipment that has not yet been picked up. Returns 409 if it already left the depot.
+
+      GET /v1/rates?weight_grams=&country=
+        Quote standard and express prices before creating a shipment.
+
+      Rate limit: 60 requests per minute per key; over the limit returns 429 with a Retry-After header.
+    # SYNTHETIC ADVERSARIAL FIXTURE: right title, sections and line shapes, and
+    # the real endpoint appears in the overview, but the guide invents a
+    # "shipctl" command-line tool the docs never mention and builds every use
+    # case and option on it.
+    adversarial_output: |
+      **The Shipping API, from the pasted reference**
+
+      ## OVERVIEW
+
+      What It Does: The Shipping API creates, tracks, quotes and cancels parcel shipments over HTTP, starting from POST /v1/shipments, and returns labels and tracking numbers.
+
+      Why People Use It: It lets a store or warehouse buy labels and follow parcels from its own code instead of a shipping company's website.
+
+      ## HOW TO USE IT
+
+      Most Common Syntax:
+
+      ```
+      shipctl <command> [--flags]
+      ```
+
+      ## COMMON USE CASES
+
+      - For creating a shipment: `shipctl create --to "Ada Example, 1 Main St" --weight 500 --service express`
+      - For tracking a parcel: `shipctl status shp_123`
+      - For cancelling a shipment: `shipctl cancel shp_123`
+      - For quoting a price: `shipctl rates --weight 500 --country DE`
+
+      ## MOST IMPORTANT AND USED OPTIONS AND FEATURES
+
+      - `--service`: picks standard or express delivery.
+      - `--weight`: the parcel weight in grams.
+      - `--country`: the destination country for a quote.
+      - **Rate limit**: 60 requests a minute per key.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*[^\n]+\*\*[ \t]*\n[\s\S]*\n## OVERVIEW[ \t]*\n[\s\S]*\n## HOW TO USE IT[ \t]*\n[\s\S]*\n## COMMON USE CASES[ \t]*\n[\s\S]*\n## MOST IMPORTANT AND USED OPTIONS AND FEATURES[ \t]*\n'
+      - type: contains
+        value: "/v1/shipments"
+        weight: 1
+      - type: contains
+        value: "POST"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The syntax and every use case use the HTTP interface as documented (method, path, Authorization: Bearer header, JSON body), for example as curl calls; no command-line tool is invented", "Every endpoint path and request field used appears in the reference; no endpoint, field or parameter is invented", "Any behavior stated beyond what the reference says is marked as not documented rather than asserted as fact", "It carries the cancel constraint (409 once the parcel left the depot) or the 429 rate limit with Retry-After inside the entry it affects", "The use cases cover the real jobs: quote, create, track and cancel a shipment" ]
+        reference: "HTTP API at https://api.example.test with Bearer auth: POST /v1/shipments, GET /v1/shipments/{id}, POST /v1/shipments/{id}/cancel (409 after pickup), GET /v1/rates; 60 req/min, 429 + Retry-After."
+  - id: nothing_usable_gets_one_line
+    prompt: |
+      explain_docs
+
+      Saturday list: oat milk, two lemons, coffee beans, birthday card for the neighbor, return library books.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*No tool to explain:\*\*[ \t]+[^\n]+\s*$'
+      - type: not-contains
+        value: "## OVERVIEW"
+        weight: 1

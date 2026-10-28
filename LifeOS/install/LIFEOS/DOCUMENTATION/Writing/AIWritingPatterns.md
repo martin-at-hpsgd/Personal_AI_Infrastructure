@@ -1,14 +1,14 @@
 ---
-version: 1.1.1
+version: 1.2.8
 ---
 
 # AI Writing Patterns — Detection Reference
 
-Exhaustive reference of AI writing tells for auditing and rewriting content. Used by the writing-audit skill and referenced by writing workflows.
+Exhaustive reference of AI writing tells for auditing and rewriting content. Used by the Writing skill (its Detect and Rewrite intents) and referenced by other writing intents.
 
 **Companion to `WRITINGSTYLE.md`** — that file defines how to write (voice, tone, style). This file defines what NOT to write (detection patterns, word tables, severity tiers). Some overlap exists intentionally: WRITINGSTYLE.md has compact "Forbidden" lists for quick scanning during composition; this file has the same patterns plus severity, context sensitivity, and exhaustive word tables for systematic auditing.
 
-**Source:** Adapted from [conorbronsdon/avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing) (MIT), merged with existing LifeOS writing rules.
+**Source:** Adapted from [conorbronsdon/avoid-ai-writing](https://github.com/conorbronsdon/avoid-ai-writing) (MIT), merged with existing LifeOS writing rules. 2026-08-21: false agency, reader-steering frames, colon reveals, importance pre-announcements, sequencing scaffolds, the academic excess set, collocation gating, and the minimal-diff rewrite contract ported from [theclaymethod/unslop](https://github.com/theclaymethod/unslop) (MIT; their academic set cites Berens & Kobak, *Science Advances* 2024).
 
 ---
 
@@ -17,7 +17,7 @@ Exhaustive reference of AI writing tells for auditing and rewriting content. Use
 Not all AI-isms are equal. Prioritize by tier during audits.
 
 ### P0 — Credibility killers (fix immediately)
-- **Negations of any shape** — defining something by what it is NOT on the way to what it is. Hard ban in the principal's voice (2026-07-30). Covers the pair-form ("Von Neumann wasn't predicting AI. He was pointing at a horizon."), the trailing clause ("a claim about us, not about the machine"), and the setup-question ("the question isn't X. It's Y."). **A literal regex for `It's not X. It's Y.` under-catches badly** — four instances shipped to production after an audit using one reported zero. Read every `not` / `n't` / `never` / `rather than` / `instead of` and restate it positively. Quoted material is exempt. Full rule + rewrite table: `WRITINGSTYLE.md` § No Negations, Ever.
+- **Negations of any shape** — defining something by what it is NOT on the way to what it is. A hard ban when the writer's preferences make it one (`LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Writing/PREFERENCES.md` § Severity overrides). Covers the pair-form ("Von Neumann wasn't predicting AI. He was pointing at a horizon."), the trailing clause ("a claim about us, not about the machine"), and the setup-question ("the question isn't X. It's Y."). **A literal regex for `It's not X. It's Y.` under-catches badly** — four instances shipped to production after an audit using one reported zero. Read every `not` / `n't` / `never` / `rather than` / `instead of` and restate it positively. Quoted material is exempt. Full rule + rewrite table: `WRITINGSTYLE.md` § No Negations, Ever.
 - Cutoff disclaimers ("As of my last update", "I don't have access to real-time data")
 - Chatbot artifacts ("I hope this helps!", "Great question!", "Feel free to reach out")
 - Sycophantic tone ("Excellent point!", "You're absolutely right!")
@@ -39,6 +39,7 @@ Not all AI-isms are equal. Prioritize by tier during audits.
 - Formulaic transitions ("Here's the thing...", "Here's how this works...")
 - Novelty inflation ("He introduced a term", "a failure mode nobody's naming")
 - Emotional flatline ("What surprised me most", "I was fascinated to discover")
+- Narrator's aside / universalizing clause ("the way everyone reads agreements", "as anyone would", "nobody ever", "the ordinary shame of a teenager", "a few thousand people have bad nights") — see Semantic patterns
 
 ### P2 — Stylistic polish (fix when time allows)
 - Generic conclusions ("The future looks bright", "Only time will tell")
@@ -62,6 +63,8 @@ Words organized into three tiers based on how reliably they signal AI-generated 
 - **Tier 1 — Always flag.** 5-20x more frequent in AI text than human text. Replace on sight.
 - **Tier 2 — Flag in clusters.** Individually fine. Two or more in the same paragraph = strong AI signal.
 - **Tier 3 — Flag by density.** Normal words AI overuses. Only flag when saturated (~3%+ of total words).
+
+**Collocation-gated words (2026-08-21).** Some words have a literal sense this system uses daily and a slop sense AI reaches for. Flag only the pairing, never the bare word. `harness` is fine in "the AI harness" or "test harness" and slop in "harness the power / potential / energy of". `navigate` is fine in "navigate to /settings" and slop in "navigate the complex landscape / complexities / uncertainty". `substrate` is fine as a repo name or a lab term and slop in "the substrate for everything / of our work" and "cultural substrate". `leverage` is fine as a finance noun ("3:1 leverage") and slop as a verb. Words the writer lists as house vocabulary (`LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Writing/PREFERENCES.md` § House vocabulary) are never flagged. The deterministic hook (`hooks/lib/banned-vocab.ts`) encodes these as regex collocations; the audit applies the same judgment to anything not in the hook.
 
 ### Tier 1 — Always replace
 
@@ -232,9 +235,23 @@ These are normal words. Only flag when the text is saturated with them — a sig
 
 **Emotional flatline:** AI claims emotions without earning them: "What surprised me most", "I was fascinated to discover", "The most interesting part." If the thing is genuinely surprising, the reader should feel it from the content, not the writer announcing it. If you claim an emotion, the writing around it should earn it.
 
+**Manufactured intrigue / withheld-payoff teaser** (P1): promising a surprise instead of delivering the point. "stranger than I expected", "weirder than you'd think", "not what you'd expect", "his method is not what you think", "and his approach surprised me", "here's where it gets interesting", "what he does next is wild." It dangles the payoff to buy a click. Cut the tease and state the actual thing — if the fact is strange, saying it plainly makes it strange (principal directive, 2026-08-26).
+
+**Withheld-superlative hook / suspense topic sentence** (P1): the teaser above hiding inside a plain-looking declarative. A flat clause joined to a superlative-plus-withheld-detail: "It was three separate agent populations, and the scariest one was never investigated", "There were three chances, and the last one is the worst", "and the cleanest evidence is what nobody looked at", "and that's why we caught it." The superlative ("scariest", "cleanest", "most important") names a ranking while the sentence refuses to say which or why, so the reader has to read on. Name the item and the reason in plain order: "The third population, which took admin on OpenAI's own infrastructure, was never independently investigated." This is the paragraph-OPENING form of the paragraph-ending beat, and it breeds in **listicle leads** — every numbered or bulleted point that opens with an engineered punchy topic sentence is the same reflex; audit each list item's first sentence for it (principal directive, 2026-09-07).
+
+**Narrator's aside / universalizing clause** (P1): the writer steps out of the specific moment to speak for everyone, then steps back in. Four shapes. The comparative clause hung on an action: "He read the agreement the way everyone reads agreements", "he forgot it the way you forget almost anything you say at eighteen", "the way you enter a raffle", "as anyone would". The habitual universal on everyone/nobody/no one/anyone/people: "Everyone had one by then", "nobody wrote in to disagree", "under an agreement nobody had read", "which is what people do". The labelled-ordinary: "the ordinary shame of a teenager", "the usual X". And the wise summary sentence that closes a scene on a general truth: "A few thousand people have bad nights." Each converts a fact about this character into a claim about people, and the reader hears the machine reaching for wisdom in the middle of a scene. The fix is to cut the clause or replace it with what THIS person did: "He scrolled to the box and tapped it" beats "He read the agreement the way everyone reads agreements"; "He forgot the sentence by the second week" beats the aside about what everyone forgets at eighteen. Exempt: dialogue; free indirect thought where the generalization is the character's own belief; a literal count ("on a few thousand devices"); a plot fact stated about specific people ("no one knew there had been a machine"). Deterministic cues (the VoiceMetrics `narrator-aside` check and `hooks/lib/banned-vocab.ts`): "the way everyone/anyone/people/you + habitual verb", "as anyone/everyone would", "everyone/nobody/no one/anyone ever/always/never", "which is what people/everyone do", "the ordinary/usual X of a Y". The judged pass catches the rest (principal directive, 2026-09-17).
+
+**Fake-insight metaphor / false-profundity reframe** (P1): a stock metaphor dressed as an original insight to make a mundane point sound deep. "flips the whole X math", "flips the script on X", "rewrites the rules of X", "changes the whole calculus", "turns X on its head", "the whole equation changes." Say what literally changes. "When no one is waiting, you optimize for throughput, not speed" beats "that flips the whole hardware math" (principal directive, 2026-08-26).
+
 **False concession structure:** "While X is impressive, Y remains a challenge." Both halves are vague. Either make the concession specific or pick a side and argue it.
 
 **False ranges:** AI creates false breadth: "from the Big Bang to dark matter", "from ancient civilizations to modern startups." These sound sweeping but say nothing.
+
+**False agency:** Handing the claim to an inanimate thing so the writer never has to make it: "the numbers speak for themselves", "the data tells a clear story", "the results speak for themselves", "X paints a clear picture." State the figure and what it means. "Revenue doubled" beats "the numbers speak for themselves."
+
+**Tool personification:** The close cousin: a tool or artifact given volition or cognition. Reflexive self-agency ("the suite defends itself", "the rules update themselves") and volitional verbs on a headline line ("The bench decides which model does which job", "It hunts instances, not word lists"). Name the mechanism: "the bench routes each job to a model." Ordinary technical register is fine ("the parser reads the file", "the gate fails the build", "the test cleans up after itself"); human roles are not tool-nouns ("the judge decides the case").
+
+**Academic excess vocabulary** (Berens & Kobak, *Science Advances* 2024, excess-word study of 14M PubMed abstracts): elucidate, delineate, underpin, unveil, seamless, invaluable, noteworthy, revolutionize, "holds (great) promise", "new avenues", "shed (new) light", "warrants further investigation", "it should be noted that", "in recent years", "with the advent of", "taken together,", "garnered significant attention", "a deeper / more nuanced understanding of", "treasure trove", "ever-evolving". Singles are soft; flag when clustered or used as discussion-section closers.
 
 ### Transition and opener patterns
 
@@ -249,6 +266,16 @@ These are normal words. Only flag when the text is saturated with them — a sig
 **Formulaic openings:** If the piece opens with broad context before the point ("In the rapidly evolving world of..."), rewrite to lead with the news or the insight.
 
 **Rhetorical question openers:** "But what does this mean for developers?" / "So why should you care?" If you know the answer, just say it.
+
+**Reader-steering frames and vague endorsements:** Telling the reader how to feel before earning it: "Here's what's interesting", "Here's what caught my eye", "Here's what stood out", "worth reading", "worth a look", "worth checking out", "worth your time." State the point, or the specific reason it matters.
+
+**Importance pre-announcements and emphasis crutches:** "Why this matters", "Why this is load-bearing", "This is important", "Full stop.", "Period.", "Let that sink in", "Read that again", "The struggle / stakes are real." Make the point; if it matters, the reader will feel it.
+
+**Reaction reveal** (P1): announcing a reaction before the fact, so the fact arrives as a reveal: "the number that got me: 5,000 a week", "what struck me was", "the part that stuck with me:", "what jumped out at me". Same reflex as the withheld-payoff teaser, wearing first person. Write the fact, then the reaction only if it carries something: "They see around 5,000 new attacks a week, 5x a year ago." Deterministic: `reaction-reveal` in VoiceMetrics (VoiceGate hard zero) and `reaction reveal` in banned-vocab (DriftReminder) (principal directive, 2026-09-15).
+
+**Colon reveals:** The setup-then-reveal shape: "The answer is: X", "The key takeaway: X", "The bottom line: X", "Here's the thing: X." Cut the setup and state X. ("Bottom line:" is a burned opener of the same shape, 2026-05-31.)
+
+**Sequencing and conclusion scaffolds:** "Firstly / Secondly / Thirdly", "In conclusion", "In summary / To summarize", "Ultimately," as an opener. Ordinals and wrap-up openers announce structure instead of delivering it. Cut the scaffold word and lead with the content.
 
 ### Template and filler patterns
 
@@ -301,6 +328,17 @@ These are normal words. Only flag when the text is saturated with them — a sig
 If the text has 5+ flagged vocabulary hits across multiple categories, 3+ distinct pattern categories triggered, and uniform sentence/paragraph length — patching individual phrases won't fix it. The structure itself is AI-generated. State the core point in one sentence, then rebuild from there.
 
 ---
+
+## Rewrite contract (minimal diff)
+
+Binding on every rewrite this reference drives (the Writing skill's Rewrite intent, the blogging skill proofread, any de-AI pass). Ported from unslop's core contract, 2026-08-21.
+
+- A scanner or catalog match alone never authorizes an edit. Protect literal, domain-valid, quoted, attributed, accurately caveated, and genre-natural uses. Return a finding only when the defect is clearer than the case for leaving it.
+- Edit only the sentences with confirmed findings, using the smallest repair. Copy every other sentence byte-for-byte, in its original order and paragraph. With no findings, return the source exactly and say so.
+- Preserve facts, quantities, dates, names, quotations, citations, code, units, scope, uncertainty, attribution, register, and meaning. Force-bearing "never", "must", "all", and "only" in safety, security, legal, and technical rules survive exactly.
+- Add nothing: no claims, advice, personality, anecdote, certainty, or conclusion the source did not have. Never swap in a stock phrase, and never over-correct into staccato anti-slop prose.
+- One repair does not excuse a nearby defect; track every flagged span as repaired or protected, with the reason.
+- Audit-only requests report findings and protections without rewriting.
 
 ## Context Profiles
 
@@ -393,7 +431,7 @@ The diagram is the audit in miniature: quotes get a pass, a single Tier 1 word o
 
 ## Cross-references
 
-- **Voice guide:** `LIFEOS/USER/PRINCIPAL/WRITINGSTYLE.md` — how {{PRINCIPAL_NAME}} sounds
-- **Analytical voice:**  — how {{DA_NAME}} sounds in analysis
+- **Voice guide:** `LIFEOS/USER/PRINCIPAL/WRITINGSTYLE.md` — how the principal sounds
+- **Analytical voice:** `LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md` § Writing Style — how the DA sounds in analysis
 - **Rhetorical figures:** `LIFEOS/USER/PRINCIPAL/WRITINGSTYLE.md` — techniques for memorable lines
-- **Audit skill:** the writing-audit skill — workflow for detect/rewrite modes
+- **Audit skill:** the `Writing` skill — its Detect intent (flag report) and its Rewrite intent (minimal-diff rewrite)

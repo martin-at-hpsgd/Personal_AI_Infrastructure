@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Sparkles, MessageSquare, FolderOpen, X } from "lucide-react";
+import { useApi } from "@/lib/api";
 
 interface OnboardingState {
   templateMode: boolean;
@@ -12,17 +13,14 @@ interface OnboardingState {
 const DISMISSED_KEY = "pai:template-onboarding:dismissed";
 
 export default function TemplateOnboarding() {
-  const [state, setState] = useState<OnboardingState | null>(null);
+  const { data } = useApi<OnboardingState | null>("/api/onboarding/state");
+  const state = data ?? null;
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.sessionStorage.getItem(DISMISSED_KEY) === "1") {
       setDismissed(true);
     }
-    fetch("/api/onboarding/state")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setState(d))
-      .catch(() => setState(null));
   }, []);
 
   if (!state || !state.templateMode || dismissed) return null;
@@ -36,7 +34,7 @@ export default function TemplateOnboarding() {
   const cmd = state.interviewCommand || "/interview";
 
   return (
-    <div className="border-b border-blue-500/30 bg-gradient-to-r from-blue-950/60 via-[rgba(6,11,26,0.7)] to-blue-950/60">
+    <div className="border-b border-blue-500/30 bg-surface-1 backdrop-blur-md">
       <div className="max-w-[1920px] mx-auto px-4 sm:px-6 py-3">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-blue-500/15 p-2 mt-0.5 shrink-0">
@@ -51,23 +49,26 @@ export default function TemplateOnboarding() {
                 This is what Pulse looks like before you've made it yours.
               </span>
             </div>
-            <div className="mt-1.5 flex items-center gap-x-5 gap-y-1.5 flex-wrap text-[13px]">
-              <span className="flex items-center gap-1.5 text-ink-2">
-                <MessageSquare className="w-3.5 h-3.5 text-blue-300 shrink-0" />
-                Talk to <span className="text-blue-200 font-medium">{daName}</span> — run
-                <code className="px-1.5 py-0.5 rounded bg-surface-3 text-blue-200 text-xs font-mono">
+            {/* Each hint is one run of inline text. A flex row here would make
+                every bare text node its own flex item, and at narrow widths those
+                items shrink and wrap word by word into separate columns. */}
+            <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] text-ink-2">
+              <p className="min-w-0">
+                <MessageSquare className="inline-block w-3.5 h-3.5 mr-1.5 align-[-2px] text-blue-300" />
+                Talk to <span className="text-blue-200 font-medium">{daName}</span> — run{" "}
+                <code className="px-1.5 py-0.5 rounded bg-surface-3 text-blue-200 text-xs font-mono whitespace-nowrap">
                   {cmd}
-                </code>
+                </code>{" "}
                 to walk through your TELOS, identity, goals, and projects.
-              </span>
-              <span className="flex items-center gap-1.5 text-ink-2">
-                <FolderOpen className="w-3.5 h-3.5 text-blue-300 shrink-0" />
-                Or edit
-                <code className="px-1.5 py-0.5 rounded bg-surface-3 text-blue-200 text-xs font-mono">
+              </p>
+              <p className="min-w-0">
+                <FolderOpen className="inline-block w-3.5 h-3.5 mr-1.5 align-[-2px] text-blue-300" />
+                Or edit{" "}
+                <code className="px-1.5 py-0.5 rounded bg-surface-3 text-blue-200 text-xs font-mono whitespace-nowrap">
                   ~/.claude/LIFEOS/USER/
-                </code>
+                </code>{" "}
                 directly.
-              </span>
+              </p>
             </div>
           </div>
           <button

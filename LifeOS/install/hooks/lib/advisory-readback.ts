@@ -1,4 +1,5 @@
 /**
+ * @version 1.0.1
  * advisory-readback.ts — deliver advisory findings at SessionStart.
  *
  * The SessionEnd advisory checkers (MemoryDirIntegrity, KnowledgeConformance)
@@ -28,7 +29,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { paiPath } from './paths';
+import { lifeosPath } from './paths';
 import { readLatestByType, findingsOf, type EventRecord, type Finding } from './events';
 
 /** UTC, matching the event log. See the note in lib/events.ts. */
@@ -85,7 +86,7 @@ export const EMPTY_MARKER: AdvisoryMarker = {
 };
 
 export function markerPath(): string {
-  return paiPath('MEMORY', 'STATE', 'advisory-readback.json');
+  return lifeosPath('MEMORY', 'STATE', 'advisory-readback.json');
 }
 
 /** Identity of a finding across the whole digest: type + the emitter's key. */

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.1.2
+ * @version 1.2.2
  * CheckpointPerISC.hook.ts — auto git commit on every ISC `[ ]`->`[x]` transition
  *
  * TRIGGER: PostToolUse (Write, Edit) on ISA.md (or legacy PRD.md) under
@@ -12,26 +12,30 @@
  *   "<ISC-id> (<slug>): <sanitized description>"
  *
  * Idempotent via sidecar state file: MEMORY/WORK/<slug>/.checkpoint-state.json.
- * Allowlist is empty by default; repos must be opted in explicitly by {{PRINCIPAL_NAME}}.
+ * Allowlist is empty by default; repos must be opted in explicitly by the principal.
  *
  * Fails closed: any error path logs to stderr and emits `{continue:true}` with
  * exit 0 — never crashes the session, never commits without an allowlist,
- * never executes any destructive git op (no reset/revert/checkout/branch -D/
- * clean -fd/push --force).
+ * never executes any destructive git op (no working-tree reset/revert/checkout/
+ * branch -D/clean -fd/push --force; the one reset is index-only, for paths it
+ * just committed that nobody had staged).
  */
 
-import { readFileSync, existsSync, writeFileSync, statSync, realpathSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, statSync, realpathSync, mkdirSync, renameSync, lstatSync, readlinkSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { basename, dirname, join } from 'node:path';
-import { homedir } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
 import { parseFrontmatter, parseCriteriaList, ARTIFACT_FILENAME, LEGACY_ARTIFACT_FILENAME } from './lib/isa-utils';
 import { isForeignToSystemRepo, looksLikePersonalTranscript } from '../LIFEOS/TOOLS/lib/ForeignDataCheck';
+import { GUARDED } from '../LIFEOS/TOOLS/LayerOneCount';
+import { invariant, InvariantViolation } from '../LIFEOS/TOOLS/Invariant';
+import { getClaudeDir, lifeosPath } from './lib/paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Allowlist path: top of ~/.claude per spec. One absolute repo path per line;
 // '#' comments and blank
 // lines are ignored. Tilde and $HOME prefixes are expanded as a quality-of-
 // life feature so users can write `~/Projects/foo` instead of the long form.
-const ALLOWLIST_PATH = join(homedir(), '.claude', 'checkpoint-repos.txt');
+const ALLOWLIST_PATH = join(getClaudeDir(), 'checkpoint-repos.txt');
 const GIT_TIMEOUT_MS = 5000;
 
 interface CheckpointState {
@@ -44,7 +48,8 @@ function expandPath(p: string): string {
   if (!s) return s;
   if (s.startsWith('~/')) s = join(homedir(), s.slice(2));
   else if (s === '~') s = homedir();
-  s = s.replace(/^\$HOME(\/|$)/, homedir() + '$1');
+  // Function replacer: a home path holding `$&` or `$1` must not be read as a replacement pattern.
+  s = s.replace(/^\$HOME(\/|$)/, (_m, sep: string) => homedir() + sep);
   return s;
 }
 
@@ -76,10 +81,23 @@ function loadState(stateFile: string): CheckpointState {
   }
 }
 
-function saveState(stateFile: string, state: CheckpointState): void {
+/**
+ * Write the sidecar through a temp file and rename (2026-10-13 audit, finding 9). A
+ * plain writeFileSync follows a symlink planted at the sidecar path and writes
+ * wherever it points; rename replaces the link itself. The directory is checked
+ * by realpath against the allowed root first, never by lexical prefix.
+ */
+export function saveState(stateFile: string, state: CheckpointState, allowedRoot: string): void {
   try {
-    writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n', 'utf-8');
+    const realDir = realpathSync(dirname(stateFile));
+    const realRoot = realpathSync(allowedRoot);
+    invariant(realDir === realRoot || realDir.startsWith(realRoot + '/'), `checkpoint state dir ${realDir} is outside ${realRoot}`);
+    const target = join(realDir, basename(stateFile));
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n', { encoding: 'utf-8', flag: 'wx', mode: 0o600 });
+    renameSync(tmp, target);
   } catch (err) {
+    if (err instanceof InvariantViolation) throw err; // impossible state: fail loud, never swallow
     console.error('[CheckpointPerISC] failed to write state:', err);
   }
 }
@@ -101,29 +119,38 @@ function isGitRepo(repo: string): boolean {
   }
 }
 
-function hasChanges(repo: string): boolean {
-  try {
-    return gitRun(repo, ['status', '--porcelain']).trim().length > 0;
-  } catch {
-    return false;
-  }
-}
-
 function sanitizeMessage(s: string): string {
   return s.replace(/\s+/g, ' ').replace(/[`$]/g, '').trim().slice(0, 200);
 }
 
+/** Pathspecs per git call; keeps the argv far below the OS limit. */
+const PATHSPEC_CHUNK = 500;
+
 /**
- * Dirty paths in `repo`, repo-relative. Handles rename entries ("R  old -> new") and
- * git's quoted form for paths with unusual bytes.
+ * Dirty paths in `repo`, repo-relative, among `candidates` only. Handles rename entries
+ * ("R  old -> new") and git's quoted form for paths with unusual bytes.
+ *
+ * Speed (2026-10-09): the old form ran a whole-tree `git status` twice per repo per ISC. On
+ * the USER data repo (22k tracked files, large untracked trees) each run cost 0.8-1.3s, so an
+ * Edit that closed an ISC took 2s+ and sometimes tens of seconds under load. The only paths a
+ * checkpoint can ever stage are the ISA, its sidecar and what this session wrote, so git is
+ * asked about exactly those (literal pathspecs); the staged set is unchanged.
  */
-function dirtyPaths(repo: string): string[] {
+function dirtyPaths(repo: string, candidates: string[]): string[] {
+  const paths: string[] = [];
+  for (let i = 0; i < candidates.length; i += PATHSPEC_CHUNK) {
+    paths.push(...dirtyPathsChunk(repo, candidates.slice(i, i + PATHSPEC_CHUNK)));
+  }
+  return [...new Set(paths)];
+}
+
+function dirtyPathsChunk(repo: string, candidates: string[]): string[] {
   let out: string;
   // -uall lists untracked files INDIVIDUALLY instead of collapsing a fully-
   // untracked directory to one `dir/` entry. Without it, staging that single
   // collapsed entry would `git add` the whole subtree — carrying any foreign
   // file inside it straight past the per-file boundary filter below.
-  try { out = gitRun(repo, ['status', '--porcelain', '-z', '-uall']); } catch { return []; }
+  try { out = gitRun(repo, ['--literal-pathspecs', 'status', '--porcelain', '-z', '-uall', '--', ...candidates]); } catch { return []; }
   const entries = out.split('\0').filter(Boolean);
   const paths: string[] = [];
   for (let i = 0; i < entries.length; i++) {
@@ -147,14 +174,14 @@ function dirtyPaths(repo: string): string[] {
  * dirties mid-run still has a fresh mtime and can be swept; this closes the common case,
  * not every case.
  */
-function runTouchedPaths(repo: string, startedMs: number): string[] {
-  return dirtyPaths(repo).filter((rel) => {
+function runTouchedPaths(repo: string, startedMs: number, candidates: string[]): string[] {
+  return dirtyPaths(repo, candidates).filter((rel) => {
     try { return statSync(join(repo, rel)).mtimeMs >= startedMs; }
     catch { return true; } // deleted in-run — the deletion is ours to record
   });
 }
 
-const SYSTEM_REPO = join(homedir(), '.claude');
+const SYSTEM_REPO = getClaudeDir();
 
 function isSystemRepo(repo: string): boolean {
   try { return realpathSync(repo) === realpathSync(SYSTEM_REPO); }
@@ -181,8 +208,9 @@ export function filterForeignPaths(repo: string, paths: string[]): string[] {
       console.error(`[CheckpointPerISC] BOUNDARY: refusing to stage foreign path ${rel} — ${fc.reason}`);
       return false;
     }
-    const base = basename(rel);
-    if ((/\.json$/i.test(base) || !base.includes('.')) && looksLikePersonalTranscript(join(repo, rel))) {
+    // Every candidate is inspected by content, whatever its extension (2026-10-13 audit,
+    // finding 7): a transcript saved as notes.md or log.txt is the same personal data.
+    if (looksLikePersonalTranscript(join(repo, rel))) {
       console.error(`[CheckpointPerISC] BOUNDARY: refusing to stage ${rel} — personal transcript content signature (transcript[] with speaker + spoken_at/text)`);
       return false;
     }
@@ -190,19 +218,184 @@ export function filterForeignPaths(repo: string, paths: string[]): string[] {
   });
 }
 
-function commitInRepo(repo: string, iscId: string, slug: string, description: string, startedMs: number): string | null {
+/**
+ * Layer-one surfaces never ride a checkpoint (2026-09-18). This hook commits with
+ * --no-verify, so the commit-msg guard that holds layer-one rule counts monotone never
+ * sees its commits: checkpoint 1a50af6b3 carried an unverified PreToolGuard change, deleted
+ * lines included, under an unrelated criterion subject. In the system repo the four guarded
+ * files are left dirty for a human-authored commit that runs the guard.
+ */
+export function filterGuardedPaths(repo: string, paths: string[]): string[] {
+  if (!isSystemRepo(repo)) return paths;
+  const guarded = new Set<string>(GUARDED);
+  return paths.filter((rel) => {
+    if (!guarded.has(rel)) return true;
+    console.error(`[CheckpointPerISC] GUARDED: leaving ${rel} for a commit that runs the layer-one guard`);
+    return false;
+  });
+}
+
+/**
+ * Paths THIS SESSION wrote, read from its own transcript (Write/Edit/NotebookEdit
+ * tool_use blocks). The mtime heuristic in runTouchedPaths cannot tell two
+ * concurrent sessions apart — on 2026-08-31 eight retrofit agents in one tree
+ * had their ISAs and unrelated dirty files swept under each other's criterion
+ * subjects. The transcript is the exact record of what this session authored;
+ * intersecting with it closes the sweep. Bash-driven file edits are invisible
+ * here by design (they are banned as an edit lane). Returns null when the
+ * transcript is unreadable so the caller can fail SAFE (ISA-only), never open.
+ */
+export function sessionTouchedPaths(transcriptPath: string | undefined): Set<string> | null {
+  if (!transcriptPath || !existsSync(transcriptPath)) return null;
+  const out = new Set<string>();
   try {
-    const paths = filterForeignPaths(repo, runTouchedPaths(repo, startedMs));
+    for (const line of readFileSync(transcriptPath, 'utf-8').split('\n')) {
+      if (!line.includes('"file_path"')) continue;
+      let entry: any;
+      try { entry = JSON.parse(line); } catch { continue; }
+      const blocks = entry?.message?.content;
+      if (!Array.isArray(blocks)) continue;
+      for (const b of blocks) {
+        if (b?.type !== 'tool_use') continue;
+        if (!['Write', 'Edit', 'NotebookEdit', 'MultiEdit'].includes(b.name)) continue;
+        const fp = b.input?.file_path ?? b.input?.notebook_path;
+        if (typeof fp === 'string') {
+          try { out.add(realpathSync(fp)); } catch { out.add(fp); }
+        }
+      }
+    }
+  } catch { return null; }
+  return out;
+}
+
+/** Repo-relative form of every path a checkpoint in `repo` could stage: the ISA, its sidecar, and this session's writes. */
+export function candidatePaths(repo: string, isaPath: string, sidecar: string, mine: Set<string> | null): string[] {
+  let realRepo = repo;
+  try { realRepo = realpathSync(repo); } catch { /* keep the given form */ }
+  const out = new Set<string>();
+  for (const p of [isaPath, sidecar, ...(mine ?? [])]) {
+    for (const base of new Set([realRepo, repo])) {
+      const rel = relative(base, p);
+      if (rel && rel !== '..' && !rel.startsWith('..' + '/') && !isAbsolute(rel)) { out.add(rel); break; }
+    }
+  }
+  return [...out];
+}
+
+function gitIn(repo: string, args: string[], env: NodeJS.ProcessEnv): string {
+  return execFileSync('git', ['-C', repo, ...args], {
+    encoding: 'utf-8',
+    timeout: GIT_TIMEOUT_MS,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env,
+  });
+}
+
+/**
+ * Commit exactly the bytes that were inspected (2026-10-13 audit, finding 8). Each path is
+ * read once into a private snapshot, the snapshot is what the transcript check reads, and
+ * the snapshot's blob is what lands, through a private index (GIT_INDEX_FILE), so a file
+ * rewritten between the check and the commit cannot swap uninspected content in. HEAD moves
+ * by compare-and-swap; the shared index is then reset only for the committed paths whose
+ * entry still matched the old HEAD, so anything staged for a path, by a peer or by hand,
+ * stays as it was. No hooks run and nothing is signed, as before.
+ */
+/** `mode sha` per path at stage 0 of the shared index (`conflict` for an unmerged path); `-z` reads any name exactly. */
+function indexEntries(repo: string, paths: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const rec of gitRun(repo, ['--literal-pathspecs', 'ls-files', '-s', '-z', '--', ...paths]).split('\0')) {
+    const tab = rec.indexOf('\t');
+    if (tab < 0) continue;
+    const [mode, sha, stage] = rec.slice(0, tab).split(' ');
+    const rel = rec.slice(tab + 1);
+    out.set(rel, stage === '0' && !out.has(rel) ? `${mode} ${sha}` : 'conflict');
+  }
+  return out;
+}
+
+/** `mode sha` per path in a commit's tree; empty when there is no commit yet. */
+function treeEntries(repo: string, commit: string | null, paths: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!commit) return out;
+  for (const rec of gitRun(repo, ['--literal-pathspecs', 'ls-tree', '-z', commit, '--', ...paths]).split('\0')) {
+    const tab = rec.indexOf('\t');
+    if (tab < 0) continue;
+    const [mode, , sha] = rec.slice(0, tab).split(' ');
+    out.set(rec.slice(tab + 1), `${mode} ${sha}`);
+  }
+  return out;
+}
+
+export function commitSnapshot(repo: string, subject: string, paths: string[]): string | null {
+  let head: string | null = null;
+  try { head = gitRun(repo, ['rev-parse', '--verify', '--quiet', 'HEAD']).trim() || null; } catch { head = null; }
+  const snapDir = mkdtempSync(join(tmpdir(), 'ckpt-snap-'));
+  const env = { ...process.env, GIT_INDEX_FILE: join(snapDir, 'index') };
+  try {
+    gitIn(repo, head ? ['read-tree', head] : ['read-tree', '--empty'], env);
+    const committed: string[] = [];
+    for (const rel of paths) {
+      const abs = join(repo, rel);
+      let st;
+      try { st = lstatSync(abs); } catch {
+        gitIn(repo, ['update-index', '--force-remove', '--', rel], env); // deleted by this session
+        committed.push(rel);
+        continue;
+      }
+      let bytes: Buffer;
+      let mode: string;
+      if (st.isSymbolicLink()) { bytes = Buffer.from(readlinkSync(abs)); mode = '120000'; }
+      else if (st.isFile()) { bytes = readFileSync(abs); mode = st.mode & 0o111 ? '100755' : '100644'; }
+      else { console.error(`[CheckpointPerISC] skipping ${rel}: not a file or symlink`); continue; }
+      const snap = join(snapDir, 'blob');
+      writeFileSync(snap, bytes);
+      if (isSystemRepo(repo) && st.isFile() && looksLikePersonalTranscript(snap)) {
+        console.error(`[CheckpointPerISC] BOUNDARY: refusing to stage ${rel} — personal transcript content signature in the committed bytes`);
+        continue;
+      }
+      const sha = gitIn(repo, ['hash-object', '-w', '--no-filters', '--', snap], env).trim();
+      invariant(/^[0-9a-f]{40,64}$/.test(sha), `git hash-object returned no object id for ${rel}`);
+      gitIn(repo, ['update-index', '--add', '--cacheinfo', `${mode},${sha},${rel}`], env);
+      committed.push(rel);
+    }
+    if (committed.length === 0) return null;
+    const tree = gitIn(repo, ['write-tree'], env).trim();
+    if (head && tree === gitRun(repo, ['rev-parse', `${head}^{tree}`]).trim()) return null; // nothing changed
+    const commit = gitIn(repo, ['commit-tree', tree, ...(head ? ['-p', head] : []), '--no-gpg-sign', '-m', subject], process.env).trim();
+    invariant(/^[0-9a-f]{40,64}$/.test(commit), 'git commit-tree returned no commit id');
+    // A path whose shared-index entry differs from the old HEAD was staged by someone; its entry is left alone.
+    const staged = indexEntries(repo, committed);
+    const before = treeEntries(repo, head, committed);
+    const unstaged = committed.filter((rel) => (staged.get(rel) ?? null) === (before.get(rel) ?? null));
+    // Compare-and-swap: a peer commit landing in between fails this, and nothing is overwritten.
+    gitRun(repo, ['update-ref', '-m', `checkpoint: ${subject}`, 'HEAD', commit, ...(head ? [head] : [])]);
+    if (unstaged.length) gitRun(repo, ['--literal-pathspecs', 'reset', '-q', commit, '--', ...unstaged]);
+    return commit;
+  } finally {
+    rmSync(snapDir, { recursive: true, force: true });
+  }
+}
+
+export function commitInRepo(repo: string, iscId: string, slug: string, description: string, startedMs: number, isaPath: string, mine: Set<string> | null): string | null {
+  try {
+    const sidecar = join(dirname(isaPath), '.checkpoint-state.json');
+    const touched = runTouchedPaths(repo, startedMs, candidatePaths(repo, isaPath, sidecar, mine));
+    const isMine = (rel: string): boolean => {
+      const abs = join(repo, rel);
+      let real = abs;
+      try { real = realpathSync(abs); } catch { /* deleted — keep the join form */ }
+      if (real === isaPath || abs === isaPath || real === sidecar || abs === sidecar) return true;
+      if (mine === null) return false; // no transcript → ISA + sidecar only, never the tree
+      return mine.has(real) || mine.has(abs);
+    };
+    const skipped = touched.filter((rel) => !isMine(rel));
+    if (skipped.length) console.error(`[CheckpointPerISC] leaving ${skipped.length} path(s) another session touched: ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? ', …' : ''}`);
+    const paths = filterGuardedPaths(repo, filterForeignPaths(repo, touched.filter(isMine)));
     if (paths.length === 0) return null;
-    gitRun(repo, ['add', '--', ...paths]);
     // iscId already has the canonical "ISC-<N>" form (or "ISC-<N>-A-<M>" for
     // anti-criteria) per parseCriteriaList — use it verbatim, do not re-prefix.
     const subject = `${iscId} (${slug}): ${sanitizeMessage(description)}`;
-    // --no-verify skips husky/pre-commit hooks; --no-gpg-sign avoids GPG
-    // passphrase prompts that would hang the session blocking on stdin.
-    gitRun(repo, ['commit', '-m', subject, '--quiet', '--no-verify', '--no-gpg-sign']);
-    const sha = gitRun(repo, ['rev-parse', 'HEAD']).trim();
-    return sha;
+    return commitSnapshot(repo, subject, paths);
   } catch (err: unknown) {
     const e = err as { stderr?: { toString?: () => string }; message?: string };
     const detail = e?.stderr?.toString?.() || e?.message || String(err);
@@ -214,27 +407,20 @@ function commitInRepo(repo: string, iscId: string, slug: string, description: st
 // Guarded so filterForeignPaths can be imported by a test without the module
 // consuming stdin and exiting the test process. Hook execution (`bun
 // CheckpointPerISC.hook.ts` with the harness's JSON on stdin) is unchanged.
-let input: any;
-if (import.meta.main) {
-  try {
-    input = JSON.parse(readFileSync(0, 'utf-8'));
-  } catch {
-    process.exit(0);
-  }
+/** Commit newly-closed ISCs in opted-in repos. Never emits model context. */
+export async function run(input: any): Promise<null> {
+  try { await main(input); } catch (err) { console.error('[CheckpointPerISC] uncaught error:', err); }
+  return null;
 }
 
-function emitContinueAndExit(): never {
-  console.log(JSON.stringify({ continue: true }));
-  process.exit(0);
-}
-
-async function main() {
+async function main(input: any) {
   const filePath: string = input?.tool_input?.file_path || '';
   // Both sanctioned ISA homes, not just MEMORY/WORK — project ISAs
   // (<project>/ISA.md) checkpoint too; the repo allowlist below still gates
   // which trees ever get a commit (public issue #1807, @mhaisham).
-  const isISA = filePath.endsWith('/' + ARTIFACT_FILENAME) || filePath.endsWith(ARTIFACT_FILENAME);
-  const isLegacyPRD = filePath.endsWith('/' + LEGACY_ARTIFACT_FILENAME) || filePath.endsWith(LEGACY_ARTIFACT_FILENAME);
+  // Basename equality, so fooISA.md is not an ISA.
+  const isISA = basename(filePath) === ARTIFACT_FILENAME;
+  const isLegacyPRD = basename(filePath) === LEGACY_ARTIFACT_FILENAME;
   if (!isISA && !isLegacyPRD) return;
   if (!existsSync(filePath)) return;
 
@@ -244,13 +430,20 @@ async function main() {
   // dir — skill trees must stay publishable-clean and the sidecar carries
   // absolute paths + SHAs, which trips SkillHygieneGate (found 2026-08-11,
   // interview-evidence upgrade). Everything else keeps the beside-the-ISA path.
-  const skillsPrefix = join(homedir(), '.claude', 'skills') + '/';
-  const inSkillTree = slugDir.startsWith(skillsPrefix);
-  const skillStateDir = join(homedir(), '.claude', 'LIFEOS', 'MEMORY', 'STATE', 'checkpoints');
-  if (inSkillTree) mkdirSync(skillStateDir, { recursive: true });
-  const stateFile = inSkillTree
-    ? join(skillStateDir, `skill-${slug}.checkpoint-state.json`)
-    : join(slugDir, '.checkpoint-state.json');
+  // Checkpoint state files for anything NOT under MEMORY/WORK go to MEMORY/STATE/checkpoints/
+  // Realpath on both sides: a lexical prefix would let a symlinked slug dir under
+  // MEMORY/WORK steer the sidecar write out of the tree (2026-10-13 audit, finding 9).
+  const workDir = lifeosPath('MEMORY', 'WORK');
+  let realSlugDir = slugDir;
+  let realWorkDir = workDir;
+  try { realSlugDir = realpathSync(slugDir); } catch { /* existence checked above; keep lexical */ }
+  try { realWorkDir = realpathSync(workDir); } catch { /* no WORK dir: nothing is inside it */ }
+  const isInWorkDir = realSlugDir.startsWith(realWorkDir + '/');
+  const stateDir = lifeosPath('MEMORY', 'STATE', 'checkpoints');
+  if (!isInWorkDir) mkdirSync(stateDir, { recursive: true });
+  const stateFile = isInWorkDir
+    ? join(realSlugDir, '.checkpoint-state.json')
+    : join(stateDir, `${slug}.checkpoint-state.json`);
 
   const content = readFileSync(filePath, 'utf-8');
   const fm = parseFrontmatter(content);
@@ -278,6 +471,10 @@ async function main() {
     return;
   }
 
+  // One transcript read per run, not one per criterion per repo.
+  let mine: Set<string> | null | undefined;
+  const sessionPaths = (): Set<string> | null => (mine === undefined ? (mine = sessionTouchedPaths(input?.transcript_path)) : mine);
+
   for (const isc of newlyChecked) {
     for (const repo of allowlist) {
       if (!existsSync(repo)) {
@@ -288,20 +485,18 @@ async function main() {
         console.error(`[CheckpointPerISC] not a git repo: ${repo}`);
         continue;
       }
-      if (!hasChanges(repo)) continue;
-      const sha = commitInRepo(repo, isc.id, slug, isc.description, startedMs);
+      const sha = commitInRepo(repo, isc.id, slug, isc.description, startedMs, realpathSync(filePath), sessionPaths());
       if (sha) state.last_commit_sha[repo] = sha;
     }
     state.committed_iscs.push(isc.id);
   }
 
-  saveState(stateFile, state);
+  saveState(stateFile, state, isInWorkDir ? realWorkDir : stateDir);
 }
 
 if (import.meta.main) {
-  main().catch(err => {
-    console.error('[CheckpointPerISC] uncaught error:', err);
-  }).finally(() => {
-    emitContinueAndExit();
-  });
+  let input: any = null;
+  try { input = JSON.parse(readFileSync(0, 'utf-8')); } catch { process.exit(0); }
+  await run(input);
+  process.exit(0);
 }

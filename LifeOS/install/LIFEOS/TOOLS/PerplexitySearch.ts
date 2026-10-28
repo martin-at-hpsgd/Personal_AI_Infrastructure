@@ -8,19 +8,19 @@
  *
  * Usage:
  *   bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts "<query>"
- *   bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts --model sonar-pro "<query>"
- *   bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts --model sonar-reasoning "<query>"
+ *   bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts --model perplexityPro "<query>"
+ *   bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts --model perplexityReasoning "<query>"
  *   bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts --recency week "<query>"
  *   bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts --system "You are a ..." "<query>"
  *   bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts --json "<query>"
  *
- * Models:
- *   sonar            Fast, grounded, real-time web (default)
- *   sonar-pro        Higher quality, deeper synthesis
- *   sonar-reasoning  Chain-of-thought reasoning + citations
+ * Models (lanes in models.ts CROSS_VENDOR; ids move there, never here):
+ *   perplexity           Fast, grounded, real-time web (default)
+ *   perplexityPro        Higher quality, deeper synthesis
+ *   perplexityReasoning  Chain-of-thought reasoning + citations
  *
  * Options:
- *   --model <id>       Sonar model id (default: sonar)
+ *   --model <lane|id>  a models.ts lane (perplexity, perplexityPro, perplexityReasoning) or a raw Sonar id (default: perplexity)
  *   --recency <span>   Freshness filter: hour | day | week | month | year
  *   --system <prompt>  Override the system prompt
  *   --max-tokens <n>   Cap output tokens (default: 2048)
@@ -32,12 +32,13 @@
  * Exit codes: 0 ok, 1 error (missing key, API failure, empty response)
  *
  * @author LifeOS System
- * @version 1.0.0
+ * @version 1.0.3
  */
 
 import { readFileSync } from 'fs'
-import { homedir } from 'os'
 import { join } from 'path'
+import { CROSS_VENDOR } from './models';
+import { getClaudeDir } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const colors = {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
@@ -48,7 +49,7 @@ const colors = {
 function loadEnv(): Record<string, string> {
   // Canonical .env is ~/.claude/.env — never $LIFEOS_CONFIG_DIR/.env, which
   // resolves to the dead ~/.claude/LIFEOS/.env path (public issue #1490).
-  const envPath = join(homedir(), '.claude', '.env')
+  const envPath = join(getClaudeDir(), '.env')
   const env: Record<string, string> = {}
   try {
     const content = readFileSync(envPath, 'utf-8')
@@ -65,7 +66,7 @@ function loadEnv(): Record<string, string> {
 const env = loadEnv()
 const API_KEY = process.env.PERPLEXITY_API_KEY || env.PERPLEXITY_API_KEY
 const API_URL = 'https://api.perplexity.ai/chat/completions'
-const DEFAULT_MODEL = 'sonar'
+const DEFAULT_MODEL = CROSS_VENDOR.perplexity
 
 interface Parsed { content: string; citations: string[]; usage: any }
 
@@ -81,7 +82,7 @@ function parseArgs(argv: string[]) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--json') opts.json = true
-    else if (a === '--model') opts.model = argv[++i]
+    else if (a === '--model') { const v = argv[++i]; opts.model = CROSS_VENDOR[v] ?? v }
     else if (a === '--recency') opts.recency = argv[++i]
     else if (a === '--system') opts.system = argv[++i]
     else if (a === '--max-tokens') opts.maxTokens = parseInt(argv[++i], 10) || opts.maxTokens
@@ -112,6 +113,7 @@ async function perplexity(query: string, opts: ReturnType<typeof parseArgs>['opt
       Accept: 'application/json',
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(120_000),
   })
 
   const data = await res.json() as any
@@ -127,7 +129,7 @@ async function perplexity(query: string, opts: ReturnType<typeof parseArgs>['opt
 const USAGE = `Usage: bun ~/.claude/LIFEOS/TOOLS/PerplexitySearch.ts [options] "<query>"
 
 Options:
-  --model <name>     sonar | sonar-pro | sonar-reasoning   (default: sonar)
+  --model <name>     perplexity | perplexityPro | perplexityReasoning (models.ts lanes; default: perplexity)
   --recency <span>   hour | day | week | month | year      (bias toward fresh sources)
   --json             machine-readable output
   -h, --help         this message — costs nothing, sends no request`

@@ -1,4 +1,5 @@
 /**
+ * @version 1.2.2
  * Shared Learning Utilities
  *
  * Categorization logic for learnings across the hook system.

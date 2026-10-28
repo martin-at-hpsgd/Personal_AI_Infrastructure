@@ -54,7 +54,8 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>{{BUN_DIR}}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!-- {{BUN_GLOBAL_BIN}} = `bun pm bin -g`, where `bun install -g` puts codex; differs from BUN_DIR on Homebrew bun (public issue #1939, @mj-deving) -->
+    <string>{{BUN_DIR}}:{{BUN_GLOBAL_BIN}}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HOME</key>
     <string>{{HOME}}</string>
   </dict>

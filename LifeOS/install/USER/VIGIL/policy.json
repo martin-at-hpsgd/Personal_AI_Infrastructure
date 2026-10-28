@@ -1,0 +1,25 @@
+{
+  "routes": {
+    "critical": "text",
+    "high": "text",
+    "medium": "digest",
+    "low": "pulse",
+    "info": "pulse"
+  },
+  "text_ceiling_per_24h": 4,
+  "text_ceiling_exempt": ["heartbeat:"],
+  "digest_hour_local": 8,
+  "text_trusted_sources": ["services", "errata", "socrates", "achilles", "example-service"],
+  "source_severity_ceiling": {
+    "example-feed": "medium"
+  },
+  "source_text_cap_per_24h": {
+    "example-service": 2
+  },
+  "source_cadence_minutes": {
+    "services": 5,
+    "example-service": 15
+  },
+  "editor_enabled": false,
+  "decider_mode": "shadow"
+}

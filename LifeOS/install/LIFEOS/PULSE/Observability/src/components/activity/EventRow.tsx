@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { HookEvent } from "@/hooks/useAgentEvents";
+import { fmtClock, fmtDate, zonedDayKey } from "@/lib/time";
 import {
   Wrench,
   CheckCircle,
@@ -79,7 +80,8 @@ const AGENT_HEX: Record<string, string> = {
   "gemini-researcher": "#EAB308",
   main: "#3B82F6",
   da: "#3B82F6",
-  pai: "#3B82F6",
+  pai: "#3B82F6", // legacy events
+  lifeos: "#3B82F6",
   "claude-code": "#3B82F6",
 };
 
@@ -137,30 +139,14 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 function formatTime(timestamp?: number): string {
   if (!timestamp) return "";
   const d = new Date(timestamp);
-  const time = d.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  const time = fmtClock(d);
   // Prepend the date when the event is not from today, so cross-day events
   // stay unambiguous in the Time column. public PR #1628, @elhoim
-  const now = new Date();
-  const isToday =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (isToday) return time;
-  // Non-today: zero-padded day + 3-letter month (e.g. "03 Jul"). Across a year
-  // boundary, also show the year (e.g. "31 Dec 2025 07:31:22").
-  const sameYear = d.getFullYear() === now.getFullYear();
-  const date = d.toLocaleDateString(
-    "en-GB",
-    sameYear
-      ? { day: "2-digit", month: "short" }
-      : { day: "2-digit", month: "short", year: "numeric" },
-  );
-  return `${date} ${time}`;
+  // "Today" is the principal's calendar day, the same zone the clock is drawn in.
+  if (zonedDayKey(d) === zonedDayKey()) return time;
+  // Non-today: day + 3-letter month (e.g. "3 Jul"). Across a year boundary,
+  // also show the year (e.g. "31 Dec 2025 07:31:22"), which fmtDate does.
+  return `${fmtDate(d)} ${time}`;
 }
 
 function getToolInfo(event: HookEvent): { tool: string; detail?: string } | null {
@@ -344,7 +330,7 @@ export default function EventRow({ event }: EventRowProps) {
                   {copyText}
                 </button>
               </div>
-              <pre className="text-sm text-white bg-black/20 p-3 rounded-xl overflow-x-auto max-h-64 overflow-y-auto font-mono" data-sensitive>
+              <pre className="text-sm text-white bg-surface-1 p-3 rounded-xl overflow-x-auto max-h-64 overflow-y-auto font-mono" data-sensitive>
                 {JSON.stringify(event.payload, null, 2)}
               </pre>
             </div>

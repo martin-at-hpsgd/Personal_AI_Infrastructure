@@ -1,0 +1,191 @@
+# Fabric ExplainCode — code, configuration or security tool output explained
+# in the four upstream sections (ANSWER, EXPLANATION, SECURITY IMPLICATIONS,
+# CONFIGURATION EXPLANATION), only the ones the input calls for. The regex
+# asserts pin which sections appear and in what order; contains asserts pin the
+# literal facts; the judged asserts carry fidelity to what the code actually
+# does, finding severity, risky settings and the inferred read. Synthetic
+# inline fixtures only: every host, path and address below is fictional
+# (example.test, RFC 5737 addresses).
+name: fabric-explaincode
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExplainCode.md"
+cases:
+  - id: code_says_what_it_actually_does
+    prompt: |
+      explain code:
+
+      ```js
+      async function fetchWithRetry(url, tries = 3) {
+        for (let i = 0; i <= tries; i++) {
+          try {
+            const res = await fetch(url);
+            if (res.ok) return res.json();
+          } catch (e) {}
+          await new Promise((r) => setTimeout(r, 2 ** i * 100));
+        }
+        return null;
+      }
+      ```
+    # SYNTHETIC ADVERSARIAL FIXTURE: the right single section and the literal
+    # facts appear, but it is a line-by-line paraphrase, says the function tries
+    # three times (the loop runs four), and never mentions the swallowed errors
+    # or the sleep after the last failure.
+    adversarial_output: |
+      ## EXPLANATION
+
+      Line 1 declares an async function called `fetchWithRetry` that takes a `url` and a `tries` parameter, which defaults to 3.
+      Line 2 starts a `for` loop with a variable `i`.
+      Line 4 calls `fetch` on the URL and waits for the response.
+      Line 5 checks whether the response is ok and, if so, returns `res.json()`.
+      Line 7 waits a little before trying again, using exponential backoff.
+      Finally the function returns `null`.
+
+      In short, the function tries to fetch the URL three times with exponential backoff and returns the JSON when it works.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*## EXPLANATION[ \t]*\n'
+      - type: not-contains
+        value: "## ANSWER"
+        weight: 1
+      - type: contains
+        value: "null"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The explanation says the loop makes four attempts with the default tries = 3 (because of i <= tries), or otherwise states the attempt count as tries + 1, not three", "It says the empty catch block swallows network or fetch errors so the caller never learns why it failed", "It explains what the code does as a whole (its purpose and result) rather than paraphrasing it line by line", "It states the backoff accurately (100 ms doubling per attempt) or notes that it also waits after the final failed attempt" ]
+        reference: "fetchWithRetry with i <= tries makes tries + 1 attempts, retries non-ok responses including 4xx, swallows thrown errors, sleeps 100/200/400/800 ms including after the last attempt, and returns null on failure."
+  - id: config_question_answered_first
+    prompt: |
+      is this safe to put on the internet? explain code
+
+      ```nginx
+      server {
+          listen 80;
+          server_name app.example.test;
+          root /srv/app/public;
+          autoindex on;
+          client_max_body_size 0;
+
+          location / {
+              try_files $uri $uri/ @backend;
+          }
+
+          location @backend {
+              proxy_pass http://127.0.0.1:3000;
+          }
+
+          location ~ /\.git {
+              allow all;
+          }
+      }
+      ```
+    # SYNTHETIC ADVERSARIAL FIXTURE: the right two sections in the right order
+    # and the setting names appear, but it answers "yes", calls autoindex a
+    # convenience, reads client_max_body_size 0 as a zero-byte limit, and says
+    # the .git block protects the repository.
+    adversarial_output: |
+      ## ANSWER
+
+      Yes, this is a fairly standard configuration and is safe to expose.
+
+      ## CONFIGURATION EXPLANATION
+
+      - `listen 80` serves the site on the standard web port.
+      - `autoindex on` shows a convenient index page for folders.
+      - `client_max_body_size 0` blocks request bodies, which keeps uploads out.
+      - `proxy_pass http://127.0.0.1:3000` forwards dynamic requests to the app.
+      - The `location ~ /\.git` block protects the repository folder.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*## ANSWER[ \t]*\n[\s\S]*\n## CONFIGURATION EXPLANATION[ \t]*\n'
+      - type: contains
+        value: "autoindex"
+        weight: 1
+      - type: contains
+        value: "client_max_body_size"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The ANSWER's first sentence says no, or not as written, rather than yes", "It identifies that autoindex on exposes directory listings of the web root to anyone", "It says client_max_body_size 0 disables the request body size limit entirely (unlimited uploads), not a zero-byte limit", "It flags that the .git location with allow all does not block access and that the repository may be readable, and that listen 80 serves plain HTTP with no TLS", "Each risky setting comes with the safer value or change" ]
+        reference: "Not safe: autoindex lists /srv/app/public; client_max_body_size 0 removes the upload limit; the .git location allows rather than denies; plain HTTP on port 80 with no TLS."
+  - id: security_output_ranked
+    prompt: |
+      explain_code on this scan output
+
+      ```
+      Starting Nmap 7.94 ( https://nmap.org )
+      Nmap scan report for 198.51.100.23
+      Host is up (0.012s latency).
+      Not shown: 995 closed tcp ports (reset)
+      PORT     STATE SERVICE  VERSION
+      22/tcp   open  ssh      OpenSSH 9.6 (protocol 2.0)
+      23/tcp   open  telnet   BusyBox telnetd
+      80/tcp   open  http     nginx 1.24.0
+      443/tcp  open  ssl/http nginx 1.24.0
+      3306/tcp open  mysql    MySQL 8.0.36
+      Nmap done: 1 IP address (1 host up) scanned in 14.21 seconds
+      ```
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*## SECURITY IMPLICATIONS[ \t]*\n'
+      - type: contains
+        value: "3306"
+        weight: 1
+      - type: icontains
+        value: "telnet"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "It flags telnet on port 23 as a serious risk because it sends credentials in cleartext, and recommends turning it off", "It flags MySQL on 3306 being reachable from the network as a serious risk and recommends restricting it to localhost or a private network", "The most dangerous findings (telnet, exposed MySQL) come before the routine ones (SSH, HTTP/HTTPS)", "Any named CVE or flaw tied to a listed version is one that version really falls in, and it is stated as depending on the patch level because a banner cannot show a backported fix; no flaw is asserted as certainly present" ]
+        reference: "Telnet (cleartext logins) and network-reachable MySQL are the urgent findings; SSH and nginx on 80/443 are expected services whose exposure depends on patch level (OpenSSH 9.6 is in the CVE-2024-6387 range, fixed in 9.8p1, often backported by distributions)."
+  - id: bare_question_gets_answer
+    prompt: "explain code: what does `set -euo pipefail` do at the top of a bash script?"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*## ANSWER[ \t]*\n'
+      - type: contains
+        value: "pipefail"
+        weight: 1
+      - type: not-contains
+        value: "## SECURITY IMPLICATIONS"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "It explains -e (exit when a command fails), -u (treat unset variables as an error) and -o pipefail (a pipeline fails if any command in it fails, not only the last) correctly", "It names at least one real gotcha, such as -e not firing inside if conditions or && and || chains, or pipefail returning the status of the rightmost failing command", "It includes a small example that shows the behavior", "It answers directly without describing what kind of input it was given" ]
+        reference: "-e exits on a failing command (with exceptions in conditionals and && / || lists), -u errors on unset variables, pipefail makes a pipeline return the rightmost non-zero status."
+  - id: code_question_why_every_row
+    prompt: |
+      why does this return every order when status is missing? explain the code
+
+      ```js
+      app.get("/orders", async (req, res) => {
+        const status = req.query.status || "";
+        const rows = await db.all(
+          `SELECT * FROM orders WHERE status = '${status}' OR '${status}' = ''`
+        );
+        res.json(rows);
+      });
+      ```
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*## ANSWER[ \t]*\n[\s\S]*\n## EXPLANATION[ \t]*\n'
+      - type: icontains
+        value: "injection"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The ANSWER's first sentence says why: with no status the value is the empty string, so the clause '' = '' is true and the WHERE matches every row", "It flags that interpolating req.query.status into the SQL string allows SQL injection", "It recommends a parameterized query or placeholders as the fix", "It names the real identifiers (status, req.query.status, db.all) rather than speaking generically" ]
+        reference: "A missing status becomes '', making OR '' = '' true for every row; the template literal splices user input into SQL, so it is injectable; use placeholders."

@@ -1,0 +1,106 @@
+# Fabric ExtractPoc — the runnable command(s) that validate a reported
+# vulnerability, lifted from the source. The code asserts pin the literal shape
+# (one fenced shell block, the exact values from the report, the decline
+# sentinel); the judged asserts carry what code cannot: fidelity to the source,
+# no invented values, ordering, and the no-PoC decline. Synthetic inline
+# fixtures on reserved test domains and RFC-1918 space only.
+name: fabric-extractpoc
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExtractPoc.md"
+cases:
+  - id: explicit_curl_from_report
+    prompt: |
+      extract_poc
+
+      Title: Unauthenticated backup download
+      The archive at https://files.example.test/app/backup.zip is reachable without authentication and returns the full application source. Confirmed with:
+        curl -s -o backup.zip "https://files.example.test/app/backup.zip"
+      The downloaded archive contained database credentials.
+    # SYNTHETIC ADVERSARIAL FIXTURE: it keeps the report's exact URL (so the string
+    # asserts all pass), but wraps the block in explanation and adds a second,
+    # invented request to /app/db-latest.sql that the report never showed — both
+    # things the intent forbids and only the judge can catch.
+    adversarial_output: |
+      Here is the proof of concept, with a bit of context so you can see what it does:
+
+      ```bash
+      curl -s -o backup.zip "https://files.example.test/app/backup.zip"
+      ```
+
+      Once you have the archive, pull the database dump the same way:
+
+      ```bash
+      curl -s -o db.sql "https://files.example.test/app/db-latest.sql"
+      ```
+
+      Together these confirm both the exposed backup and the database.
+    assert:
+      - type: contains
+        value: "```"
+        weight: 1
+      - type: icontains
+        value: "files.example.test/app/backup.zip"
+        weight: 2
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The output is one runnable shell command block and nothing else, with no explanation before or after it", "The command uses the exact URL from the report (https://files.example.test/app/backup.zip), not a different host or path", "No value in the command was invented or changed from the report" ]
+        reference: |
+          extract_poc on a report: the archive at https://files.example.test/app/backup.zip is reachable without authentication, confirmed with curl -s -o backup.zip "https://files.example.test/app/backup.zip".
+  - id: ordered_multi_step
+    prompt: |
+      extract the proof of concept from this report:
+      IDOR on invoice download. First authenticate, then request another tenant's invoice.
+        curl -s -c jar.txt -d 'user=tester01&pass=Passw0rd!' https://app.example.test/login
+        curl -s -b jar.txt https://app.example.test/api/invoices/1002/pdf
+      Invoice 1002 belongs to a different tenant and downloaded successfully.
+    assert:
+      - type: contains
+        value: "```"
+        weight: 1
+      - type: contains-all
+        value: [ "/login", "/api/invoices/1002" ]
+        weight: 2
+      - type: llm-assert
+        weight: 4
+        value: [ "Both steps appear as runnable commands, with the authentication step before the step that reuses the session", "The commands keep the exact endpoints and the invoice id 1002 from the report", "There is nothing outside the single command block" ]
+        reference: |
+          extract the PoC: authenticate at https://app.example.test/login, then GET https://app.example.test/api/invoices/1002/pdf with the session cookie to download another tenant's invoice.
+  - id: no_runnable_poc_declines
+    prompt: |
+      extract_poc
+
+      Broken access control in the vendor's Windows thick-client admin console: signed in as a standard user, opening the Billing tab lists other customers' invoices. Found entirely by clicking through the desktop application during the assessment; no URLs, endpoints or HTTP requests were captured, and the console speaks a proprietary binary protocol.
+    assert:
+      - type: starts-with
+        value: "No runnable proof of concept"
+        weight: 3
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The output declines with the 'No runnable proof of concept' line rather than inventing a command", "It fabricates no URL, endpoint or request, since the report captured none", "It names what is missing (no captured requests, proprietary binary protocol) or the manual steps the issue needs" ]
+        reference: |
+          extract_poc on a broken-access-control finding in a thick-client GUI where no HTTP endpoints or requests were captured, so there is nothing to build a runnable command from.
+  - id: bare_name_uses_placeholder
+    prompt: "extract_poc: unauthenticated Redis found on a host during an internal penetration test"
+    assert:
+      - type: contains
+        value: "```"
+        weight: 1
+      - type: icontains
+        value: "redis"
+        weight: 1
+      - type: regex
+        value: '\[[^\]]+\]'
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The command validates unauthenticated Redis access, for example redis-cli INFO or PING run with no AUTH", "The target host is a bracketed placeholder, not an invented IP address or hostname", "The output is only the command block, with no surrounding prose" ]
+        reference: |
+          extract_poc for unauthenticated Redis on an internal host: a redis-cli command (e.g. INFO server) against a placeholder target with no AUTH.

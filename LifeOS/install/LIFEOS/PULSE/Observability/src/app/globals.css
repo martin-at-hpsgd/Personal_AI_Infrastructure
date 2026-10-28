@@ -12,6 +12,7 @@
  */
 
 @font-face { font-family: 'concourse-t3'; src: url('/fonts/concourse_t3_regular-webfont.woff') format('woff'); font-display: swap; }
+@font-face { font-family: 'concourse-t3'; src: url('/fonts/concourse_t3_bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
 @font-face { font-family: 'concourse-c3'; src: url('/fonts/concourse_c3_regular.woff') format('woff'); font-display: swap; }
 @font-face { font-family: 'advocate-c14'; src: url('/fonts/advocate_14_cond_reg.woff2') format('woff2'); font-display: swap; }
 @font-face { font-family: 'advocate-n34'; src: url('/fonts/advocate_34_narr_reg.woff2') format('woff2'); font-display: swap; }
@@ -39,22 +40,39 @@
      src/components/ui/chrome.tsx (PageShell/PageHeader/Panel/…).
      ══════════════════════════════════════════════════════════════ */
   :root, .dark {
-    /* Ground + surfaces */
-    --ground: #060B1A;        /* page background */
-    --surface-1: #0F1A33;     /* raised bars, toolbars, table headers */
-    --surface-2: #141C38;     /* the card */
-    --surface-3: #1A2444;     /* card hover / elevated */
+    --sans: 'concourse-t3', sans-serif;
+    --mono: 'triplicate-a-code', monospace;
+    --font-mono: 'triplicate-a-code', monospace;
+    /* Ground + surfaces — GLASS ERA (2026-08-17 redo).
+       Surfaces are translucent LIGHT, not paint: raw bg-surface-N consumers
+       get translucency over the aurora; the .glass classes below add the
+       full material (blur, edge light, depth shadow). Var names are the
+       stable API — values changed, consumers untouched. */
+    --ground: #050b17;        /* super dark blue night behind the bokeh scene */
+    --surface-1: #0a1528;  /* toolbars, table headers */
+    --surface-2: #0e1d33;   /* the card (smoke glass) */
+    --surface-3: #162c48;   /* hover / elevated */
     /* Lines */
-    --line-1: #1A2A4D;        /* subtle hairline */
-    --line-2: #23305A;        /* card border */
-    --line-3: #2E3E6E;        /* hover border */
+    --line-1: #1b304d;      /* subtle hairline */
+    --line-2: #294567;      /* card border */
+    --line-3: #4b91d2;      /* hover border */
+    /* The floating sheet — the one big glass window the app lives in */
+    --sheet-bg: rgba(7,17,33,0.96);
+    --sheet-blur: 12px;
     /* Ink */
-    --ink-1: #E8EFFF;         /* primary text */
-    --ink-2: #A8A5C8;         /* muted text */
-    --ink-3: #6B80AB;         /* faint labels */
+    --ink-1: #eff7ff;         /* primary text */
+    --ink-2: #b0c4dd;         /* muted text */
+    --ink-3: #829dbb;         /* faint labels */
     /* Accent */
-    --accent-blue: #3B82F6;
-    --accent-soft: #9ACBFF;
+    --accent-blue: #258bff;
+    --accent-soft: #80ccff;
+    /* Glass material knobs (single source for .glass + chrome kit) */
+    --glass-blur: 8px;
+    --glass-edge: rgba(113,185,255,0.12);
+    --glass-edge-hover: rgba(113,185,255,0.25);
+    --glass-shadow: 0 8px 24px rgba(0,5,15,0.18);
+    /* The warm note — the human counterweight in an otherwise cool field */
+    --ember: #E0A458;
     /* Status */
     --ok: #4ADE80;
     --warn: #FBBF24;
@@ -69,27 +87,28 @@
     /* Legacy alias kept while stragglers migrate (was the neon set) */
     --neon-blue: #3B82F6;
 
-    /* shadcn vars — same palette as HSL triplets */
-    --background: 225 63% 6%;         /* #060B1A */
-    --foreground: 222 100% 95%;       /* #E8EFFF */
-    --card: 227 47% 15%;              /* #141C38 */
-    --card-foreground: 222 100% 95%;
-    --popover: 222 55% 13%;           /* #0F1A33 */
-    --popover-foreground: 222 100% 95%;
-    --primary: 217 91% 60%;           /* #3B82F6 */
-    --primary-foreground: 222 100% 95%;
-    --secondary: 226 45% 18%;         /* #1A2444 */
-    --secondary-foreground: 222 100% 95%;
-    --muted: 226 45% 18%;             /* #1A2444 */
-    --muted-foreground: 245 24% 72%;  /* #A8A5C8 */
-    --accent: 226 45% 18%;
-    --accent-foreground: 222 100% 95%;
+    /* shadcn vars — harmonized HSL triplets (opaque fallbacks for direct
+       bg-card/bg-popover stragglers; the Card component itself is .glass) */
+    --background: 220.0 64.3% 5.5%;         /* --ground */
+    --foreground: 210.0 100.0% 96.9%;       /* --ink-1 */
+    --card: 215.7 56.9% 12.7%;
+    --card-foreground: 210.0 100.0% 96.9%;
+    --popover: 213.6 53.2% 18.4%;
+    --popover-foreground: 210.0 100.0% 96.9%;
+    --primary: 211.9 100.0% 57.3%;           /* #3B82F6 */
+    --primary-foreground: 210.0 100.0% 96.9%;
+    --secondary: 218.0 60.0% 9.8%;
+    --secondary-foreground: 210.0 100.0% 96.9%;
+    --muted: 218.0 60.0% 9.8%;
+    --muted-foreground: 213.3 39.8% 77.8%;  /* --ink-2 */
+    --accent: 213.6 53.2% 18.4%;
+    --accent-foreground: 210.0 100.0% 96.9%;
     --destructive: 0 86% 71%;         /* #F87171 */
-    --destructive-foreground: 225 63% 6%;
-    --border: 226 44% 25%;            /* #23305A */
-    --input: 226 44% 25%;
-    --ring: 217 91% 60%;
-    --radius: 0.75rem;
+    --destructive-foreground: 228 58% 4%;
+    --border: 212.9 43.1% 28.2%;
+    --input: 212.9 43.1% 28.2%;
+    --ring: 211.9 100.0% 57.3%;
+    --radius: 1rem;
     --chart-1: 217 91% 60%;
     --chart-2: 160 64% 52%;
     --chart-3: 35 69% 61%;
@@ -105,21 +124,40 @@
   html, body {
     overflow-x: hidden; /* Prevent horizontal scroll on mobile */
   }
+  /* The ground lives on html ONLY. body stays transparent so the aurora
+     pseudo-layers (negative z-index) paint between ground and content —
+     an opaque body background would sit above them in paint order. */
+  html {
+    background: var(--ground);
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: transparent;
     font-family: 'concourse-t3', 'Concourse T3', system-ui, sans-serif;
     font-size: 17px;
     line-height: 1.55;
     font-feature-settings: "rlig" 1, "calt" 1;
-    text-shadow: 0 0 1px currentColor;
+    text-shadow: none;
   }
 
-  /* LifeOS heading hierarchy (Butterick) */
+  /* HERO: blue drafting grid behind the instrument panels. */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+    background: radial-gradient(ellipse at 15% 0%, rgba(20,101,207,.16), transparent 55%),
+      linear-gradient(rgba(92,167,241,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(92,167,241,.035) 1px, transparent 1px);
+    background-size: auto, 48px 48px, 48px 48px;
+  }
+  body::after { content: none; }
+  html::before { content: none; }
+
   h1 {
-    font-family: 'valkyrie-text', Georgia, serif;
-    font-size: 2rem;
-    font-weight: 500;
-    letter-spacing: 0.01em;
+    font-family: 'advocate-n34', 'concourse-t3', sans-serif;
+    font-size: 2.65rem;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+    color: var(--ink-1);
+    text-shadow: none;
   }
   h2 {
     font-family: 'advocate-n34', sans-serif;
@@ -187,9 +225,103 @@
   scrollbar-color: hsl(var(--muted-foreground) / 0.5) transparent;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   GLASS MATERIAL — the one card treatment. Three tiers:
+   .glass         → the standard panel (chrome Panel, shadcn Card)
+   .glass-raised  → elevated surfaces (popovers, palette, modals)
+   .glass-sunken  → recessed wells (table heads, toolbars, inputs)
+   Consumed by chrome.tsx; pages never hand-roll their own material.
+   ══════════════════════════════════════════════════════════════ */
+.glass,
+.glass-raised,
+.glass-sunken {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02) 40%, transparent 72%),
+    var(--surface-2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
+  border: 1px solid var(--line-2);
+  box-shadow: inset 0 1px 0 var(--glass-edge), var(--glass-shadow);
+}
+
+/* The floating sheet — the ONE big frosted window the whole page lives in
+   (exemplar register: a glass object floating in a luminous room). */
+.glass-sheet {
+  background: var(--sheet-bg);
+  border: 1px solid var(--line-1);
+  box-shadow: var(--glass-shadow);
+}
+.pulse-page { counter-reset: pulse-section; }
+.pulse-section-header::before {
+  counter-increment: pulse-section;
+  content: counter(pulse-section, decimal-leading-zero);
+  font-family: 'triplicate-a-code', monospace;
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  color: var(--accent-soft); border: 1px solid var(--line-2);
+  padding: 3px 6px; margin-right: 4px; border-radius: 3px;
+}
+.pulse-stat-value {
+  font-family: 'concourse-t3', sans-serif;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum";
+  letter-spacing: -.04em; font-size: 36px; font-weight: 700;
+}
+.pulse-page-header { border-bottom: 1px solid var(--line-1); padding-bottom: 20px; }
+
+/* Silver KPI glass — the bright gradient strip tier from the exemplar. */
+.glass-silver {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.10) 55%, rgba(255, 255, 255, 0.06));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.6);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--glass-shadow);
+}
+.glass-raised {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.012) 40%, transparent 75%),
+    var(--surface-3);
+  box-shadow: inset 0 1px 0 var(--glass-edge-hover),
+    0 24px 64px rgba(2, 5, 16, 0.55), 0 64px 160px -48px rgba(2, 5, 16, 0.7);
+}
+.glass-sunken {
+  background: var(--surface-1);
+  box-shadow: inset 0 1px 2px rgba(2, 5, 16, 0.35);
+}
+
+/* Hover physics for interactive glass: lift + edge-light brighten. */
+.glass-hover {
+  transition: background-color 200ms ease-out, border-color 200ms ease-out,
+    box-shadow 250ms ease-out, transform 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glass-hover:hover {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 40%, transparent 75%),
+    var(--surface-3);
+  border-color: var(--line-3);
+  box-shadow: inset 0 1px 0 var(--glass-edge-hover), var(--glass-shadow);
+  transform: translateY(-1px);
+}
+
+/* Page-enter: one orchestrated rise per navigation, applied by PageShell. */
+.page-enter {
+  animation: page-rise 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes page-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media(prefers-reduced-motion:reduce) { .page-enter { animation: none; } }
+
+/* Soft technical glow for mono data values (StatTile and friends). */
+.data-glow {
+  text-shadow: none;
+}
+
 /* Mono text */
 .mono {
   font-family: 'triplicate-a-code', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "zero";
 }
 
 /* Small uppercase metric label (legacy consumer; prefer PanelHeader/StatTile) */
@@ -253,16 +385,8 @@
   width: 100%;
 }
 
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
+/* Motion ships for everyone — no reduced-motion gate (standing LifeOS rule).
+   All animation is CSS time-based, therefore frame-rate independent. */
 
 /* ── Observer Mode ─────────────────────────────────────────────────────────
    The pre-paint script in layout.tsx + ObserverModeContext put

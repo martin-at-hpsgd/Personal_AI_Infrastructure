@@ -284,9 +284,13 @@ async function executeWork(issue: Issue, config: WorkerConfig): Promise<{ output
   const env: Record<string, string> = { ...process.env } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   // Headless subprocess: never the desktop voice channel (2026-08-14 leak).
-  env.LIFEOS_NOTIFICATION_CHANNEL = env.LIFEOS_NOTIFICATION_CHANNEL || "headless"
+  // Unset AND `desktop` collapse to headless (public issue #1975, @emarcelcom).
+  env.LIFEOS_NOTIFICATION_CHANNEL = !env.LIFEOS_NOTIFICATION_CHANNEL || env.LIFEOS_NOTIFICATION_CHANNEL === "desktop"
+    ? "headless"
+    : env.LIFEOS_NOTIFICATION_CHANNEL
+  // public PR #2120, @pai-scaffolde: replace --setting-sources '' with --safe-mode
   const proc = Bun.spawn(
-    [claudePath, "--print", "--model", "sonnet", "--tools", "", "--output-format", "text", "--setting-sources", "", "--system-prompt", ""],
+    [claudePath, "--print", "--model", "sonnet", "--tools", "", "--output-format", "text", "--safe-mode", "--system-prompt", ""],
     {
       stdin: new Blob([prompt]),
       stdout: "pipe",
@@ -359,5 +363,6 @@ async function main() {
 
 main().catch((err) => {
   console.error(`github-work error: ${err}`)
-  console.log("NO_ACTION")
+  // A crash is not health: exit nonzero so Pulse counts it (same class as public PR #2208).
+  process.exitCode = 1
 })

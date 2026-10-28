@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import EmptyStateGuide from "@/components/EmptyStateGuide";
+import TelosRiskRegister from "@/components/TelosRiskRegister";
 import { type Telos, type Goal } from "./data";
 import { Hero } from "./hero";
 import {
@@ -355,7 +356,7 @@ function App() {
 
   return (
     <>
-      {view === "columns" && <SectionNav />}
+      <SectionNav key={view} />
       <main
         className="frame"
         data-tone={tweaks.vals.narrativeTone}
@@ -393,10 +394,11 @@ function App() {
             <Budget {...common} />
             <Recommendations {...common} />
             <Stranded telos={telos} showIds={showIds} openFile={openFile} />
-            <SubTabs telos={telos} openFile={openFile} />
+            <SubTabs telos={telos} />
             <Preferences telos={telos} openFile={openFile} />
           </div>
         )}
+        <TelosRiskRegister />
         <footer className="ftr">
           <span>LifeOS · Life Operating System</span>
           <span className="ftr-sep">·</span>

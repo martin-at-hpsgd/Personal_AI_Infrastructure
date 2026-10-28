@@ -3,8 +3,8 @@ last_updated: 2026-07-02
 last_updated_by: da
 last_reviewed: 2026-07-02
 last_reviewed_by: da
-convention: pai-freshness-v1
-version: 1.0.1
+convention: lifeos-freshness-v1
+version: 1.0.3
 ---
 
 # Custom Tooltips

@@ -1,0 +1,13 @@
+{
+  "customerId": "",
+  "loginCustomerId": "",
+  "logoPath": "",
+  "autoPromote": {
+    "enabled": false,
+    "budgetDollars": 5,
+    "days": 1,
+    "countries": ["US"],
+    "businessName": "Your Business",
+    "description": "Watch the full video."
+  }
+}

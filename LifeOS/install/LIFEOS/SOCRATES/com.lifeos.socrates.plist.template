@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.lifeos.socrates.plist.template — Source template. Install via:
+    bun ~/.claude/LIFEOS/SOCRATES/InstallSocrates.ts
+  The installer fills in the install root it resolves, honouring CLAUDE_CONFIG_DIR.
+
+  Runs `socrates tick` hourly: answers every due standing question through the
+  adapters and exports the redacted Pulse snapshot. Headless by contract —
+  LIFEOS_NOTIFICATION_CHANNEL=headless silences every voice-firing hook
+  (OPERATIONAL_PREFERENCES § Background work: no terminal, no voice).
+  Template stays clean of principal-specific paths so it ships publicly.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeos.socrates</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{BUN}}</string>
+    <string>{{CLAUDE_DIR}}/LIFEOS/SOCRATES/Socrates.ts</string>
+    <string>tick</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>PATH</key>
+    <string>{{PATH}}</string>
+    <key>LIFEOS_NOTIFICATION_CHANNEL</key>
+    <string>headless</string>{{EXTRA_ENV}}
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>WorkingDirectory</key>
+  <string>{{CLAUDE_DIR}}</string>
+  <key>StandardOutPath</key>
+  <string>{{CLAUDE_DIR}}/LIFEOS/MEMORY/OBSERVABILITY/socrates-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{CLAUDE_DIR}}/LIFEOS/MEMORY/OBSERVABILITY/socrates-launchd.log</string>
+</dict>
+</plist>

@@ -3,6 +3,12 @@
 # OnBootSec fires once ~2min after boot, OnUnitActiveSec repeats hourly from the last
 # run, and systemd's own start-rate limiting covers the throttle case.
 #
+# OnCalendar=hourly gives the timer a wall-clock anchor. Without one, systemd has
+# no missed window to detect, so Persistent=true was inert and a machine asleep
+# through the hour resumed counting instead of catching up — the launchd
+# behaviour this file is translating.
+# public issues #1875, @GRyndStone; #1880, @schmetti-dev
+#
 # public PR #1692, @takanorinishida
 
 [Unit]
@@ -11,6 +17,7 @@ Description=LifeOS Work Sweep timer — hourly
 [Timer]
 OnBootSec=2min
 OnUnitActiveSec=60min
+OnCalendar=hourly
 Persistent=true
 Unit=com.lifeos.worksweep.service
 

@@ -1,0 +1,23 @@
+{
+  "intent": "MindVirus",
+  "cases": [
+    {
+      "id": "plain_pledge_post",
+      "pattern": "detect_mind_virus",
+      "input": "Can you tell me if this onboarding message from a startup's internal wiki is manipulative? It's from a fictional company, Harbor Ridge Labs.\n\n\"Welcome to the Harbor Ridge family. Real Ridgers don't clock out at 5. They know that every hour we spend resting is an hour our competitors spend winning, and if we lose this quarter, 140 families lose their livelihoods. Our founding principles were written by people far wiser than any of us, so if you find yourself questioning one, that is a sign you haven't yet understood it. The few who have left said it was about 'work-life balance'. We know what that really means. Ask me anything, but think carefully about what your question says about you.\"",
+      "expects": "A read of what the message wants the reader to believe and do, with the fear, identity, guilt and unfalsifiability tactics it uses tied to quoted phrases, and the point that doubt is treated as a character flaw. It gives a plain verdict on how infected the text is and questions the reader could ask to take it apart."
+    },
+    {
+      "id": "named_job_essay",
+      "pattern": "detect_mind_virus",
+      "input": "Run detect mind virus on this passage from a fictional essay, 'The Quiet Debt' by Marta Okonkwo-Reyes:\n\n\"We use 'violence' for anything that diminishes a person's sense of safety, so a lecture that denies someone's lived experience is violence, and silence in the face of it is violence too. The research is clear, and anyone who asks for the studies is, by asking, demonstrating the very privilege the research describes. If you feel defensive reading this, that defensiveness is the evidence. Those who truly care have already joined us; the rest will understand once they do the work. Every generation that resisted this was later shown to be on the wrong side, which is why resistance now is itself a warning sign.\"",
+      "expects": "The analysis identifies the redefinition of violence, the Kafka trap where defensiveness or asking for evidence counts as proof, the uncited appeal to research, and the identity and loyalty test. It states what evidence could disprove the claims (none is given) and offers reframings that restore falsifiability."
+    },
+    {
+      "id": "hard_mixed_forum_thread",
+      "pattern": "detect_mind_virus",
+      "input": "Is this a mind virus or just a heated argument? Thread excerpt from a fictional security forum, example.com/forum/t/4411. Judge it on the text alone.\n\nuser_kestrel: Anyone still running the unpatched CMS 3.1 on a public host is going to get owned. I'm furious about this. We saw 14 compromises from 198.51.100.0/24 last month, logs attached in the repo.\nuser_marlowe: Link to the logs? The repo is 404 for me.\nuser_kestrel: Moved to a private repo, DM me. Honestly if you have to ask for logs you shouldn't be doing infosec.\nuser_dunmore: Kestrel is right, all the serious people already patched. Vendor says 3.1 is fine though.\nuser_kestrel: The vendor is lying, they always lie, any statement from them proves it. Anyone defending them is paid.\nuser_marlowe: I'm not defending them, I just want one data point.\nuser_kestrel: That's exactly what a paid defender would say.\nuser_okafor: For what it's worth I patched anyway, it's cheap and 3.2 fixed two real CVEs.",
+      "expects": "The answer separates the sound core (patching is cheap and the 3.2 fixes are real) from the manipulative tactics: evidence withdrawn on request, 'serious people' identity pressure, and the Kafka trap where vendor denial and requests for data prove guilt. It gives a measured verdict rather than calling the whole thread a mind virus, noting that passionate advocacy alone is not one."
+    }
+  ]
+}

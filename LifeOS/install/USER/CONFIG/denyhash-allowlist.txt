@@ -1,0 +1,13 @@
+# Tokens the deny-hash deriver should NOT treat as private fingerprints.
+#
+# DeriveDenyHashes.ts reads your deny list, splits it into tokens, and hashes
+# the ones that look like private names (surnames, brands, hostnames). A token
+# that is really a harmless word for you, such as a gear brand or a former
+# employer's public name, can be listed here so it stops being hashed.
+#
+# One lowercase token per line. Blank lines and lines starting with # are ignored.
+#
+# Example (delete the leading # to use it):
+# examplebrand
+#
+# Empty (as shipped) means only the built-in generic allowlist applies.

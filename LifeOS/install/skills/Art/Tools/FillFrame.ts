@@ -4,7 +4,7 @@
  *
  * Problem this solves: image models persistently leave 10-30% empty margins
  * around the subject, even when the prompt explicitly demands edge-to-edge
- * composition. The Essay workflow's MARGIN CHECK was a manual checkbox; this
+ * composition. The Essay intent's MARGIN CHECK was a manual checkbox; this
  * tool makes it a deterministic post-process that fires on every Essay/header
  * generation.
  *
@@ -86,10 +86,13 @@ async function detectBgColor(input: string): Promise<string> {
 
 interface Geometry { width: number; height: number; offsetX: number; offsetY: number; }
 
-async function getBbox(input: string, bgColor: string, fuzzPct: number): Promise<Geometry> {
-  // Use -trim to find content bbox; fuzz tolerates near-bg pixels
-  // -format "%@" prints the bounding box as "WxH+X+Y"
-  const result = await $`magick ${input} -bordercolor ${bgColor} -border 1 -fuzz ${fuzzPct}% -trim -format ${"%@"} info:`.quiet().text();
+export async function getBbox(input: string, bgColor: string, fuzzPct: number): Promise<Geometry> {
+  // "%@" prints the trim bounding box ("WxH+X+Y") of the image it is given,
+  // without trimming. It must run on the untrimmed, bordered image: after
+  // -trim, "%@" measures the already-trimmed canvas and its offsets are no
+  // longer original-image coordinates. The 1px border of bgColor makes the
+  // corners read as background; fuzz tolerates near-bg pixels.
+  const result = await $`magick ${input} -bordercolor ${bgColor} -border 1 -fuzz ${fuzzPct}% -format ${"%@"} info:`.quiet().text();
   const m = result.trim().match(/^(\d+)x(\d+)\+(\d+)\+(\d+)/);
   if (!m) throw new Error(`could not parse bbox from "${result}"`);
   return {
@@ -100,13 +103,13 @@ async function getBbox(input: string, bgColor: string, fuzzPct: number): Promise
   };
 }
 
-async function getDimensions(input: string): Promise<{ w: number; h: number }> {
+export async function getDimensions(input: string): Promise<{ w: number; h: number }> {
   const result = await $`magick ${input} -format ${"%w %h"} info:`.quiet().text();
   const [w, h] = result.trim().split(/\s+/).map((n) => parseInt(n!, 10));
   return { w: w!, h: h! };
 }
 
-function marginPercents(bbox: Geometry, full: { w: number; h: number }) {
+export function marginPercents(bbox: Geometry, full: { w: number; h: number }) {
   return {
     top: (bbox.offsetY / full.h) * 100,
     bottom: ((full.h - (bbox.offsetY + bbox.height)) / full.h) * 100,
@@ -184,7 +187,9 @@ async function main() {
   console.log(`   ${args.output} (${(statSync(args.output).size / 1024).toFixed(0)} KB)`);
 }
 
-main().catch((e) => {
-  console.error(`❌ ${(e as Error).message}`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((e) => {
+    console.error(`❌ ${(e as Error).message}`);
+    process.exit(1);
+  });
+}

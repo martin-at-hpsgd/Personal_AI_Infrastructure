@@ -2,7 +2,7 @@
  * LifeOS Pulse - Wiki Module
  *
  * Backend API for the Documentation, Knowledge, Skills, Hooks, and
- * Arbol views in Pulse.
+ * Workflows views in Pulse.
  *
  * Route prefixes handled:
  *   GET /api/wiki
@@ -16,22 +16,25 @@
  *   PUT /api/wiki/skills/:name
  *   GET /api/wiki/hooks
  *   GET /api/wiki/hooks/:name
- *   GET /api/wiki/arbol
- *   GET /api/wiki/arbol/:name
+ *   GET /api/wiki/workers
+ *   GET /api/wiki/workers/:name
  */
 
-import { basename, join, relative } from "path"
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "path"
 import {
   Dirent,
   existsSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   statSync,
   watch,
   writeFileSync,
+  type Stats,
 } from "fs"
 import MiniSearch from "minisearch"
 import { homedir } from "node:os";
+import { invariant } from "../../TOOLS/Invariant.ts"
 
 // Path Construction
 
@@ -43,7 +46,7 @@ const ALGORITHM_DIR = join(LIFEOS_DIR, "ALGORITHM")
 const SKILLS_DIR = join(HOME, ".claude", "skills")
 const HOOKS_DIR = join(HOME, ".claude", "hooks")
 const SETTINGS_PATH = join(HOME, ".claude", "settings.json")
-const ARBOL_WORKERS_DIR = join(LIFEOS_DIR, "USER", "CUSTOMIZATIONS", "ARBOL", "Workers")
+const WORKERS_DIR = join(LIFEOS_DIR, "USER", "CUSTOMIZATIONS", "WORKFLOWS", "Workers")
 
 const SYSTEM_PROMPT_PATH = join(LIFEOS_DIR, "LIFEOS_SYSTEM_PROMPT.md")
 const KNOWLEDGE_DOMAINS = ["People", "Companies", "Ideas", "Blogs", "Books", "Research"] as const
@@ -68,6 +71,8 @@ interface WikiPage {
   category: string
   tags: string[]
   quality: number | null
+  qualityInferred: boolean
+  rating?: number
   lastModified: string
   wordCount: number
   wikilinks: string[]
@@ -104,7 +109,7 @@ interface IndexOptions {
 
 const pageIndex: Map<string, WikiPage> = new Map()
 const backlinkIndex: Map<string, BacklinkEntry[]> = new Map()
-let searchIndex: MiniSearch | null = null
+let searchIndex: MiniSearch<SearchDocument> | null = null
 let moduleStartedAt: string | null = null
 let lastIndexedAt: string | null = null
 
@@ -125,6 +130,52 @@ function stripMarkdownExtension(filename: string): string {
 
 function pathParts(pathValue: string): string[] {
   return pathValue.split(/[\\/]+/).filter(Boolean)
+}
+
+// GHSA-5f2j-98hm-rrcg, @elhoim: resolve URL segments and symlinks before serving files.
+function containedPath(baseDir: string, ...segments: string[]): string | null {
+  function realPathWithMissingTail(path: string): string {
+    let current = path
+    const tail: string[] = []
+    while (true) {
+      try {
+        return resolve(realpathSync(current), ...tail)
+      } catch {
+        const parent = dirname(current)
+        if (parent === current) return current
+        tail.unshift(basename(current))
+        current = parent
+      }
+    }
+  }
+
+  function inside(base: string, target: string): boolean {
+    const rel = relative(base, target)
+    return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+  }
+
+  const decoded: string[] = []
+  for (const segment of segments) {
+    if (!segment || segment.includes("\0")) return null
+    let value = segment
+    try {
+      while (value.includes("%")) {
+        const next = decodeURIComponent(value)
+        if (next === value) break
+        value = next
+      }
+    } catch {
+      return null
+    }
+    if (!value || value.includes("\0") || isAbsolute(value)) return null
+    decoded.push(value)
+  }
+
+  const base = resolve(baseDir)
+  const target = resolve(base, ...decoded)
+  if (!inside(base, target)) return null
+  if (!inside(realPathWithMissingTail(base), realPathWithMissingTail(target))) return null
+  return target
 }
 
 function walkMarkdown(dir: string): string[] {
@@ -291,29 +342,41 @@ function stringArrayFromFrontmatter(value: unknown): string[] {
 
 // Index a Single File
 
-function indexFile(filePath: string, options: IndexOptions): WikiPage | null {
-  try {
-    if (!existsSync(filePath)) return null
+interface IndexedFile {
+  page: WikiPage
+  // Search text from the same read that built the page, so a file is read once
+  // per index pass. Held only until the pass hands it to MiniSearch.
+  searchContent: string
+}
 
+function searchContentOf(raw: string): string {
+  return stripFrontmatter(raw).slice(0, 5000)
+}
+
+function readSearchContent(filePath: string): string {
+  try {
+    return searchContentOf(readFileSync(filePath, "utf-8"))
+  } catch {
+    return ""
+  }
+}
+
+function indexFile(filePath: string, options: IndexOptions, mtime: Date): IndexedFile | null {
+  try {
     const raw = readFileSync(filePath, "utf-8")
     const fm = parseFrontmatter(raw)
     const filename = basename(filePath)
     const slug = options.slug ?? stripMarkdownExtension(filename)
 
-    let mtime: string
-    try {
-      mtime = statSync(filePath).mtime.toISOString()
-    } catch {
-      mtime = new Date().toISOString()
-    }
-
-    return {
+    const page: WikiPage = {
       slug,
       title: extractTitle(raw, fm, filename),
       category: options.category,
       tags: stringArrayFromFrontmatter(fm.tags),
       quality: typeof fm.quality === "number" ? fm.quality : null,
-      lastModified: mtime,
+      qualityInferred: fm.quality_inferred === true || fm.quality_inferred === "true",
+      rating: Number.isFinite(parseInt(String(fm.principal_rating ?? ""), 10)) ? parseInt(String(fm.principal_rating), 10) : undefined,
+      lastModified: mtime.toISOString(),
       wordCount: countWords(raw),
       wikilinks: extractWikilinks(raw),
       filePath,
@@ -324,32 +387,41 @@ function indexFile(filePath: string, options: IndexOptions): WikiPage | null {
       sourceUrl: typeof fm.source_url === "string" ? fm.source_url : undefined,
       postDate: typeof fm.source_date === "string" ? fm.source_date : (typeof fm.post_date === "string" ? fm.post_date : undefined),
     }
+    return { page, searchContent: searchContentOf(raw) }
   } catch {
     return null
   }
 }
 
-// System Documentation Indexing
+// Index Manifest
+//
+// Every file the wiki covers, in the order a full build visits it. The order
+// is load-bearing: when two files map to one slug the later file wins, and the
+// page map keeps each slug at its first sighting, which fixes backlink, graph
+// and equal-recency order. Listing needs readdir only; no file is opened.
 
-function indexSystemDoc(filePath: string): void {
-  const metadata = systemDocMetadata(filePath)
-  if (!metadata) return
-
-  const page = indexFile(filePath, {
-    category: "system-doc",
-    slug: metadata.slug,
-    group: metadata.group,
-  })
-
-  if (page) pageIndex.set(page.slug, page)
+interface IndexEntry {
+  filePath: string
+  options: IndexOptions
 }
 
-function indexSystemDocs(): void {
-  indexSystemDoc(SYSTEM_PROMPT_PATH)
+function relSlug(baseDir: string, filePath: string): string {
+  return stripMarkdownExtension(relative(baseDir, filePath)).replace(/[\\/]+/g, "--")
+}
 
-  for (const filePath of walkMarkdown(DOCUMENTATION_DIR)) {
-    indexSystemDoc(filePath)
+function listSystemDocEntries(entries: IndexEntry[]): void {
+  const add = (filePath: string): void => {
+    const metadata = systemDocMetadata(filePath)
+    if (!metadata) return
+    entries.push({
+      filePath,
+      options: { category: "system-doc", slug: metadata.slug, group: metadata.group },
+    })
   }
+
+  add(SYSTEM_PROMPT_PATH)
+
+  for (const filePath of walkMarkdown(DOCUMENTATION_DIR)) add(filePath)
 
   if (!existsSync(ALGORITHM_DIR)) return
 
@@ -359,17 +431,13 @@ function indexSystemDocs(): void {
       .map((entry) => join(ALGORITHM_DIR, entry.name))
       .sort((a, b) => naturalCollator.compare(a, b))
 
-    for (const filePath of algorithmFiles) {
-      indexSystemDoc(filePath)
-    }
+    for (const filePath of algorithmFiles) add(filePath)
   } catch {
     // Algorithm docs are optional when LifeOS is partially installed.
   }
 }
 
-// Knowledge Indexing
-
-function indexKnowledgeArchive(): void {
+function listKnowledgeEntries(entries: IndexEntry[]): void {
   const domainToCategory: Record<KnowledgeDomain, string> = {
     People: "person",
     Companies: "company",
@@ -393,8 +461,7 @@ function indexKnowledgeArchive(): void {
         .sort((a, b) => naturalCollator.compare(a, b))
 
       for (const filePath of files) {
-        const page = indexFile(filePath, { category: domainToCategory[domain] })
-        if (page) pageIndex.set(page.slug, page)
+        entries.push({ filePath, options: { category: domainToCategory[domain] } })
       }
     } catch {
       // Skip unreadable knowledge domains.
@@ -402,82 +469,261 @@ function indexKnowledgeArchive(): void {
   }
 }
 
-// Memory Silo Indexing (WORK ISAs, LEARNING lessons, WISDOM, RESEARCH)
-
-function relSlug(baseDir: string, filePath: string): string {
-  return stripMarkdownExtension(relative(baseDir, filePath)).replace(/[\\/]+/g, "--")
-}
-
-function indexWorkIsas(): void {
-  if (!existsSync(WORK_DIR)) return
-  let entries: Dirent[]
-  try {
-    entries = readdirSync(WORK_DIR, { withFileTypes: true })
-  } catch {
-    return
+// Memory silos beyond KNOWLEDGE/: WORK ISAs, LEARNING lessons, WISDOM, RESEARCH.
+function listMemorySiloEntries(entries: IndexEntry[]): void {
+  if (existsSync(WORK_DIR)) {
+    try {
+      for (const entry of readdirSync(WORK_DIR, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name.startsWith("_")) continue
+        entries.push({
+          filePath: join(WORK_DIR, entry.name, "ISA.md"),
+          options: { category: "isa", slug: entry.name },
+        })
+      }
+    } catch {
+      // Skip an unreadable WORK directory.
+    }
   }
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name.startsWith("_")) continue
-    const isaPath = join(WORK_DIR, entry.name, "ISA.md")
-    if (!existsSync(isaPath)) continue
-    const page = indexFile(isaPath, { category: "isa", slug: entry.name })
-    if (page) pageIndex.set(page.slug, page)
-  }
-}
 
-function indexLearning(): void {
   for (const sub of LEARNING_SUBDIRS) {
     const dir = join(LEARNING_DIR, sub)
     for (const filePath of walkMarkdown(dir)) {
-      const page = indexFile(filePath, {
-        category: "lesson",
-        slug: `${sub}--${relSlug(dir, filePath)}`,
-        group: sub.charAt(0) + sub.slice(1).toLowerCase(),
+      entries.push({
+        filePath,
+        options: {
+          category: "lesson",
+          slug: `${sub}--${relSlug(dir, filePath)}`,
+          group: sub.charAt(0) + sub.slice(1).toLowerCase(),
+        },
       })
-      if (page) pageIndex.set(page.slug, page)
     }
   }
-}
 
-function indexWisdom(): void {
   for (const sub of WISDOM_SUBDIRS) {
     const dir = join(WISDOM_DIR, sub)
     for (const filePath of walkMarkdown(dir)) {
-      const page = indexFile(filePath, {
-        category: "wisdom",
-        slug: `${sub}--${relSlug(dir, filePath)}`,
-        group: sub.charAt(0) + sub.slice(1).toLowerCase(),
+      entries.push({
+        filePath,
+        options: {
+          category: "wisdom",
+          slug: `${sub}--${relSlug(dir, filePath)}`,
+          group: sub.charAt(0) + sub.slice(1).toLowerCase(),
+        },
       })
-      if (page) pageIndex.set(page.slug, page)
     }
   }
-}
 
-function indexResearchOutputs(): void {
   for (const filePath of walkMarkdown(RESEARCH_DIR)) {
-    const page = indexFile(filePath, {
-      category: "research",
-      slug: relSlug(RESEARCH_DIR, filePath),
+    entries.push({
+      filePath,
+      options: { category: "research", slug: relSlug(RESEARCH_DIR, filePath) },
     })
-    if (page) pageIndex.set(page.slug, page)
   }
 }
 
-// Full Index Build
+function listIndexEntries(): IndexEntry[] {
+  const entries: IndexEntry[] = []
+  listSystemDocEntries(entries)
+  listKnowledgeEntries(entries)
+  listMemorySiloEntries(entries)
+  return entries
+}
 
-function buildFullIndex(): void {
-  pageIndex.clear()
+// Index Scan
+//
+// One pass over the manifest. Each file is stat'ed; a file whose mtime and size
+// match the cache reuses its cached page object, anything else is read and
+// re-indexed. Reused pages keep their object identity, which is how the
+// incremental path tells which search documents changed.
 
-  indexSystemDocs()
-  indexKnowledgeArchive()
-  indexWorkIsas()
-  indexLearning()
-  indexWisdom()
-  indexResearchOutputs()
-  rebuildBacklinks()
-  rebuildSearchIndex()
+interface CachedFile {
+  page: WikiPage
+  mtimeMs: number
+  ctimeMs: number
+  ino: number
+  size: number
+}
 
+// Keyed by file path. A path's index options are derived from the path alone,
+// so a matching stat means the cached page is still the page. mtime and size
+// alone are not enough: cp -p, rsync -t, touch -r and restores keep the mtime,
+// and a same-length rewrite keeps the size (Astra review, 2026-10-09). ctime
+// cannot be set from user space and a replaced file gets a new inode.
+let fileCache: Map<string, CachedFile> = new Map()
+let lastScanStartedAtMs = 0
+
+interface IndexScan {
+  pages: Map<string, WikiPage>
+  freshContent: Map<string, string>
+  cache: Map<string, CachedFile>
+  filesListed: number
+  filesRead: number
+}
+
+function scanIndex(reuseCache: boolean): IndexScan {
+  const pages: Map<string, WikiPage> = new Map()
+  const freshContent: Map<string, string> = new Map()
+  const cache: Map<string, CachedFile> = new Map()
+  const entries = listIndexEntries()
+  let filesRead = 0
+
+  for (const { filePath, options } of entries) {
+    let stat: Stats | undefined
+    try {
+      stat = statSync(filePath, { throwIfNoEntry: false })
+    } catch {
+      continue // Unreadable path (permissions): absent, as in a full build.
+    }
+    if (!stat) continue
+
+    const cached = reuseCache ? fileCache.get(filePath) : undefined
+    let page: WikiPage
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.ctimeMs === stat.ctimeMs && cached.ino === stat.ino && cached.size === stat.size) {
+      page = cached.page
+    } else {
+      const indexed = indexFile(filePath, options, stat.mtime)
+      filesRead++
+      if (!indexed) continue
+      page = indexed.page
+      freshContent.set(filePath, indexed.searchContent)
+    }
+
+    cache.set(filePath, { page, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, ino: stat.ino, size: stat.size })
+    pages.set(page.slug, page)
+  }
+
+  return { pages, freshContent, cache, filesListed: entries.length, filesRead }
+}
+
+// Same slugs, same order, same page objects.
+function samePages(a: Map<string, WikiPage>, b: Map<string, WikiPage>): boolean {
+  if (a.size !== b.size) return false
+  const bEntries = b.entries()
+  for (const [slug, page] of a) {
+    const next = bEntries.next()
+    if (next.done || next.value[0] !== slug || next.value[1] !== page) return false
+  }
+  return true
+}
+
+function commitScan(scan: IndexScan, startedAtMs: number, pagesChanged: boolean): void {
+  if (pagesChanged) {
+    pageIndex.clear()
+    for (const [slug, page] of scan.pages) pageIndex.set(slug, page)
+    rebuildBacklinks()
+  }
+  invariant(searchIndex !== null, "wiki search index missing after an index pass")
+  invariant(
+    searchIndex.documentCount === pageIndex.size,
+    `wiki search index holds ${searchIndex.documentCount} documents for ${pageIndex.size} pages`
+  )
+  fileCache = scan.cache
+  lastScanStartedAtMs = startedAtMs
   lastIndexedAt = new Date().toISOString()
+}
+
+// Full Index Build (boot and /api/wiki/reindex)
+
+function buildFullIndex(): IndexScan {
+  const startedAtMs = Date.now()
+  const scan = scanIndex(false)
+  const docs: SearchDocument[] = []
+  for (const page of scan.pages.values()) {
+    const content = scan.freshContent.get(page.filePath)
+    invariant(content !== undefined, `full wiki build has no search text for ${page.filePath}`)
+    docs.push(searchDocument(page, content))
+  }
+  const index = createSearchIndex()
+  index.addAll(docs)
+  searchIndex = index
+  commitScan(scan, startedAtMs, true)
+  return scan
+}
+
+// Incremental Reconcile (file watcher and safety tick)
+//
+// A full build re-reads all ~20K pages and builds a second MiniSearch index
+// beside the live one: ~1 GB of heap per run, which the allocator keeps mapped,
+// so every markdown write ratcheted Pulse's RSS. Reconcile stats every file and
+// reads only the ones that changed, then patches the live search index in
+// place. The result matches a full build page for page.
+
+export interface ReconcileResult {
+  filesListed: number
+  filesRead: number
+  added: number
+  replaced: number
+  removed: number
+  ms: number
+  // Settles when the search index has dropped every posting left by a replaced
+  // or removed page. Until then a term's document frequency still counts the
+  // stale postings, so scores drift slightly from a full build's.
+  searchCompaction: Promise<void>
+}
+
+// MiniSearch's replace and discard hide the old document at once but leave its
+// postings in place; the vacuum walks the term index in small batches between
+// event-loop turns, so search scoring returns to exactly a full build's.
+function compactSearchIndex(index: MiniSearch<SearchDocument>): Promise<void> {
+  if (index.dirtCount === 0) return Promise.resolve()
+  return index.vacuum({ batchSize: 1000, batchWait: 10 }).catch((err: unknown) => {
+    console.warn(`[wiki] search index vacuum failed (results stay correct, scores drift until the next full build): ${String(err)}`)
+  })
+}
+
+export function reconcileIndex(): ReconcileResult {
+  const startedAtMs = Date.now()
+  if (!searchIndex) {
+    const scan = buildFullIndex()
+    return {
+      filesListed: scan.filesListed,
+      filesRead: scan.filesRead,
+      added: pageIndex.size,
+      replaced: 0,
+      removed: 0,
+      ms: Date.now() - startedAtMs,
+      searchCompaction: Promise.resolve(),
+    }
+  }
+
+  const scan = scanIndex(true)
+  const index = searchIndex
+
+  const gone: string[] = []
+  for (const slug of pageIndex.keys()) {
+    if (!scan.pages.has(slug)) gone.push(slug)
+  }
+  if (gone.length > 0) index.discardAll(gone)
+
+  let added = 0
+  let replaced = 0
+  for (const [slug, page] of scan.pages) {
+    const previous = pageIndex.get(slug)
+    if (previous === page) continue
+    // A slug can change hands to a file that was not re-read this pass (the
+    // file that used to win a slug collision was deleted); read it here.
+    const content = scan.freshContent.get(page.filePath) ?? readSearchContent(page.filePath)
+    const doc = searchDocument(page, content)
+    if (previous) {
+      index.replace(doc)
+      replaced++
+    } else {
+      index.add(doc)
+      added++
+    }
+  }
+
+  commitScan(scan, startedAtMs, !samePages(pageIndex, scan.pages))
+
+  return {
+    filesListed: scan.filesListed,
+    filesRead: scan.filesRead,
+    added,
+    replaced,
+    removed: gone.length,
+    ms: Date.now() - startedAtMs,
+    searchCompaction: compactSearchIndex(index),
+  }
 }
 
 // Backlink Computation
@@ -502,8 +748,21 @@ function rebuildBacklinks(): void {
 
 // Search Index
 
-function rebuildSearchIndex(): void {
-  searchIndex = new MiniSearch({
+interface SearchDocument {
+  id: string
+  title: string
+  content: string
+  tagsText: string
+  category: string
+  slug: string
+  author?: string
+  source?: string
+  sourceUrl?: string
+  postDate?: string
+}
+
+function createSearchIndex(): MiniSearch<SearchDocument> {
+  return new MiniSearch<SearchDocument>({
     fields: ["title", "content", "tagsText", "author"],
     storeFields: ["title", "category", "slug", "author", "source", "sourceUrl", "postDate"],
     searchOptions: {
@@ -512,54 +771,27 @@ function rebuildSearchIndex(): void {
       prefix: true,
     },
   })
+}
 
-  const docs: Array<{
-    id: string
-    title: string
-    content: string
-    tagsText: string
-    category: string
-    slug: string
-    author?: string
-    source?: string
-    sourceUrl?: string
-    postDate?: string
-  }> = []
-
-  for (const [slug, page] of pageIndex) {
-    let content = ""
-
-    try {
-      content = stripFrontmatter(readFileSync(page.filePath, "utf-8")).slice(
-        0,
-        5000
-      )
-    } catch {
-      content = ""
-    }
-
-    docs.push({
-      id: slug,
-      title: page.title,
-      content,
-      tagsText: page.tags.join(" "),
-      category: page.category,
-      slug,
-      author: page.author,
-      source: page.source,
-      sourceUrl: page.sourceUrl,
-      postDate: page.postDate,
-    })
+function searchDocument(page: WikiPage, content: string): SearchDocument {
+  return {
+    id: page.slug,
+    title: page.title,
+    content,
+    tagsText: page.tags.join(" "),
+    category: page.category,
+    slug: page.slug,
+    author: page.author,
+    source: page.source,
+    sourceUrl: page.sourceUrl,
+    postDate: page.postDate,
   }
-
-  searchIndex.addAll(docs)
 }
 
 // File Watcher
 
 let watchers: ReturnType<typeof watch>[] = []
 let reindexTimer: ReturnType<typeof setTimeout> | null = null
-const pendingPaths: Set<string> = new Set()
 
 function startWatchers(): void {
   stopWatchers()
@@ -585,9 +817,7 @@ function startWatchers(): void {
       const watcher = watch(watchPath, { recursive }, (_event, filename) => {
         if (!filename) return
         const filenameText = String(filename)
-        if (filenameText.endsWith(".md")) {
-          scheduleReindex(join(watchPath, filenameText))
-        }
+        if (filenameText.endsWith(".md")) scheduleReindex()
       })
 
       // A recursive watch that meets a broken symlink or ELOOP under the tree
@@ -622,9 +852,9 @@ const SAFETY_INTERVAL_MS = 60_000
 
 // Safety net for the recursive fs.watch above, which silently misses events on
 // macOS and leaves a freshly written KNOWLEDGE note absent from the in-memory
-// index until a full restart. This cheap tick rebuilds ONLY when a KNOWLEDGE
-// .md file is newer than the last index, so a missed watcher event self-heals
-// within a minute at near-zero idle cost.
+// index until a full restart. This cheap tick reconciles ONLY when a KNOWLEDGE
+// .md file is newer than the start of the last index pass, so a missed watcher
+// event self-heals within a minute at near-zero idle cost.
 function knowledgeMaxMtimeMs(): number {
   let max = 0
   for (const domain of KNOWLEDGE_DOMAINS) {
@@ -646,11 +876,27 @@ function knowledgeMaxMtimeMs(): number {
   return max
 }
 
+// Timer entry point. A throw from a timer callback would end the Pulse process, and a
+// patch that failed halfway leaves the search index ahead of pageIndex, so every later
+// pass would throw too. On any failure, log it loudly and rebuild both indexes from
+// scratch, which restores a consistent state (Astra review, 2026-10-09).
+function reconcileFromTimer(): void {
+  try {
+    reconcileIndex()
+  } catch (err) {
+    console.error(`[wiki] incremental reconcile failed, running a full rebuild: ${String(err)}`)
+    try {
+      buildFullIndex()
+    } catch (fullErr) {
+      console.error(`[wiki] full rebuild after a failed reconcile also failed: ${String(fullErr)}`)
+    }
+  }
+}
+
 function startSafetyRebuild(): void {
   stopSafetyRebuild()
   safetyTimer = setInterval(() => {
-    const indexedAtMs = lastIndexedAt ? Date.parse(lastIndexedAt) : 0
-    if (knowledgeMaxMtimeMs() > indexedAtMs) buildFullIndex()
+    if (knowledgeMaxMtimeMs() > lastScanStartedAtMs) reconcileFromTimer()
   }, SAFETY_INTERVAL_MS)
 }
 
@@ -661,14 +907,26 @@ function stopSafetyRebuild(): void {
   }
 }
 
-function scheduleReindex(filePath: string): void {
-  pendingPaths.add(filePath)
-  if (reindexTimer) clearTimeout(reindexTimer)
+// The changed path is not trusted to be the only change (macOS drops watch
+// events), so the debounced pass reconciles every indexed file by mtime.
+// Continuous writes would keep resetting a plain debounce and postpone the pass forever,
+// so a burst waits at most RECONCILE_MAX_WAIT_MS after its first event.
+const RECONCILE_MAX_WAIT_MS = 5000
+let firstPendingEventAt = 0
 
+function scheduleReindex(): void {
+  const now = Date.now()
+  if (reindexTimer) {
+    if (now - firstPendingEventAt >= RECONCILE_MAX_WAIT_MS) return // let the pending pass fire
+    clearTimeout(reindexTimer)
+  } else {
+    firstPendingEventAt = now
+  }
+  const delay = Math.min(500, Math.max(0, firstPendingEventAt + RECONCILE_MAX_WAIT_MS - now))
   reindexTimer = setTimeout(() => {
-    pendingPaths.clear()
-    buildFullIndex()
-  }, 500)
+    reindexTimer = null
+    reconcileFromTimer()
+  }, delay)
 }
 
 // Tree Builder
@@ -822,6 +1080,7 @@ function handleIndex(): Response {
 }
 
 function handleDoc(slug: string): Response {
+  if (!containedPath(LIFEOS_DIR, slug)) return notFound(`Wiki page "${slug}" not found`)
   const page = pageIndex.get(slug)
   if (!page) {
     return notFound(`Wiki page "${slug}" not found`)
@@ -851,6 +1110,8 @@ function handleDoc(slug: string): Response {
       lastModified: page.lastModified,
       tags: page.tags,
       quality: page.quality,
+      qualityInferred: page.qualityInferred,
+      rating: page.rating,
       type: page.category,
       author: page.author,
       source: page.source,
@@ -876,6 +1137,9 @@ function handleDoc(slug: string): Response {
 }
 
 function handleKnowledgeNote(domain: string, slug: string): Response {
+  if (!containedPath(KNOWLEDGE_DIR, domain, slug)) {
+    return notFound(`Knowledge note "${domain}/${slug}" not found`)
+  }
   const validDomains: Record<string, string> = {
     people: "person",
     companies: "company",
@@ -921,6 +1185,8 @@ function handleKnowledgeNote(domain: string, slug: string): Response {
     lastModified: page.lastModified,
     tags: page.tags,
     quality: page.quality,
+    qualityInferred: page.qualityInferred,
+    rating: page.rating,
     type: page.category,
     author: page.author,
     source: page.source,
@@ -966,7 +1232,16 @@ function handleSearch(query: string, limit = 20): Response {
     return jsonResponse({ results: [] })
   }
 
-  const results = searchIndex.search(query).slice(0, Math.max(1, Math.min(200, limit)))
+  // Equal scores tie-break by slug. MiniSearch returns ties in posting order,
+  // which depends on the order pages were added, so without this a reconciled
+  // index and a fresh full build could rank the same tie differently. Scores
+  // compare at 9 significant digits: an incrementally maintained index can
+  // differ from a full build in the last float bits of a field-length average.
+  const rankScore = (score: number): number => Number(score.toPrecision(9))
+  const results = searchIndex
+    .search(query)
+    .sort((a, b) => rankScore(b.score) - rankScore(a.score) || naturalCollator.compare(String(a.id), String(b.id)))
+    .slice(0, Math.max(1, Math.min(200, limit)))
 
   return jsonResponse({
     results: results.map((result) => {
@@ -987,6 +1262,7 @@ function handleSearch(query: string, limit = 20): Response {
 }
 
 function handleBacklinks(slug: string): Response {
+  if (!containedPath(LIFEOS_DIR, slug)) return notFound(`Wiki page "${slug}" not found`)
   return jsonResponse({ backlinks: backlinkIndex.get(slug) ?? [] })
 }
 
@@ -1043,6 +1319,10 @@ export function startWiki(): void {
 export function stopWiki(): void {
   stopWatchers()
   stopSafetyRebuild()
+  if (reindexTimer) {
+    clearTimeout(reindexTimer)
+    reindexTimer = null
+  }
 }
 
 export function wikiHealth(): Record<string, unknown> {
@@ -1062,7 +1342,7 @@ interface SkillMeta {
   dir: string
   description: string
   effort: string
-  hasWorkflows: boolean
+  hasIntents: boolean
   lastModified: string
 }
 
@@ -1086,7 +1366,7 @@ function handleSkillsList(): Response {
         dir: name,
         description: String(fm.description || ""),
         effort: String(fm.effort || "standard"),
-        hasWorkflows: existsSync(join(skillDir, "Workflows")),
+        hasIntents: existsSync(join(skillDir, "Intents")),
         lastModified: statSync(skillMd).mtime.toISOString(),
       })
     } catch {
@@ -1099,8 +1379,8 @@ function handleSkillsList(): Response {
 }
 
 function handleSkillDetail(name: string): Response {
-  const skillMd = join(SKILLS_DIR, name, "SKILL.md")
-  if (!existsSync(skillMd)) {
+  const skillMd = containedPath(SKILLS_DIR, name, "SKILL.md")
+  if (!skillMd || !existsSync(skillMd)) {
     return Response.json({ error: "Skill not found" }, { status: 404 })
   }
 
@@ -1120,8 +1400,8 @@ function handleSkillDetail(name: string): Response {
 }
 
 async function handleSkillUpdate(name: string, req: Request): Promise<Response> {
-  const skillMd = join(SKILLS_DIR, name, "SKILL.md")
-  if (!existsSync(skillMd)) {
+  const skillMd = containedPath(SKILLS_DIR, name, "SKILL.md")
+  if (!skillMd || !existsSync(skillMd)) {
     return Response.json({ error: "Skill not found" }, { status: 404 })
   }
 
@@ -1182,10 +1462,10 @@ function handleHooksList(): Response {
 }
 
 function handleHookDetail(name: string): Response {
-  let hookPath = join(HOOKS_DIR, name)
-  if (!existsSync(hookPath)) hookPath = join(HOOKS_DIR, `${name}.hook.ts`)
+  let hookPath = containedPath(HOOKS_DIR, name)
+  if (!hookPath || !existsSync(hookPath)) hookPath = containedPath(HOOKS_DIR, `${name}.hook.ts`)
 
-  if (!existsSync(hookPath)) {
+  if (!hookPath || !existsSync(hookPath)) {
     return Response.json({ error: "Hook not found" }, { status: 404 })
   }
 
@@ -1201,9 +1481,9 @@ function handleHookDetail(name: string): Response {
   })
 }
 
-// Arbol Handlers
+// Workflows Handlers
 
-interface ArbolWorker {
+interface CloudWorker {
   name: string
   type: "action" | "pipeline" | "flow"
   cfName: string | null
@@ -1216,9 +1496,9 @@ function getWorkerType(name: string): "action" | "pipeline" | "flow" {
   return "flow"
 }
 
-function handleArbolList(): Response {
-  const workers: ArbolWorker[] = []
-  if (!existsSync(ARBOL_WORKERS_DIR)) {
+function handleWorkerList(): Response {
+  const workers: CloudWorker[] = []
+  if (!existsSync(WORKERS_DIR)) {
     return Response.json({
       workers: [],
       total: 0,
@@ -1228,18 +1508,18 @@ function handleArbolList(): Response {
     })
   }
 
-  for (const name of readdirSync(ARBOL_WORKERS_DIR).sort(naturalCollator.compare)) {
-    const workerDir = join(ARBOL_WORKERS_DIR, name)
+  for (const name of readdirSync(WORKERS_DIR).sort(naturalCollator.compare)) {
+    const workerDir = join(WORKERS_DIR, name)
 
     try {
       if (!statSync(workerDir).isDirectory()) continue
 
-      const wranglerPath = join(workerDir, "wrangler.jsonc")
+      const configPath = ["cloudflare.config.ts", "wrangler.jsonc"].map((f) => join(workerDir, f)).find((p) => existsSync(p))
       let cfName: string | null = null
 
-      if (existsSync(wranglerPath)) {
-        const raw = readFileSync(wranglerPath, "utf-8")
-        const nameMatch = raw.match(/"name"\s*:\s*"([^"]+)"/)
+      if (configPath) {
+        const raw = readFileSync(configPath, "utf-8")
+        const nameMatch = raw.match(/\bname\s*:\s*["']([^"']+)["']/) ?? raw.match(/"name"\s*:\s*"([^"]+)"/)
         if (nameMatch) cfName = nameMatch[1]
       }
 
@@ -1265,22 +1545,25 @@ function handleArbolList(): Response {
   })
 }
 
-function handleArbolDetail(name: string): Response {
-  const workerDir = join(ARBOL_WORKERS_DIR, name)
-  if (!existsSync(workerDir)) {
+function handleWorkerDetail(name: string): Response {
+  const workerDir = containedPath(WORKERS_DIR, name)
+  if (!workerDir || !existsSync(workerDir)) {
     return Response.json({ error: "Worker not found" }, { status: 404 })
   }
 
-  const wranglerPath = join(workerDir, "wrangler.jsonc")
-  const srcPath = join(workerDir, "src", "index.ts")
+  const wranglerPath =
+    [containedPath(WORKERS_DIR, name, "cloudflare.config.ts"), containedPath(WORKERS_DIR, name, "wrangler.jsonc")].find(
+      (p): p is string => !!p && existsSync(p),
+    ) ?? null
+  const srcPath = containedPath(WORKERS_DIR, name, "src", "index.ts")
 
   let wranglerContent: string | null = null
   let srcContent: string | null = null
 
-  if (existsSync(wranglerPath)) {
+  if (wranglerPath && existsSync(wranglerPath)) {
     wranglerContent = readFileSync(wranglerPath, "utf-8")
   }
-  if (existsSync(srcPath)) {
+  if (srcPath && existsSync(srcPath)) {
     srcContent = readFileSync(srcPath, "utf-8")
   }
 
@@ -1334,13 +1617,13 @@ export async function handleWikiRequest(
     return handleHookDetail(decodeURIComponent(hookMatch[1]))
   }
 
-  if (pathname === "/api/wiki/arbol") {
-    return handleArbolList()
+  if (pathname === "/api/wiki/workers") {
+    return handleWorkerList()
   }
 
-  const arbolMatch = pathname.match(/^\/api\/wiki\/arbol\/(.+)$/)
-  if (arbolMatch) {
-    return handleArbolDetail(decodeURIComponent(arbolMatch[1]))
+  const workerMatch = pathname.match(/^\/api\/wiki\/workers\/(.+)$/)
+  if (workerMatch) {
+    return handleWorkerDetail(decodeURIComponent(workerMatch[1]))
   }
 
   if (pathname === "/api/wiki/search") {

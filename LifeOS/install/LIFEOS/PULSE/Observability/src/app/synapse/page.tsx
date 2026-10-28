@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ApiError, useApi } from "@/lib/api";
 import { wikiPageUrl } from "@/lib/wiki-links";
 import {
   Share2,
@@ -54,7 +55,7 @@ import {
  *
  * Holds ZERO data: everything comes from /api/synapse (the Pulse synapse module),
  * which composes the ledger worker, KNOWLEDGE scan, KV bookmark count, and
- * local _X state server-side. No secrets ever reach this bundle.
+ * local social-platform skill state server-side. No secrets ever reach this bundle.
  */
 
 interface RecentCapture {
@@ -197,6 +198,11 @@ const CONTENT_KIND_ICON: Record<string, LucideIcon> = {
 
 // routed_actions values → human labels + tint. Unknown actions prettify from snake_case.
 const ACTION_META: Record<string, { label: string; dim: Dim }> = {
+  "open_github_issue:reminder": { label: "reminder issue", dim: "relationships" },
+  upgrade_queue_entry: { label: "upgrades queue", dim: "creative" },
+  blog_seed_queue_entry: { label: "blog seed", dim: "creative" },
+  question_queue_entry: { label: "question", dim: "freedom" },
+  security_alert: { label: "security alert", dim: "warn" },
   create_knowledge_idea_entry: { label: "knowledge idea", dim: "ok" },
   create_knowledge_research_entry: { label: "knowledge research", dim: "ok" },
   create_work_issue: { label: "work issue", dim: "relationships" },
@@ -254,36 +260,15 @@ function FlowStage({ name, desc, count, dim }: { name: string; desc: string; cou
 }
 
 export default function SynapsePage() {
-  const [data, setData] = useState<SynapseData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Polls every REFRESH_MS (module cache is 60s, so this is cheap); the query pauses while the tab is hidden.
+  const synapse = useApi<SynapseData>("/api/synapse", { refetchInterval: REFRESH_MS });
+  const data = synapse.data ?? null;
+  const error = synapse.error ? (synapse.error instanceof ApiError ? `HTTP ${synapse.error.status}` : String(synapse.error.message ?? synapse.error)) : null;
+  const fetchedAt = synapse.dataUpdatedAt || null;
   const [tab, setTab] = useState<TabId>("stream");
   const [originFilter, setOriginFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<"all" | "waiting" | "routed">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-  const [, forceTick] = useState(0);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const load = useCallback(() => {
-    fetch("/api/synapse")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d) => {
-        setData(d);
-        setError(null);
-        setFetchedAt(Date.now());
-      })
-      .catch((e) => setError(String(e?.message ?? e)));
-  }, []);
-
-  // Initial load + 60s auto-refresh (module cache is 60s, so this is cheap).
-  useEffect(() => {
-    load();
-    timer.current = setInterval(() => {
-      load();
-      forceTick((n) => n + 1); // re-render ages even if payload is cache-identical
-    }, REFRESH_MS);
-    return () => { if (timer.current) clearInterval(timer.current); };
-  }, [load]);
 
   // Hash deep-links: /synapse#stats, /synapse#system. Read once on mount.
   useEffect(() => {
@@ -529,16 +514,17 @@ export default function SynapsePage() {
                       </div>
                     </div>
 
-                    {/* note promotion */}
+                    {/* the Cortex note this capture produced — the primary affordance, always visible */}
                     {it.note && (
                       <a
                         href={wikiPageUrl(encodeURIComponent(it.note.category), encodeURIComponent(it.note.slug))}
-                        className="shrink-0 hidden sm:flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded transition-opacity hover:opacity-80"
+                        className="shrink-0 flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md font-medium transition-opacity hover:opacity-80"
                         style={dimStyle("ok", true)}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Library className="w-3 h-3" />
-                        note
+                        <Library className="w-3.5 h-3.5" />
+                        Cortex
+                        <ArrowRight className="w-3 h-3" />
                       </a>
                     )}
 
@@ -629,7 +615,7 @@ export default function SynapsePage() {
           </Panel>
           <p className="text-[12px] text-ink-3">
             Merged live from three feeds: ledger captures (last 50), Knowledge Archive notes (30d), and X-bookmark work
-            issues (30d). Paths without per-item records (browser hotkey → sheet) can&apos;t appear here — see System for why.
+            issues (30d). Every summarize path — hotkey, reader save, bookmark cron — writes the ledger, so all captures appear here.
           </p>
         </>
       )}
@@ -673,7 +659,7 @@ export default function SynapsePage() {
               label="To spreadsheet"
               value={nf((B?.cloud_parsed ?? 0) + (L?.by_source?.["surface"] ?? 0))}
               dim="freedom"
-              sub="observed 90d: bookmark cron + Surface saves (hotkey path un-instrumented)"
+              sub="observed 90d: bookmark cron + reader saves (hotkey path un-instrumented)"
             />
             <StatTile
               icon={Bookmark}
@@ -776,7 +762,7 @@ export default function SynapsePage() {
             <div className="flex flex-wrap items-stretch gap-2 mb-3">
               <FlowStage
                 name="Capture"
-                desc="8 live inputs, 3 roadmap — hotkey, bookmarks, harvest, voice, feed, Surface, CLI"
+                desc="8 live inputs, 3 roadmap — hotkey, bookmarks, harvest, voice, feed, the reader, CLI"
                 count={`${data.inputs.filter((i) => i.status === "live").length} live inputs`}
                 dim="freedom"
               />
@@ -848,8 +834,9 @@ export default function SynapsePage() {
               </table>
             </Panel>
             <p className="text-[12px] text-ink-3">
-              &ldquo;Ledger rows&rdquo; counts captures whose <span className="mono">source</span> tag maps to that input — inputs still
-              dead-ending in the spreadsheet (hotkey, cloud bookmark cron) show &ldquo;—&rdquo; until Phase 3 wires them to the capture contract.
+              &ldquo;Ledger rows&rdquo; counts captures whose <span className="mono">source</span> tag maps to that input. Every summarize
+              path writes the ledger; hotkey and reader saves currently share the <span className="mono">surface</span> tag, so the
+              hotkey row shows &ldquo;—&rdquo; only because its captures are counted there.
             </p>
           </div>
 
@@ -859,7 +846,7 @@ export default function SynapsePage() {
             <Panel className="text-[13px] leading-relaxed text-ink-2 space-y-1.5 max-w-3xl">
               <div className="flex gap-2"><FileText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-dim-money" /><span><span className="text-ink-1">Ledger worker</span> — <span className="mono">/stats</span> and <span className="mono">/captures</span> on the D1-backed amber-ledger worker, bearer-authed server-side.</span></div>
               <div className="flex gap-2"><FileText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-ok" /><span><span className="text-ink-1">Knowledge Archive</span> — a frontmatter scan of <span className="mono">MEMORY/KNOWLEDGE</span> note files (<span className="mono">created:</span>, <span className="mono">source_amber_id:</span>).</span></div>
-              <div className="flex gap-2"><FileText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-dim-relationships" /><span><span className="text-ink-1">X bookmarks</span> — SEEN_BOOKMARKS KV key count via the Cloudflare API, plus local <span className="mono">_X</span> state files for the <span className="mono">tb</span> sweep and issue creation.</span></div>
+              <div className="flex gap-2"><FileText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-dim-relationships" /><span><span className="text-ink-1">X bookmarks</span> — SEEN_BOOKMARKS KV key count via the Cloudflare API, plus local <span className="mono">social-platform</span> state files for the <span className="mono">tb</span> sweep and issue creation.</span></div>
               <div className="pt-1">
                 Everything is composed server-side by the Pulse <span className="mono">synapse</span> module (60s cache); no
                 secrets reach the browser. Every number is a live probe of what actually ran — un-instrumented paths are

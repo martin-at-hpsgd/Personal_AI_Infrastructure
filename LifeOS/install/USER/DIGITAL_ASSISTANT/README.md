@@ -31,8 +31,8 @@ bun ~/.claude/LIFEOS/TOOLS/DAInterview.ts --depth deep     # Every phase
 The interview asks for:
 
 - **Name** — what you call your DA (and what they call themselves).
-- **Voice** — the ElevenLabs voice ID. Pick from the public library or
-  use a custom voice if you have one trained.
+- **Voice** — the Fish Audio voice model id (`fish_reference_id`). Use a
+  voice from the Fish library or a clone you trained there.
 - **Personality traits** — twelve sliders (enthusiasm, warmth, precision,
   etc.) that shape how the DA writes and speaks.
 - **Catchphrase** — the phrase the DA says at session start.

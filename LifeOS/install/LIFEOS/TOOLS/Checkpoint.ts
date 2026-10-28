@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.7
  * Checkpoint.ts — inspection and PREVIEW-ONLY rollback CLI for ISC checkpoints
  *
  * Subcommands:
@@ -8,7 +9,7 @@
  *   rollback <slug> <isc-id>   — PREVIEW: print the git reset --hard <sha> command per repo
  *
  * Rollback is preview-only by design (per feedback_no_worktree_isolation_without_consent).
- * {{PRINCIPAL_NAME}} runs the destructive op himself if he wants the rollback.
+ * The principal runs the destructive op himself if he wants the rollback.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -16,13 +17,14 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { parseCriteriaList } from '../../hooks/lib/isa-utils';
+import { getClaudeDir, lifeosPath } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Allowlist path: top of ~/.claude per spec. We only READ it (never write),
 // so the ContainmentGuard write restriction does not apply. Parser must match
 // the hook's parser exactly: skip blanks and '#' lines, expand tilde / $HOME
 // prefixes, treat the rest as absolute repo paths.
-const ALLOWLIST_PATH = join(homedir(), '.claude', 'checkpoint-repos.txt');
-const WORK_DIR = join(homedir(), '.claude', 'LIFEOS', 'MEMORY', 'WORK');
+const ALLOWLIST_PATH = join(getClaudeDir(), 'checkpoint-repos.txt');
+const WORK_DIR = lifeosPath('MEMORY', 'WORK');
 
 function expandPath(p: string): string {
   let s = p.trim();

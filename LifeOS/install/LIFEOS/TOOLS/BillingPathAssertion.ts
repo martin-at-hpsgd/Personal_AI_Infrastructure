@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.3
  * BillingPathAssertion — verify which credential path a `claude -p` run actually used.
  *
  * Anthropic's stream-json event feed exposes two forensic signals that prove,
@@ -14,7 +15,7 @@
  *       "five_hour"          -> Pro/Max 5-hour rolling window  (subscription)
  *       (no event emitted)   -> API key  (RPM/TPM tiers, never emits five_hour)
  *
- * An early-2026 billing incident happened because LifeOS lacked a check like this:
+ * An April 2026 billing incident happened because LifeOS lacked a check like this:
  * Pulse heartbeats believed they were billing OAuth while ANTHROPIC_API_KEY in
  * env silently won. This tool catches that class of leak at the FIRST run.
  *
@@ -52,6 +53,10 @@ export interface BillingSignals {
   detected: BillingPath | null;
   /** Number of newline-delimited JSON events parsed from input. */
   eventCount: number;
+  /** Non-empty lines that were not a JSON object. Any at all makes the trace incomplete, so it never passes. */
+  malformedLines: number;
+  /** Distinct apiKeySource values seen across init events; more than one is a conflicting trace. */
+  apiKeySources: string[];
 }
 
 const OAUTH_API_KEY_SOURCE = "none";
@@ -66,6 +71,8 @@ export function parseStreamJson(stdout: string): BillingSignals {
   let apiKeySource: string | null = null;
   let rateLimitType: string | null = null;
   let eventCount = 0;
+  let malformedLines = 0;
+  const sources = new Set<string>();
 
   for (const line of stdout.split("\n")) {
     const trimmed = line.trim();
@@ -75,6 +82,11 @@ export function parseStreamJson(stdout: string): BillingSignals {
     try {
       event = JSON.parse(trimmed);
     } catch {
+      malformedLines++;
+      continue;
+    }
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      malformedLines++;
       continue;
     }
     eventCount++;
@@ -82,6 +94,7 @@ export function parseStreamJson(stdout: string): BillingSignals {
     if (event?.type === "system" && event?.subtype === "init") {
       if (typeof event.apiKeySource === "string") {
         apiKeySource = event.apiKeySource;
+        sources.add(event.apiKeySource);
       }
     } else if (event?.type === "rate_limit_event") {
       const info = event.rate_limit_info ?? {};
@@ -92,7 +105,10 @@ export function parseStreamJson(stdout: string): BillingSignals {
   }
 
   let detected: BillingPath | null = null;
-  if (apiKeySource === OAUTH_API_KEY_SOURCE) {
+  // A trace with unparseable lines or conflicting init sources is incomplete: it detects nothing.
+  if (malformedLines > 0 || sources.size > 1) {
+    detected = null;
+  } else if (apiKeySource === OAUTH_API_KEY_SOURCE) {
     detected = "oauth";
   } else if (apiKeySource === API_KEY_API_KEY_SOURCE) {
     detected = "api";
@@ -100,7 +116,18 @@ export function parseStreamJson(stdout: string): BillingSignals {
     detected = "oauth";
   }
 
-  return { apiKeySource, rateLimitType, detected, eventCount };
+  return { apiKeySource, rateLimitType, detected, eventCount, malformedLines, apiKeySources: [...sources] };
+}
+
+/** The trace itself cannot be trusted: malformed lines, no events, or conflicting init sources. */
+export class BillingTraceIncompleteError extends Error {
+  constructor(public signals: BillingSignals) {
+    super(
+      `Billing trace is incomplete or malformed (events=${signals.eventCount}, malformedLines=${signals.malformedLines}, ` +
+        `apiKeySources=${JSON.stringify(signals.apiKeySources)})`
+    );
+    this.name = "BillingTraceIncompleteError";
+  }
 }
 
 export class BillingPathMismatchError extends Error {
@@ -121,6 +148,9 @@ export function assertBillingPath(
   signals: BillingSignals,
   expected: BillingPath
 ): void {
+  if (signals.malformedLines > 0 || signals.eventCount === 0 || signals.apiKeySources.length > 1) {
+    throw new BillingTraceIncompleteError(signals);
+  }
   if (signals.detected !== expected) {
     throw new BillingPathMismatchError(expected, signals);
   }
@@ -186,6 +216,7 @@ if (import.meta.main) {
     `parsed ${signals.eventCount} events: ` +
       `apiKeySource=${JSON.stringify(signals.apiKeySource)}, ` +
       `rateLimitType=${JSON.stringify(signals.rateLimitType)}, ` +
+      `malformedLines=${signals.malformedLines}, ` +
       `detected=${signals.detected ?? "unknown"}\n`
   );
 
@@ -197,6 +228,10 @@ if (import.meta.main) {
     if (err instanceof BillingPathMismatchError) {
       process.stderr.write(`MISMATCH — ${err.message}\n`);
       process.exit(1);
+    }
+    if (err instanceof BillingTraceIncompleteError) {
+      process.stderr.write(`UNPARSEABLE — ${err.message}\n`);
+      process.exit(2);
     }
     throw err;
   }

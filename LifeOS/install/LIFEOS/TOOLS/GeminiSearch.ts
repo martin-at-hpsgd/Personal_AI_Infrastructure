@@ -18,13 +18,13 @@
  *
  * Usage:
  *   bun ~/.claude/LIFEOS/TOOLS/GeminiSearch.ts "<query>"
- *   bun ~/.claude/LIFEOS/TOOLS/GeminiSearch.ts --model gemini-3.6-flash "<query>"
+ *   bun ~/.claude/LIFEOS/TOOLS/GeminiSearch.ts --model <model-id> "<query>"
  *   bun ~/.claude/LIFEOS/TOOLS/GeminiSearch.ts --no-search "<query>"
  *   bun ~/.claude/LIFEOS/TOOLS/GeminiSearch.ts --json "<query>"
  *
  * Options:
  *   --model <id>       Gemini model id (default: CROSS_VENDOR.geminiResearcher)
- *   --pro              Use the top Gemini reasoning model (CROSS_VENDOR.gemini) — the Gemini agent's lane
+ *   --pro              Use Gemini 4 Argon (CROSS_VENDOR.argon) — the Argon agent's lane
  *   --no-search        Disable Google Search grounding (pure model answer)
  *   --system <prompt>  Prepend a system instruction
  *   --max-tokens <n>   Cap output tokens (default: 2048)
@@ -37,13 +37,14 @@
  * Exit codes: 0 ok, 1 error (missing key, API failure, empty response)
  *
  * @author LifeOS System
- * @version 1.1.0
+ * @version 1.1.3
  */
 
 import { readFileSync } from 'fs'
-import { homedir } from 'os'
 import { join } from 'path'
 import { CROSS_VENDOR } from './models'
+import { recordModelUse } from "./lib/ModelUse";
+import { getClaudeDir } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const colors = {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
@@ -56,7 +57,7 @@ const USAGE = `Usage: bun ~/.claude/LIFEOS/TOOLS/GeminiSearch.ts [options] "<que
 
 Options:
   --model <id>       Gemini model id (default: ${CROSS_VENDOR.geminiResearcher})
-  --pro              Use the general-agent pin (${CROSS_VENDOR.gemini})
+  --pro              Use the Argon agent pin (${CROSS_VENDOR.argon})
   --no-search        Disable Google Search grounding
   --system <prompt>  Prepend a system instruction
   --max-tokens <n>   Cap output tokens (default: 2048)
@@ -65,7 +66,7 @@ Options:
 
 /** Canonical .env is ~/.claude/.env — never $LIFEOS_CONFIG_DIR/.env. */
 function loadEnv(): Record<string, string> {
-  const envPath = join(homedir(), '.claude', '.env')
+  const envPath = join(getClaudeDir(), '.env')
   const env: Record<string, string> = {}
   try {
     for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
@@ -95,7 +96,7 @@ function parseArgs(argv: string[]): { opts: Opts; query: string } {
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case '--model': opts.model = argv[++i] ?? opts.model; break
-      case '--pro': opts.model = CROSS_VENDOR.gemini; break  // general-agent pin (Gemini agent)
+      case '--pro': opts.model = CROSS_VENDOR.argon; break  // Argon agent pin
       case '--no-search': opts.search = false; break
       case '--system': opts.system = argv[++i]; break
       case '--max-tokens': opts.maxTokens = Number(argv[++i]) || opts.maxTokens; break
@@ -120,12 +121,12 @@ async function gemini(query: string, opts: Opts): Promise<Parsed> {
   if (opts.system) body.systemInstruction = { parts: [{ text: opts.system }] }
 
   // Key rides the x-goog-api-key header, never the URL (URLs leak to logs,
-  // history, and referrers — OPERATIONAL_RULES; fixed 2026-08-12).
+  // history, and referrers — OPERATIONAL_PREFERENCES; fixed 2026-08-12).
   const res = await fetch(`${API_BASE}/${opts.model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(Number(process.env.GEMINI_TIMEOUT_MS ?? 120_000)), // GEMINI_TIMEOUT_MS: long reasoning calls (HillClimb proposer briefs) run past two minutes
   })
 
   const data = await res.json() as any
@@ -133,6 +134,7 @@ async function gemini(query: string, opts: Opts): Promise<Parsed> {
     throw new Error(data.error?.message || `HTTP ${res.status}`)
   }
 
+  recordModelUse(data.modelVersion ?? opts.model, Number(data.usageMetadata?.candidatesTokenCount ?? 0))
   const cand = data.candidates?.[0]
   const text = (cand?.content?.parts ?? [])
     .map((p: any) => p.text ?? '')

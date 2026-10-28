@@ -1,0 +1,3432 @@
+{
+  "_note": "Paths REMOVED from LifeOS upstream. OverlaySystem.ts reads this on every update and MOVES each matching path in the install tree into <configRoot>/.retired-<timestamp>/ — never deletes it. Without this list the overlay can only add and refresh, so a hook, tool or skill LifeOS removed lives on the user's disk forever, still firing and still resolving.",
+  "_entry_shape": "{ \"path\": \"<configRoot-relative path>\", \"retired\": \"YYYY-MM-DD\", \"note\": \"why it went away\" }",
+  "_rules": [
+    "path must be a strict descendant of an overlay-owned root: hooks/, skills/, agents/, commands/, or LIFEOS/{TOOLS,DOCUMENTATION,ALGORITHM,RULES,PULSE,ATLAS,HERMES,USER_TEMPLATES,ROUTER,ASSAY,ERRATA,SOCRATES,VERA,PEOPLE,RELAY,CODEX,PI,AS3,GAUNTLET,MAESTRO,WORKFLOWS,DICTATION,LOCATION,REVIEW,SETUP,EVIDENCE,IDEALSTATE,STATUSLINE}/",
+    "bare roots, CLAUDE.md, LIFEOS/LIFEOS_SYSTEM_PROMPT.md, settings*.json, .env*, USER, and LIFEOS/USER or LIFEOS/MEMORY are refused",
+    "path is relative, never absolute and never containing a dot segment or backslash",
+    "an already-absent path is a no-op; present paths are moved into .retired-* and never deleted"
+  ],
+  "retirements": [
+    {
+      "path": "agents/ClaudeResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "agents/CodexResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "agents/Forge.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "agents/ForgeContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "agents/GeminiResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "agents/GrokResearcher.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "agents/GrokResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "agents/Max.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "agents/PerplexityResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "commands/grill-me.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "commands/pu.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/ArtWorkflowGuard.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/ComplexityRatchet.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "hooks/ConfigAudit.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/ConfigEvalFire.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "hooks/EffortRouter.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/IdentityToSettingsSync.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/InstructionsLoadedHandler.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/ISACloseGate.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "hooks/lib/ai-speak-patterns.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/lib/effort.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/lib/isa-template.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/MemoryReviewTrigger.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/ModelRungGuard.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "hooks/OutputFormatGate.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/QuestionAnswered.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/RelationshipMemory.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/ReminderRouter.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "hooks/ResponseTabReset.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/SetQuestionTab.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/SettingsBackport.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/SkillExecutionLog.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/SkillSurface.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/SkillVoiceNotify.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/SpendAuditor.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "hooks/StopFailureHandler.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/SuccessClaimGate.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/TaskGovernance.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "hooks/TelosSummarySync.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/TheRouter.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/ToolActivityTracker.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/ToolFailureTracker.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "hooks/WritingGate.hook.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/capabilities.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/changelog.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/mode-detection.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/modes/ideate.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/modes/iterate.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/modes/loop.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/modes/native.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/modes/optimize.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/modes/README.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/parameter-schema.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/target-types.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v6.19.0.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v6.20.0.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v6.21.0.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v6.22.0.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v6.23.0.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v6.24.0.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v8.17.3.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v8.20.2.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v8.29.3.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the 8.0.0 runtime; retire the stale prior-release Algorithm snapshot."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v8.3.0.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/ALGORITHM/v8.4.0.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Amber/AmberSystem.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/LifeOs/RenameMap.json",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Security/NpmRapidResponse.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Terminal/kitty/deck.conf",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Terminal/kitty/deck/DeckBar.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Terminal/kitty/sessions/example.kitty-session",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Terminal/kitty/tab_refit_watcher.py",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PI/README.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the 8.0.0 runtime; retire the obsolete PI documentation path."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/context-compression.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/conversation.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/imessage-send.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/messages-db.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/sanitize.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/session-store.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/telegram-proposals.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/telegram-sessions.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/modules/amber.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/modules/imessage.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/modules/telegram.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/build-1785625581824/_buildManifest.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/build-1785625581824/_ssgManifest.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/build-1786741866628",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/1511.3988ec434daa7d5c.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/1511.f1584f17d5c1ed94.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/1848-cd9c501f3d0fff7b.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/1876-17294df6b8dc0d38.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/1876-c1dcbed098efd1a6.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/3265-b729fd9d9454c4ef.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/3328-3825ee4a997297cf.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/369-828a5d6e06cf28e5.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/4613-b1a664dbcd9964a2.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/462-217040589b6576f6.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/4676-5d7764770185030f.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/5751-f7a7ae1f3e1688c2.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/5896-ef5335dac1990081.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/6385-692e8afcff79effe.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/6513-38aa68daa1d06adf.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/6513-3cbdf328f129803e.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/6929-81184b76985fb3ad.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/7871.8607fe8cc4fee6d8.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/7871.aea3f8a59c958302.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/8103-a7e345061d037609.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/8331-f4291205780661cc.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/8938-bb2c667515739d2a.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/9050-0436e7fea717d76a.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/9495-17294df6b8dc0d38.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/9639-932abd543d9139b6.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/_not-found/page-57a10662637540bc.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/_not-found/page-867b9e6178c8375a.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/agents/page-2fdfe45df18365ff.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/agents/page-7ca8c88ce26e797b.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/air/page-32cbf89ac29d7756.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/air/page-e8a543c8c171e0e5.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/algorithm/page-1dcdfefdd3ebc5a1.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/algorithm/page-2c5978a363082df2.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/arbol/page-526a48954a2b9754.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/arbol/page-6e193ff1999f8732.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/assets/page-c0d90cc660c3e091.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/assets/page-d171b8c3edfe998f.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/assistant/page-0ca8403207cbee44.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/assistant/page-f9c9b5091b87ca6a.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/atlas/page-7f0ec1e91e7a58d9.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/atlas/page-dcbcbbd20754f8ca.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/books/page-b5e8b8050fb4494f.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/books/page-c8c497443c740c18.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/bunker/page-41e6f41a0b96bb73.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/bunker/page-f439de28d66e9d62.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/business/page-5d556bed5badf897.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/business/page-833e8a9e87be73e9.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/conduit/page-c3cf20bde6da1749.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/conduit/page-c9ba22704124eb00.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/content/page-58da977ea42f3aeb.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/content/page-796107b2331b079f.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/docs/layout-0953b1179b54012f.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/docs/layout-bd518830a29862f7.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/docs/page-1af8d9f261865f3c.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/docs/page-565cc9dc073f7f14.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/finances/page-f13113c0aabb367e.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/finances/page-f4664b3d3d9fa825.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/gear/page-42ad1a6cca68b764.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/gear/page-d7620243d36dcbd8.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/growth/page-313a04b2fcc870dc.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/growth/page-933278af53a8fc86.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/health/page-3a3e27112596df5d.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/health/page-eb69084498b3eeec.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/hooks/page-9d6563eb62c65d3b.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/hooks/page-ce69e103b712171e.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/hypotheses/page-03120e41bea44bda.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/hypotheses/page-c4a53cd1fde54dd0.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/knowledge/graph/page-03cbbabe333ed75b.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/knowledge/graph/page-0a50ee294e2c817e.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/knowledge/page-9b0e92387dc77d17.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/knowledge/page-b619c30a27a82776.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/layout-174543bbb7a8481b.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/layout-bfa0328c59ff80b3.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/ledger/page-5c3f3b80916593e3.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/ledger/page-9456618fa0b276d3.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/life/page-009ec7932673fc62.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/life/page-06cae86a16970bcf.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/local/page-217053fd785c2425.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/local/page-c9bfcdf9c9cec8d3.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/memory/graph/page-4681349349594569.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/memory/graph/page-f7097f061101c57e.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/memory/knowledge/layout-108e10bbdccb1195.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/memory/knowledge/layout-cf604a4cc686f839.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/memory/knowledge/page-2128d8012845d36c.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/memory/knowledge/page-3ebeeaaceba0fbbb.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/memory/page-0a3ce8becdbd6385.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/memory/page-d172e055c49672f1.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/page-09420ce0aa0d12dc.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/page-42bccdf3111b051d.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/performance/page-9b1faf72ceab4966.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/performance/page-c5ab8d079e40e9cc.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/security/page-65a243dbe9ec86a2.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/skills/page-1a65164714f5b0cc.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/skills/page-be13ee5c4bf8c16d.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/synapse/page-1555f8d565ed5fdf.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/synapse/page-d83fd982495d337f.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/system/graph/page-94fb0c72b27d6a93.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/system/graph/page-db2293022b846ece.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/system/layout-84d3c82bd70aa0e3.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/system/layout-ec0979d19361e799.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/system/page-402fe12a2559ec45.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/system/page-f2ac7a7553c22707.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/telos/item/page-e5b2e3df86202d3a.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/telos/item/page-ea0ae603f26f4a36.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/telos/page-0ee472e46b27b5e5.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/telos/page-5ebfa52c13d2dd59.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/upgrades/page-d1415f6f6772e06b.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/upgrades/page-e6c68b07bc224621.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/usage/page-121f457c838c4fec.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/usage/page-87d545707119087a.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/work/page-52ca37db3238886c.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/app/work/page-d4052a494c7c60a5.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/main-app-60513e734009cd97.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/main-app-ba13119fb708518a.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/webpack-60fb8710674c1ee7.js",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/webpack-7bdc7883018fcfea.js",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/css/481bb284b20895ee.css",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/css/8deec9d23d24a458.css",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/css/da2fb3c297ff09ee.css",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/advocate_14_cond_reg.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/advocate_34_narr_reg.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/advocate_c41_tab_regular-webfont.woff",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/concourse_c3_regular.woff",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/concourse_t3_regular-webfont.woff",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/equity_text_b_regular-webfont.woff",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/heliotrope_3_caps_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/heliotrope_3_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/triplicate_a_code_bold.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/triplicate_a_code_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/valkyrie_a_bold.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/valkyrie_a_italic.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/valkyrie_a_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/app/amber/page.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/app/knowledge/layout.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/app/ladder/page.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/app/novelty/page.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/AlgorithmDashboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/AlgorithmKanban.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/CompletedSessionRow.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/EffortBadge.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/FocusIndicator.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/AgentConstellationMap.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/ConfigDriftRadar.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/CriteriaEvidenceGallery.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/DecisionDensityTimeline.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/EffortDistributionDonut.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/ErrorHeatmapCalendar.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/LiveSessionHeartbeatGrid.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/ModeEscalationSankey.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/PhaseBottleneckAnalyzer.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/PhaseRhythmStrip.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/ReflectionInsightsFeed.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/ReworkArchaeologyPanel.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/SatisfactionPulseMonitor.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/SessionNameWordcloud.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/SessionVelocitySparkline.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/ToolFailureLeaderboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/insights/VoiceActivityWaveform.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/InsightsDashboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/LiveEvents.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/LoopDashboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/LoopsDashboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/ModeBadge.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/ModeTimeline.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/NativeDashboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/NativeSessionRow.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/NoveltyDashboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/OperationBadge.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/OptimizeDashboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/PhaseDetailPanel.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/PresetBadge.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/SessionCard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/activity/UnifiedWorkDashboard.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/SecurityBanner.tsx",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/components/wiki/WikiSearch.tsx",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/hooks/useNoveltyDashboard.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/hooks/useNoveltyState.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/lib/effort.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/pulse-unified.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/PULSE/v2-router.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/RULES/VerificationExpanded.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/AlgoPhase.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/algorithm.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/AlgorithmPhaseReport.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/BannerMatrix.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/BannerNeofetch.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/BannerPrototypes.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/BannerRetro.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/BannerTokyo.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/BlogDiscovery.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "LIFEOS/TOOLS/BookmarkSweep.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/BudgetCheck.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/com.lifeos.blogdiscovery.plist.template",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "LIFEOS/TOOLS/com.lifeos.bookmarksweep.plist.template",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/context-budgets.json",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/extract-transcript.py",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "LIFEOS/TOOLS/ForgeProgress.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "LIFEOS/TOOLS/Grok.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/GrokAudit.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/HealthSnapshot.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "LIFEOS/TOOLS/InstallBlogDiscovery.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "LIFEOS/TOOLS/InstallBookmarkSweep.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/InterviewIdealState.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/llcli/llcli.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/llcli/package.json",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/llcli/QUICKSTART.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/llcli/README.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/NeofetchBanner.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/OpenRouter.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "LIFEOS/TOOLS/PaiConfig.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/PaiUpgrade.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "LIFEOS/TOOLS/UpdatePaiState.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/AgentPersonalities.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/AgentProfileSystem.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/ArchitectContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/ArtistContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/CatoContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/ClaudeResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/CodexResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Data/Traits.yaml",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/DesignerContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/EngineerContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/ForgeContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/GeminiResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/GrokResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/PerplexityResearcherContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/QATesterContext.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/REDESIGN-SUMMARY.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Scratchpad/sparkline-color-analysis.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/SKILL.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Templates/CUSTOMAGENTTEMPLATE.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Templates/DynamicAgent.hbs",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Tools/bun.lock",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Tools/ComposeAgent.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Tools/LoadAgentContext.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Tools/package.json",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Workflows/CreateCustomAgent.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Workflows/ListTraits.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Workflows/SpawnObservers.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Workflows/SpawnParallelAgents.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Agents/Workflows/SpawnTeam.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Art/Tools/ComposeThumbnail.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Art/Tools/PickExpression.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Art/Tools/ThumbnailText.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Art/Workflows/AdHocYouTubeThumbnail.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Art/Workflows/StyleMatchedThumbnail.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Art/Workflows/YouTubeThumbnailChecklist.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/BeCreative/Assets/creative-writing-template.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/BeCreative/Assets/idea-generation-template.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/BeCreative/Examples.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/BeCreative/Principles.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/BeCreative/Templates.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/BeCreative/Workflows/TechnicalCreativityGemini3.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/BitterPillEngineering",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Browser/README.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Recipes/FormFill.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Recipes/README.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Recipes/ScreenshotCompare.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Recipes/SummarizePage.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/SKILL.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Stories/ExampleApp.yaml",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Stories/HackerNews.yaml",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Stories/README.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Workflows/Automate.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Workflows/ReviewStories.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Browser/Workflows/Update.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/CMUX",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/ContextSearch/SKILL.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/ContextSearch/Tools/ContextSearch.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Delegation/SKILL.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Evals/BestPractices.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Data/DomainPatterns.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/Base.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/CodeBased/BinaryTests.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/CodeBased/index.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/CodeBased/RegexMatch.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/CodeBased/StateCheck.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/CodeBased/StaticAnalysis.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/CodeBased/StringMatch.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/CodeBased/ToolCallVerification.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/index.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/ModelBased/index.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/ModelBased/JudgeLevel.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/ModelBased/LLMRubric.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/ModelBased/NaturalLanguageAssert.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Graders/ModelBased/PairwiseComparison.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/PROJECT.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Evals/Scenarios/example-greeting.scenario.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/ScienceMapping.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/ScorerTypes.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Suites/Regression/core-behaviors.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/TemplateIntegration.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Tools/AlgorithmBridge.ts",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Evals/Tools/FailureToTask.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Tools/GenerateCases.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Tools/LifeosAgentAdapter.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Tools/ProposeFromFailures.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Tools/ScenarioRunner.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Tools/ScenarioToTranscript.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Tools/TranscriptCapture.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Tools/TrialRunner.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Types/index.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/UseCases/Dispositions/disp_concision_voice.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/UseCases/Dispositions/disp_lead_with_answer.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/UseCases/Dispositions/disp_no_fabricated_confidence.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/UseCases/Dispositions/disp_verify_before_done.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/UseCases/Regression/task_file_targeting_basic.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/UseCases/Regression/task_no_hallucinated_paths.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/UseCases/Regression/task_tool_sequence_read_before_edit.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/UseCases/Regression/task_verification_before_done.yaml",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Evals/Workflows/CompareModels.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Workflows/ComparePrompts.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Workflows/CreateScenario.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Workflows/CreateUseCase.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Evals/Workflows/RunScenario.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Harvest/Workflows/Harvest.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Ideate",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/ISA/Workflows/Grill.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Knowledge/SKILL.md",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Prompting/Tools/index.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Remotion",
+      "retired": "2026-09-24",
+      "note": "Remotion skill removed; animation moved to HyperFrames."
+    },
+    {
+      "path": "skills/Research/MigrationNotes.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/advocate_34_narr_reg.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/advocate_54_wide_reg.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/concourse_3_bold.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/concourse_3_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/concourse_4_bold.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/concourse_4_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/heliotrope_3_caps_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/heliotrope_3_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/valkyrie_a_bold.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/valkyrie_a_italic.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/Public/Fonts/valkyrie_a_regular.woff2",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Tldraw",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Upgrade/Logs/run-history.jsonl",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Upgrade/youtube-channels.json",
+      "retired": "2026-09-23",
+      "note": "Shipped by an earlier 6.x or 7.x public release; not in 8.1.3."
+    },
+    {
+      "path": "skills/Webdesign/References/ExportFormats.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Webdesign/References/HandoffBundleSpec.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the v8.1.3 public payload; retire the stale installed path."
+    },
+    {
+      "path": "skills/Webdesign/Tools/DriveClaudeDesign.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Tools/ProcessHandoffBundle.ts",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Workflows/CreatePrototype.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Workflows/DeployDesign.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Workflows/ExportToCode.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Workflows/ExtractDesignSystem.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Workflows/IntegrateIntoApp.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Workflows/NativeDesignSync.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Workflows/RefinePrototype.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "skills/Webdesign/Workflows/WebsiteToRedesign.md",
+      "retired": "2026-09-23",
+      "note": "Removed from the current public payload; retire the stale installed machinery."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Arbol/ArbolSystem.md",
+      "retired": "2026-09-27",
+      "note": "Arbol doc retired; LIFEOS/DOCUMENTATION/Workflows/WorkflowsSystem.md is the one Workflows doc."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/9850-d6f8857fb75e94e7.js",
+      "retired": "2026-09-27",
+      "note": "Stale Pulse build chunk no longer in the rebuilt dashboard; retire the installed copy."
+    },
+    {
+      "path": "LIFEOS/TOOLS/RenderHermesSoul.ts",
+      "retired": "2026-09-27",
+      "note": "Superseded Hermes soul compressor; running it replaced the full soul. LIFEOS/HERMES/Mount.ts renders the soul."
+    },
+    {
+      "path": "skills/Evals",
+      "retired": "2026-09-28",
+      "note": "Renamed to skills/Assay; the old copy would register a duplicate eval skill and shadow the new one."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/app/arbol",
+      "retired": "2026-10-03",
+      "note": "The /arbol page is retired; Pulse redirects it to /workflows."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/arbol.html",
+      "retired": "2026-10-03",
+      "note": "Built output of the retired /arbol page."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/arbol.txt",
+      "retired": "2026-10-03",
+      "note": "Built output of the retired /arbol page."
+    },
+    {
+      "path": "skills/ISA/Workflows/Reconcile.md",
+      "retired": "2026-10-03",
+      "note": "ISA Reconcile workflow removed; its routing would point at a workflow that no longer exists."
+    },
+    {
+      "path": "skills/Optimize",
+      "retired": "2026-10-01",
+      "note": "Folded into skills/HillClimb; the old copy would register a second improve-anything skill."
+    },
+    {
+      "path": "skills/HyperFrames/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Telos/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Research/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Vitals/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/RootCauseAnalysis/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/ApertureOscillation/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Upgrade/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/WorldThreatModel/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/CreateCLI/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/ISA/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/ExtractWisdom/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Council/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/LocalIntelligence/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Sales/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/WriteStory/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/RedTeam/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Development/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/USMetrics/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Art/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/BitterLessonEngineering/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/AudioEditor/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/BrightData/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Vigil/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Errata/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/PrivateInvestigator/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/CreateSkill/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Science/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/SecurityMarketData/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Workflows/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/USStats/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Excalidraw/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/HTML/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Pareto/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Visualize/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Hardening/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Superior/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Trim/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/HillClimb/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/ReadIt/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/SystemsThinking/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/ComputerUse/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Daemon/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Novelty/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Interview/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/StoryFilm/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/TableTennis/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/LifeOS/Workflows/Interview.md",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; now Intents/Interview.md. Workflows/Update.md stays as the 7.x upgrade signpost."
+    },
+    {
+      "path": "skills/LifeOS/Workflows/Report.md",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; now Intents/Report.md."
+    },
+    {
+      "path": "skills/LifeOS/Workflows/Setup.md",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; now Intents/Setup.md."
+    },
+    {
+      "path": "skills/LifeOS/Workflows/Uninstall.md",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; now Intents/Uninstall.md."
+    },
+    {
+      "path": "skills/FirstPrinciples/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Gauntlet/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Calibrate/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/IterativeDepth/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Teach/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/ArXiv/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Fabric/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Assay/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Hermes/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Glance/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/SuggestSkills/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/ThreatModel/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/BiasCheck/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/BeCreative/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/AccountPool/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/ArtDirection/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Aphorisms/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/DetectAI/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Presentation/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Interceptor/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Webdesign/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/Apify/Workflows",
+      "retired": "2026-10-08",
+      "note": "Skill routines renamed to intents; the folder is now Intents/."
+    },
+    {
+      "path": "skills/AINews",
+      "retired": "2026-10-10",
+      "note": "Retired; AI news and Anthropic changes are covered by Upgrade and SecurityUpdates."
+    },
+    {
+      "path": "skills/WorldThreatModel",
+      "retired": "2026-10-10",
+      "note": "Skill name retired; its capability was ported into RedTeam on 2026-10-10 (intents TestIdea, UpdateModels, ViewModels; References/WorldModelTemplate.md, References/WorldModelOutputFormat.md), and the world models under LIFEOS/MEMORY/RESEARCH/WorldModels/ are now owned by RedTeam."
+    },
+    {
+      "path": "skills/USMetrics",
+      "retired": "2026-10-10",
+      "note": "Skill name retired; its capability was ported into USStats on 2026-10-10 (intents UpdateData, GetCurrentState; Tools/UpdateSubstrateMetrics.ts, FetchFredSeries.ts, GenerateAnalysis.ts with their tests), writing the local dataset at LIFEOS/USER/DATA/US-Common-Metrics/."
+    },
+    {
+      "path": "skills/Sales",
+      "retired": "2026-10-10",
+      "note": "Retired; pitch decks and sales packages are covered by Presentation."
+    },
+    {
+      "path": "LIFEOS/TOOLS/ClaimRequired.ts",
+      "retired": "2026-10-13",
+      "note": "Dead tool: no hook, setting, skill or doc called it (LOSIntegrity sweep 2026-10-13)."
+    },
+    {
+      "path": "LIFEOS/TOOLS/MemoryRetrieverBench.ts",
+      "retired": "2026-10-13",
+      "note": "Dead benchmark with no caller or doc (LOSIntegrity sweep 2026-10-13)."
+    },
+    {
+      "path": "LIFEOS/TOOLS/T3Code.ts",
+      "retired": "2026-10-13",
+      "note": "Dead tool with no caller or doc (LOSIntegrity sweep 2026-10-13)."
+    },
+    {
+      "path": "LIFEOS/TOOLS/TextFidelity.ts",
+      "retired": "2026-10-13",
+      "note": "Dead tool with no caller or doc (LOSIntegrity sweep 2026-10-13)."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/strip-mode-scaffolding.ts",
+      "retired": "2026-10-13",
+      "note": "Egress sanitizer for the retired Pulse iMessage module; no caller left (LOSIntegrity sweep 2026-10-13)."
+    },
+    {
+      "path": "LIFEOS/TOOLS/InstallAchillesPing.ts",
+      "retired": "2026-10-14",
+      "note": "Legacy launchd installer and template; the achilles-ping and achilles-sync workflows replaced them on 2026-10-09."
+    },
+    {
+      "path": "LIFEOS/TOOLS/InstallAchillesSync.ts",
+      "retired": "2026-10-14",
+      "note": "Legacy launchd installer and template; the achilles-ping and achilles-sync workflows replaced them on 2026-10-09."
+    },
+    {
+      "path": "LIFEOS/TOOLS/com.lifeos.achillesping.plist.template",
+      "retired": "2026-10-14",
+      "note": "Legacy launchd installer and template; the achilles-ping and achilles-sync workflows replaced them on 2026-10-09."
+    },
+    {
+      "path": "LIFEOS/TOOLS/com.lifeos.achillessync.plist.template",
+      "retired": "2026-10-14",
+      "note": "Legacy launchd installer and template; the achilles-ping and achilles-sync workflows replaced them on 2026-10-09."
+    },
+    {
+      "path": "LIFEOS/PULSE/pages/beliefs.manifest.toml",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/pages/books.manifest.toml",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/pages/goals.manifest.toml",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/pages/health.manifest.toml",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/pages/identity.manifest.toml",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/pages/pronunciations.manifest.toml",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/manifest-loader.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/data-plane.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/data-plane-paths.test.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/AdapterRunner.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/model-level.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/prompts/beliefs.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/prompts/collection.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/prompts/goals.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/prompts/identity.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/prompts/index.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/prompts/narrative.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/adapters/prompts/reference.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Tools/RebuildAll.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Tools/AdapterCli.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Tools/ValidateManifests.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Tools/SnapshotPages.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Tools/SnapshotFromFixture.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/ui/render.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/ui/Theme.ts",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Fixtures/beliefs.narrative.json",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Fixtures/books.collection.json",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Fixtures/health.index.json",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Fixtures/invalid-missing-meta.json",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Fixtures/pronunciations.reference.json",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Snapshots/beliefs.fixture.html",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Snapshots/books.fixture.html",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Snapshots/health.fixture.html",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/PULSE/Schema/Snapshots/pronunciations.fixture.html",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/USER_TEMPLATES/Beliefs.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/USER_TEMPLATES/Books.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/USER_TEMPLATES/Goals.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/USER_TEMPLATES/Identity.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/USER_TEMPLATES/Pronunciations.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/USER_TEMPLATES/README.md",
+      "retired": "2026-10-14",
+      "note": "Pulse Data Plane retired 2026-10-14: nothing had rendered its pages since Pulse moved to the Next app (6492e33a42), yet DerivedSync rebuilt them with a model on every watched USER edit. LIFEOS/MEMORY/PULSE_DATA/ data is left in place."
+    },
+    {
+      "path": "LIFEOS/TOOLS/AccountPool.ts",
+      "retired": "2026-10-14",
+      "note": "Removed from the public release. Pulse /usage reads an empty account list without it."
+    },
+    {
+      "path": "LIFEOS/TOOLS/AccountSwitch.ts",
+      "retired": "2026-10-14",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "hooks/AccountSwitchNotice.hook.ts",
+      "retired": "2026-10-14",
+      "note": "Removed from the public release. InstallHooks prunes its settings registration on update."
+    },
+    {
+      "path": "commands/acct.md",
+      "retired": "2026-10-14",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/AccountPool",
+      "retired": "2026-10-14",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/PrivateInvestigator",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "agents/OpusMedium.md",
+      "retired": "2026-10-15",
+      "note": "Generated effort variant of agents/Opus.md. The Agent tool's effort parameter (Claude Code 2.1.292) replaced it: dispatch Opus with effort medium."
+    },
+    {
+      "path": "agents/OpusXHigh.md",
+      "retired": "2026-10-15",
+      "note": "Generated effort variant of agents/Opus.md. The Agent tool's effort parameter (Claude Code 2.1.292) replaced it: dispatch Opus with effort xhigh."
+    },
+    {
+      "path": "agents/SonnetMedium.md",
+      "retired": "2026-10-15",
+      "note": "Generated effort variant of agents/Sonnet.md. The Agent tool's effort parameter (Claude Code 2.1.292) replaced it: dispatch Sonnet with effort medium."
+    },
+    {
+      "path": "agents/SonnetXHigh.md",
+      "retired": "2026-10-15",
+      "note": "Generated effort variant of agents/Sonnet.md. The Agent tool's effort parameter (Claude Code 2.1.292) replaced it: dispatch Sonnet with effort xhigh."
+    },
+    {
+      "path": "agents/FableHigh.md",
+      "retired": "2026-10-15",
+      "note": "Generated effort variant of agents/Fable.md. The Agent tool's effort parameter (Claude Code 2.1.292) replaced it: dispatch Fable with effort high."
+    },
+    {
+      "path": "agents/HaikuMedium.md",
+      "retired": "2026-10-15",
+      "note": "Generated effort variant of agents/Haiku.md. The Agent tool's effort parameter (Claude Code 2.1.292) replaced it: dispatch Haiku with effort medium."
+    },
+    {
+      "path": "LIFEOS/ROUTER/AgentVariants.ts",
+      "retired": "2026-10-15",
+      "note": "Generator of the six effort-variant agent files, retired with them; effort is now the Agent tool's parameter."
+    },
+    {
+      "path": "skills/Suno",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Substack",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Apify",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Hiring",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/OSINT",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/SurveillanceMap",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/CriticalAnalysis",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Lifelog",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/ContactPhotos",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/CFO",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/QuickBooks",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Home",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Network",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Relay",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Daemon",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/LocalIntelligence",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Video",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/JobSearch",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Grants",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/TableTennis",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Raycast",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/MergingAudio",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Evolution",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Gauntlet",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Gauntlet",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "LIFEOS/PULSE/modules/gauntlet.ts",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/src/app/gauntlet",
+      "retired": "2026-10-15",
+      "note": "Removed from the public release."
+    },
+    {
+      "path": "skills/Teach",
+      "retired": "2026-10-16",
+      "note": "Renamed to skills/Explain, which keeps the Teach intent and adds ExplainFundamentals and QuizFundamentals."
+    },
+    {
+      "path": "LIFEOS/CODEX/ModelRouter",
+      "retired": "2026-10-16",
+      "note": "The Codex and Pi doors no longer run a per-prompt model router; the folder is removed."
+    },
+    {
+      "path": "LIFEOS/PI/Bridge.ts",
+      "retired": "2026-10-24",
+      "note": "The Pi front door was retired on the principal's word; the file is removed."
+    },
+    {
+      "path": "LIFEOS/PI/Extension.ts",
+      "retired": "2026-10-24",
+      "note": "The Pi front door was retired on the principal's word; the file is removed."
+    },
+    {
+      "path": "LIFEOS/PI/Mount.ts",
+      "retired": "2026-10-24",
+      "note": "The Pi front door was retired on the principal's word; the file is removed."
+    },
+    {
+      "path": "LIFEOS/PI/Render.ts",
+      "retired": "2026-10-24",
+      "note": "The Pi front door was retired on the principal's word; the file is removed."
+    },
+    {
+      "path": "LIFEOS/PI/bunker.config.ts",
+      "retired": "2026-10-24",
+      "note": "The Pi front door was retired on the principal's word; the file is removed."
+    },
+    {
+      "path": "LIFEOS/DOCUMENTATION/Pi",
+      "retired": "2026-10-24",
+      "note": "The Pi front door was retired on the principal's word; the folder is removed."
+    },
+    {
+      "path": "LIFEOS/TOOLS/PiSync.sh",
+      "retired": "2026-10-24",
+      "note": "The Pi front door was retired on the principal's word; the file is removed."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/1255-03abe64618dd94f9.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/132-ecbb33e8260a229a.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/174-1c818e9766f624e3.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/2454-0dd80ccd2352c1a9.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/3542-4ddf9855c40b6313.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/4022.2b0082ac32a0db7f.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/4bd1b696-c055259fe29a3bde.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/5612-6f968945da20f46c.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/framework-814a8f54e63813c3.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/_next/static/chunks/main-c20bd26569444869.js",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/out/fonts/FONTS-README.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/Observability/public/fonts/FONTS-README.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/checks/life-morning-brief.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/checks/notification-governor.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/edit/edit-handler.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/homographs.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/PULSE/lib/provenance-watcher.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/ApproveCurrentStateEntries.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/ComputeGap.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/InstallInboxSweep.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/ProposeCurrentStateEntry.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/Transcribe-bun.lock",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/Transcribe-package.json",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/WisdomCrossFrameSynthesizer.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/WisdomDomainClassifier.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "LIFEOS/TOOLS/WisdomFrameUpdater.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "agents/Gemini.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/BashSystemWriteGuard.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/CommunicationSkillGuard.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/ContextReduction.hook.sh",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/EgressClassGuard.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/ISAStaleWriteGuard.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/LoopDetector.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/PreToolGuard.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/PublicPushGate.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/Safety.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/SystemFileGuard.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/VoiceEgressGuard.hook.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/lib/data-classification.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/lib/egress-class-core.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/lib/safety-classifier.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "hooks/lib/spend-auditor-prompt.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Art/Lib/discord-bot.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Art/Lib/midjourney-client.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Art/Tools/GenerateMidjourneyImage.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Art/Tools/GeneratePrompt.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Council/RoundStructure.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/CreateCLI/Patterns.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/CreateCLI/TypescriptPatterns.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Fabric/Patterns/create_clint_summary/system.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Fabric/Patterns/threshold/system.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Loop/SKILL.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Evals/Comparison.hbs",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Evals/Judge.hbs",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Evals/Report.hbs",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Evals/Rubric.hbs",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Evals/TestCase.hbs",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Tools/.gitignore",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Tools/README.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Tools/RenderTemplate.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Tools/ValidateTemplate.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Tools/bun.lock",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Tools/index.ts",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Tools/package.json",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Prompting/Templates/Tools/tsconfig.json",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    },
+    {
+      "path": "skills/Telos/ReportTemplate/public/Fonts/FONTS-README.md",
+      "retired": "2026-10-27",
+      "note": "Shipped by public v7.40.4; not in 8.761.0."
+    }
+  ]
+}

@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Archive, Briefcase, Compass, ExternalLink, GitBranch, Cpu, Kanban, RefreshCw, Rocket, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, List as ListIcon, Inbox, type LucideIcon } from "lucide-react";
+import { useApi, apiSend, ApiError } from "@/lib/api";
 import EmptyStateGuide from "@/components/EmptyStateGuide";
 import ProjectsBoard, { type ProjectGroup } from "@/components/ProjectsBoard";
+import { fmtClock } from "@/lib/time";
 import { PageShell, PageHeader, Panel, TabBar, Pill, EmptyState } from "@/components/ui/chrome";
 import type { Dim } from "@/components/ui/chrome";
 
@@ -104,12 +106,13 @@ function Banner({
           >
             Current Focus
           </div>
+          {/* Focus comes from the live work session's ISA (public issue #2039, @jacobo-ortiz) */}
           {focus ? (
             <p className="text-2xl lg:text-3xl font-medium leading-snug text-ink-1" data-sensitive="strong">
               {focus}
             </p>
           ) : (
-            <p className="text-xl italic text-ink-2">No current focus set in TELOS/CURRENT.md</p>
+            <p className="text-xl italic text-ink-2">No active work session — start one and its ISA title lands here</p>
           )}
           {current && (
             <p className="text-sm mt-3 text-ink-2" data-sensitive>
@@ -752,33 +755,19 @@ function WorkList({ data }: { data: KanbanData }) {
 // ── Work items panel — owns the single /api/work fetch + List/Kanban tabs ──
 
 function WorkItemsPanel() {
-  const [data, setData] = useState<KanbanData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: workData, error: workError, refetch: load } = useApi<KanbanData>("/api/work", { refetchInterval: 60_000 });
+  const data = workData ?? null;
+  const error = workError ? String(workError) : null;
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<"list" | "kanban">("list");
-
-  const load = async () => {
-    try {
-      const r = await fetch("/api/work", { cache: "no-store" });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      setData(await r.json());
-      setError(null);
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetch("/api/work/refresh", { method: "POST" });
+      await apiSend("/api/work/refresh", "POST");
       await load();
+    } catch {
+      // the refresh request failed; the page keeps its current data
     } finally {
       setRefreshing(false);
     }
@@ -830,7 +819,7 @@ function WorkItemsPanel() {
     <>
       <span className="text-xs text-ink-3 mono hidden sm:inline">
         {total} issues · <span data-sensitive>{data.config?.repo}</span> · poll {data.config?.poll_interval_seconds}s
-        {data.lastFetch && ` · last fetch ${new Date(data.lastFetch).toLocaleTimeString()}`}
+        {data.lastFetch && ` · last fetch ${fmtClock(data.lastFetch)}`}
       </span>
       <button
         onClick={handleRefresh}
@@ -885,9 +874,12 @@ const GROUP_TAB_META: Record<string, { icon: LucideIcon; dim: Dim }> = {
 };
 
 export default function WorkPage() {
-  const [data, setData] = useState<WorkData | null>(null);
-  const [projectsData, setProjectsData] = useState<{ groups?: ProjectGroup[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // A non-2xx from /api/life/work leaves the page on "Loading" (as before); only a network/parse failure errors.
+  const { data: lifeWork, error: lifeWorkError } = useApi<WorkData>("/api/life/work");
+  const { data: projects } = useApi<{ groups?: ProjectGroup[] }>("/api/projects");
+  const data = lifeWork ?? null;
+  const projectsData = projects ?? null;
+  const error = lifeWorkError && !(lifeWorkError instanceof ApiError) ? String(lifeWorkError) : null;
   const [tab, setTab] = useState<AreaTab>("board");
 
   // ?tab= deep link (/work?tab=telos) — read after hydration; an initializer
@@ -895,17 +887,6 @@ export default function WorkPage() {
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
     if (t) setTab(t);
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/life/work")
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setData)
-      .catch((e) => setError(String(e)));
-    fetch("/api/projects", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setProjectsData)
-      .catch(() => setProjectsData(null));
   }, []);
 
   // Keep ?tab= in the URL so tabs are linkable/refresh-stable without a nav.
@@ -940,16 +921,25 @@ export default function WorkPage() {
   const groups = projectsData?.groups ?? [];
   const sessionCount = data.algorithmSessions?.length ?? 0;
   const liveCount = groups.find((g) => g.key === "live")?.count ?? 0;
-  const showEmptyGuide = sessionCount === 0 && liveCount === 0 && !data.currentFocus && !data.currentProject;
+  // A source that exists but failed to parse is a fault to show, never a
+  // reason to offer the "wire up a tracker" guide. (public issue #2055, @Piroshki)
+  const groupErrors = groups.filter((g) => g.error).map((g) => `${g.source}: ${g.error}`);
+  const showEmptyGuide = sessionCount === 0 && liveCount === 0 && !data.currentFocus && !data.currentProject && groupErrors.length === 0;
   const activeGroup = groups.find((g) => g.key === tab);
 
   return (
     <PageShell>
       <PageHeader title="Work" icon={Briefcase} subtitle="Focus, work items, sessions, and projects" />
+      {groupErrors.length > 0 && (
+        <Panel className="border-l-[3px] [border-left-color:var(--err)]">
+          <h2 className="font-medium text-err">Projects source degraded</h2>
+          {groupErrors.map((e) => <p key={e} className="text-sm text-err">{e}</p>)}
+        </Panel>
+      )}
       {showEmptyGuide && (
         <EmptyStateGuide
           section="Work Hub"
-          description="Active tasks, projects, and team work. Wire it up to GitHub Issues, Linear, ClickUp, or another PM tool to populate."
+          description="Active tasks, projects, and team work. Wire it up to GitHub Issues, Linear, or another PM tool to populate."
           hideInterview
           daPromptExample="set up my work hub against my project tracker"
         />

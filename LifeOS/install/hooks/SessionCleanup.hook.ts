@@ -7,7 +7,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 /**
- * @version 1.6.0
+ * @version 1.7.2
  * SessionCleanup.hook.ts - Mark Work Complete and Clear State (SessionEnd)
  *
  * PURPOSE:
@@ -44,9 +44,12 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 import { writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { getISOTimestamp } from './lib/time';
-import { setTabState, cleanupKittySession } from './lib/tab-setter';
-import { readRegistry, writeRegistry, findArtifactPath, findActiveSessionByUUID, applyAscent } from './lib/isa-utils';
-import { homedir } from "node:os";
+import { setTabState, cleanupKittySession, clearSessionLabel } from './lib/tab-setter';
+import { readRegistry, writeRegistry, findArtifactPath, findActiveSessionByUUID, applyAscent, countCriteria } from './lib/isa-utils';
+import { PHASE_TO_ASCENT } from '../LIFEOS/TOOLS/ascent';
+import { invariant } from '../LIFEOS/TOOLS/Invariant';
+import { unregisterSession } from '../LIFEOS/TOOLS/LiveSessions';
+import { getLifeosDir } from "./lib/paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -55,10 +58,41 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 
-const BASE_DIR = process.env.LIFEOS_DIR || join(homedir(), '.claude', 'LIFEOS');
+const BASE_DIR = getLifeosDir();
 const MEMORY_DIR = join(BASE_DIR, 'MEMORY');
 const STATE_DIR = join(MEMORY_DIR, 'STATE');
 const WORK_DIR = join(MEMORY_DIR, 'WORK');
+
+/**
+ * The ISA frontmatter a session end leaves behind. Pure.
+ *
+ * A session ending is not a criterion closing (leaf criteria, #1938; public PR #1978
+ * / issue #1977, @bnkath2o). With open criteria the ISA keeps whatever phase it
+ * declared (learn, observe, build, climbing…) — a derived climbing/scoping
+ * overwrote all of those on every session end (2026-09-03 /LI audit, finding
+ * 3) — and only a bare-fraction `progress:` is refreshed: `progress: true`
+ * and annotated forms are left as written. Only a fully-closed ISA (or one
+ * with no criteria at all — unchanged behavior) reads complete.
+ *
+ * Returns `phase: 'complete'` when the ISA closed, `null` when it stays open.
+ */
+export function closeIsaOnSessionEnd(isaContent: string, nowIso: string): { content: string; phase: 'complete' | null; open: number; checked: number; total: number } {
+  const { checked, total } = countCriteria(isaContent);
+  const open = total - checked;
+  let content = isaContent.replace(/^updated:.*$/m, `updated: ${nowIso}`);
+  if (open > 0) {
+    // progress must not go stale while the ISA stays open
+    content = content.replace(/^progress:\s*"?\d+\/\d+"?\s*$/m, `progress: ${checked}/${total}`);
+    return { content, phase: null, open, checked, total };
+  }
+  const phase = 'complete';
+  invariant(phase in PHASE_TO_ASCENT, `SessionCleanup derived an unknown phase "${phase}"`);
+  content = content.replace(/^phase:.*$/m, `phase: ${phase}`);
+  // status: COMPLETED / completed_at are legacy compat for old artifacts.
+  content = content.replace(/^status: ACTIVE$/m, 'status: COMPLETED');
+  content = content.replace(/^completed_at: null$/m, `completed_at: "${nowIso}"`);
+  return { content, phase, open, checked, total };
+}
 
 /**
  * Mark active work as completed.
@@ -73,6 +107,9 @@ function clearSessionWork(sessionId?: string): void {
     // Resolve the active session row for this hook UUID. If none, there is
     // nothing to mark — most native sessions hit this path on harness exit.
     const active = sessionId ? findActiveSessionByUUID(sessionId) : null;
+    // Phase the registry rows should carry — derived from the ISA when one
+    // exists, `complete` for native/placeholder rows with nothing to keep open.
+    let sessionPhase: 'complete' | null = 'complete';
 
     if (active) {
       const slug = active.slug;
@@ -80,17 +117,20 @@ function clearSessionWork(sessionId?: string): void {
       const isaPath = findArtifactPath(slug);
       const metaPath = join(workPath, 'META.yaml');
       let marked = false;
+      // Phase the ISA closed to — `complete`, or null when open criteria keep it
+      // open (see closeIsaOnSessionEnd). Null means the work.json row for this
+      // ISA keeps its existing phase too.
+      let phase: 'complete' | null = 'complete';
 
-      // Primary: update the ISA frontmatter — set phase: complete (modern format)
-      // and status: COMPLETED (legacy compat for any old artifacts still around).
+      // Primary: update the ISA frontmatter.
       // findArtifactPath prefers ISA.md and falls back to legacy PRD.md.
       if (isaPath && existsSync(isaPath)) {
-        let isaContent = readFileSync(isaPath, 'utf-8');
-        isaContent = isaContent.replace(/^phase:.*$/m, 'phase: complete');
-        isaContent = isaContent.replace(/^updated:.*$/m, `updated: ${getISOTimestamp()}`);
-        isaContent = isaContent.replace(/^status: ACTIVE$/m, 'status: COMPLETED');
-        isaContent = isaContent.replace(/^completed_at: null$/m, `completed_at: "${getISOTimestamp()}"`);
-        writeFileSync(isaPath, isaContent, 'utf-8');
+        const closed = closeIsaOnSessionEnd(readFileSync(isaPath, 'utf-8'), getISOTimestamp());
+        phase = closed.phase;
+        if (closed.open > 0) {
+          console.error(`[SessionCleanup] ${slug}: phase left as declared — ${closed.open} criteria still open. A session ending does not close criteria.`);
+        }
+        writeFileSync(isaPath, closed.content, 'utf-8');
         marked = true;
       }
 
@@ -103,18 +143,22 @@ function clearSessionWork(sessionId?: string): void {
         marked = true;
       }
 
-      if (marked) {
+      if (marked && phase === 'complete') {
         console.error(`[SessionCleanup] Marked work directory as COMPLETED: ${slug}`);
       }
+      sessionPhase = phase;
     } else if (sessionId) {
       console.error(`[SessionCleanup] No active work session for sessionId=${sessionId}`);
     } else {
       console.error('[SessionCleanup] No session_id from hook input — nothing to mark');
     }
 
-    // Mark every work.json entry owned by this session UUID as complete.
-    // Without this, native tabs and interrupted algorithms linger as "live"
-    // on the agents dashboard until their stale window elapses.
+    // Close every work.json entry owned by this session UUID. Without this,
+    // native tabs and interrupted algorithms linger as "live" on the agents
+    // dashboard until their stale window elapses. An ISA with open criteria keeps
+    // its row exactly as it is (phase untouched, not `complete`) so the ISA and
+    // the row agree — otherwise applyAscent derives "done" from the row while
+    // the ISA still reads open. public PR #1978 / issue #1977, @bnkath2o
     if (sessionId) {
       try {
         const registry = readRegistry();
@@ -123,10 +167,15 @@ function clearSessionWork(sessionId?: string): void {
         // sorts in readers (statusline MODE picker) against Z-format rows.
         const ts = new Date().toISOString();
         let touched = 0;
-        for (const [, session] of Object.entries(registry.sessions) as [string, any][]) {
+        for (const [slug, session] of Object.entries(registry.sessions) as [string, any][]) {
           if (session.sessionUUID !== sessionId) continue;
           if (session.phase === 'complete') continue;
-          session.phase = 'complete';
+          // The active ISA row closes only when the ISA did (null = the ISA stayed
+          // open, so its row keeps its existing phase); any other row owned by
+          // this UUID (native/starting placeholders) closes as before.
+          const rowPhase = active && slug === active.slug ? sessionPhase : 'complete';
+          if (rowPhase === null || session.phase === rowPhase) continue;
+          session.phase = rowPhase;
           // `ascent` is derived from phase — recompute it here or the closed row
           // keeps rendering 🧗 Ascending on the board and the status line
           // (2026-07-30 sweep: two of three row writers skipped this).
@@ -136,7 +185,7 @@ function clearSessionWork(sessionId?: string): void {
         }
         if (touched > 0) {
           writeRegistry(registry);
-          console.error(`[SessionCleanup] Marked ${touched} work.json session(s) complete for UUID ${sessionId}`);
+          console.error(`[SessionCleanup] Updated ${touched} work.json session(s) for UUID ${sessionId} (ISA row phase: ${sessionPhase ?? 'kept'})`);
         }
       } catch (e) {
         console.error(`[SessionCleanup] Failed to mark work.json sessions complete: ${e}`);
@@ -158,6 +207,8 @@ function clearSessionWork(sessionId?: string): void {
       } catch (e) {
         console.error(`[SessionCleanup] Failed to clean session-names.json: ${e}`);
       }
+      // Same for the tab label the namer authored — it dies with the session.
+      try { clearSessionLabel(sessionId); } catch { /* silent */ }
     }
   } catch (error) {
     console.error(`[SessionCleanup] Error clearing session work: ${error}`);
@@ -196,6 +247,7 @@ async function main() {
     // Clean up per-session kitty env file (prevents unbounded file accumulation)
     if (sessionId) {
       cleanupKittySession(sessionId);
+      try { unregisterSession(sessionId); } catch { /* registry entry already gone */ }
       console.error(`[SessionCleanup] Cleaned up kitty session: ${sessionId}`);
     }
 
@@ -208,4 +260,4 @@ async function main() {
   }
 }
 
-main();
+if (import.meta.main) main();

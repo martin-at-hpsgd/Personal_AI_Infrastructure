@@ -1,80 +1,33 @@
 /**
+ * @version 1.9.7
  * tab-setter.ts - Unified tab state setter.
  *
  * Single function that:
- * 1. Sets Kitty tab title and color via remote control, OR
- * 2. Sets cmux sidebar status/progress/log via CLI
- * 3. Persists per-window state for daemon recovery
+ * 1. Sets Kitty tab title and color via remote control
+ * 2. Persists per-window state for daemon recovery
  *
- * Auto-detects terminal: cmux (CMUX_WORKSPACE_ID) vs Kitty (KITTY_LISTEN_ON).
  * All hooks call setTabState() instead of directly running terminal commands.
  */
 
+import { fitName, SURFACE_WIDTHS } from './fit-name';
 import { existsSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { execSync, execFileSync } from 'child_process';
 import { TAB_COLORS, ACTIVE_TAB_BG, ACTIVE_TAB_FG, type TabState } from './tab-constants';
+import {isPulseTerminal,readPulseTab,writePulseTab} from './pulse-tabs';
+import { herdrStateKey, writeHerdrTab } from './herdr-tabs';
 import {
   ASCENT,
   ASCENT_GERUNDS,
   PHASE_TO_ASCENT,
-  TAB_ACTIVITY,
-  ascentProgress,
   defaultTabActivity,
   deriveAscent,
   stripAscentPrefix,
+  tabGlyph,
   type AscentInput,
   type AscentState,
   type TabActivity,
 } from '../../LIFEOS/TOOLS/ascent';
-
-/** Detect if we're running inside cmux */
-function isCmux(): boolean {
-  return !!(process.env.CMUX_WORKSPACE_ID || process.env.CMUX_SOCKET_PATH);
-}
-
-/** Map TabState to cmux log level for visual differentiation */
-function stateToCmuxLogLevel(state: TabState): string {
-  switch (state) {
-    case 'thinking':  return 'progress';
-    case 'working':   return 'info';
-    case 'question':  return 'warning';
-    case 'blocked':   return 'warning';
-    case 'completed': return 'success';
-    case 'error':     return 'error';
-    case 'idle':      return 'info';
-    default:          return 'info';
-  }
-}
-
-/**
- * Set cmux sidebar metadata for the current workspace.
- * Uses status pills for the ascent state, log for activity, progress for the climb.
- */
-function setCmuxState(title: string, state: TabState, ascent?: AscentState): void {
-  try {
-    const meta = ascent ? ASCENT[ascent] : null;
-    const logLevel = meta ? meta.cmux : stateToCmuxLogLevel(state);
-    const phaseLabel = meta ? `${meta.icon} ${meta.label}` : state.toUpperCase();
-
-    // Status pill: shows the current ascent state at a glance
-    execFileSync('cmux', ['set-status', 'phase', phaseLabel], { stdio: 'ignore', timeout: 2000 });
-
-    // Log entry: shows what's happening with color-coded level
-    execFileSync('cmux', ['log', logLevel, title], { stdio: 'ignore', timeout: 2000 });
-
-    // Clear on idle/complete
-    if (state === 'idle') {
-      execFileSync('cmux', ['clear-status', 'phase'], { stdio: 'ignore', timeout: 2000 });
-      execFileSync('cmux', ['clear-progress'], { stdio: 'ignore', timeout: 2000 });
-      execFileSync('cmux', ['clear-log'], { stdio: 'ignore', timeout: 2000 });
-    }
-
-    console.error(`[tab-setter] cmux sidebar: "${phaseLabel}" — ${title}`);
-  } catch (err) {
-    console.error(`[tab-setter] cmux error:`, err);
-  }
-}
 
 // Generic state gerunds that must never carry over as if they were task
 // descriptions. Current gerunds come from the ascent table; the rest are
@@ -91,10 +44,12 @@ const GENERIC_PHASE_GERUNDS = new Set([
   'Executing the planned work.', 'Verifying ideal state criteria.',
   'Recording the session learnings.',
 ]);
-import { paiPath } from './paths';
+import { lifeosPath } from './paths';
+import { readRegistry, boundRowSlug } from './isa-utils';
+import { getNotificationChannel } from './notification-channel';
 
-const TAB_TITLES_DIR = paiPath('MEMORY', 'STATE', 'tab-titles');
-const KITTY_SESSIONS_DIR = paiPath('MEMORY', 'STATE', 'kitty-sessions');
+const TAB_TITLES_DIR = lifeosPath('MEMORY', 'STATE', 'tab-titles');
+const KITTY_SESSIONS_DIR = lifeosPath('MEMORY', 'STATE', 'kitty-sessions');
 
 /**
  * Resolve the `kitten` binary path. When tab-setter runs from the Claude Code
@@ -224,6 +179,7 @@ function cleanupStaleStateFiles(): void {
     const socketPath = process.env.KITTY_LISTEN_ON || (existsSync(defaultSocket) ? `unix:${defaultSocket}` : null);
     if (!socketPath) return; // No socket — skip cleanup to avoid escape sequence IPC
     // Validate socket path shape before passing to kitten (defense-in-depth even with execFileSync)
+    // execFileSync with an argument array, never a shell string: GHSA-pv2m-jc3r-32fw, @Nosferatuvjr @turnerlk
     if (!/^[a-zA-Z0-9_\-]+:[a-zA-Z0-9/_\-.]+$/.test(socketPath)) return;
     let rawLs: string;
     try {
@@ -242,6 +198,7 @@ function cleanupStaleStateFiles(): void {
 
     for (const file of files) {
       const winId = file.replace('.json', '');
+      if (winId.startsWith('herdr-')) continue; // keyed by herdr pane, not a kitty window
       if (!liveIds.has(winId)) {
         try { unlinkSync(join(TAB_TITLES_DIR, file)); } catch { /* silent */ }
       }
@@ -249,20 +206,27 @@ function cleanupStaleStateFiles(): void {
   } catch { /* silent — cleanup is best-effort */ }
 }
 
+/** A headless process has no tab of its own. Its terminal env (or kitty's default
+ *  socket) points at whoever spawned it, so painting would rename someone else's tab
+ *  and write their tab-state file (2026-10-09: Bridge.test.ts renamed a live pane). */
+function noTerminal(): boolean {
+  return getNotificationChannel() === 'headless';
+}
+
 export function setTabState(opts: SetTabOptions): void {
+  if (noTerminal()) return;
   const { state, previousTitle, previousAscent, sessionId } = opts;
   const title = opts.title;
   const colors = TAB_COLORS[state];
+  if(writePulseTab({...opts,inactiveBg:colors.inactiveBg,inactiveFg:colors.inactiveFg,activeBg:ACTIVE_TAB_BG,activeFg:ACTIVE_TAB_FG},sessionId))return;
 
-  // cmux path: use sidebar metadata instead of Kitty remote control
-  if (isCmux()) {
-    setCmuxState(title, state);
-    return;
-  }
 
   const kittyEnv = getKittyEnv(sessionId);
+  // Inside herdr the kitty tab is the hidden, shared herdr client: paint herdr instead.
+  const herdrKey = herdrStateKey();
 
-  try {
+  paint: try {
+    if (herdrKey) { writeHerdrTab(title, sessionId ? readCanonicalName(sessionId) : null); break paint; }
     // Need either TERM=xterm-kitty OR a valid KITTY_LISTEN_ON to proceed
     const isKitty = process.env.TERM === 'xterm-kitty' || kittyEnv.listenOn;
     if (!isKitty) return;
@@ -303,6 +267,7 @@ export function setTabState(opts: SetTabOptions): void {
     const winTitleArgs = winMatch
       ? ['@', toArg, 'set-window-title', winMatch, title]
       : ['@', toArg, 'set-window-title', title];
+    // Argument arrays, never a shell string: GHSA-pv2m-jc3r-32fw, @Nosferatuvjr @turnerlk
     execFileSync(kitten, titleArgs, { stdio: 'ignore', timeout: 2000 });
     execFileSync(kitten, winTitleArgs, { stdio: 'ignore', timeout: 2000 });
 
@@ -319,7 +284,7 @@ export function setTabState(opts: SetTabOptions): void {
   }
 
   // Persist per-window state (or clean up on idle/session end)
-  const windowId = kittyEnv.windowId;
+  const windowId = herdrKey ?? kittyEnv.windowId;
   if (!windowId) return;
 
   try {
@@ -338,6 +303,9 @@ export function setTabState(opts: SetTabOptions): void {
       if (previousTitle) stateData.previousTitle = previousTitle;
       if (previousAscent) stateData.previousAscent = previousAscent;
       if (opts.blocked) stateData.blocked = true;
+      // The last painter owns the window: a reused kitty window keeps stale
+      // kitty-sessions/ files behind it, so this is the only honest window→session map.
+      if (opts.sessionId) stateData.sessionId = opts.sessionId;
       writeFileSync(join(TAB_TITLES_DIR, `${windowId}.json`), JSON.stringify(stateData), 'utf-8');
     }
   } catch { /* silent */ }
@@ -351,8 +319,9 @@ export function setTabState(opts: SetTabOptions): void {
  * Read per-window state file. Returns null if not found or invalid.
  */
 export function readTabState(sessionId?: string): { title: string; state: TabState; previousTitle?: string; previousAscent?: AscentState; ascent?: AscentState; blocked?: boolean } | null {
+  if(isPulseTerminal(sessionId))return readPulseTab(sessionId);
   const kittyEnv = getKittyEnv(sessionId);
-  const windowId = kittyEnv.windowId;
+  const windowId = herdrStateKey() ?? kittyEnv.windowId;
   if (!windowId) return null;
   try {
     const statePath = join(TAB_TITLES_DIR, `${windowId}.json`);
@@ -380,34 +349,105 @@ export function stripPrefix(title: string): string {
   return stripAscentPrefix(title);
 }
 
+/** Decode a saved display title before passing its activity back to composition.
+ * Remove exactly the known display label; null means an unnamed session.
+ * Activity text is opaque, even when it repeats the label or contains pipes.
+ */
+export function tabTitleActivity(title: string, label?: string | null): string {
+  let activity = stripPrefix(title);
+  if (label === null) return activity;
+  const separator = activity.indexOf(' | ');
+  if (separator !== -1) {
+    const prefix = label ? `${label} | ` : activity.slice(0, separator + 3);
+    if (activity.startsWith(prefix)) activity = activity.slice(prefix.length);
+  }
+  return activity;
+}
+
+
 // Noise words to skip when extracting the session label
 const SESSION_NOISE = new Set([
   'the', 'a', 'an', 'and', 'or', 'for', 'to', 'in', 'on', 'of', 'with',
   'my', 'our', 'new', 'old', 'fix', 'add', 'update', 'set', 'get',
 ]);
 
-/**
- * Extract up to 4 representative words from a session name.
- * "Surface Filter Bar Redesign" → "SURFACE FILTER BAR REDESIGN"
- * "Voice Server Phase Announcements" → "VOICE SERVER PHASE ANNOUNCEMENTS"
- * Returns uppercase. Filters noise words but keeps up to 4 meaningful ones.
- */
-export function getSessionOneWord(sessionId: string): string | null {
+/** The work.json row's identity + run state for a session, resolved through the
+ *  SAME source of record the Pulse board reads (`readRegistry`). This is what
+ *  makes the tab, the dashboard, and the status line agree by construction: the
+ *  tab label is a short form of the row's `sessionName`, and the tab color is
+ *  the row's derived ascent — never the frozen first-prompt stores that drifted
+ *  the moment a session became an ISA or was renamed (found 2026-09-07: a
+ *  climbing ISA showed its first-prompt name and ⚡/🪨 on the tab while Pulse
+ *  showed the ISA name and 🧗). One harness UUID can span multiple ISA rows
+ *  (isa-utils note); `boundRowSlug` picks the ISA row it last worked in. Fail-open: null on
+ *  any read error, so every caller falls back to its prior behavior. */
+export interface ResolvedSessionRow {
+  sessionName: string | null;
+  ascent: AscentState | null;
+  hasIsa: boolean;
+  /** The ISA names this session: a WORK ISA, written for this one piece of work. A
+   *  project ISA outlives every session on it, so the session keeps its own name
+   *  and `sessionName` comes back null (2026-10-16: a session became "TEXTUS"). */
+  namedByIsa: boolean;
+}
+export function resolveSessionRow(sessionId: string): ResolvedSessionRow | null {
+  if (!sessionId) return null;
   try {
-    const namesPath = paiPath('MEMORY', 'STATE', 'session-names.json');
+    const reg = readRegistry();
+    const slug = boundRowSlug(reg.sessions, sessionId);
+    if (!slug) return null;
+    const best: Record<string, any> = reg.sessions[slug];
+    const rawKey = best.ascent?.key ?? (typeof best.ascent === 'string' ? best.ascent : null);
+    const ascent = rawKey && (ASCENT as any)[rawKey] ? (rawKey as AscentState) : null;
+    // A WORK ISA names the session that created its row; a session that picks one up,
+    // or works on a project ISA, keeps its own name. A row never re-synced since
+    // `createdBy` landed falls back to its bound session.
+    const creator = best.createdBy || best.sessionUUID;
+    const namedByIsa = !!best.isa && String(best.isa).includes('MEMORY/WORK/') && creator === sessionId;
+    const ownsName = !best.isa || namedByIsa;
+    const name = ownsName && best.sessionName && String(best.sessionName).trim() ? String(best.sessionName).trim() : null;
+    return { sessionName: name, ascent, hasIsa: !!best.isa, namedByIsa };
+  } catch {
+    return null;
+  }
+}
+
+/** Raw canonical session name — the row's `sessionName` (source of record,
+ *  updated by ISA frontmatter and SessionRename) first, then the first-prompt
+ *  `session-names.json` entry. Everything the tab shows is derived from this so
+ *  it can never disagree with Pulse. */
+export function readCanonicalName(sessionId: string): string | null {
+  const row = resolveSessionRow(sessionId);
+  if (row?.sessionName) return row.sessionName;
+  try {
+    const namesPath = lifeosPath('MEMORY', 'STATE', 'session-names.json');
     let names: Record<string, string> | null = null;
     try {
       if (existsSync(namesPath)) names = JSON.parse(readFileSync(namesPath, 'utf-8'));
     } catch { names = null; }
     if (!names) {
-      // Mid-rename/corrupt read: the writer keeps a .bak (see PromptProcessing
-      // writeSessionNames) — a transient miss here is how a completed tab got
-      // stamped with a bare state word (window 1, 2026-08-12).
       const bakPath = namesPath + '.bak';
       if (!existsSync(bakPath)) return null;
       names = JSON.parse(readFileSync(bakPath, 'utf-8'));
     }
-    const fullName = names?.[sessionId];
+    const n = names?.[sessionId];
+    return n && n.trim() ? n.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract up to 4 representative words from a session name.
+ * "Reader Filter Bar Redesign" → "READER FILTER BAR REDESIGN"
+ * "Voice Server Phase Announcements" → "VOICE SERVER PHASE ANNOUNCEMENTS"
+ * Returns uppercase. Filters noise words but keeps up to 4 meaningful ones.
+ * Source is the canonical name (work.json row first), so the idle/cairn
+ * fallback identifies the SAME work Pulse names.
+ */
+export function getSessionOneWord(sessionId: string): string | null {
+  try {
+    const fullName = readCanonicalName(sessionId);
     if (!fullName) return null;
 
     const words = fullName.split(/\s+/).filter((w: string) => w.length > 0);
@@ -430,6 +470,90 @@ export function getSessionOneWord(sessionId: string): string | null {
   }
 }
 
+const SESSION_LABELS_PATH = lifeosPath('MEMORY', 'STATE', 'session-labels.json');
+
+/** A label is the session name fitted to the label width (see shortenNameToLabel),
+ *  so any word the name carries is allowed. This validator only guards what the
+ *  store will accept: one line, no title separator, nothing longer than a label. */
+export function isValidSessionLabel(label: string): boolean {
+  const l = (label || '').trim();
+  if (!l || l.length > SHORT_LABEL_MAX) return false;
+  return !l.includes('|') && !/[\u0000-\u001f\u007f]/.test(l);
+}
+
+/** Persist the label the namer authored for a session. Invalid input is dropped. */
+export function storeSessionLabel(sessionId: string, label: string): boolean {
+  if (!sessionId || !isValidSessionLabel(label)) return false;
+  try {
+    const dir = lifeosPath('MEMORY', 'STATE');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    let labels: Record<string, string> = {};
+    try {
+      if (existsSync(SESSION_LABELS_PATH)) labels = JSON.parse(readFileSync(SESSION_LABELS_PATH, 'utf-8'));
+    } catch { labels = {}; }
+    labels[sessionId] = label.trim().toUpperCase();
+    writeFileSync(SESSION_LABELS_PATH, JSON.stringify(labels, null, 2), 'utf-8');
+    return true;
+  } catch { return false; }
+}
+
+/** Read a stored label. Returns null when the session has none. */
+export function readSessionLabel(sessionId: string): string | null {
+  try {
+    if (!existsSync(SESSION_LABELS_PATH)) return null;
+    const labels = JSON.parse(readFileSync(SESSION_LABELS_PATH, 'utf-8')) as Record<string, string>;
+    const label = labels?.[sessionId];
+    return label && isValidSessionLabel(label) ? label.toUpperCase() : null;
+  } catch { return null; }
+}
+
+/** Drop a session's label (session end). */
+export function clearSessionLabel(sessionId: string): void {
+  try {
+    if (!existsSync(SESSION_LABELS_PATH)) return;
+    const labels = JSON.parse(readFileSync(SESSION_LABELS_PATH, 'utf-8')) as Record<string, string>;
+    if (!(sessionId in labels)) return;
+    delete labels[sessionId];
+    writeFileSync(SESSION_LABELS_PATH, JSON.stringify(labels, null, 2), 'utf-8');
+  } catch { /* silent */ }
+}
+
+/**
+ * Session label for the tab prefix — the canonical session name fitted to the
+ * label width (shortenNameToLabel). The name is
+ * the work.json row Pulse shows, so tab, status line and board read the same
+ * words. The namer-authored 1-2 word label (2026-08-19) is retired: a model-
+ * picked subject could never be guaranteed to match the name.
+ */
+export function getSessionShortLabel(sessionId: string): string | null {
+  const canonical = readCanonicalName(sessionId);
+  const full = canonical ? canonical.toUpperCase() : getSessionOneWord(sessionId);
+  return shortenNameToLabel(full);
+}
+
+/** Does an authored short label still describe the canonical name? Every label
+ *  word must appear in the name; if it doesn't, the label is stale (the session
+ *  became an ISA or was renamed) and the tab must re-slice from the name. */
+export function authoredFitsCanonical(authored: string, canonical: string): boolean {
+  if (!authored || !canonical) return false;
+  const haystack = canonical.toUpperCase();
+  return authored.split(/\s+/).filter(Boolean).every((w) => haystack.includes(w.toUpperCase()));
+}
+
+/** The session name fitted to the label width, upper-cased — the label the tab,
+ *  the status line and Pulse all agree on. It is a whole-word prefix of the name,
+ *  so it READS AS the session name (principal, 2026-09-16); since 2026-10-09 its
+ *  length is set by columns, not by a three-word count (fitName). Pure so the
+ *  regression cases can pin it. */
+export function shortenNameToLabel(fullUpper: string | null | undefined): string | null {
+  if (!fullUpper) return null;
+  return fitName(fullUpper.toUpperCase(), SURFACE_WIDTHS.label.cols) || null;
+}
+
+// Longest label the store accepts: the label width, with room for labels stored
+// before the width table existed.
+const SHORT_LABEL_MAX = 40;
+
 /**
  * Bare state words and transient stamps are never task descriptions. A title
  * carrying one of these tells the user nothing ("🪨 WORKING" on a completed
@@ -438,7 +562,7 @@ export function getSessionOneWord(sessionId: string): string | null {
 export function isDegenerateDesc(desc: string): boolean {
   const d = (desc || '').trim();
   if (!d) return true;
-  if (/^APPROVE:/i.test(d)) return true;
+  if (/^(APPROVE|FAILED):/i.test(d)) return true;
   return /^(working|done|thinking|blocked|completed|idle|task complete)[.…]?$/i.test(d);
 }
 
@@ -446,16 +570,21 @@ export function isDegenerateDesc(desc: string): boolean {
  * Pure title composition for setAscentTab — extracted so tests can replay the
  * exact shipping logic against regression cases (the 🪨 WORKING tab).
  *
- * Title shape since 2026-08-12: `{stateIcon}{activityGlyph} {desc}` — the
- * state icon says where in the climb, the activity glyph says whether work is
- * moving (⚡), waiting on {{PRINCIPAL_NAME}} (⏳), done (✅), or quiet (💤). Defaults come
- * from `defaultTabActivity`; only the question/approval stamps override.
+ * Title shape: `{glyph} {LABEL} | {desc}` — ONE glyph (see `tabGlyph`): ⏳ when
+ * The principal is the blocker, ⚡ for work with no ISA behind it, and the run's own
+ * ascent icon otherwise. LABEL is the short session name so a glance says WHICH
+ * session, and desc is the activity. A tab reading only the activity
+ * ("posture") told the principal nothing about which session it belonged to
+ * (2026-08-19). Defaults come from `defaultTabActivity`; only the
+ * question/approval stamps override.
  */
 export function composeAscentTitle(
   state: AscentState,
   opts: {
     summary?: string;
     oneWord?: string | null;
+    /** Short session name for the tab prefix (see getSessionShortLabel). */
+    sessionLabel?: string | null;
     currentTitle?: string | null;
     activity?: TabActivity | null;
     /** Use the summary verbatim as the description (approval stamps carry
@@ -466,17 +595,22 @@ export function composeAscentTitle(
   const config = ASCENT[state];
   const summary = opts.summary?.trim() || '';
   const activity = opts.activity !== undefined ? opts.activity : defaultTabActivity(state);
-  const prefix = `${config.icon}${activity ? TAB_ACTIVITY[activity].glyph : ''}`;
+  const prefix = tabGlyph(state, activity ?? null);
+  const label = opts.sessionLabel?.trim() || '';
+  /** `{icon}{glyph} LABEL | desc`, or `{icon}{glyph} desc` when the session has
+   * no name yet. The label never repeats itself into the desc. */
+  const compose = (desc: string): string =>
+    label && desc && desc !== label ? `${prefix} ${label} | ${desc}` : `${prefix} ${desc || label}`;
   if (state === 'cairn') {
     // No summary extracted — the session name at least identifies the work;
     // never a bare state word.
-    return `${prefix} ${summary || opts.oneWord || 'Done'}`;
+    return compose(summary || (label ? 'Done' : opts.oneWord || 'Done'));
   }
   if (state === 'idle') {
     return opts.oneWord || 'Idle';
   }
   if (opts.literal && summary) {
-    return `${prefix} ${summary}`;
+    return compose(summary);
   }
   // Preserve the working description carried in from PromptProcessing or a
   // prior phase — only the leading token+icon changes to show the new phase.
@@ -484,10 +618,7 @@ export function composeAscentTitle(
   // shape that may linger in pre-format-change state files.
   let existingDesc = '';
   if (opts.currentTitle) {
-    const pipeIdx = opts.currentTitle.indexOf(' | ');
-    existingDesc = pipeIdx !== -1
-      ? opts.currentTitle.slice(pipeIdx + 3).trim()
-      : stripPrefix(opts.currentTitle);
+    existingDesc = tabTitleActivity(opts.currentTitle, label || null);
   }
   // Never carry over generic phase gerunds, state words, or approval stamps —
   // they're not real task descriptions.
@@ -496,7 +627,7 @@ export function composeAscentTitle(
   // overrides the carried-over desc; otherwise keep what the tab already shows.
   const override = summary && !GENERIC_PHASE_GERUNDS.has(summary) && !isDegenerateDesc(summary) ? summary : '';
   const desc = override || existingDesc || config.gerund;
-  return `${prefix} ${desc}`;
+  return compose(desc);
 }
 
 export interface AscentTabOptions {
@@ -514,8 +645,8 @@ export interface AscentTabOptions {
 
 /**
  * Set tab title and color for an Algorithm run state.
- * Active format:   {ICON}{ACTIVITY} {task description}
- * Cairn format:    🪨✅ {summary}
+ * Active format:   {ICON}{ACTIVITY} {SESSION LABEL} | {task description}
+ * Cairn format:    🪨✅ {SESSION LABEL} | {summary}
  *
  * Called whenever the run's derived ascent state changes. Every glyph, color and
  * fallback gerund comes from `LIFEOS/TOOLS/ascent.ts` — the same table Pulse and
@@ -525,34 +656,26 @@ export interface AscentTabOptions {
  * tab is one of the six run-state colors.
  */
 export function setAscentTab(state: AscentState, sessionId: string, summary?: string, opts: AscentTabOptions = {}): void {
+  if (noTerminal()) return;
   const config = ASCENT[state];
   if (!config) return;
 
-  const kittyEnv = getKittyEnv(sessionId);
   const currentState = readTabState(sessionId);
   const title = composeAscentTitle(state, {
     summary,
     oneWord: getSessionOneWord(sessionId),
+    sessionLabel: getSessionShortLabel(sessionId),
     currentTitle: currentState?.title ?? null,
     activity: opts.activity,
     literal: opts.literal,
   });
+  if(writePulseTab({...opts,title,state:state==='cairn'?'completed':'working',ascent:state,inactiveBg:config.tabBg,inactiveFg:config.tabFg,activeBg:ACTIVE_TAB_BG,activeFg:ACTIVE_TAB_FG},sessionId))return;
+  const kittyEnv = getKittyEnv(sessionId);
 
-  // cmux path: use sidebar metadata instead of Kitty remote control
-  if (isCmux()) {
-    setCmuxState(title, state === 'cairn' ? 'completed' : state === 'idle' ? 'idle' : 'working', state);
-    try {
-      const progress = ascentProgress(state);
-      if (progress > 0) {
-        execFileSync('cmux', ['set-progress', String(progress)], { stdio: 'ignore', timeout: 2000 });
-      } else {
-        execFileSync('cmux', ['clear-progress'], { stdio: 'ignore', timeout: 2000 });
-      }
-    } catch { /* silent */ }
-    return;
-  }
 
-  try {
+  const herdrKey = herdrStateKey();
+  paint: try {
+    if (herdrKey) { writeHerdrTab(title, sessionId ? readCanonicalName(sessionId) : null); break paint; }
     const isKitty = process.env.TERM === 'xterm-kitty' || kittyEnv.listenOn;
     if (!isKitty) return;
 
@@ -578,6 +701,7 @@ export function setAscentTab(state: AscentState, sessionId: string, summary?: st
     const winTitleArgs = winMatch
       ? ['@', toArg, 'set-window-title', winMatch, title]
       : ['@', toArg, 'set-window-title', title];
+    // Argument arrays, never a shell string: GHSA-pv2m-jc3r-32fw, @Nosferatuvjr @turnerlk
     execFileSync(kitten, titleArgs, { stdio: 'ignore', timeout: 2000 });
     execFileSync(kitten, winTitleArgs, { stdio: 'ignore', timeout: 2000 });
 
@@ -591,7 +715,7 @@ export function setAscentTab(state: AscentState, sessionId: string, summary?: st
   }
 
   // Persist per-window state
-  const windowId = kittyEnv.windowId;
+  const windowId = herdrKey ?? kittyEnv.windowId;
   if (!windowId) return;
 
   try {
@@ -607,6 +731,7 @@ export function setAscentTab(state: AscentState, sessionId: string, summary?: st
     if (opts.previousTitle) stateData.previousTitle = opts.previousTitle;
     if (opts.previousAscent) stateData.previousAscent = opts.previousAscent;
     if (opts.blocked) stateData.blocked = true;
+    if (sessionId) stateData.sessionId = sessionId;
     writeFileSync(join(TAB_TITLES_DIR, `${windowId}.json`), JSON.stringify(stateData), 'utf-8');
   } catch { /* silent */ }
 }

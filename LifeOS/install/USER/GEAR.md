@@ -1,6 +1,6 @@
 ---
 last_updated: 2026-01-01
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 provenance: template
 ---
 
@@ -73,7 +73,10 @@ _TODO: wallet, phone, watch, bag, keys, pen._
 
 ## Coffee
 
-_TODO: grinders, brewers, kettle, scale — if coffee is your thing._
+_TODO: grinders, brewers, kettle, scale — if coffee is your thing. The coffee skill reads this table: one row per piece, with grind settings and brew defaults in Notes._
+
+| Gear | Type | Notes |
+|------|------|-------|
 
 ## Car
 

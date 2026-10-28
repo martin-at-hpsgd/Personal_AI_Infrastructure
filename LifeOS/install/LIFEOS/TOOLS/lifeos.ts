@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.7.36
  * lifeos — the LifeOS launcher CLI
  * (Canonical name `lifeos`; alias it to whatever you like — public PR #1631, @elhoim.)
  *
@@ -11,7 +12,7 @@
  *   lifeos -m bd       Launch with Bright Data MCP
  *   lifeos -m bd,ap    Launch with multiple MCPs
  *   lifeos -r / --resume  Resume a session (picker, or pass a session ID)
- *   lifeos --local     Stay in current directory (don't cd to ~/.claude)
+ *   lifeos --local     Stay in current directory (don't cd to ~/.claude; project CLAUDE.md files load only this way — public issue #2176, @selinium)
  *   lifeos -- <flags...>  Forward everything after -- verbatim to `claude`
  *   lifeos update      Update Claude Code
  *   lifeos version     Show version info
@@ -25,15 +26,16 @@ import { existsSync, readFileSync, writeFileSync, readdirSync, symlinkSync, unli
 import { homedir } from "os";
 import { join, basename } from "path";
 import { PULSE_BASE } from "../PULSE/endpoint";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1943 @MarnuLombard
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const CLAUDE_DIR = join(homedir(), ".claude");
+const CLAUDE_DIR = getClaudeDir();
 const MCP_DIR = join(CLAUDE_DIR, "MCPs");
 const ACTIVE_MCP = join(CLAUDE_DIR, ".mcp.json");
-const BANNER_SCRIPT = join(homedir(), ".claude", "LIFEOS", "TOOLS", "Banner.ts");
+const BANNER_SCRIPT = join(CLAUDE_DIR, "LIFEOS", "TOOLS", "Banner.ts");
 const VOICE_SERVER = `${PULSE_BASE}/notify/personality`;
 const WALLPAPER_DIR = join(homedir(), "Projects", "Wallpaper");
 // Note: RAW archiving removed - Claude Code handles its own cleanup (30-day retention in projects/)
@@ -70,6 +72,21 @@ const PROFILE_DESCRIPTIONS: Record<string, string> = {
 
 function log(message: string, emoji = "") {
   console.log(emoji ? `${emoji} ${message}` : message);
+}
+
+// Pin the spawned Claude Code (and every hook it runs) to the config root this
+// launcher resolved. Claude Code itself reads only CLAUDE_CONFIG_DIR, so an install
+// placed via LIFEOS_SKILLS_DIR (install.sh's only root marker, public issue #1968)
+// had the harness on ~/.claude while the tools ran elsewhere. Exported only when that
+// signal chose the root: a default install sets nothing, so LIFEOS_DIR keeps
+// relocating LIFEOS within it (the resolver ignores LIFEOS_DIR once CLAUDE_CONFIG_DIR
+// is present). CLAUDE_PLUGIN_ROOT is deliberately NOT a trigger — that is Claude
+// Code's own marker for a plugin loaded INTO an existing config dir, and pointing
+// CLAUDE_CONFIG_DIR at the plugin tree would invert it. An explicit CLAUDE_CONFIG_DIR
+// always wins. ported from public PR #1943, @MarnuLombard
+function pinConfigRoot(env: Record<string, string | undefined>): void {
+  if (env.CLAUDE_CONFIG_DIR) return;
+  if (process.env.LIFEOS_SKILLS_DIR) env.CLAUDE_CONFIG_DIR = CLAUDE_DIR;
 }
 
 
@@ -165,6 +182,7 @@ async function notifyVoice(message: string) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, play: true }),
+      signal: AbortSignal.timeout(5000),
     }).catch(() => {});
     return;
   }
@@ -191,6 +209,7 @@ async function notifyVoice(message: string) {
         playfulness: personality.playfulness,
       },
     }),
+    signal: AbortSignal.timeout(5000),
   }).catch(() => {}); // Silently ignore errors
 }
 
@@ -207,7 +226,7 @@ function requireClaudeCli() {
   console.error("❌ Claude Code CLI not found on PATH — `lifeos` wraps the `claude` binary.");
   console.error("   Either install Claude Code (https://claude.com/claude-code), or launch your");
   console.error("   own harness with its system-prompt flag pointed at LIFEOS/LIFEOS_SYSTEM_PROMPT.md");
-  console.error("   (see INSTALL.md step 7 for the non-Claude-Code launch shape).");
+  console.error("   (see INSTALL.md § Launch command for the non-Claude-Code launch shape).");
   process.exit(1);
 }
 
@@ -232,7 +251,8 @@ function compareVersions(a: string, b: string): number {
 async function getLatestVersion(): Promise<string | null> {
   try {
     const response = await fetch(
-      "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest"
+      "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest",
+      { signal: AbortSignal.timeout(30000) }
     );
     const version = (await response.text()).trim();
     if (/^[0-9]+\.[0-9]+\.[0-9]+/.test(version)) {
@@ -320,8 +340,12 @@ function setMcpCustom(mcpNames: string[]) {
 
   for (const name of mcpNames) {
     const file = MCP_SHORTCUTS[name.toLowerCase()];
-    if (file) {
+    if (file && existsSync(join(MCP_DIR, file))) {
       files.push(file);
+    } else if (file) {
+      // public issue #2156, @tzioup: stop before the write, or .mcp.json is
+      // replaced with an empty config and exits 0.
+      error(`MCP '${name}' maps to ${file}, which is not in ${MCP_DIR}; .mcp.json left untouched`);
     } else {
       // Try direct file match
       const directFile = `${name}-MCP.json`;
@@ -386,7 +410,23 @@ function findWallpaper(query: string): string | null {
   return fuzzy || null;
 }
 
+// The AppleScript source is a constant; the path travels as argv item 1, never
+// interpolated, so a filename containing quotes cannot inject script.
+export function macWallpaperCommand(fullPath: string): string[] {
+  return [
+    "osascript",
+    "-e", "on run argv",
+    "-e", 'tell application "System Events" to tell every desktop to set picture to (item 1 of argv)',
+    "-e", "end run",
+    "--", fullPath,
+  ];
+}
+
 function setWallpaper(filename: string): boolean {
+  if (filename !== basename(filename)) {
+    log(`Refusing wallpaper name with path components: ${filename}`, "❌");
+    return false;
+  }
   const fullPath = join(WALLPAPER_DIR, filename);
   if (!existsSync(fullPath)) {
     log(`Wallpaper not found: ${fullPath}`, "❌");
@@ -410,8 +450,7 @@ function setWallpaper(filename: string): boolean {
 
   // Set macOS desktop background
   try {
-    const script = `tell application "System Events" to tell every desktop to set picture to "${fullPath}"`;
-    const macResult = spawnSync(["osascript", "-e", script]);
+    const macResult = spawnSync(macWallpaperCommand(fullPath));
     if (macResult.exitCode === 0) {
       log("macOS desktop set", "✅");
     } else {
@@ -489,6 +528,20 @@ function cmdWallpaper(args: string[]) {
 // Commands
 // ============================================================================
 
+// public issue #2255, @coygeek: a missing system prompt used to be dropped silently, so the
+// session ran without the constitutional layer and nothing said so. An explicit -s path that
+// does not exist is a hard error; a missing default warns loudly and continues.
+function systemPromptArgs(explicit?: string): string[] {
+  const file = explicit ?? join(CLAUDE_DIR, "LIFEOS", "LIFEOS_SYSTEM_PROMPT.md");
+  if (existsSync(file)) return ["--append-system-prompt-file", file];
+  if (explicit !== undefined) {
+    console.error(`lifeos: system prompt not found: ${explicit}`);
+    process.exit(1);
+  }
+  console.error(`lifeos: warning: default system prompt not found (${file}); this session has no LifeOS system prompt`);
+  return [];
+}
+
 async function cmdLaunch(options: { mcp?: string; resume?: boolean; resumeId?: string; local?: boolean; systemPrompt?: string; passthrough?: string[] }) {
   // CLAUDE.md is now static — no build step needed.
   // Algorithm spec is loaded on-demand when Algorithm mode triggers.
@@ -500,10 +553,7 @@ async function cmdLaunch(options: { mcp?: string; resume?: boolean; resumeId?: s
 
   // LifeOS System Prompt — constitutional rules appended to Claude Code's system prompt
   // These rules get highest instruction authority (system prompt layer > CLAUDE.md layer)
-  const systemPromptFile = options.systemPrompt ?? join(CLAUDE_DIR, "LIFEOS", "LIFEOS_SYSTEM_PROMPT.md");
-  if (existsSync(systemPromptFile)) {
-    args.push("--append-system-prompt-file", systemPromptFile);
-  }
+  args.push(...systemPromptArgs(options.systemPrompt));
 
   // Handle MCP configuration
   if (options.mcp) {
@@ -548,11 +598,13 @@ async function cmdLaunch(options: { mcp?: string; resume?: boolean; resumeId?: s
     args.push(...options.passthrough);
   }
 
-  // Voice notification (using focused marker for calmer tone).
+  // Voice notification, plain text: no emotion marker, so the greeting gets the
+  // same delivery as the spoken closer. On v4 a marker becomes a performed audio
+  // tag, and "[🎯 focused]" made the greeting sound hyped (2026-09-28).
   // Reads daidentity.startupCatchphrase from settings.json so the user's
   // install-time catchphrase is actually honored. Falls back to the
   // historical "<name> here, ready to go." default when unset.
-  void notifyVoice(`[🎯 focused] ${await getStartupCatchphrase()}`);
+  void notifyVoice(await getStartupCatchphrase());
 
   // Launch Claude
   // BILLING: subscription, not API. Strip ANTHROPIC_API_KEY before spawn so the
@@ -561,6 +613,7 @@ async function cmdLaunch(options: { mcp?: string; resume?: boolean; resumeId?: s
   const launchEnv = { ...process.env };
   delete launchEnv.ANTHROPIC_API_KEY;
   launchEnv.CLAUDE_CODE_WORKFLOWS = "1";
+  pinConfigRoot(launchEnv);
   const proc = spawn(args, {
     stdio: ["inherit", "inherit", "inherit"],
     env: launchEnv,
@@ -604,7 +657,7 @@ async function cmdUpdate() {
 
   // Step 2: Update Claude Code
   log("Step 2/2: Installing latest Claude Code...", "🤖");
-  const claudeResult = spawnSync(["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]);
+  const claudeResult = spawnSync(["bash", "-c", claudeInstallScript()]);
   if (claudeResult.exitCode !== 0) {
     error("Claude Code installation failed");
   }
@@ -615,6 +668,11 @@ async function cmdUpdate() {
   if (newVersion) {
     console.log(`Now running: v${newVersion}`);
   }
+}
+
+// pipefail: a failed curl must not be masked by bash exiting 0 on empty stdin.
+export function claudeInstallScript(): string {
+  return "set -o pipefail; curl -fsSL https://claude.ai/install.sh | bash";
 }
 
 async function cmdVersion() {
@@ -701,16 +759,14 @@ async function cmdPrompt(prompt: string) {
 
   // Same constitutional layer as interactive launches — without this, one-shots
   // ran bare Claude Code (CLAUDE.md only, no output format, no security protocol).
-  const systemPromptFile = join(CLAUDE_DIR, "LIFEOS", "LIFEOS_SYSTEM_PROMPT.md");
-  if (existsSync(systemPromptFile)) {
-    args.push("--append-system-prompt-file", systemPromptFile);
-  }
+  args.push(...systemPromptArgs());
 
   process.chdir(CLAUDE_DIR);
 
   const env: Record<string, string> = { ...process.env } as Record<string, string>;
   delete env.ANTHROPIC_API_KEY;
   env.CLAUDE_CODE_WORKFLOWS = "1";
+  pinConfigRoot(env);
   const proc = spawn(args, {
     stdio: ["inherit", "inherit", "inherit"],
     env,
@@ -939,7 +995,9 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

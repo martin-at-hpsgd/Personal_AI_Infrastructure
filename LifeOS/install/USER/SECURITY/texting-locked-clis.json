@@ -1,0 +1,4 @@
+{
+  "_comment": "Extra read-only command-line tools a locked text session may run. Empty rows (as shipped) add none; the built-in mail, contacts and people reads still work. Each row is { \"rel\": \"<tool path under ~/.claude>\", \"subs\": [\"<read-only subcommand>\"], \"flags\": [\"<allowed --flag>\"], \"maxPositional\": <number> }. Keys starting with _ are ignored.",
+  "rows": []
+}

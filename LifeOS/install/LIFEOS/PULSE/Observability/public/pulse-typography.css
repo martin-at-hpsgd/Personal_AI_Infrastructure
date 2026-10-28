@@ -1,0 +1,73 @@
+/* Pulse's shared spacecraft-display typography. Loaded after legacy themes. */
+@font-face {
+  font-family: 'Pulse Display';
+  src: url('/fonts/oxanium-700.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pulse UI';
+  src: url('/fonts/rajdhani-600.ttf') format('truetype');
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pulse UI';
+  src: url('/fonts/rajdhani-700.ttf') format('truetype');
+  font-weight: 700 900;
+  font-style: normal;
+  font-display: swap;
+}
+:root, html.dark {
+  --sans: 'Pulse UI', sans-serif;
+  --pulse-display: 'Pulse Display', sans-serif;
+}
+body, body.font-sans, .font-sans,
+.hero-state-block, .hero-next-action,
+body .hero-state-card-body, body .hero-state-card-val {
+  font-family: var(--sans);
+  font-weight: 600;
+}
+/* Older components set these families inline; the shared theme owns UI type. */
+[style*="concourse"], [style*="advocate"], [style*="heliotrope-caps"] {
+  font-family: var(--sans) !important;
+}
+body h1, body h2, body h3, body h4, body h5, body h6,
+body .modal-title, body .band-title,
+body .pulse-stat-value, body .frame .kpi-val,
+body .frame .metric-val, body .frame .stat-value {
+  font-family: var(--pulse-display) !important;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  text-transform: none;
+}
+body .pulse-page-header h1 {
+  font-size: clamp(1.8rem, 3vw, 2.35rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+body .pulse-stat-value {
+  font-size: clamp(1.65rem, 2.5vw, 2rem);
+  white-space: nowrap;
+}
+body .pulse-section-header > span:first-of-type,
+body .pulse-section-header::before,
+body .hero-next-tag, body .hero-meta-label,
+body .hero-ideal-label,
+body .hero-state-card-label, body .hero-state-card-key,
+body .metric-label,
+body .glass:has(.pulse-stat-value) > div:first-child > span,
+body .pulse-stat-label {
+  font-family: var(--sans) !important;
+  font-weight: 700;
+}
+body button, body nav, body .font-semibold {
+  font-weight: 700;
+}
+/* Keep true code and fixed-width data aligned, with a substantial stroke. */
+body .mono, body .font-mono, body code, body pre {
+  font-weight: 700;
+}

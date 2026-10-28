@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.0
+ * @version 1.0.1
  * BlockMessageGate — every red box tells you how to get out of it.
  *
  * When a hook returns `decision: "block"` (or a deny permission decision), Claude
@@ -10,8 +10,8 @@
  * obstacle and invites the worst possible response: rewording the claim until the
  * gate stops firing.
  *
- * The contract ({{PRINCIPAL_NAME}}, 2026-07-31 — "the red outline includes the problem and
- * the recommended fix if there is one"):
+ * The contract (2026-07-31): every block message carries the problem and,
+ * when there is one, the recommended fix:
  *
  *   PROBLEM — what was claimed or attempted, and what the gate actually observed.
  *   FIX     — the concrete next action, and where honest downgrade is acceptable,
@@ -66,11 +66,12 @@ const PROBLEM_MARKERS = [
   /\bnever\b/i,
 ];
 
-interface Finding {
+export interface Finding {
   file: string;
   line: number;
   snippet: string;
-  missing: ("problem" | "fix")[];
+  /** "scan" marks an incomplete scan: a directory or file the linter could not read, which blocks like any other finding. */
+  missing: ("problem" | "fix" | "scan" | "unanalyzable")[];
 }
 
 /**
@@ -79,14 +80,17 @@ interface Finding {
  * Deliberately simple — a reason built by a helper call is reported as
  * unanalyzable rather than guessed at.
  */
-function extractReasons(src: string): { line: number; text: string }[] {
-  const out: { line: number; text: string }[] = [];
+function extractReasons(src: string): { line: number; text: string; computed: boolean; expr?: string }[] {
+  const out: { line: number; text: string; computed: boolean; expr?: string }[] = [];
   const re = /reason:\s*/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)) !== null) {
     let i = m.index + m[0].length;
     let text = "";
     let segments = 0;
+    let computed = false;
+    let isType = false;
+    let expr0: string | undefined;
     const skipWs = () => { while (i < src.length && /\s/.test(src[i])) i++; };
     // Consume a chain of `+`-joined parts. The guard counts SEGMENTS, not
     // characters: counting characters let indentation between parts exhaust the
@@ -104,19 +108,41 @@ function extractReasons(src: string): { line: number; text: string }[] {
       } else if (/[A-Za-z_$]/.test(ch ?? "")) {
         // A computed part (`lines.join("\n")`, a helper call). Skip it rather
         // than stop — the remedy usually sits in a literal AFTER it.
+        const start = i;
         while (i < src.length && !/[+,;\n]/.test(src[i])) i++;
+        const expr = src.slice(start, i).replace(/[)\s]+$/, "");
+        // `reason: string` in a signature or interface is a type annotation, not a block message.
+        if (segments === 1 && /^(?:string|unknown|any)(?:\s*\|\s*(?:undefined|null))?(?:\s*\)\s*=>.*)?$/.test(expr)) { computed = false; text = ""; isType = true; break; }
+        computed = true;
+        expr0 ??= expr;
       } else break;
       skipWs();
       if (src[i] === "+") { i++; skipWs(); continue; }
       break;
     }
-    if (text.trim().length > 20) {
-      out.push({ line: src.slice(0, m.index).split("\n").length, text });
-    }
+    // Every reason is returned, short or computed: the caller decides, and a reason it cannot read is a finding
+    // (short and helper-built reasons used to vanish from the scan).
+    if (!isType) out.push({ line: src.slice(0, m.index).split("\n").length, text, computed, expr: expr0 });
   }
   return out;
 }
 
+/** The template literals of `const NAME = { key: (…) => `…`, … }` when `expr` indexes NAME; null when it does not. */
+export function tableEntries(src: string, expr: string | undefined): { line: number; text: string }[] | null {
+  const name = expr?.match(/^([A-Za-z_$][\w$]*)\s*\[/)?.[1];
+  if (!name) return null;
+  const decl = new RegExp(`\\bconst\\s+${name}\\b[^\\n]*=\\s*\\{[ \\t]*$`, "m").exec(src);
+  if (!decl) return null;
+  const start = decl.index + decl[0].length;
+  const end = src.indexOf("\n};", start);
+  if (end < 0) return null;
+  const body = src.slice(start, end);
+  const out: { line: number; text: string }[] = [];
+  for (const m of body.matchAll(/=>\s*`((?:[^`\\]|\\.)*)`/g)) {
+    out.push({ line: src.slice(0, start + m.index!).split("\n").length, text: m[1]! });
+  }
+  return out;
+}
 function isBlockContext(src: string, lineNo: number): boolean {
   // A `reason:` within a few lines of a block/deny decision is a red-box message.
   const lines = src.split("\n");
@@ -125,24 +151,55 @@ function isBlockContext(src: string, lineNo: number): boolean {
   return /decision:\s*"block"|permissionDecision:\s*"deny"/.test(window);
 }
 
-function scan(): Finding[] {
+/**
+ * A directory or file the scan could not read is a finding, never a skip: a linter that
+ * passes after silently dropping the files it could not open reports an all-clear it has not earned.
+ */
+export function scan(dirs: string[] = HOOK_DIRS, root: string = CLAUDE_DIR): Finding[] {
   const findings: Finding[] = [];
-  for (const dir of HOOK_DIRS) {
+  const unreadable = (abs: string, e: unknown): void => {
+    findings.push({ file: relative(root, abs) || abs, line: 0, snippet: `scan incomplete: could not read (${(e as NodeJS.ErrnoException)?.code ?? "error"})`, missing: ["scan"] });
+  };
+  for (const dir of dirs) {
     let entries: string[];
-    try { entries = readdirSync(dir); } catch { continue; }
+    try { entries = readdirSync(dir); } catch (e) { unreadable(dir, e); continue; }
     for (const f of entries) {
       if (!f.endsWith(".ts") || f.includes(".test.")) continue;
       const abs = join(dir, f);
-      const src = readFileSync(abs, "utf8");
+      let src: string;
+      try { src = readFileSync(abs, "utf8"); } catch (e) { unreadable(abs, e); continue; }
       if (!/decision:\s*"block"|permissionDecision:\s*"deny"/.test(src)) continue;
       for (const r of extractReasons(src)) {
         if (!isBlockContext(src, r.line)) continue;
+        // A reason with too little literal text to judge (short, or built by a helper with no literal remedy) is
+        // reported, never skipped: the scan cannot vouch for a message it could not read.
+        // A reason read from a message table in the same file (`MSGS[type](…)`) is judged entry by entry:
+        // every template the table holds must carry both clauses, and a table the scan cannot read is unanalyzable.
+        const table = r.computed && r.text.trim().length <= 20 ? tableEntries(src, r.expr) : null;
+        if (table && table.length) {
+          for (const t of table) {
+            const miss: ("problem" | "fix")[] = [];
+            if (!PROBLEM_MARKERS.some((p) => p.test(t.text))) miss.push("problem");
+            if (!FIX_MARKERS.some((p) => p.test(t.text))) miss.push("fix");
+            if (miss.length) findings.push({ file: relative(root, abs), line: t.line, snippet: t.text.replace(/\s+/g, " ").slice(0, 100), missing: miss });
+          }
+          continue;
+        }
+        if (r.text.trim().length <= 20) {
+          findings.push({
+            file: relative(root, abs),
+            line: r.line,
+            snippet: (r.computed ? `computed reason, literal text: "${r.text.trim()}"` : r.text.trim()).replace(/\s+/g, " ").slice(0, 100),
+            missing: ["unanalyzable"],
+          });
+          continue;
+        }
         const missing: ("problem" | "fix")[] = [];
         if (!PROBLEM_MARKERS.some((p) => p.test(r.text))) missing.push("problem");
         if (!FIX_MARKERS.some((p) => p.test(r.text))) missing.push("fix");
         if (missing.length) {
           findings.push({
-            file: relative(CLAUDE_DIR, abs),
+            file: relative(root, abs),
             line: r.line,
             snippet: r.text.replace(/\s+/g, " ").slice(0, 100),
             missing,
@@ -154,6 +211,7 @@ function scan(): Finding[] {
   return findings;
 }
 
+function main(): never {
 const findings = scan();
 if (process.argv.includes("--json")) {
   console.log(JSON.stringify({ ok: findings.length === 0, findings }, null, 2));
@@ -167,8 +225,11 @@ if (process.argv.includes("--json")) {
       console.log(`    "${f.snippet}…"`);
     }
     console.log(
-      `\n${findings.length} block message(s) leave the reader stuck. A block must say what it observed and what to do next — see hooks/README.md § Block messages.`,
+      `\n${findings.length} finding(s): block messages that leave the reader stuck, or hook files the scan could not read (the scan is incomplete, so this is not a pass). A block must say what it observed and what to do next — see hooks/README.md § Block messages.`,
     );
   }
 }
 process.exit(findings.length === 0 ? 0 : 1);
+}
+
+if (import.meta.main) main();

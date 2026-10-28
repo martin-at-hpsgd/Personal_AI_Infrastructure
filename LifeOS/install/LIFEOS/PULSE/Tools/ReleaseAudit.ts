@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { readdirSync, statSync, readFileSync, existsSync } from "node:fs";
-import { resolve, join, relative } from "node:path";
+import { readdirSync, statSync, readFileSync, existsSync, openSync, readSync, closeSync } from "node:fs";
+import { resolve, join, relative, extname } from "node:path";
 import { homedir } from "node:os";
 import { parseFrontmatter } from "../lib/frontmatter";
 import { MODULE_DEFAULTS, LEGACY_SECTION_KEYS } from "../lib/modules";
@@ -24,6 +24,30 @@ const STAGING = resolve(stagingArg);
 if (!existsSync(STAGING)) {
   console.error(`error: staging dir does not exist: ${STAGING}`);
   process.exit(1);
+}
+
+// GHSA-p859-xr44-q6mw, @elhoim: an extension allowlist fails open when new
+// text file types ship, so exclude only known binary types and NUL-bearing files.
+const BINARY_EXTENSIONS = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns", ".pdf",
+  ".zip", ".gz", ".tgz", ".woff", ".woff2", ".ttf", ".otf",
+  ".mp3", ".mp4", ".mov", ".wav", ".sqlite", ".db",
+]);
+
+function hasNulInFirst8KiB(file: string): boolean {
+  const fd = openSync(file, "r");
+  try {
+    const sample = Buffer.alloc(8192);
+    let bytesRead = 0;
+    while (bytesRead < sample.length) {
+      const count = readSync(fd, sample, bytesRead, sample.length - bytesRead, bytesRead);
+      if (count === 0) break;
+      bytesRead += count;
+    }
+    return sample.subarray(0, bytesRead).includes(0);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 // Load PROHIBITED_STRINGS from USER-zone config (never ships publicly).
@@ -68,7 +92,7 @@ function walk(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    if (entry.startsWith(".git")) continue;
+    if (entry === ".git") continue;
     if (statSync(full).isDirectory()) out.push(...walk(full));
     else out.push(full);
   }
@@ -155,7 +179,7 @@ for (const file of files) {
     }
   }
 
-  if (rel.endsWith(".md") || rel.endsWith(".markdown") || codeExtAll(rel) || rel.endsWith(".json") || rel.endsWith(".toml")) {
+  if (!BINARY_EXTENSIONS.has(extname(rel).toLowerCase()) && !hasNulInFirst8KiB(file)) {
     if (rel.startsWith("LIFEOS/USER/_TEMPLATES/")) continue;
     // Public-repo attribution is not a leak. A github.com/<owner>/<repo> URL is
     // the canonical link for the owner's OPEN-SOURCE tools (fabric, SecLists,
@@ -174,15 +198,17 @@ for (const file of files) {
     // triage encoded 2026-07-30 after three cuts re-adjudicated the same hits.
     const PROHIBITED_EXEMPT: Record<string, string> = {
       "hooks/SystemFileGuard.test.ts": "the leak guard's own fixtures must contain the patterns it catches",
-      "LIFEOS/DOCUMENTATION/LifeOs/RenameMap.json": "PAI→LifeOS rename history maps public repo slugs",
       "LIFEOS/TOOLS/DeriveDenyHashes.ts": "public repo slug kept as attribution allowlist token (documented in-file)",
       "README.md": "the author's public repo front page — his site, handle, and slug are the attribution, by design",
       "LIFEOS/TOOLS/GenerateStarHistory.ts": "default CLI arg is the public repo's own slug (star chart of this repo)",
       "skills/Fabric/Patterns/recommend_artists/system.md": "vendored verbatim upstream fabric pattern — its example artists are already public in the fabric repo; scrubbing would drift the vendored copy (ScrubTargets: upstream OSS content class)",
+      "LIFEOS/TOOLS/HarnessConformance.ts": "public-leak DETECTOR regex — the public repo slug is one of the tokens it fails a section on (same class as DeriveDenyHashes; 7.50.2 cut)",
+      "skills/Upgrade/sources.json": "the LifeOS upstream repo is an Upgrade source by design — its `owner` field is the public repo slug (7.50.2 cut)",
+      "LIFEOS/TOOLS/Credits.ts": "DEFAULT_REPO is the public repo's own slug, pinned in code because skills/Errata/Tools/Send.ts aims its one upstream target at it (ScrubTargets: public repo owner names are not leaks)",
     };
     // The emitted LifeOS/ payload nests the tree under install/ — normalize so
     // the exemptions reach BOTH audit lanes (staging .claude/ and emitted
-    // payload; Max audit 2026-07-30 live-probed the payload lane re-flagging
+    // payload; Astra audit 2026-07-30 live-probed the payload lane re-flagging
     // the sanctioned hits the map was built to retire).
     const relForExempt = rel.replace(/^install\//, "");
     if (!(relForExempt in PROHIBITED_EXEMPT)) {
@@ -193,7 +219,7 @@ for (const file of files) {
         }
       }
     }
-    // Dead legacy-doc pointers (Max audit ratchet, 2026-08-01 v7.26.0 cut):
+    // Dead legacy-doc pointers (Astra audit ratchet, 2026-08-01 v7.26.0 cut):
     // backticked ALLCAPS .md references like `MEMORYSYSTEM.md` are pre-rename
     // pointer rot — bare basenames evade G7's path-based ref integrity, and the
     // MEMORYSYSTEM.md one steered fresh installs to the memory system's
@@ -225,7 +251,7 @@ for (const file of files) {
         }
       }
     }
-    // Pasted live run-state in shipped docs (Max audit ratchet, 2026-08-03 v7.29.0
+    // Pasted live run-state in shipped docs (Astra audit ratchet, 2026-08-03 v7.29.0
     // cut): point-in-time tool output pasted into DOCUMENTATION markdown carries the
     // operator's real machine state (corpus sizes, log volumes, latency numbers).
     // Deterministic signature: a NON-ZERO-millisecond ISO timestamp in body text —
@@ -233,7 +259,7 @@ for (const file of files) {
     // live output virtually always carries real fractional ms. Frontmatter is
     // stripped before the scan; FreshnessSystem.md is exempt (its purpose is
     // documenting stamp examples).
-    // Behavioral-telemetry ratings in shipped docs (Max audit ratchet, 2026-08-03
+    // Behavioral-telemetry ratings in shipped docs (Astra audit ratchet, 2026-08-03
     // v7.29.1 cut): decimal N.N/10 literals in ALGORITHM/DOCUMENTATION markdown are
     // measured satisfaction/severity telemetry from the operator's install (the
     // N.N/10 principal-rating class) — timestampless, so the live-output timestamp

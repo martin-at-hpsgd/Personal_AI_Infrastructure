@@ -1,14 +1,12 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.1
+ * @version 1.0.5
  * SystemChangeSurface.hook.ts — makes self-modification VISIBLE in the response.
  *
  * TRIGGER: PostToolUse (Write, Edit, MultiEdit) — composed inside
  * PostToolObserver, so this adds no extra process per tool call.
  *
- * WHY PostToolUse and not UserPromptSubmit (principal, 2026-07-27: "any time
- * that we modify the system, I want the response format to include a
- * maintenance-looking system message"): the line has to describe THIS turn's
+ * WHY PostToolUse and not UserPromptSubmit: the line has to describe THIS turn's
  * writes, and it has to be in context before the model composes its final
  * message. UserPromptSubmit — where MemoryDeltaSurface lives — fires before the
  * turn's work happens, so a line built there is always one turn late. That lag
@@ -42,7 +40,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve as pathResolve, dirname } from "node:path";
-import { homedir } from "node:os";
+import { getClaudeDir } from "./lib/paths"; // public issue #1665 @rogdex24 — aliased resolve sites missed by the 09-03 sweep
 /** The line is for the principal's primary session. Subagents write plenty of
  *  system files (a delegate editing a skill, a fork editing an ISA) and would
  *  each emit their own line into their own context, which helps nobody. */
@@ -53,13 +51,14 @@ import {
   renderSystemLine,
   type ChangeEntry,
 } from "./lib/system-surfaces";
+import { doctrineDir, doctrineLabel, recordWrite } from "../LIFEOS/TOOLS/DoctrineMark";
 
-const CLAUDE_ROOT = pathResolve(process.env.HOME ?? homedir(), ".claude");
+const CLAUDE_ROOT = getClaudeDir();
 const LEDGER_DIR = pathResolve(CLAUDE_ROOT, "LIFEOS/MEMORY/STATE");
 
 interface LedgerEntry extends ChangeEntry {
   at: number;
-  /** ISA only: claim counts the first time we saw this file this turn. */
+  /** ISA only: criterion counts the first time we saw this file this turn. */
   firstClosed?: number;
 }
 
@@ -71,6 +70,9 @@ export interface HookInput {
   session_id?: string;
   tool_name?: string;
   tool_input?: { file_path?: string };
+  /** Subagent stamp on hook input — a forked subagent carries "fork". (public PR #1958, @theNetworkChuck) */
+  agent_id?: string;
+  agent_type?: string;
 }
 
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -111,9 +113,22 @@ function writeLedger(path: string, ledger: Ledger): void {
   }
 }
 
+/**
+ * The statusline's doctrine mark (ISA 20261025-doctrine-mark): note a write to the system prompt, the Algorithm or
+ * the operating rules. Separate from run() because the plugin draws the ⚙️ line itself and run() is then skipped,
+ * while the mark must be fed on every write; PostToolObserver calls this ahead of that check. Fail-open.
+ */
+export function recordDoctrine(input: HookInput): void {
+  try {
+    if (isSubagent(input) || !WRITE_TOOLS.has(input.tool_name ?? "")) return;
+    const label = doctrineLabel(input.tool_input?.file_path ?? "");
+    if (label) recordWrite(doctrineDir(pathResolve(CLAUDE_ROOT, "LIFEOS")), input.session_id ?? "", label);
+  } catch { /* the mark degrades, the tool call does not */ }
+}
+
 export function run(input: HookInput): string | null {
   try {
-    if (isSubagent()) return null;
+    if (isSubagent(input)) return null; // public PR #1958, @theNetworkChuck
     const tool = input.tool_name ?? "";
     if (!WRITE_TOOLS.has(tool)) return null;
     const filePath = input.tool_input?.file_path;
@@ -128,7 +143,7 @@ export function run(input: HookInput): string | null {
 
     const entry: LedgerEntry = { tier: surface.tier, label: surface.label, at: Date.now() };
 
-    // ISA: show a real claim delta across the turn, which is the readout the
+    // ISA: show a real criterion delta across the turn, which is the readout the
     // principal actually asked for ("I'd like to see ISA updated").
     if (surface.tier === "isa") {
       let closed: number | undefined;

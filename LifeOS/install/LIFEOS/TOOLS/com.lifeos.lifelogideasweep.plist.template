@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.lifeos.lifelogideasweep.plist.template — Source template. Install via:
+    bun ~/.claude/LIFEOS/TOOLS/InstallLifelogIdeaSweep.ts
+
+  The installer reads $HOME at install time, substitutes {{HOME}}/{{BUN}} placeholders,
+  writes the materialized plist to ~/Library/LaunchAgents/, and bootstraps it.
+
+  Behavior:
+    Runs the sweep ONCE A DAY at 07:15 over YESTERDAY's Pacific day, so the
+    recordings have had all night to sync off the phone, and the email is
+    waiting at the start of the day.
+    Marked ideas ("begin idea … end idea") go out verbatim; an unmarked pass
+    adds blog-worthy things that were never flagged.
+    Everything already emailed lives in the sqlite ledger, so RunAtLoad firing
+    after a missed nightly re-checks the day without re-sending it.
+    Crash-loop rate-limited (ThrottleInterval 60s).
+    stdout/stderr captured to MEMORY/STATE/com.lifeos.lifelogideasweep.log —
+    counts and message ids only, never transcript text.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeos.lifelogideasweep</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{BUN}}</string>
+    <string>{{HOME}}/.claude/LIFEOS/TOOLS/LifelogIdeaSweep.ts</string>
+    <string>run</string>
+    <string>--days</string>
+    <string>1</string>
+    <string>--level</string>
+    <string>medium</string>
+  </array>
+
+  <!-- RunAtLoad true so a missed morning fires at next login — a laptop asleep
+       through the scheduled time otherwise never runs it. Safe to re-fire: the
+       sent-ledger dedups, so a second run the same day sends nothing twice. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>15</integer>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/STATE/com.lifeos.lifelogideasweep.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/STATE/com.lifeos.lifelogideasweep.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>{{HOME}}/.claude</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{BUN_DIR}}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <!-- No terminal identity here, so notification-channel resolution already
+         reports `headless` and no hook can voice-notify. Set explicitly so any
+         child process inherits it too. -->
+    <key>LIFEOS_NOTIFICATION_CHANNEL</key>
+    <string>headless</string>
+  </dict>
+</dict>
+</plist>

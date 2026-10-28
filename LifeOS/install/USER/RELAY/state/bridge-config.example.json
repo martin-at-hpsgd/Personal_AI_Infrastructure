@@ -1,0 +1,14 @@
+{
+  "_provenance": "template",
+  "_comment": "Every value here is made up. Copy this file to bridge-config.json (mode 0600), replace each value, then run Countersign.ts set. Field reference: LIFEOS/USER/RELAY/README.md § Set it up. Nothing reads this example file.",
+  "allowFrom": ["+15555550100"],
+  "ownChannels": { "numbers": ["+15555550100"], "emails": ["alex@example.com"], "discordUserIds": [] },
+  "chatFrom": [],
+  "prodProjectId": "example-project-id",
+  "unlockIdleMs": 7200000,
+  "challengeTtlMs": 900000,
+  "confirmTtlMs": 600000,
+  "replyTimeoutMs": 900000,
+  "interimAfterMs": 120000,
+  "approve": { "enabled": false, "server": "ntfy.sh", "approveTopic": "", "waitMs": 240000, "pollMs": 3000 }
+}

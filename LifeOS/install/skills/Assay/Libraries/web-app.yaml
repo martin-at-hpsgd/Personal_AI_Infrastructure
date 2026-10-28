@@ -1,0 +1,64 @@
+# Shared check library: web-app.
+# Checks every deployed public web app needs. An ISA pulls them in with `output: web-app` (or
+# Compile infers it from a `url:` in frontmatter), binds `url:` to the live origin, and binds
+# `deep_url:` to one deep page (a real path route, not the root). Format: ISAFormat § `## Evals`
+# stages; `{{url}}` and `{{deep_url}}` are replaced by the bound values. Switch one off with
+# `disable: web-app.<check> because <reason>`.
+#
+# Origin: the deployment and deploy-and-verify rules (deep links load directly, every page draws a
+# social card, no hash URLs, workers.dev and preview URLs off on a custom domain, brand assets
+# shipped). Live checks run against the deployed origin; the config check runs in the repo.
+library: web-app
+version: 1
+bindings:
+  url: the live origin, https://host with no trailing slash
+  deep_url: one deep page on that origin, loaded directly
+match:
+  frontmatter: [url]
+checks:
+  - id: deep-link-load
+    title: a deep page loads directly
+    reason: >-
+      A direct load of a path route is how every shared link arrives. An SPA without a path fallback
+      returns 404 there, and an app that only routes client-side never notices from the root.
+    stages:
+      - code: |-
+          code=$(curl -sS -o /dev/null -w '%{http_code}' {{deep_url}}) && test "$code" = 200 && curl -fsS {{deep_url}} | rg -q '<title>[^<]+</title>'
+
+  - id: social-card
+    title: X and LinkedIn draw a card for root and deep pages
+    reason: >-
+      A link without twitter:card summary_large_image and an absolute https og:image of at least
+      1200x600 posts as a bare URL. SocialCard.ts is the same check every Cloudflare deploy runs.
+    stages:
+      - code: |-
+          bun "${LIFEOS_DIR:-$HOME/.claude/LIFEOS}/TOOLS/SocialCard.ts" {{url}} {{deep_url}}
+
+  - id: no-hash-urls
+    title: no hash links in the served page
+    reason: >-
+      Hash URLs break deep links and section sharing; clean path URLs via the History API are the
+      rule, section anchors included.
+    stages:
+      - code: |-
+          html=$(curl -fsS {{url}}) && ! printf '%s\n' "$html" | rg -q 'href="/?#'
+
+  - id: dev-urls-off
+    title: workers.dev and preview URLs are off
+    reason: >-
+      A worker with a custom domain keeps one authoritative URL; a live workers.dev or preview URL is
+      a second, unmonitored copy of the app. Apps not hosted on Workers disable this check with that
+      reason.
+    stages:
+      - code: |-
+          rg -q -e '(workers_dev|workersDev)"?\s*[:=]\s*false' -g 'wrangler.toml' -g 'wrangler.json' -g 'wrangler.jsonc' -g 'cloudflare.config.ts' . && rg -q -e '(preview_urls|previewUrls)"?\s*[:=]\s*false' -g 'wrangler.toml' -g 'wrangler.json' -g 'wrangler.jsonc' -g 'cloudflare.config.ts' .
+
+  - id: brand-assets
+    title: favicon and share image are declared and resolve
+    reason: >-
+      Every public site ships a favicon and an OG image; a missing favicon shows a blank tab and a
+      missing share image shows a bare link. The logo's provenance (the canonical mark, never
+      generated) is a human check the ISA states itself.
+    stages:
+      - code: |-
+          html=$(curl -fsS {{url}}) && icon=$(printf '%s\n' "$html" | rg -o '<link[^>]+rel="[^"]*icon[^"]*"[^>]*>' | head -1 | rg -o 'href="[^"]+"' | head -1 | sed -e 's/^href="//' -e 's/"$//') && test -n "$icon" && case "$icon" in http*) u="$icon" ;; /*) u="{{url}}$icon" ;; *) u="{{url}}/$icon" ;; esac && curl -fsS -o /dev/null "$u" && printf '%s\n' "$html" | rg -q '<meta[^>]+og:image[^>]+https://'

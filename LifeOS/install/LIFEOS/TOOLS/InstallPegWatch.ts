@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.3
  * InstallPegWatch.ts - Materialize com.lifeos.pegwatch.plist.template and bootstrap it.
  *
  *   bun ~/.claude/LIFEOS/TOOLS/InstallPegWatch.ts             # install
@@ -10,10 +11,12 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { installVerb } from "./lib/InstallVerb";
 
 const HOME = homedir();
 const LABEL = "com.lifeos.pegwatch";
-const TEMPLATE = join(HOME, ".claude", "LIFEOS", "TOOLS", `${LABEL}.plist.template`);
+const TEMPLATE = lifeosPath("TOOLS", `${LABEL}.plist.template`);
 const TARGET = join(HOME, "Library", "LaunchAgents", `${LABEL}.plist`);
 
 async function sh(cmd: string[]): Promise<{ exit: number; out: string }> {
@@ -25,6 +28,7 @@ async function sh(cmd: string[]): Promise<{ exit: number; out: string }> {
 const uid = (await sh(["id", "-u"])).out.trim();
 const domain = `gui/${uid}`;
 
+installVerb(process.argv, "InstallPegWatch");
 if (process.argv.includes("--status")) {
   const listed = await sh(["launchctl", "print", `${domain}/${LABEL}`]);
   console.log(existsSync(TARGET) ? `plist: ${TARGET}` : "plist: not installed");
@@ -39,7 +43,9 @@ if (process.argv.includes("--uninstall")) {
   process.exit(0);
 }
 
-const bunBin = process.execPath;
+// The bun on PATH, not the version-pinned Homebrew Cellar path execPath resolves
+// to, which the next bun upgrade deletes. public PR #2208, @pai-scaffolde
+const bunBin = Bun.which("bun") ?? process.execPath;
 const plist = readFileSync(TEMPLATE, "utf8")
   .replaceAll("{{BUN}}", bunBin)
   .replaceAll("{{BUN_DIR}}", dirname(bunBin))

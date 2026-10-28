@@ -120,5 +120,7 @@ async function main() {
 
 main().catch((err) => {
   console.error(`airgradient-poll error: ${err instanceof Error ? err.message : err}`)
-  console.log("NO_ACTION")
+  // A crash is not health: exit nonzero so Pulse counts the failure and the
+  // breaker can trip (it retries after its cooldown). public PR #2208, @pai-scaffolde
+  process.exitCode = 1
 })

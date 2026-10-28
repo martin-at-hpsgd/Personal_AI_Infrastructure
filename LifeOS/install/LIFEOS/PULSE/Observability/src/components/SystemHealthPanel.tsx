@@ -9,11 +9,11 @@
  * every regression behind it.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useApi } from "@/lib/api";
 import { Stethoscope, Wrench } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/chrome";
 
-type CapState = "live" | "broken" | "declined" | "stale";
+type CapState = "live" | "broken" | "declined" | "stale" | "off";
 
 interface Capability {
   id: string;
@@ -41,6 +41,7 @@ interface DoctorData {
 // calm hollow marker, not an error. Declined is calm and never red.
 function stateFace(cap: Capability): { glyph: string; color: string; label: string } {
   if (cap.state === "declined") return { glyph: "⏸", color: "var(--ink-3)", label: "off (declined)" };
+  if (cap.state === "off") return { glyph: "⏸", color: "var(--ink-3)", label: "off" };
   if (cap.state === "broken") return { glyph: "❌", color: "var(--err)", label: "broken" };
   if (cap.stale) return { glyph: "◌", color: "var(--ink-3)", label: "stale — re-run doctor" };
   if (cap.state === "live") return { glyph: "✅", color: "var(--ok)", label: "live" };
@@ -59,15 +60,7 @@ function humanizeAge(ms: number | null): string {
 }
 
 export default function SystemHealthPanel() {
-  const { data, isError } = useQuery<DoctorData>({
-    queryKey: ["doctor-state"],
-    queryFn: async () => {
-      const res = await fetch("/api/doctor");
-      if (!res.ok) throw new Error("Failed to fetch doctor state");
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
+  const { data, isError } = useApi<DoctorData>("/api/doctor", { staleTime: 30_000 });
 
   if (isError) {
     return (

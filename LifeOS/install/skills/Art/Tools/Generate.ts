@@ -8,11 +8,12 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 /**
- * generate - UL Image Generation CLI
+ * generate - Image Generation CLI
  *
  * Generate branded images using Nano Banana Pro (default), Nano Banana, or Flux 1.1 Pro.
  * Nano Banana Pro (Gemini 3 Pro Image) is the default and the only model used for editorial
- * headers. OpenAI image models were removed 2026-07-30 at the principal's direction.
+ * headers. The tool ships Google and Flux only (OpenAI image models were removed 2026-07-30); which vendors an
+ * install allows is a preference in the Art USER PREFERENCES.md § Vendors.
  *
  * Follows llcli pattern for deterministic, composable CLI design.
  *
@@ -24,9 +25,97 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 import Replicate from "replicate";
 import { GoogleGenAI } from "@google/genai";
+import { CROSS_VENDOR } from "../../../LIFEOS/TOOLS/models";
+import { getClaudeDir } from "../../../LIFEOS/TOOLS/Paths";
 import { writeFile, readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { getDAName } from "../../../hooks/lib/identity";
+import { loadContract, verify, type IntentContract } from "../../../LIFEOS/TOOLS/IntentContract";
+import { existsSync as existsSyncFs, readFileSync } from "node:fs";
+
+// ============================================================================
+// Install settings (USER extension)
+// ============================================================================
+
+/**
+ * Per-install settings live in
+ * <configRoot>/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Art/ArtConfig.json
+ * (configRoot = $CLAUDE_CONFIG_DIR, else ~/.claude; LIFEOS_ART_USER_DIR points at
+ * another directory, for tests). Keys: thumbnailGround, signature {fontFile,
+ * fontName, fill}, contractOverrides {<Intent>: {mandates?, bans?}}, and
+ * variants {<name>: {contractOverrides}} selected with --variant <name>.
+ * File absent: the shipped defaults below apply. File present but a key missing:
+ * the default applies and a warning names the file and key.
+ */
+export const ART_USER_DIR = process.env.LIFEOS_ART_USER_DIR
+  || resolve(getClaudeDir(), "LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Art");
+export const ART_CONFIG_PATH = resolve(ART_USER_DIR, "ArtConfig.json");
+
+type ContractOverride = { mandates?: string[]; bans?: string[] };
+interface ArtConfig {
+  thumbnailGround?: string;
+  signature?: { fontFile?: string; fontName?: string; fill?: string };
+  contractOverrides?: Record<string, ContractOverride>;
+  variants?: Record<string, { contractOverrides?: Record<string, ContractOverride> }>;
+}
+
+const SHIPPED = {
+  thumbnailGround: "#F5F5F0",
+  signature: {
+    fontFile: "/System/Library/Fonts/Supplemental/SignPainter.ttc",
+    fontName: "SignPainter-HouseScript",
+    fill: "rgba(55,45,38,0.55)",
+  },
+};
+
+let artConfigCache: ArtConfig | null | undefined;
+function artConfig(): ArtConfig | null {
+  if (artConfigCache !== undefined) return artConfigCache;
+  if (!existsSyncFs(ART_CONFIG_PATH)) return (artConfigCache = null);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(ART_CONFIG_PATH, "utf8"));
+  } catch (error) {
+    throw new CLIError(`${ART_CONFIG_PATH} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  // A present file holding null, an array or a scalar is broken, never "no file": falling back would drop every override silently.
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new CLIError(`${ART_CONFIG_PATH} must hold a JSON object of Art settings, got ${parsed === null ? "null" : Array.isArray(parsed) ? "an array" : typeof parsed}`);
+  }
+  return (artConfigCache = parsed as ArtConfig);
+}
+
+function artSetting<K extends keyof typeof SHIPPED>(key: K): (typeof SHIPPED)[K] {
+  const cfg = artConfig();
+  if (!cfg) return SHIPPED[key];
+  const value = cfg[key];
+  if (value === undefined) {
+    console.warn(`[Generate] ${ART_CONFIG_PATH} has no "${key}" key; using the shipped default.`);
+    return SHIPPED[key];
+  }
+  if (typeof SHIPPED[key] === "object") return { ...(SHIPPED[key] as object), ...(value as object) } as (typeof SHIPPED)[K];
+  return value as (typeof SHIPPED)[K];
+}
+
+/** Apply the install's contract overrides (base, then --variant) to an intent contract. */
+export function applyContractOverrides(contract: IntentContract | undefined, intent: string | undefined, variant?: string): IntentContract | undefined {
+  const cfg = artConfig();
+  if (variant && !cfg?.variants?.[variant]) {
+    throw new CLIError(`--variant "${variant}" is not defined under "variants" in ${ART_CONFIG_PATH}.`);
+  }
+  if (!contract || !intent) return contract;
+  const layers = [cfg?.contractOverrides?.[intent], variant ? cfg?.variants?.[variant]?.contractOverrides?.[intent] : undefined];
+  let out = contract;
+  for (const layer of layers) {
+    if (!layer) continue;
+    out = {
+      ...out,
+      ...(layer.mandates ? { mandates: layer.mandates } : {}),
+      ...(layer.bans ? { bans: [...(out.bans ?? []), ...layer.bans] } : {}),
+    };
+  }
+  return out;
+}
 
 // ============================================================================
 // Environment Loading
@@ -41,10 +130,9 @@ async function loadEnv(): Promise<void> {
   // ~/.claude/LIFEOS SUBdirectory, which has no .env, and the silent catch made
   // present keys invisible (public issue #1515, @xmasyx). Try LIFEOS_DIR first,
   // then the canonical location; load the first that exists.
-  const home = process.env.HOME!;
   const candidates = Array.from(new Set([
     ...(process.env.LIFEOS_DIR ? [resolve(process.env.LIFEOS_DIR, '.env')] : []),
-    resolve(home, '.claude', '.env'),
+    resolve(getClaudeDir(), '.env'),
   ]));
   for (const envPath of candidates) {
     let envContent: string;
@@ -78,7 +166,6 @@ async function loadEnv(): Promise<void> {
   // must transparently get the OPTIN value when no bare key is set.
   // Add new aliases here when a provider has a suffix variant in the env.
   const aliases: Record<string, string> = {
-    OPENAI_API_KEY: "OPENAI_API_KEY_OPTIN",
   };
   for (const [bare, suffixed] of Object.entries(aliases)) {
     if (!process.env[bare] && process.env[suffixed]) {
@@ -97,6 +184,8 @@ type GeminiSize = "1K" | "2K" | "4K";
 type Size = ReplicateSize | GeminiSize;
 
 interface CLIArgs {
+  slug?: string; // Blog-post identity used to resolve intent artifacts
+  dryRun?: boolean; // Validate all gates, then stop before loading credentials or calling APIs
   model: Model;
   prompt: string;
   size: Size;
@@ -107,9 +196,11 @@ interface CLIArgs {
   referenceImages?: string[]; // Reference image paths (Nano Banana Pro only) - up to 14 total
   removeBg?: boolean; // Remove background after generation using local rembg
   addBg?: string; // Add background color (hex) to transparent image
-  thumbnail?: boolean; // Generate additional thumbnail with #EAE9DF background for social previews
-  workflow?: string; // Name of the Art workflow that constructed this call (REQUIRED unless freeformConfirmed)
-  freeformConfirmed?: boolean; // Explicit opt-out of workflow discipline — logged to stderr
+  thumbnail?: boolean; // Generate additional thumbnail on ArtConfig.json thumbnailGround (listing thumbnail, not the social card)
+  intent?: string; // Name of the Art intent that constructed this call (REQUIRED unless freeformConfirmed or intentFile)
+  intentFile?: string; // Absolute/tilde path to a named intent .md living OUTSIDE Art (e.g. another skill's Intents/) — satisfies intent discipline after an existence check
+  freeformConfirmed?: boolean; // Explicit opt-out of intent discipline — logged to stderr
+  variant?: string; // ArtConfig.json variants.<name> layered over the base contract overrides
   signature?: boolean; // Stamp the required DA-name signature (auto-on for Essay/blog-header; --no-signature opts out)
 }
 
@@ -121,10 +212,12 @@ const DEFAULTS = {
   model: "nano-banana-pro" as Model,
   size: "2K" as Size,
   // LIFEOS_DOWNLOADS_DIR overrides ~/Downloads when set (public PR #1535, @anikinsasha)
-  output: `${process.env.LIFEOS_DOWNLOADS_DIR || `${process.env.HOME}/Downloads`}/ul-image.png`,
+  output: `${process.env.LIFEOS_DOWNLOADS_DIR || `${process.env.HOME}/Downloads`}/generated-image.png`,
 };
 
 const REPLICATE_SIZES: ReplicateSize[] = ["1:1", "16:9", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "21:9"];
+// Essay/TechnicalDiagrams images must be landscape after trimming so they fill the post column (2026-09-27).
+const MIN_PAGE_WIDTH_ASPECT = 1.4;
 const GEMINI_SIZES: GeminiSize[] = ["1K", "2K", "4K"];
 
 // Aspect ratio mapping for Gemini (used with image size like 2K)
@@ -224,16 +317,16 @@ async function detectMimeType(filePath: string): Promise<string> {
 // ============================================================================
 
 // LifeOS directory for documentation paths
-const LIFEOS_DIR = process.env.LIFEOS_DIR || `${process.env.HOME}/.claude`;
+const LIFEOS_DIR = process.env.LIFEOS_DIR || getClaudeDir();
 
 function showHelp(): void {
   console.log(`
-generate - UL Image Generation CLI
+generate - Image Generation CLI
 
 Generate branded images using Nano Banana Pro, Nano Banana, or Flux 1.1 Pro.
 Nano Banana Pro (Gemini 3 Pro Image) is the DEFAULT model and the only one used for editorial
 headers. OpenAI image models (gpt-image-1, gpt-image-2) and the dual-provider "compare" mode
-were removed 2026-07-30 at the principal's direction.
+were removed 2026-07-30; the vendors an install allows are listed in the Art USER PREFERENCES.md § Vendors.
 
 USAGE:
   generate --model <model> --prompt "<prompt>" [OPTIONS]
@@ -242,13 +335,15 @@ REQUIRED:
   --prompt <text>      Image generation prompt (quote if contains spaces)
 
 OPTIONS:
+  --slug <slug>       Blog-post slug for intent contract artifacts
+  --dry-run           Validate arguments and contracts; stop before credentials/API access
   --model <model>            Model to use: nano-banana-pro (default), nano-banana, flux
   --size <size>              Image size/aspect ratio (default varies by model)
                              Gemini (nano-banana-pro): 1K, 2K, 4K (resolution) — DEFAULT 2K
                              Replicate (flux, nano-banana): 1:1, 16:9, 3:2, 2:3, 3:4, 4:3, 4:5, 5:4, 9:16, 21:9
   --aspect-ratio <ratio>     Aspect ratio for Gemini nano-banana-pro
                              Options: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9 (default 16:9)
-  --output <path>            Output file path (default: /tmp/ul-image.png)
+  --output <path>            Output file path (default: /tmp/generated-image.png)
   --reference-image <path>   Reference image for style/character consistency (Nano Banana Pro only)
                              Can specify MULTIPLE times for improved consistency
                              Accepts: PNG, JPEG, WebP images
@@ -257,13 +352,16 @@ OPTIONS:
                              Note: Not all models support transparency natively; may require post-processing
   --remove-bg                Remove background after generation using local rembg
                              Creates true transparency by removing the generated background
-  --add-bg <hex>             Add background color to a transparent image (e.g., "#EAE9DF")
-                             Useful for creating thumbnails/social previews from transparent images
+  --add-bg <hex>             Add background color to a transparent image (e.g., "#F5F5F0")
+                             Useful for creating listing thumbnails from transparent images
   --thumbnail                Generate BOTH transparent AND thumbnail versions for blog headers
-                             Creates: output.png (transparent) + output-thumb.png (#EAE9DF background)
+                             Creates: output.png (transparent) + output-thumb.png (ArtConfig.json thumbnailGround background)
                              Automatically enables --remove-bg
   --no-signature             Skip the "${getDAName()}" signature stamp (auto-on for Essay/--thumbnail headers)
   --signature                Force the "${getDAName()}" signature stamp on (bottom-right, SignPainter-HouseScript cursive)
+  --sign <png>               Finishing mode: stamp the signature on an existing image in place (ArtConfig.json signature), then exit
+  --print-setting thumbnailGround
+                             Finishing mode: print the configured listing-thumbnail ground (#rrggbb), then exit
   --creative-variations <n>  Generate N variations (appends -v1, -v2, etc. to output filename)
                              Use with the be-creative skill for true prompt diversity
                              CLI mode: generates N images with same prompt (tests model variability)
@@ -271,13 +369,13 @@ OPTIONS:
 
 EXAMPLES:
   # Generate blog header with Nano Banana Pro (16:9, 2K quality)
-  generate --model nano-banana-pro --prompt "Abstract UL illustration..." --size 2K --aspect-ratio 16:9
+  generate --model nano-banana-pro --prompt "Abstract house illustration..." --size 2K --aspect-ratio 16:9
 
   # Generate high-res 4K image with Nano Banana Pro
   generate --model nano-banana-pro --prompt "Editorial cover..." --size 4K --aspect-ratio 3:2
 
   # Generate blog header with original Nano Banana (16:9)
-  generate --model nano-banana --prompt "Abstract UL illustration..." --size 16:9
+  generate --model nano-banana --prompt "Abstract house illustration..." --size 16:9
 
   # Generate square image with Flux
   generate --model flux --prompt "Minimal geometric art..." --size 1:1 --output /tmp/header.png
@@ -290,7 +388,7 @@ EXAMPLES:
   # Outputs: /tmp/essay-v1.png, /tmp/essay-v2.png, /tmp/essay-v3.png
 
   # Single reference image for style guidance (Nano Banana Pro only)
-  generate --model nano-banana-pro --prompt "Tokyo Night themed illustration..." \\
+  generate --model nano-banana-pro --prompt "Dark-themed illustration..." \\
     --reference-image /tmp/style-reference.png --size 2K --aspect-ratio 16:9
 
   # MULTIPLE reference images for character consistency (Nano Banana Pro only)
@@ -298,7 +396,7 @@ EXAMPLES:
     --reference-image face1.jpg --reference-image face2.jpg --reference-image face3.jpg \\
     --size 2K --aspect-ratio 16:9
 
-NOTE: For true creative diversity with different prompts, use the creative workflow which
+NOTE: For true creative diversity with different prompts, use the creative intent which
 integrates the be-creative skill. CLI creative mode generates multiple images with the SAME prompt.
 
 MULTI-REFERENCE LIMITS (Gemini API):
@@ -316,49 +414,71 @@ ERROR CODES:
   1  General error (invalid arguments, API error, file write error)
 
 MORE INFO:
-  Documentation: ${LIFEOS_DIR}/skills/Art/README.md
+  Documentation: ${LIFEOS_DIR}/skills/Art/SKILL.md
   Source: ${LIFEOS_DIR}/skills/Art/Tools/Generate.ts
 `);
   process.exit(0);
 }
 
 // ============================================================================
-// Workflow Discipline Gate
+// Intent Discipline Gate
 // ============================================================================
 
 /**
- * Enforce that callers either name the Art workflow that produced this
+ * Enforce that callers either name the Art intent that produced this
  * invocation OR explicitly opt out via --freeform-confirmed.
  *
- * Background: the Art skill's "ALWAYS RUN A NAMED WORKFLOW" doctrine used
- * to live in markdown only and was silently ignored — see ISA
- * 20260430-180000_art-skill-freeform-enforcement. This gate is the code
- * substitute for that doctrine.
+ * Background: the Art skill's "ALWAYS RUN A NAMED INTENT" doctrine used
+ * to live in markdown only and was silently ignored (principal's rule).
+ * This gate is the code substitute for that doctrine.
  *
  * Behavior:
- *   --workflow=<name>       → validate <name>.md exists, allow.
- *   --workflow <name>       → same.
- *   --freeform-confirmed    → log explicit opt-out to stderr, allow.
- *   neither                 → exit 1 with the workflow lookup table.
- *   --workflow=<bad-name>   → exit 1 listing valid workflow names.
+ *   --intent=<name>          → validate <name>.md exists, allow.
+ *   --intent <name>          → same.
+ *   --intent-file=<path>     → a named intent living OUTSIDE Art (another
+ *                                skill's Intents/*.md, e.g. video-production skill's VideoThumbnail).
+ *                                Validate the file exists, log it, allow. Added
+ *                                2026-08-28 when the thumbnail intents moved to
+ *                                video skill and external callers lost their Art-local name.
+ *   --freeform-confirmed       → log explicit opt-out to stderr, allow.
+ *   neither                 → exit 1 with the intent lookup table.
+ *   --intent=<bad-name>   → exit 1 listing valid intent names.
  */
-function enforceWorkflowDiscipline(parsed: Partial<CLIArgs>): void {
-  const workflowsDir = `${process.env.HOME}/.claude/skills/Art/Workflows`;
-  let availableWorkflows: string[] = [];
+function enforceIntentDiscipline(parsed: Partial<CLIArgs>): void {
+  const intentsDir = resolve(import.meta.dir, '../Intents');
+  if (parsed.intent && parsed.intentFile) {
+    throw new CLIError('Pass only one of --intent and --intent-file.');
+  }
+  let availableIntents: string[] = [];
   try {
     // readdirSync via Bun.readdirSync isn't a thing; use Node fs sync via dynamic
     // require to avoid adding a top-level import that would pull in fs at load.
     const fs = require("node:fs") as typeof import("node:fs");
-    availableWorkflows = fs
-      .readdirSync(workflowsDir)
+    availableIntents = fs
+      .readdirSync(intentsDir)
       .filter((f: string) => f.endsWith(".md"))
       .map((f: string) => f.replace(/\.md$/, ""))
       .sort();
   } catch (err) {
-    // If the workflows dir is gone, the skill is broken in a bigger way;
+    // If the intents dir is gone, the skill is broken in a bigger way;
     // don't try to fix that here, but don't block on it either.
     process.stderr.write(
-      `[Generate] WARNING: workflows dir not readable at ${workflowsDir} — skipping workflow validation\n`
+      `[Generate] WARNING: intents dir not readable at ${intentsDir} — skipping intent validation\n`
+    );
+    return;
+  }
+
+  if (parsed.intentFile) {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const resolved = parsed.intentFile.replace(/^~(?=\/)/, process.env.HOME ?? "~");
+    if (!fs.existsSync(resolved) || !resolved.endsWith(".md")) {
+      process.stderr.write(
+        `[Generate] REFUSED — --intent-file "${parsed.intentFile}" does not exist or is not a .md intent.\n`
+      );
+      process.exit(1);
+    }
+    process.stderr.write(
+      `[Generate] External named intent: ${resolved} (logged for audit; intent discipline satisfied by --intent-file).\n`
     );
     return;
   }
@@ -366,33 +486,33 @@ function enforceWorkflowDiscipline(parsed: Partial<CLIArgs>): void {
   if (parsed.freeformConfirmed) {
     process.stderr.write(
       `[Generate] FREEFORM mode confirmed by caller (--freeform-confirmed). ` +
-        `This is logged for audit. The Art skill's named workflows ` +
-        `(${availableWorkflows.join(", ")}) are the recommended path; ` +
+        `This is logged for audit. The Art skill's named intents ` +
+        `(${availableIntents.join(", ")}) are the recommended path; ` +
         `freeform output quality has historically been rejected.\n`
     );
-    return;
+    if (!parsed.intent) return;
   }
 
-  if (!parsed.workflow) {
+  if (!parsed.intent) {
     const lines = [
       "",
       "═══════════════════════════════════════════════════════════════════════════",
-      "  Generate.ts REFUSED — caller did not name a workflow.",
+      "  Generate.ts REFUSED — caller did not name an intent.",
       "═══════════════════════════════════════════════════════════════════════════",
       "",
       "  The Art skill requires every image generation to run through a named",
-      "  workflow. Freeform prompts have a documented rejection rate of ~100%.",
+      "  intent. Freeform prompts have a documented rejection rate of ~100%.",
       "",
       "  Pass ONE of:",
-      "    --workflow=<name>          (recommended)",
+      "    --intent=<name>          (recommended)",
       "    --freeform-confirmed       (explicit opt-out, logged for audit)",
       "",
-      "  Available workflows:",
-      ...availableWorkflows.map(
-        (w) => `    --workflow=${w.padEnd(28)} → ${workflowsDir}/${w}.md`
+      "  Available intents:",
+      ...availableIntents.map(
+        (w) => `    --intent=${w.padEnd(28)} → ${intentsDir}/${w}.md`
       ),
       "",
-      "  Read the matching workflow file FIRST. Each one encodes the",
+      "  Read the matching intent file FIRST. Each one encodes the",
       "  prompt template, palette, composition rules, and validation gate",
       "  that the bare model fails to honor without them.",
       "",
@@ -403,14 +523,14 @@ function enforceWorkflowDiscipline(parsed: Partial<CLIArgs>): void {
     process.exit(1);
   }
 
-  // Validate the named workflow actually exists on disk.
-  if (!availableWorkflows.includes(parsed.workflow)) {
+  // Validate the named intent actually exists on disk.
+  if (!availableIntents.includes(parsed.intent)) {
     const lines = [
       "",
-      `[Generate] REFUSED — workflow "${parsed.workflow}" not found.`,
+      `[Generate] REFUSED — intent "${parsed.intent}" not found.`,
       "",
-      "Available workflows:",
-      ...availableWorkflows.map((w) => `  --workflow=${w}`),
+      "Available intents:",
+      ...availableIntents.map((w) => `  --intent=${w}`),
       "",
     ];
     process.stderr.write(lines.join("\n"));
@@ -446,7 +566,13 @@ function parseArgs(argv: string[]): CLIArgs {
       throw new CLIError(`Invalid flag: ${flag}. Flags must start with --`);
     }
 
-    const key = flag.slice(2);
+    // --workflow and --procedure (and their -file forms) are the older names; they still work.
+    const key = flag.slice(2).replace(/^(?:workflow|procedure)(?=$|=|-file)/, "intent");
+
+    if (key === "dry-run") {
+      parsed.dryRun = true;
+      continue;
+    }
 
     // Handle boolean flags (no value)
     if (key === "transparent") {
@@ -475,10 +601,18 @@ function parseArgs(argv: string[]): CLIArgs {
       continue;
     }
 
-    // --workflow=<name> (one-token form) — split here so it doesn't fall into the
+    // --intent=<name> (one-token form) — split here so it doesn't fall into the
     // value-required branch below.
-    if (key.startsWith("workflow=")) {
-      parsed.workflow = key.slice("workflow=".length);
+    if (key.startsWith("variant=")) {
+      parsed.variant = key.slice("variant=".length);
+      continue;
+    }
+    if (key.startsWith("intent-file=")) {
+      parsed.intentFile = key.slice("intent-file=".length);
+      continue;
+    }
+    if (key.startsWith("intent=")) {
+      parsed.intent = key.slice("intent=".length);
       continue;
     }
 
@@ -489,6 +623,14 @@ function parseArgs(argv: string[]): CLIArgs {
     }
 
     switch (key) {
+      case "slug":
+        parsed.slug = value;
+        i++;
+        break;
+      case "intent-file":
+        parsed.intentFile = value;
+        i++;
+        break;
       case "model":
         if (
           value !== "flux" &&
@@ -497,7 +639,7 @@ function parseArgs(argv: string[]): CLIArgs {
         ) {
           if (value === "gpt-image-1" || value === "gpt-image-2" || value === "compare") {
             throw new CLIError(
-              `OpenAI image models and compare mode were REMOVED 2026-07-30 at the principal's direction. Use --model nano-banana-pro (the default).`
+              `${value} was removed from Generate.ts (2026-07-30). Use --model nano-banana-pro (the default); the vendors this install allows are in ${ART_USER_DIR}/PREFERENCES.md § Vendors.`
             );
           }
           throw new CLIError(
@@ -539,15 +681,19 @@ function parseArgs(argv: string[]): CLIArgs {
       case "add-bg":
         // Validate hex color format
         if (!/^#[0-9A-Fa-f]{6}$/.test(value)) {
-          throw new CLIError(`Invalid hex color: ${value}. Must be in format #RRGGBB (e.g., #EAE9DF)`);
+          throw new CLIError(`Invalid hex color: ${value}. Must be in format #RRGGBB (e.g., #F5F5F0)`);
         }
         parsed.addBg = value;
         i++; // Skip next arg (value)
         break;
-      case "workflow":
-        // --workflow <name> two-token form (the --workflow=<name> one-token
+      case "variant":
+        parsed.variant = value;
+        i++;
+        break;
+      case "intent":
+        // --intent <name> two-token form (the --intent=<name> one-token
         // form is handled earlier, before this value-required branch)
-        parsed.workflow = value;
+        parsed.intent = value;
         i++;
         break;
       default:
@@ -570,14 +716,13 @@ function parseArgs(argv: string[]): CLIArgs {
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // WORKFLOW DISCIPLINE GATE (the load-bearing line — see ISA
-  // 20260430-180000_art-skill-freeform-enforcement)
+  // INTENT DISCIPLINE GATE (the load-bearing line; principal's rule)
   //
-  // The Art skill's "ALWAYS RUN A NAMED WORKFLOW" doctrine lives HERE, in code, because
-  // stated in markdown alone it is silently ignored. Callers must name the workflow that
+  // The Art skill's "ALWAYS RUN A NAMED INTENT" doctrine lives HERE, in code, because
+  // stated in markdown alone it is silently ignored. Callers must name the intent that
   // produced this call, or explicitly opt out with --freeform-confirmed.
   // ──────────────────────────────────────────────────────────────────────
-  enforceWorkflowDiscipline(parsed);
+  enforceIntentDiscipline(parsed);
 
   // Validate reference-image is only used with nano-banana-pro
   if (parsed.referenceImages && parsed.referenceImages.length > 0 && parsed.model !== "nano-banana-pro") {
@@ -672,36 +817,52 @@ async function addBackgroundColor(inputPath: string, outputPath: string, hexColo
 }
 
 /**
- * Stamp the REQUIRED "{{DA_NAME}}" signature on a blog-header/essay image, in place.
- * Principal directives 2026-06-20 + 2026-07-09: every essay/blog-header image
- * MUST be signed "{{DA_NAME}}", bottom-right, in a cursive human-signature hand
- * (SignPainter-HouseScript) — small and integrated into the artwork, not a
- * caption floating in the corner. Formal calligraphy faces (Snell, Chancery,
- * Savoye) remain banned. Stamped here, on the main output, BEFORE the
+ * Stamp the REQUIRED DA-name signature on a blog-header/essay image, in place.
+ * Principal's rule: every essay/blog-header image
+ * MUST be signed with the DA name (getDAName()), bottom-right, in a cursive human-signature hand
+ * (ArtConfig.json "signature"; SignPainter-HouseScript by default) — small and integrated into the artwork, not a
+ * caption floating in the corner. Formal calligraphy faces remain banned (the
+ * install rejected list is in USER PREFERENCES.md § Signature). Stamped here, on the main output, BEFORE the
  * thumbnail is derived, so the signature lands on BOTH versions.
  * Pointsize scales with image width so it reads at any resolution.
  */
 async function stampDaSignature(imagePath: string): Promise<void> {
+  // Trim to the artwork FIRST (rule: Intents/Essay.md § Full page width): after this trim
+  // the canvas edge IS the art edge, so SouthEast lands inside the art, never in empty canvas.
+  try {
+    await execAsync(`magick "${imagePath}" -fuzz 2% -trim +repage "${imagePath}"`);
+  } catch (error) {
+    throw new CLIError(`Failed to trim before signing: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   // Derive pointsize from the image width (≈3% of width; 1024px → ~31pt —
   // 2026-07-09: reduced from 4.5% so it reads as a painter's mark, not a label).
   let pointsize = 31;
+  let width = 1024;
   try {
     const { stdout } = await execAsync(`identify -format "%w" "${imagePath}"`);
-    const width = parseInt(stdout.trim(), 10);
-    if (Number.isFinite(width) && width > 0) {
-      pointsize = Math.max(20, Math.round(width * 0.03));
+    const w = parseInt(stdout.trim(), 10);
+    if (Number.isFinite(w) && w > 0) {
+      width = w;
+      pointsize = Math.max(20, Math.round(w * 0.03));
     }
   } catch {
     // Non-fatal — fall back to the 31pt default tuned for 1024px-wide headers.
   }
 
-  console.log(`✍️  Stamping required "${getDAName()}" signature (bottom-right, SignPainter-HouseScript, cursive)...`);
-  // Slight CCW rotation + tucked offset makes it sit like a hand-signed mark
-  // inside the composition's lower-right rather than a corner caption.
+  const sig = artSetting("signature");
+  console.log(`✍️  Stamping required "${getDAName()}" signature (bottom-right inside the art, ${sig.fontName})...`);
+  // Slight CCW rotation; offset scales with width so it sits just inside the
+  // art's lower-right corner at any resolution.
+  const dx = Math.round(width * 0.025);
+  const dy = Math.round(width * 0.02);
+  // ImageMagick resolves font names only from its own type registry, which often
+  // lacks macOS system fonts; the file path works whether or not it is registered.
+  const signatureFont = existsSyncFs(sig.fontFile) ? sig.fontFile : sig.fontName;
   const command =
     `magick "${imagePath}" -gravity SouthEast ` +
-    `-font "SignPainter-HouseScript" -pointsize ${pointsize} -fill "rgba(55,45,38,0.55)" ` +
-    `-annotate 352x352+44+30 "${getDAName()}" "${imagePath}"`;
+    `-font "${signatureFont}" -pointsize ${pointsize} -fill "${sig.fill}" ` +
+    `-annotate 352x352+${dx}+${dy} "${getDAName()}" "${imagePath}"`;
 
   try {
     await execAsync(command);
@@ -709,7 +870,7 @@ async function stampDaSignature(imagePath: string): Promise<void> {
   } catch (error) {
     throw new CLIError(
       `Failed to stamp ${getDAName()} signature: ${error instanceof Error ? error.message : String(error)}. ` +
-        `SignPainter-HouseScript must be installed (default on macOS). Override font via the workflow if needed.`
+        `The signature font ${sig.fontName} must be installed; set signature.fontFile / signature.fontName in ${ART_CONFIG_PATH} to use another.`
     );
   }
 }
@@ -785,7 +946,7 @@ async function generateWithFlux(prompt: string, size: ReplicateSize, output: str
 
   console.log("🎨 Generating with Flux 1.1 Pro...");
 
-  const result = await replicate.run("black-forest-labs/flux-1.1-pro", {
+  const result = await replicate.run(CROSS_VENDOR.fluxImage as `${string}/${string}`, {
     input: {
       prompt,
       aspect_ratio: size,
@@ -829,7 +990,7 @@ async function generateWithNanoBanana(prompt: string, size: ReplicateSize, outpu
 
   console.log("🍌 Generating with Nano Banana...");
 
-  const result = await replicate.run("google/nano-banana", {
+  const result = await replicate.run(CROSS_VENDOR.nanoBananaImage as `${string}/${string}`, {
     input: {
       prompt,
       aspect_ratio: size,
@@ -903,7 +1064,7 @@ async function generateWithNanoBananaPro(
   parts.push({ text: prompt });
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-image-preview",
+    model: CROSS_VENDOR.geminiImage,
     contents: [{ parts }],
     config: {
       responseModalities: ["TEXT", "IMAGE"],
@@ -938,21 +1099,120 @@ async function generateWithNanoBananaPro(
   return finalPath;
 }
 
+/**
+ * Post-generation steps shared by single and --creative-variations runs:
+ * background removal, --add-bg, the DA-name signature, the page-width check and
+ * the listing thumbnail. Returns the final path (rembg may rename .jpg to .png).
+ */
+async function postProcess(path: string, args: ReturnType<typeof parseArgs>): Promise<string> {
+  let out = path;
+  // Remove background if requested (use actual output path)
+  // May return a renamed path (e.g., .jpg → .png) since rembg returns PNG.
+  if (args.removeBg) {
+    out = await removeBackground(out);
+  }
+
+  // Add background color if requested (standalone mode)
+  if (args.addBg && !args.thumbnail) {
+    // For standalone --add-bg, modify the image in place
+    const tempPath = out.replace(/\.[^.]+$/, "-temp.png");
+    await addBackgroundColor(out, tempPath, args.addBg);
+    // Replace original with the one with background
+    const { rename } = await import("node:fs/promises");
+    await rename(tempPath, out);
+  }
+
+  // Stamp the REQUIRED DA-name signature on essay/blog-header images.
+  // Auto-on for the Essay intent and for any --thumbnail (blog-header) run;
+  // --signature forces on, --no-signature opts out. Runs AFTER bg ops but
+  // BEFORE the thumbnail is derived so the signature is on BOTH versions.
+  // TechnicalDiagrams is signed too (Intents/TechnicalDiagrams.md).
+  const pageWidthIntent = args.intent === "Essay" || args.intent === "TechnicalDiagrams";
+  const signatureDefault = pageWidthIntent || args.thumbnail === true;
+  const stampSignature = args.signature ?? signatureDefault;
+  if (stampSignature) {
+    await stampDaSignature(out);
+  }
+
+  // Essay and technical images render at the full width of the post column
+  // (Intents/Essay.md § Full page width). A trimmed result narrower than landscape shows up as
+  // a thin figure with open space beside it, so it fails here and gets regenerated.
+  if (pageWidthIntent) {
+    const { stdout } = await execAsync(`identify -format "%w %h" "${out}"`);
+    const [w = 0, h = 1] = stdout.trim().split(" ").map(Number);
+    if (w / h < MIN_PAGE_WIDTH_ASPECT) {
+      throw new CLIError(
+        `${out} is ${w}x${h} after trimming (aspect ${(w / h).toFixed(2)}); ` +
+          `${args.intent} images must fill the page width (aspect ≥ ${MIN_PAGE_WIDTH_ASPECT}). ` +
+          `Regenerate at --aspect-ratio 16:9 with the subject spanning the full frame width.`
+      );
+    }
+  }
+
+  // Generate thumbnail with background color if requested (blog header mode)
+  if (args.thumbnail) {
+    const thumbPath = out.replace(/\.[^.]+$/, "-thumb.png");
+    // Listing-thumbnail ground: ArtConfig.json "thumbnailGround" (the destination page colour).
+    await addBackgroundColor(out, thumbPath, artSetting("thumbnailGround"));
+    console.log(`\n📸 Blog header mode: Created both versions`);
+    console.log(`   Transparent: ${out}`);
+    console.log(`   Thumbnail:   ${thumbPath}`);
+  }
+  return out;
+}
+
 // ============================================================================
 // Main
 // ============================================================================
 
+/**
+ * Finishing modes for an image that did not come out of a full Generate.ts run (Essay.md Step 7):
+ *   --sign <png>             stamp the DA-name signature in place, exactly as a generation run does
+ *   --print-setting <key>    print the install's thumbnailGround (or another string setting) from ArtConfig.json
+ * Both read the same ArtConfig.json as generation, so a manual recipe never drifts from the configured values.
+ * Returns true when a finishing mode ran.
+ */
+async function runFinishingMode(argv: string[]): Promise<boolean> {
+  const [mode, value, ...rest] = argv.slice(2);
+  if (mode !== "--sign" && mode !== "--print-setting") return false;
+  if (!value || rest.length) throw new CLIError(`${mode} takes exactly one argument`);
+  if (mode === "--sign") {
+    if (!existsSyncFs(value)) throw new CLIError(`--sign: file not found: ${value}`);
+    await stampDaSignature(value);
+    return true;
+  }
+  if (value !== "thumbnailGround") throw new CLIError(`--print-setting knows only thumbnailGround, got "${value}"`);
+  const ground = artSetting("thumbnailGround");
+  if (typeof ground !== "string" || !/^#[0-9a-fA-F]{6}$/.test(ground)) {
+    throw new CLIError(`${ART_CONFIG_PATH}: "thumbnailGround" must be #rrggbb, got ${JSON.stringify(ground)}`);
+  }
+  console.log(ground);
+  return true;
+}
+
 async function main(): Promise<void> {
   try {
-    // Load API keys from ${LIFEOS_DIR}/.env
-    await loadEnv();
-
+    if (await runFinishingMode(process.argv)) return;
     const args = parseArgs(process.argv);
 
     // Enhance prompt for transparency if requested
     const finalPrompt = args.transparent
       ? enhancePromptForTransparency(args.prompt)
       : args.prompt;
+
+    const intentPath = args.intentFile
+      ? args.intentFile.replace(/^~(?=\/)/, process.env.HOME ?? "~")
+      : args.intent ? resolve(import.meta.dir, '../Intents', `${args.intent}.md`) : undefined;
+    const contract = applyContractOverrides(intentPath ? loadContract(intentPath) : undefined, args.intent, args.variant);
+    const result = verify(contract, { slug: args.slug ?? '', cwd: process.cwd(), promptText: finalPrompt });
+    if (!result.ok) throw new CLIError(`Intent contract REFUSED:\n${result.failures.map(failure => `  - ${failure}`).join('\n')}`);
+    if (args.dryRun) {
+      console.log(`[Generate] DRY RUN: argument/intent validation passed; ${contract ? 'intent contract passed' : 'no intent contract (legacy behavior)'}. No credentials loaded or image API called.`);
+      return;
+    }
+
+    // Only load credentials after every preflight gate has passed.
+    await loadEnv();
 
     if (args.transparent) {
       console.log("🔲 Transparent background mode enabled");
@@ -965,7 +1225,7 @@ async function main(): Promise<void> {
     if (n > 1) {
       console.log(`🎨 Creative Mode: Generating ${n} variations with ${args.model}...`);
       console.log(`💡 Note: CLI mode uses same prompt for all variations (tests model variability)`);
-      console.log(`   For true creative diversity, use the creative workflow with be-creative skill\n`);
+      console.log(`   For true creative diversity, use the creative intent with be-creative skill\n`);
 
       const basePath = args.output.replace(/\.[^.]+$/, "");
 
@@ -993,8 +1253,10 @@ async function main(): Promise<void> {
       }
 
       const actualPaths = await Promise.all(promises);
+      const finished: string[] = [];
+      for (const path of actualPaths) finished.push(await postProcess(path, args));
       console.log(`\n✅ Generated ${n} variations`);
-      console.log(`   Files: ${actualPaths.join(", ")}`);
+      console.log(`   Files: ${finished.join(", ")}`);
       return;
     }
 
@@ -1014,41 +1276,7 @@ async function main(): Promise<void> {
       );
     }
 
-    // Remove background if requested (use actual output path)
-    // May return a renamed path (e.g., .jpg → .png) since rembg returns PNG.
-    if (args.removeBg) {
-      actualOutput = await removeBackground(actualOutput);
-    }
-
-    // Add background color if requested (standalone mode)
-    if (args.addBg && !args.thumbnail) {
-      // For standalone --add-bg, modify the image in place
-      const tempPath = actualOutput.replace(/\.[^.]+$/, "-temp.png");
-      await addBackgroundColor(actualOutput, tempPath, args.addBg);
-      // Replace original with the one with background
-      const { rename } = await import("node:fs/promises");
-      await rename(tempPath, actualOutput);
-    }
-
-    // Stamp the REQUIRED "{{DA_NAME}}" signature on essay/blog-header images.
-    // Auto-on for the Essay workflow and for any --thumbnail (blog-header) run;
-    // --signature forces on, --no-signature opts out. Runs AFTER bg ops but
-    // BEFORE the thumbnail is derived so the signature is on BOTH versions.
-    const signatureDefault = args.workflow === "Essay" || args.thumbnail === true;
-    const stampSignature = args.signature ?? signatureDefault;
-    if (stampSignature) {
-      await stampDaSignature(actualOutput);
-    }
-
-    // Generate thumbnail with background color if requested (blog header mode)
-    if (args.thumbnail) {
-      const thumbPath = actualOutput.replace(/\.[^.]+$/, "-thumb.png");
-      const THUMBNAIL_BG_COLOR = "#EAE9DF"; // UL brand background color for social previews
-      await addBackgroundColor(actualOutput, thumbPath, THUMBNAIL_BG_COLOR);
-      console.log(`\n📸 Blog header mode: Created both versions`);
-      console.log(`   Transparent: ${actualOutput}`);
-      console.log(`   Thumbnail:   ${thumbPath}`);
-    }
+    await postProcess(actualOutput, args);
   } catch (error) {
     handleError(error);
   }

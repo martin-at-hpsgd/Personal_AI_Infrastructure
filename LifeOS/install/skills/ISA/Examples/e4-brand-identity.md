@@ -1,3 +1,4 @@
+<!-- isa-example claims=56 probes=9 era=legacy -->
 <!-- Fictitious example. "Cardinal" is a teaching project name; any resemblance to real products or organizations is coincidental. The example.com domain is RFC 2606 reserved. -->
 ---
 task: "Build the Cardinal brand identity system from blank canvas to first 5 surfaces"
@@ -11,6 +12,29 @@ mode: interactive
 started: 2026-02-03T22:12:00Z
 updated: 2026-04-19T11:30:00Z
 ---
+
+## Ideal State
+
+### L3 · One sentence
+
+Cardinal's brand reads as one intentional voice on every surface a new user touches, from the App Store icon to the launch tweet, ready to ship together on April 26, 2026.
+
+### L2 · Summary
+
+Cardinal v1 is a complete identity kit, designed against the smallest-size and 1-bit tests, that makes five surfaces read as one voice.
+
+- A logo in three lockups that survives a 16px favicon.
+- A type system, a color palette, and a one-page voice and tone guide with six worked rewrites.
+- The first five surfaces: homepage hero, App Store screenshots, welcome email, partner one-pager, and launch tweet.
+- Everything packaged as a Figma file and a public GitHub repo for the founder-confirmed launch date.
+
+### L1 · Full articulation
+
+Cardinal is a six-person fintech startup at `cardinal.example.com` helping new immigrants in the US open their first investment account in under 10 minutes. The product is good and the first 200 users love it, but the brand does not yet match it. The napkin logo fails at 16px, the site uses three shades of blue depending on the page, and the investor emails read as "bank-stiff" while the homepage promises "your most encouraging financial friend."
+
+Brand identity v1 fixes that with one system, delivered together: a logo in three lockups, a type system of one family in two weights and six sizes, a color palette of two hues and a five-step neutral, a one-page voice and tone guide with six worked rewrites, and the first five marketing surfaces (homepage hero, App Store screenshot set, welcome email, partner one-pager, launch tweet). Every element is designed against constraints that survive the smallest-size and 1-bit tests. It is packaged as a Figma file and a public GitHub repo, ready to ship on the founder-confirmed launch date of April 26, 2026.
+
+The test is recognition without priming. A user who taps the App Store icon, lands on the website, opens the welcome email, and reads the founder's tweet feels that one intentional person made all four. The founder's mom, who has never used the product, sees the logo on a coffee shop sticker and a week later texts her son a photo of it on a bus shelter ad, asking whether it is his. The cofounder who drew the napkin logo says he does not miss it.
 
 ## Problem
 
@@ -52,10 +76,6 @@ The founder's mom — who has never used the product and doesn't know what it do
 - Color contrast must pass WCAG 2.2 AA for all text + background combinations the system can produce.
 - All five launch surfaces (homepage hero, App Store screenshot set, welcome email, partner one-pager, launch tweet) ship from the same kit on the same day.
 - No AI-generated illustrations in the launch surfaces. Hand-drawn or geometric only.
-
-## Goal
-
-Deliver a complete Cardinal brand identity v1 — logo (3 lockups), type system (1 family, 2 weights, 6 sizes), color palette (2 hues + 5-step neutral), voice and tone guide (1 page with 6 worked rewrites), and the first 5 marketing surfaces (homepage hero, App Store screenshot set, welcome email, partner one-pager, launch tweet) — all designed against constraints that survive the smallest-size and 1-bit tests, packaged as a Figma file and a public GitHub repo, ready to ship together on the founder-confirmed launch date of April 26, 2026.
 
 ## Criteria
 
@@ -117,62 +137,18 @@ Deliver a complete Cardinal brand identity v1 — logo (3 lockups), type system 
 - [ ] ISC-56: Antecedent: the founder reports the "I don't miss the napkin logo" feeling — captured verbatim in retro notes (probe: retro doc, search for the exact quote or a paraphrase the founder confirms).
 
 ## Test Strategy
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-3 | manual | legibility at 16px favicon | ≥2/3 unfamiliar viewers identify "Cardinal" within 5 seconds | Skill('Interceptor') screenshot + 3-viewer survey | |
+| ISC-4 | manual | 1-bit B&W recognizability | ≥4/5 viewers say "same logo" as color version | viewer survey | |
+| ISC-7 | bash | typeface OFL 1.1 | license header matches "SIL OPEN FONT LICENSE Version 1.1" | for f in fonts/*/LICENSE.txt; do grep -q "SIL OPEN FONT LICENSE Version 1.1" "$f" \|\| exit 1; done | |
+| ISC-15 | bun-test | WCAG 2.2 AA across all permitted FG/BG pairs | zero violations | bun scripts/contrast-check.ts | |
+| ISC-18 | manual | voice guide reproducibility | ≥50% founder confusion across 10 blind A/B trials | blind A/B test (Outsider draft + Founder rewrite vs Founder draft) | |
+| ISC-26 | bash | primary color hex consistency across launch surfaces | zero deviations from cardinal-red-600 | bun scripts/surface-color-audit.ts | |
+| ISC-31 | manual | voice guide must not over-prescribe | ≤1 voice violation in founder's own unguided 3-paragraph draft | voice author scores founder draft | |
+| ISC-49 | manual | launch tweet image draws unprompted curiosity | ≥3 DM replies asking "what is this" within 48 hours | founder dry-run on personal X account, 7 days pre-launch | |
+| ISC-50 | manual | angels can sort on-brand vs decoy | 4 of 5 correct identifications | 5-trial sort with planted decoys (off-brand color, off-brand voice, off-brand lockup) | |
 
-```yaml
-- isc: ISC-3
-  type: experiential-probe
-  check: legibility at 16px favicon
-  threshold: ≥2/3 unfamiliar viewers identify "Cardinal" within 5 seconds
-  tool: Skill('Interceptor') screenshot + 3-viewer survey
-
-- isc: ISC-4
-  type: experiential-probe
-  check: 1-bit B&W recognizability
-  threshold: ≥4/5 viewers say "same logo" as color version
-  tool: viewer survey
-
-- isc: ISC-7
-  type: license-probe
-  check: typeface OFL 1.1
-  threshold: license header matches "SIL OPEN FONT LICENSE Version 1.1"
-  tool: head fonts/<family>/LICENSE.txt
-
-- isc: ISC-15
-  type: contrast
-  check: WCAG 2.2 AA across all permitted FG/BG pairs
-  threshold: zero violations
-  tool: bun scripts/contrast-check.ts
-
-- isc: ISC-18
-  type: experiential-probe
-  check: voice guide reproducibility
-  threshold: ≥50% founder confusion across 10 blind A/B trials
-  tool: blind A/B test (Outsider draft + Founder rewrite vs Founder draft)
-
-- isc: ISC-26
-  type: visual-audit
-  check: primary color hex consistency across launch surfaces
-  threshold: zero deviations from cardinal-red-600
-  tool: bun scripts/surface-color-audit.ts
-
-- isc: ISC-31
-  type: anti-probe
-  check: voice guide must not over-prescribe
-  threshold: ≤1 voice violation in founder's own unguided 3-paragraph draft
-  tool: voice author scores founder draft
-
-- isc: ISC-49
-  type: experiential-probe
-  check: launch tweet image draws unprompted curiosity
-  threshold: ≥3 DM replies asking "what is this" within 48 hours
-  tool: founder dry-run on personal X account, 7 days pre-launch
-
-- isc: ISC-50
-  type: experiential-probe
-  check: angels can sort on-brand vs decoy
-  threshold: 4 of 5 correct identifications
-  tool: 5-trial sort with planted decoys (off-brand color, off-brand voice, off-brand lockup)
-```
 
 ## Features
 

@@ -1,27 +1,28 @@
 #!/usr/bin/env bun
 /**
- * @version 3.2.2
+ * @version 3.7.13
  * TRIGGER: UserPromptSubmit (routing match, always-on) — also runs on PostToolUse via PostToolObserver and on PostToolUseFailure.
  * AlgorithmNudge — the Algorithm live nudge layer ("Events ask the rest").
  *
  * ROWS (what each one is for):
  *   depth-directive   — a plain-language depth directive in a NO-RUN turn signals the turn
- *                       IS a run; doctrine claims 10/15 only have teeth once one exists.
- *   design-class      — authority/security-boundary or architecture work points at
- *                       OPERATIONAL_RULES § Model selection: design the thing NATIVELY and
- *                       inline BEFORE building, on the top rung the main loop already runs
- *                       (settings.json pins it). Never ask which rung, never hand the design
- *                       leg to the Max agent — that is a second look, not a rung rental.
- *   exec-delegation   — a sustained stretch of build calls (Edit/Write) with zero Agent
- *                       dispatches asks the down-rung question from OPERATIONAL_RULES
- *                       § Model selection: is this stretch judgment work that earns MAX,
- *                       or an execution leg that should ride a dispatch a rung down?
- *   inherited-dispatch — an Agent dispatch carrying no `model` field inherits the MAX
- *                       session rung; one line surfaces that fact so inheriting is a
- *                       decision, not the silent default. Evidence for both rows:
- *                       subagent-events.jsonl, 10K events, zero explicit models ever
- *                       (measured 2026-08-01) — prose alone did not produce a single
- *                       rung-down in the system's life.
+ *                       IS a run; doctrine criteria 10/15 only have teeth once one exists.
+ *   doctrine-class    — a prompt asking for judgment about the thinking system itself
+ *                       (Algorithm, ISA doctrine, standing rules). Advice inherits the
+ *                       blast radius of what it advises; the row asks the entry question
+ *                       (run or stated reason) at the only moment a backstop can exist
+ *                       (a live miss, 2026-08-15: entry misjudgment escapes every
+ *                       in-run check because no run registers).
+ *   (exec-delegation, sweep-delegation and inherited-dispatch are retired, 2026-10-15
+ *    native-unblock ISC-17: whether to delegate, and on which model, is Claude Code's
+ *    own call; a row second-guessing it was advice the model would ignore.)
+ *   skill-gap        — a substantive session that never invoked a skill AND whose
+ *                       prompts matched no skill's USE WHEN asks the opposite question
+ *                       from skill-routing: not "you skipped a skill" but "nothing here
+ *                       covers this — should a skill exist?" Advisory; the model checks
+ *                       real coverage and proposes, the hook never names a skill.
+ *                       He asked for this row by name, so it is a NAMED EXCEPTION to
+ *                       the unobservable-state rule below; the argument is at the row.
  *   capability        — a Bash failure exercising a Doctor-tracked capability that
  *                       capabilities.json marks broken emits its compile-time CAP_FIX
  *                       command (60-min per-capability cooldown; the manifest is state
@@ -34,7 +35,7 @@
  * TWO SCOPES:
  *   ALWAYS-ON  (any session)          → skill-routing + depth-directive
  *                                       (UserPromptSubmit),
- *                                       late-ISA (PostToolUse, no registered run),
+ *                                       late-ISA + skill-gap (PostToolUse),
  *                                       capability row (PostToolUseFailure)
  *   RUN-SCOPED (live Algorithm run)   → stale-isa
  *
@@ -45,14 +46,20 @@
  * unwritten ISA, a stale one, a destructive op's blast radius, a capability the manifest
  * knows is broken. Asking the model to notice something already in front of it (probe-fail,
  * agent-return, claim-close, spend) is scaffolding and does not earn a row.
+ * NAMED EXCEPTION (doctrine §Events, v8.22.0): entry rows — depth-directive and
+ * doctrine-class — key on the prompt itself, because their job is making the run exist;
+ * an entry misjudgment leaves no run for any in-run check to bind, and prose teeth for
+ * exactly this class demonstrably failed live twice (2026-07-16 and 2026-08-15).
  *
  * Events (dispatched by hook_event_name):
- *   UserPromptSubmit          → routing match (always-on) + depth + design-class
- *   PostToolUse               → stale-ISA | late-ISA
+ *   UserPromptSubmit          → routing match (always-on) + depth + doctrine-class
+ *   PostToolUse               → stale-ISA | late-ISA | skill-gap
  *                               (reaches here via PostToolObserver's import of run())
  *   PostToolUseFailure        → capability row
  *
  * State: MEMORY/STATE/isa-nudge/{session_id}.json
+ *        MEMORY/STATE/skill-gap-nudge.json          (cross-session rate limit)
+ *        MEMORY/OBSERVABILITY/skill-gap-candidates.jsonl (SuggestSkills corpus)
  *   { toolCallsSinceISAEdit, toolCallsTotal, lateISAFired, lastNudgeAt: {type: epochMs},
  *     primaryTranscript }
  *
@@ -62,26 +69,37 @@
  * (`bun AlgorithmNudge.hook.ts --rebuild-index`) and this turn proceeds without it.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, appendFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, appendFileSync, chmodSync } from 'fs';
+import { join, dirname } from 'path';
 import { resolveBun } from './lib/resolve-bin';
 import { deriveAscent, type AscentState } from '../LIFEOS/TOOLS/ascent';
-import { homedir } from "node:os";
+import { getClaudeDir, lifeosPath } from "./lib/paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { hookCovers } from "./lib/function-hooks";
+// The depth matcher is shared with the Route step (LIFEOS/ROUTER/Depth.ts): one list, never two.
+import { boundedPhraseRe, stripFences, matchDepthDirective } from "../LIFEOS/ROUTER/Depth";
+export { boundedPhraseRe, stripFences, matchDepthDirective };
 
-const PAI = join(homedir(), '.claude');
+// Terminal telemetry only. Headless spawns (the texting bridge, scheduled jobs) must never receive these
+// notes — once a model-drift warning and a memory-freshness line were relayed into a text reply.
+export const HEADLESS = !!(process.env.LIFEOS_TEXTING_SESSION || process.env.LIFEOS_NOTIFICATION_CHANNEL === "headless");
+if (import.meta.main && HEADLESS) process.exit(0);
+
+
+const CLAUDE_DIR = getClaudeDir();
 // Overridable so tests can PRODUCE a state-machine edge instead of hand-writing
 // its precondition, and so test runs stop appending to the production diagnostic
 // log (Forge delta audit H-B, M-E — the log was 7 lines, all of them test noise).
 const WORK_JSON = process.env.LIFEOS_WORK_JSON
-  || join(PAI, 'LIFEOS', 'MEMORY', 'STATE', 'work.json');
+  || join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'STATE', 'work.json');
 const SELFHEAL_LOG = process.env.LIFEOS_SELFHEAL_LOG
-  || join(PAI, 'LIFEOS', 'MEMORY', 'OBSERVABILITY', 'hook-selfheal.jsonl');
-const STATE_DIR = join(PAI, 'LIFEOS', 'MEMORY', 'STATE', 'isa-nudge');
-const SKILLS_DIR = join(PAI, 'skills');
-const INDEX_PATH = join(PAI, 'LIFEOS', 'MEMORY', 'STATE', 'skill-usewhen-index.json');
+  || join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'OBSERVABILITY', 'hook-selfheal.jsonl');
+const STATE_DIR = join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'STATE', 'isa-nudge');
+const SKILLS_DIR = join(CLAUDE_DIR, 'skills');
+const INDEX_PATH = join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'STATE', 'skill-usewhen-index.json');
 
 const STALE_ISA_THRESHOLD = 15;            // tool calls with zero ISA edits (run-scoped)
 const LATE_ISA_THRESHOLD = 25;             // tool calls with NO registered run (always-on, once)
+const LATE_ISA_REARM = 75;                 // re-arm late-ISA when calls elapsed while no run (v3.7.2, public issue #2074, PR #2083)
 const COOLDOWN_MS = 5 * 60 * 1000;         // default per-nudge-type
 const ROUTE_COOLDOWN_MS = 60 * 60 * 1000;  // per-skill routing cooldown
 const INDEX_MAX_AGE_MS = 6 * 60 * 60 * 1000;
@@ -105,11 +123,26 @@ export const ISA_PATH_RE_FOR_TEST = ISA_PATH_RE;
  */
 const IN_FLIGHT: ReadonlySet<AscentState> = new Set<AscentState>(['marking', 'ascending', 'anchoring']);
 const CAPABILITIES_PATH = process.env.LIFEOS_CAPABILITIES_PATH
-  || join(PAI, 'LIFEOS', 'MEMORY', 'STATE', 'capabilities.json');
+  || join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'STATE', 'capabilities.json');
 const CAP_COOLDOWN_MS = 60 * 60 * 1000;    // per-capability; moment-of-need, never nagging
 const SILENCE_TRACE_THRESHOLD = 100;       // delegate events with zero primary before tracing
+const SKILL_GAP_THRESHOLD = 40;            // primary tool calls before a skill-less session is worth a question
+const SKILL_GAP_GLOBAL_COOLDOWN_MS = 12 * 60 * 60 * 1000;  // cross-session; a declined proposal must not re-nag
+/**
+ * A test run must never write the real stamp or the real corpus. Both are cross-session
+ * state, so a suite that touched them would silence the row in live sessions for twelve
+ * hours and file fake evidence for SuggestSkills — caught live: a self-test session id
+ * sat in the production corpus. Under `bun test` the defaults resolve to '' (writes and
+ * the cooldown read are skipped); a test that wants the real behavior sets the env vars
+ * to its own scratch paths, which still win.
+ */
+const IN_TEST = process.env.NODE_ENV === 'test';
+const SKILL_GAP_STAMP = process.env.LIFEOS_SKILL_GAP_STAMP
+  || (IN_TEST ? '' : join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'STATE', 'skill-gap-nudge.json'));
+const SKILL_GAP_LOG = process.env.LIFEOS_SKILL_GAP_LOG
+  || (IN_TEST ? '' : join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'OBSERVABILITY', 'skill-gap-candidates.jsonl'));
 
-// Destructive-infra ops (Algorithm claim 16, v8.7.0 — deleting workers deleted the apex
+// Destructive-infra ops (Algorithm criterion 16, v8.7.0 — deleting workers deleted the apex
 // DNS record their custom domain owned; every warm-cache probe passed while the world
 // went NXDOMAIN).
 // Matches Bash commands that delete cloud infra resources; fires the
@@ -117,16 +150,62 @@ const SILENCE_TRACE_THRESHOLD = 100;       // delegate events with zero primary 
 export const DESTRUCTIVE_INFRA_RE = new RegExp([
   /\bwrangler(?:@[\w.^~-]+)?\s+(?:[\w:-]+\s+)*delete\b/.source,            // wrangler delete, r2 bucket delete, d1 delete, kv namespace delete, pages project delete
   /\bcf\s+(?:zones|dns\s+records|registrar)\s+[\w-]*delete[\w-]*\b/.source, // cf CLI destructive subcommands
+  // cf CLI replaced Wrangler 2026-09-29: any `cf … delete` / `bulk-delete` (workers, d1, r2 buckets and objects,
+  // kv namespaces, queues, pages projects…), bare, via bunx, pinned, or forwarded by CfEnv.ts.
+  /(?<![\w.-])cf(?:@[\w.^~-]+)?\s+(?:[\w:-]+\s+)*(?:bulk-)?delete\b/.source,
+  /\bCfEnv\.ts\s+(?:[\w:-]+\s+)*(?:bulk-)?delete\b/.source,
   /-X\s*DELETE\b[^|;&\n]*(?:workers\/(?:scripts|domains|services)|dns_records|custom_domains?|r2\/buckets|d1\/database|pages\/projects|zones\/)/i.source, // raw CF API deletes
 ].join('|'), 'i');
-const DESTRUCTIVE_INFRA_NUDGE = 'A destructive infra op just ran (claim 16). Three questions before anything closes on it: (1) what did that resource OWN per the provider\'s authority API — DNS records, routes, domains, bindings? A dependent record "already existing" is not evidence it survives the delete. (2) Re-list from the authority post-op — a probe through a warm cache is not the authority. (3) Does the flow that resource served still run at its measured baseline? One synthetic event is not parity.';
+// Articulation-missing (Algorithm v8.31.0 criteria 1 and 6 + Events row; ISAFormat
+// v2.28.0 § The Ideal State ladder). Fires when an ISA edit lands on a PROJECT
+// ISA (outside MEMORY/WORK, exact filename ISA.md — bunker.isa.md health
+// contracts are exempt) whose ladder has no L1 (`### L1` under
+// `## Ideal State`, or the legacy standalone `## Articulation`). Within the
+// bounding rule: an on-disk section's existence is the unwritten/stale-ISA
+// state class. Once per file per session (24h cooldown).
+const PROJECT_ISA_RE = /(?:^|\/)ISA\.md$/;
+const ARTICULATION_RE = /^###\s+L1\b|^##\s+Articulation\s*$/m;
+const ARTICULATION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const ARTICULATION_NUDGE = 'This project ISA has no L1 in its `## Ideal State` ladder — its describe-it-in-text ideal state was never written down (ISAFormat v2.28.0). Direction comes first: before building further, write the ladder (`bun LIFEOS/TOOLS/IsaLadder.ts migrate <isa> --full` drafts it from the ISA\'s own text), run Skill("ISA","discuss <isa> discover") so the principal confirms or corrects the draft in recommended-answer rounds (criterion 6, v8.41.0), and Skill("ISA","restate") so the principal confirms L3 and L2 (criterion 1).';
+
+// Alignment owed (Algorithm v8.41.0 criterion 6 + Events row; ISAFormat § The alignment
+// loop). Fires when an ISA edit lands on an ISA.md whose own state says a Discuss round is
+// owed in align or deepen mode (`IsaAlign.ts status`): a corrected restate never re-aligned,
+// asks clustering, thick fog. The discover case (no ladder) stays with the articulation row
+// above, and never hides an align or deepen reason on the same ISA. Within the bounding rule: Log blocks, ask fences and fog counts are on-disk state the
+// model does not hold in context. Advisory; once per file per session per day. IsaAlign is required lazily
+// so the hook pays its load only on ISA edits.
+const ALIGNMENT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const ALIGNMENT_NUDGE = (path: string, mode: string, depth: string, reasons: string[]) =>
+  `This ISA owes a Discuss round (${mode}, ${depth}): ${reasons.join('; ')}. Before building the uncertain part, run Skill("ISA","discuss ${path} ${mode} ${depth}"): the ladder shown first, recommended-answer questions with one challenge, answers folded into the ladder the same turn. The principal's \`proceed\` overrides, logged in Decisions (criterion 6, v8.41.0). Advisory.`;
+
+// Absence-review-missing (Algorithm v8.29.0 criterion 3 + Events row; ISAFormat
+// v2.26.0 `absence` class). Fires when an ISA edit lands on ANY ISA (task or
+// project) that carries `## Features` and no `absence_review:` frontmatter key
+// while phase ≠ complete — the substantial-work discriminator is the on-disk
+// section, never a self-declared tier. Within the bounding rule: an on-disk
+// key's absence is a state the model cannot see from context. Advisory; once
+// per file per session (24h cooldown).
+const FEATURES_SECTION_RE = /^##\s+Features\s*$/m;
+const ABSENCE_REVIEW_RE = /^absence_review:\s*\S/m;
+const PHASE_COMPLETE_RE = /^phase:\s*complete\b/m;
+const ABSENCE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+// (advisor-consult row retired 2026-09-10 with the LifeOS Advisor agent — the principal: an
+// advisor is a meta-system, not a pickable agent, and it was doing no routing. The
+// model does the work itself now; there is no advisor open/close frontmatter convention.)
+/** The YAML frontmatter block only — a key mentioned in the body (a criterion quoting it, a code fence) is not the key. */
+function frontmatterOf(body: string): string { const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/); return m ? m[1] : ''; }
+const ABSENCE_NUDGE = 'This `## Features` ISA has no `absence_review:` key — its anti-criteria were never seeded by a mind that did not see the criteria (Algorithm v8.29.0 criterion 3; ISAFormat v2.26.0). Run the absence pass (ISA Scaffold § Absence pass: one non-forked fresh reviewer briefed from the Ideal State ladder, Problem, Vision, Constraints, Out of Scope only), or log the skip as a Decisions row and set `absence_review: skipped — <reason>`. Advisory only.';
+
+const DESTRUCTIVE_INFRA_NUDGE = 'A destructive infra op just ran (criterion 16). Three questions before anything closes on it: (1) what did that resource OWN per the provider\'s authority API — DNS records, routes, domains, bindings? A dependent record "already existing" is not evidence it survives the delete. (2) Re-list from the authority post-op — a probe through a warm cache is not the authority. (3) Does the flow that resource served still run at its measured baseline? One synthetic event is not parity.';
 
 // Doctor-manifest capabilities → the command shapes that exercise them.
 // Fed by LIFEOS/TOOLS/Doctor.ts (v2 design, #1461): broken fires once with the
 // fix command, declined and live are ALWAYS silent, absent manifest is silent.
 const CAP_COMMAND_RES: Array<{ id: string; re: RegExp }> = [
   { id: 'codex', re: /\bcodex\b/ },
-  { id: 'cloudflare', re: /\bwrangler\b/ },
+  // cf (Wrangler's replacement, 2026-09-29) only at command position, so `rg cf src` is not a Cloudflare call.
+  { id: 'cloudflare', re: /\bwrangler\b|(?:^|[;&|(]|\bbunx)\s*(?:\S*\/)?cf(?:@\S+)?\s+[a-z]|\bCfEnv\.ts\b/ },
   // Both hostnames: source now builds this URL from PULSE_BASE (127.0.0.1),
   // but hand-typed curls and older scripts still say localhost.
   // public issue #1618, @asdf8675309
@@ -140,6 +219,9 @@ interface HookInput {
   /** Present ONLY on a delegate's tool events — the discriminator (2026-07-30). */
   agent_id?: string;
   agent_type?: string;
+  /** Session carrier, when the harness supplies it on UserPromptSubmit (same
+   *  field ModelDriftGuard consumes; named ModelRungGuard until 2026-08-19). */
+  model?: string;
   prompt?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
@@ -150,11 +232,15 @@ interface NudgeState {
   toolCallsSinceISAEdit: number;
   /** True calls-since-last-ISA-edit. Unlike toolCallsSinceISAEdit (which
    *  self-resets when the stale-isa nudge fires, so it can't re-nag), this
-   *  resets ONLY on a genuine ISA edit. Read by ISACloseGate (Stop) to judge
+ *  resets ONLY on a genuine ISA edit. ISACloseGate, retired 2026-09-21, read it (Stop) to judge
    *  whether a completed piece of work left the ISA stale. */
   toolCallsSinceISAEditAbs: number;
   toolCallsTotal: number;
   lateISAFired: boolean;
+  /** toolCallsTotal at the last late-ISA fire; the row re-arms LATE_ISA_REARM
+   *  calls later while still no run is registered (public issue #2074,
+   *  @mefsnef; PR #2083, @Bowlerjim). */
+  lateISAFiredAtCalls?: number;
   /** True while an OPEN run is bound to this session. The open→closed edge
    *  restarts the untracked-work clock (Forge audit H1). */
   runWasOpen?: boolean;
@@ -165,15 +251,19 @@ interface NudgeState {
   delegateEvents?: number;
   primaryEvents?: number;
   silenceLogged?: boolean;
-  /** Consecutive build-tool calls (Edit/Write) since the last Agent dispatch.
-   *  Feeds exec-delegation: the one aggregate the model can't see from inside
-   *  the stretch — how long it has been executing inline on the top rung. */
-  buildCallsSinceDispatch?: number;
-  /** Consecutive tool calls of ANY non-dispatch kind since the last Agent
-   *  dispatch. Feeds sweep-delegation: catches the token-heavy Bash/Read/Grep
-   *  stretch the build counter is blind to (2026-08-02 audit: a whole
-   *  release-notes session ran 100% inline on MAX and never tripped a row). */
-  workCallsSinceDispatch?: number;
+  /** Set permanently the first time this session invokes the Skill tool. The
+   *  skill-gap row's central gate: a session that reached for a skill at all is
+   *  not the session that needs to be asked whether one is missing. */
+  skillInvoked?: boolean;
+  /** Set when the skill-routing row fires. The two rows are opposites — one says
+   *  "a skill covers this, use it", the other "nothing covers this, build one" —
+   *  and emitting both in one session is a contradiction, not two data points. */
+  routeMatched?: boolean;
+  /** Primary tool calls, monotonic. Unlike toolCallsTotal (which resets on the
+   *  run-closed edge), this only ever counts up, so the skill-gap substance floor
+   *  measures the whole session's work and not the stretch since a run closed. */
+  primaryCalls?: number;
+  skillGapFired?: boolean;
   lastNudgeAt: Record<string, number>;
   /** The primary conversation's transcript_path, recorded at UserPromptSubmit —
    *  the one event that never fires for subagents. Tool events whose
@@ -191,6 +281,7 @@ interface ActiveSession {
 
 interface SkillIndex {
   builtAt: number;
+  gen: string;
   entries: Array<{ skill: string; phrases: string[] }>;
 }
 
@@ -212,12 +303,15 @@ function loadState(sessionId: string): NudgeState {
     toolCallsSinceISAEditAbs: s.toolCallsSinceISAEditAbs ?? (s as any).toolCallsSinceIsaEditAbs ?? 0,
     toolCallsTotal: s.toolCallsTotal ?? 0,
     lateISAFired: s.lateISAFired ?? (s as any).lateIsaFired ?? false,
+    lateISAFiredAtCalls: s.lateISAFiredAtCalls ?? 0,
     runWasOpen: s.runWasOpen ?? false,
     delegateEvents: s.delegateEvents ?? 0,
     primaryEvents: s.primaryEvents ?? 0,
     silenceLogged: s.silenceLogged ?? false,
-    buildCallsSinceDispatch: s.buildCallsSinceDispatch ?? 0,
-    workCallsSinceDispatch: s.workCallsSinceDispatch ?? 0,
+    skillInvoked: s.skillInvoked ?? false,
+    routeMatched: s.routeMatched ?? false,
+    primaryCalls: s.primaryCalls ?? 0,
+    skillGapFired: s.skillGapFired ?? false,
     lastNudgeAt: s.lastNudgeAt ?? {},
     primaryTranscript: s.primaryTranscript,
   };
@@ -325,8 +419,11 @@ export function parseUseWhen(description: string): string[] {
   const m = description.match(/USE WHEN\s+([\s\S]*?)(?:\.\s*NOT FOR|$)/i);
   if (!m) return [];
   return m[1]
-    .split(/[,·]/)
-    .map(p => p.trim().toLowerCase().replace(/\.$/, ''))
+    // Case-sensitive ` OR ` separates triggers ("sigma or yara" stays one phrase)
+    // (public issue #2183, @drpaulobernardy); a description with no NOT FOR keeps
+    // the YAML closing quote on its last phrase (public issue #2179, @drpaulobernardy).
+    .split(/[,·]| OR /)
+    .map(p => p.trim().toLowerCase().replace(/["'”]+$/, '').replace(/\.$/, ''))
     // floor 6 matches the matchSkills floors — shorter phrases are dead index
     // weight (Forge audit 2026-07-11, finding 5)
     .filter(p => p.length >= 6 && p.length <= 60);
@@ -360,17 +457,13 @@ export function matchSkills(prompt: string, index: SkillIndex): Array<{ skill: s
           if (!best || phrase.length > best.length) best = phrase;
         }
       } else if (phrase.length >= 6 && !ROUTE_STOPWORDS.has(phrase)) {
-        try {
-          // Unicode-property lookarounds instead of \b: JS \b is ASCII-only,
-          // so any phrase or prompt with non-ASCII letters (accents, CJK,
-          // Cyrillic) silently never matched — a mute miss in the one nudge
-          // whose whole job is catching forgotten capabilities
-          // (public issue #1787, @xmasyx; fix confirmed by @waveman2020-sudo).
-          const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          if (new RegExp(`(?<![\\p{L}\\p{N}_])${esc}(?![\\p{L}\\p{N}_])`, 'u').test(p)) {
-            if (!best || phrase.length > best.length) best = phrase;
-          }
-        } catch { /* skip malformed */ }
+        // Unicode-safe boundary — see boundedPhraseRe. The mute miss it fixes was
+        // in the one nudge whose whole job is catching forgotten capabilities
+        // (public issue #1787, @xmasyx; fix confirmed by @waveman2020-sudo).
+        const re = boundedPhraseRe(phrase);
+        if (re && re.test(p)) {
+          if (!best || phrase.length > best.length) best = phrase;
+        }
       }
     }
     if (best) hits.push({ skill, phrase: best });
@@ -379,88 +472,243 @@ export function matchSkills(prompt: string, index: SkillIndex): Array<{ skill: s
   return hits.sort((a, b) => b.phrase.length - a.phrase.length).slice(0, 3);
 }
 
+/** Skills the user hid from the model in settings `skillOverrides` ("off" or
+ *  "user-invocable-only"). A nudge toward one tells the model to call a skill it
+ *  cannot call (public issue #2265, @MatiasBarboza). Unreadable settings hide nothing. */
+export function hiddenSkills(claudeDir: string = CLAUDE_DIR): Set<string> {
+  const hidden = new Set<string>();
+  for (const name of ["settings.json", "settings.local.json"]) {
+    try {
+      const o = JSON.parse(readFileSync(join(claudeDir, name), "utf-8"))?.skillOverrides;
+      if (!o || typeof o !== "object") continue;
+      for (const [skill, mode] of Object.entries(o)) {
+        if (mode === "off" || mode === "user-invocable-only") hidden.add(skill);
+      }
+    } catch { /* missing or malformed settings: nothing hidden */ }
+  }
+  return hidden;
+}
+
 /** Build the index by scanning skills/*\/SKILL.md frontmatter. Slow path only —
  *  invoked via --rebuild-index (detached from the hot path). */
 export function buildIndex(): SkillIndex {
   const entries: SkillIndex['entries'] = [];
   let dirs: string[] = [];
   try { dirs = readdirSync(SKILLS_DIR); } catch { /* no skills dir */ }
+  const hidden = hiddenSkills();
   for (const dir of dirs) {
+    if (hidden.has(dir)) continue;
     const skillMd = join(SKILLS_DIR, dir, 'SKILL.md');
     try {
       if (!existsSync(skillMd)) continue;
       const head = readFileSync(skillMd, 'utf-8').slice(0, 4096);
       const fm = head.match(/^---\n([\s\S]*?)\n---/);
       if (!fm) continue;
-      const desc = fm[1].match(/description:\s*([\s\S]*?)(?:\n[a-zA-Z_-]+:|$)/);
+      // The model cannot invoke these; never route it toward one (public issue #2265).
+      if (/(?:^|\n)disable-model-invocation:\s*true\b/.test(fm[1])) continue;
+      // Anchored to line start: a nested `metadata.short-description:` key
+      // (Codex catalog projection, 2026-09-08) contains the substring
+      // `description:` and, unanchored, captured a string with no USE WHEN —
+      // every skill was skipped and the index rebuilt to zero entries.
+      const desc = fm[1].match(/(?:^|\n)description:\s*([\s\S]*?)(?:\n[a-zA-Z_-]+:|$)/);
       if (!desc) continue;
       const phrases = parseUseWhen(desc[1]);
       if (phrases.length > 0) entries.push({ skill: dir, phrases });
     } catch { /* skip unreadable skill */ }
   }
-  return { builtAt: Date.now(), entries };
+
+  // Read the current generation and store it in the index
+  const gen = readSkillGeneration();
+
+  return { builtAt: Date.now(), entries, gen } as unknown as SkillIndex;
 }
 
 /** Routing-fire telemetry — the tuning instrument for the noise floors
  *  (Forge audit 2026-07-11, finding 2: tune from real fire-rate data). */
-function logRoutingFire(sessionId: string, prompt: string, matches: Array<{ skill: string; phrase: string }>): void {
+/**
+ * Cross-session gate for the skill-gap row. Per-session `lastNudgeAt` cannot rate-limit
+ * a row that fires once per session by construction — a run of short sessions would ask
+ * the same question every time. The stamp lives outside session state for that reason.
+ * Fails OPEN: an unreadable or malformed stamp must never permanently silence the row.
+ */
+function skillGapCooled(now: number): boolean {
+  try {
+    if (!SKILL_GAP_STAMP || !existsSync(SKILL_GAP_STAMP)) return true;
+    const v = JSON.parse(readFileSync(SKILL_GAP_STAMP, 'utf-8')) as { lastFiredAt?: number };
+    if (typeof v.lastFiredAt !== 'number' || !Number.isFinite(v.lastFiredAt)) return true;
+    return now - v.lastFiredAt >= SKILL_GAP_GLOBAL_COOLDOWN_MS;
+  } catch { return true; }
+}
+
+/**
+ * Record the fire: the stamp (rate limit) and one corpus row for SuggestSkills.
+ * The row carries COUNTS AND IDENTIFIERS ONLY — never prompt text, file paths, or
+ * anything the user typed. The corpus exists to establish recurrence, and recurrence
+ * needs no content; writing content here would put user work into a store nothing
+ * redacts on the way out.
+ */
+function recordSkillGap(sessionId: string, calls: number, now: number): void {
+  try {
+    if (!SKILL_GAP_STAMP) throw new Error('no stamp path');
+    mkdirSync(dirname(SKILL_GAP_STAMP), { recursive: true });
+    writeFileSync(SKILL_GAP_STAMP, JSON.stringify({ lastFiredAt: now }));
+  } catch { /* rate limiting is best-effort; never break the session */ }
+  try {
+    if (!SKILL_GAP_LOG) throw new Error('no log path');
+    mkdirSync(dirname(SKILL_GAP_LOG), { recursive: true });
+    appendFileSync(SKILL_GAP_LOG, JSON.stringify({
+      ts: new Date(now).toISOString(),
+      session_id: sessionId,
+      calls,
+    }) + '\n');
+  } catch { /* telemetry is best-effort */ }
+}
+
+const SKILL_GAP_NUDGE = (calls: number) =>
+  `${calls} tool calls this session, the Skill tool never invoked, and no skill's USE WHEN matched. `
+  + `Before you answer: does a skill already cover this work class? Read the candidate bodies — a name `
+  + `match is not coverage. If nothing covers it and the class will recur, propose ONE skill in a sentence `
+  + `and offer CreateSkill. If it is one-off or already covered, say nothing.`;
+
+/**
+ * Routing-fire telemetry. Counts and identifiers only, the same rule as
+ * recordSkillGap above: the prompt's length, never its text (a hooks audit
+ * dropped the 80-char prompt_head). `fired` holds skill names and
+ * USE WHEN phrases from our own skill index, never user input. The file is 0600
+ * and an existing looser file is tightened on every write (idempotent repair).
+ */
+export function logRoutingFire(
+  sessionId: string,
+  prompt: string,
+  matches: Array<{ skill: string; phrase: string }>,
+  path: string = join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'OBSERVABILITY', 'algo-nudge-routing.jsonl'),
+): void {
   try {
     const line = JSON.stringify({
       ts: new Date().toISOString(),
       session: sessionId.slice(0, 8),
-      prompt_head: prompt.slice(0, 80),
+      prompt_chars: prompt.length,
       fired: matches.map(m => `${m.skill}:${m.phrase}`),
     });
-    const path = join(PAI, 'LIFEOS', 'MEMORY', 'OBSERVABILITY', 'algo-nudge-routing.jsonl');
     // Bounded append (Forge audit 2026-07-11): tuning telemetry, not a system of
-    // record — stop growing past the cap rather than accumulate prompt fragments
-    // unbounded. Newest lines are lost when full; that's fine for floor-tuning.
-    try { if (existsSync(path) && statSync(path).size > ROUTING_LOG_CAP_BYTES) return; } catch {}
-    writeFileSync(path, line + '\n', { flag: 'a' });
+    // record. Newest lines are lost when full; that's fine for floor-tuning.
+    if (existsSync(path)) {
+      const st = statSync(path);
+      if ((st.mode & 0o077) !== 0) chmodSync(path, 0o600);
+      if (st.size > ROUTING_LOG_CAP_BYTES) return;
+    } else {
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    }
+    writeFileSync(path, line + '\n', { flag: 'a', mode: 0o600 });
   } catch {}
 }
 
-/** Newest SKILL.md mtime on disk — one readdir + N stats. Staleness measured
- *  only in TIME left a freshly created skill invisible to routing for up to
- *  6h while every other check passed (public issue #1787, @xmasyx). */
-function newestSkillMtime(): number {
-  let newest = 0;
+// ISC-15b: maintained generation for skill freshness + fallback check for SKILL.md edits
+interface SkillGenerationFile {
+  gen: string;
+  lastFallbackCheck: number;
+}
+
+const SKILL_FALLBACK_CHECK_MS = 60_000;
+let lastSkillFallbackCheckMs = 0;
+const SKILL_GENERATION_PATH = join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'STATE', 'skill-generation.json');
+
+/** Read the maintained generation for skills. Bumped by writers after changes. */
+function readSkillGeneration(): string {
+  try {
+    if (existsSync(SKILL_GENERATION_PATH)) {
+      const data = JSON.parse(readFileSync(SKILL_GENERATION_PATH, 'utf-8')) as SkillGenerationFile;
+      return data.gen || '0';
+    }
+  } catch { /* corrupt or missing → fallback will regenerate */ }
+  return '0';
+}
+
+/** Write skill generation (used by writers and fallback checker). */
+function writeSkillGeneration(gen: string): void {
+  try {
+    mkdirSync(dirname(SKILL_GENERATION_PATH), { recursive: true });
+    writeFileSync(SKILL_GENERATION_PATH, JSON.stringify({ gen, lastFallbackCheck: Date.now() } satisfies SkillGenerationFile));
+  } catch { /* generation write is best-effort */ }
+}
+
+/** Fallback check: walk SKILL.md mtimes once per 60s to catch out-of-band edits. */
+function checkAndBumpSkillGenerationIfChanged(): void {
+  const now = Date.now();
+  if (now - lastSkillFallbackCheckMs < SKILL_FALLBACK_CHECK_MS) return;
+  lastSkillFallbackCheckMs = now;
+
+  let newestMtime = 0;
   try {
     for (const dir of readdirSync(SKILLS_DIR)) {
       try {
         const t = statSync(join(SKILLS_DIR, dir, 'SKILL.md')).mtimeMs;
-        if (t > newest) newest = t;
+        if (t > newestMtime) newestMtime = t;
       } catch { /* not a skill dir */ }
     }
   } catch { /* no skills dir */ }
-  return newest;
+  // Hiding a skill in settings changes the index too (public issue #2265).
+  for (const name of ["settings.json", "settings.local.json"]) {
+    try { const t = statSync(join(CLAUDE_DIR, name)).mtimeMs; if (t > newestMtime) newestMtime = t; } catch { /* absent */ }
+  }
+
+  if (newestMtime > 0) {
+    const currentGen = readSkillGeneration();
+    const currentTime = Number(currentGen.split(':')[1] || '0');
+    if (newestMtime > currentTime) {
+      const newGen = `fallback:${newestMtime}`;
+      writeSkillGeneration(newGen);
+    }
+  }
 }
 
-/** Load the index if fresh; kick a detached rebuild if stale/missing (never block). */
+/** Public API for writers to bump skill generation after writing SKILL.md. */
+export function bumpSkillGeneration(): void {
+  const gen = `writer:${Date.now()}`;
+  writeSkillGeneration(gen);
+}
+
+/** Check if skill index is fresh by generation. */
+function isSkillIndexFresh(index: SkillIndex | null): boolean {
+  if (!index) return false;
+
+  // Run fallback check once per 60s
+  checkAndBumpSkillGenerationIfChanged();
+
+  // Check generation matches
+  const currentGen = readSkillGeneration();
+  const indexGen = (index as unknown as { gen?: string }).gen || '';
+  if (currentGen !== indexGen) return false;
+
+  // Index is older than six hours
+  if (Date.now() - index.builtAt > INDEX_MAX_AGE_MS) return false;
+
+  return true;
+}
+
+/** Load the index if fresh; kick a detached rebuild if stale/missing (never block).
+ *  ISC-15b: freshness check uses maintained generation with fallback for out-of-band edits. */
 function loadIndex(): SkillIndex | null {
   const idx = readJson<SkillIndex | null>(INDEX_PATH, null);
-  const stale = !idx || Date.now() - idx.builtAt > INDEX_MAX_AGE_MS
-    || newestSkillMtime() > idx.builtAt;
-  if (stale) {
-    // Resolve bun absolutely: a detached rebuild spawned with the bare name
-    // silently no-ops if bun isn't on the subprocess PATH, and the empty catch
-    // that used to wrap this hid it forever — the routing index then never
-    // builds and skill nudges silently stop (public issue #1508 finding #2).
-    // process.execPath IS the running bun binary; fall back to which/known dirs.
-    const bun = resolveBun();
+  const fresh = isSkillIndexFresh(idx);
+  if (fresh) {
+    return idx;
+  }
+
+  // Index is missing or stale — kick a detached rebuild
+  const bun = resolveBun();
+  try {
+    Bun.spawn([bun, import.meta.path, '--rebuild-index'],
+      { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).unref();
+  } catch (e) {
+    // Never block the turn, but never swallow silently either — a failed
+    // self-heal must leave a trace something can see.
     try {
-      Bun.spawn([bun, import.meta.path, '--rebuild-index'],
-        { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).unref();
-    } catch (e) {
-      // Never block the turn, but never swallow silently either — a failed
-      // self-heal must leave a trace something can see.
-      try {
-        appendFileSync(
-          join(homedir(), '.claude/LIFEOS/MEMORY/OBSERVABILITY/hook-selfheal.jsonl'),
-          JSON.stringify({ ts: new Date().toISOString(), hook: 'AlgorithmNudge', action: 'rebuild-index', bun, error: String(e) }) + '\n',
-        );
-      } catch { /* observability write itself is best-effort */ }
-    }
+      appendFileSync(
+        lifeosPath('MEMORY', 'OBSERVABILITY', 'hook-selfheal.jsonl'),
+        JSON.stringify({ ts: new Date().toISOString(), hook: 'AlgorithmNudge', action: 'rebuild-index', bun, error: String(e) }) + '\n',
+      );
+    } catch { /* observability write itself is best-effort */ }
   }
   return idx; // stale index still usable this turn; missing → null → skip routing
 }
@@ -476,21 +724,8 @@ export function routeSuppressed(p: string): boolean {
 
 // ── Depth directive (always-on, no-run turns) ────────────────────────────────
 
-/** Plain-language depth directives. Deliberately narrow — misses fall through
- *  to late-ISA and doctrine; fires are logged to routing telemetry for tuning.
- *  A false positive costs one advisory line, so the guards below aim at pasted
- *  content, not perfection. */
-const DEPTH_PHRASES = [
-  'think deeply', 'think hard', 'think harder', 'go deep', 'go heavy',
-  'be thorough', 'ultrathink', 'dig deep',
-  // 2026-07-16 pocock-reanalysis incident: "go do a thorough analysis … thoroughly
-  // analyze this claim" fired nothing — adjective/adverb forms were missing.
-  'thorough analysis', 'thoroughly analyze', 'thoroughly analyse',
-  'deep analysis', 'deep dive', 'deeply look',
-];
-const DEPTH_HEAD_CHARS = 200;   // directives live at the top of a prompt; quoted
-                                // transcripts and pasted docs match deeper down
-const DEPTH_MAX_PROMPT = 1500;  // longer prompts are pasted content, not directives
+/** Past this length the doctrine matcher scans only the head/tail windows (same bound as Depth.ts). */
+const HEAD_TAIL_MAX_PROMPT = 1500;
 
 /** Depth gets its own suppression: only command/tag prefixes. routeSuppressed's
  *  15-char floor would eat bare directives ("go deep", "ultrathink") — and a bare
@@ -500,125 +735,36 @@ export function depthSuppressed(p: string): boolean {
   return /^[</]/.test(p);
 }
 
-/** Returns the matched phrase or null. Pure; exported for tests. */
-export function matchDepthDirective(prompt: string): string | null {
-  if (prompt.length > DEPTH_MAX_PROMPT || prompt.includes('```')) return null;
-  const head = prompt.slice(0, DEPTH_HEAD_CHARS).toLowerCase();
-  for (const phrase of DEPTH_PHRASES) {
-    if (new RegExp(`\\b${phrase}\\b`).test(head)) return phrase;
+// ── Doctrine-class (always-on, no-run turns) ────────────────────────────────
+// AlgorithmReference § Events row: "A prompt asks for judgment about the thinking
+// system itself — the Algorithm, ISA doctrine, standing rules". Advice there
+// inherits the blast radius of what it advises. The row was documented as
+// always-on but had no executable branch until 2026-09-10 (core-loop audit,
+// finding 9): a "deep analysis of the algorithm and the ISA system" prompt fired
+// only the depth row. Same discipline as depth: bounded phrases, fences stripped,
+// head/tail windows on long prompts, one advisory line on a false positive.
+const DOCTRINE_SUBJECTS = [
+  'the algorithm', 'our algorithm', 'algorithm doctrine', 'the isa system', 'isa doctrine', 'isa format',
+  'the isa format', 'our isas', 'the thinking system', 'our thinking system', 'the system prompt',
+  'standing rules', 'operational rules', 'operational_rules', 'claude.md', 'the hook system', 'our hooks',
+  'hook system', 'the eval system', 'our eval system', 'the nudge', 'the nudges', 'algorithmnudge',
+  'progressive loading', 'progressive context', 'context loading', 'the doctrine', 'our doctrine',
+  'lifeos core', 'the core loop',
+];
+const DOCTRINE_JUDGMENT_RE = /\b(analy[sz]e|analysis|assess|audit|review|critique|evaluate|improve|optimi[sz]e|redesign|rethink|restructure|simplify|change|should (?:we|i|it|the)|what do you think|is it (?:right|worth|time)|how (?:should|could|would) (?:we|i)|what would you (?:change|do|cut))\b/;
+
+export function matchDoctrineClass(prompt: string): string | null {
+  const stripped = stripFences(prompt);
+  const p = (stripped.length > HEAD_TAIL_MAX_PROMPT
+    ? stripped.slice(0, 300) + '\n' + stripped.slice(-400)
+    : stripped).toLowerCase();
+  if (!DOCTRINE_JUDGMENT_RE.test(p)) return null;
+  for (const subject of DOCTRINE_SUBJECTS) {
+    const re = boundedPhraseRe(subject);
+    if (re && re.test(p)) return subject;
   }
   return null;
 }
-
-// ── Design-class work → elect the top rung (always-on) ───────────────────────
-//
-// The mirror of execution-class: that row points DOWN a rung for mechanical work, this one
-// points UP for the work OPERATIONAL_RULES § Model selection reserves for MAX.
-//
-// Why this row is allowed to exist under the "rows may only ask about state the model cannot
-// observe from its own context" bound: the 2026-07-29 incident is the proof.
-// Doctrine asserted MAX was the session default, so a
-// full authority-model build — new platform authority, cross-tenant read boundary, two
-// shipped editions — was designed and deployed a rung low without the run ever noticing.
-// The rung a run is on is precisely what it cannot see: no hook receives the session model,
-// and the statusline's model-cache is last-writer-wins across sessions. Prose already failed
-// at this once; this row is the mechanism.
-//
-// Precision over recall, deliberately. A single authority noun ("role", "tenant", "secret")
-// would fire on half of all prompts and be tuned out inside a day. So the trigger is a
-// CONJUNCTION — a design/build verb AND an authority-or-architecture noun — plus a short list
-// of phrases that are unambiguous on their own.
-
-const DESIGN_VERBS = [
-  'separate', 'redesign', 'restructure', 'rearchitect', 're-architect', 'architect',
-  'rework', 'rebuild', 'from scratch', 'design', 'plan out', 'lay out', 'think through',
-  'think deeply', 'build out', 'stand up', 'introduce', 'split',
-];
-
-const AUTHORITY_NOUNS = [
-  'security', 'auth', 'authentication', 'authorization', 'permission', 'access control',
-  'privilege', 'admin', 'rbac', 'role model', 'isolation', 'boundary', 'multi-tenant',
-  'multitenant', 'tenancy', 'architecture', 'trust model', 'threat model',
-  // Added 2026-07-29: "design the provisioning path and how a new tenant gets its first owner"
-  // matched the verb and nothing else, so the row stayed silent on standing up a tenant and
-  // minting its owner — the authority boundary the incident was about.
-  'tenant', 'provisioning', 'credential',
-];
-
-// Unambiguous on their own — no verb required.
-const DESIGN_CLASS_PHRASES = [
-  'security standpoint', 'security boundary', 'auth boundary', 'authority model',
-  'permission model', 'access control', 'threat model', 'trust boundary',
-  'privilege escalation', 'security architecture', 'tenant isolation',
-];
-
-const DESIGN_MAX_PROMPT = 4000; // longer is pasted content, not a directive
-
-/** Returns the matched signal or null. Pure; exported for tests. */
-export function matchDesignClass(prompt: string): string | null {
-  if (prompt.length > DESIGN_MAX_PROMPT || prompt.includes('```')) return null;
-  const p = prompt.toLowerCase();
-  for (const phrase of DESIGN_CLASS_PHRASES) {
-    if (p.includes(phrase)) return phrase;
-  }
-  const verb = DESIGN_VERBS.find(v => new RegExp(`\\b${v}\\b`).test(p));
-  if (!verb) return null;
-  const noun = AUTHORITY_NOUNS.find(n => new RegExp(`\\b${n}\\b`).test(p));
-  return noun ? `${verb} + ${noun}` : null;
-}
-
-/** Same shape as depthSuppressed: only command/tag prefixes opt out. */
-export function designClassSuppressed(p: string): boolean {
-  return /^[</]/.test(p);
-}
-
-export const DESIGN_CLASS_NUDGE =
-  'This reads as design-class work (authority/security boundary or system architecture, '
-  + 'OPERATIONAL_RULES § Model selection). You are ALREADY on the top rung — settings.json pins '
-  + 'the main loop there — so do not ask which model to use and do not rent a rung by dispatching '
-  + 'the design leg to Max. Design it NATIVELY and inline, before building, then downshift by '
-  + 'dispatch for the execution leg. Max is for an independent SECOND look, scaled to blast '
-  + 'radius, never a substitute for thinking.';
-
-// ── Execution-delegation → downshift by dispatch (always-on) ─────────────────
-//
-// The down-rung mirror of design-class, with the same justification pattern: doctrine
-// ("execution drops a rung") existed the whole time and produced nothing — subagent-events.jsonl
-// held 10K dispatch events with zero explicit models when measured 2026-08-01, and most
-// execution never dispatched at all. Two facts the model cannot observe from inside the work:
-// how long the current inline-build stretch has run (an aggregate across turns), and that a
-// model-less dispatch inherits the session rung (the harness applies it silently). Both rows
-// are QUESTIONS — no classifier decides what counts as execution; that judgment stays with
-// the model, which is what keeps this on the right side of BPE.
-
-const EXEC_DELEGATION_THRESHOLD = 10;  // consecutive build calls with zero dispatches
-const BUILD_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
-const DISPATCH_TOOLS = new Set(['Agent', 'Task']);  // harness renamed Task→Agent; accept both
-
-export const EXEC_DELEGATION_NUDGE =
-  `${EXEC_DELEGATION_THRESHOLD}+ consecutive build calls, zero delegated dispatches — this is all `
-  + 'running inline on the top rung (settings.json pins the main loop to MAX). Is this stretch '
-  + 'judgment work that earns MAX, or an execution leg that should ride a dispatch a rung down '
-  + '(OPERATIONAL_RULES § Model selection)? Either answer is fine — make it a decision, not a default.';
-
-export const INHERITED_DISPATCH_NUDGE =
-  'That dispatch carried no `model` field, so it inherits the MAX session rung. If it was an '
-  + 'execution leg, pass the rung alias explicitly (OPERATIONAL_RULES § Model selection); if the '
-  + 'task genuinely needed MAX, inheriting was the right call.';
-
-// The build counter above is blind to the other heavy-token shape: long Bash/Read/Grep
-// evidence sweeps. Measured 2026-08-02: an entire release-notes session ran ~25 inline calls
-// on MAX with zero dispatches and no row fired. Same BPE bound as exec-delegation — this is
-// a QUESTION about an aggregate the model can't see, not a classifier deciding what counts.
-const SWEEP_DELEGATION_THRESHOLD = 20;  // consecutive non-dispatch tool calls of any kind
-
-export const SWEEP_DELEGATION_NUDGE =
-  `${SWEEP_DELEGATION_THRESHOLD}+ consecutive inline tool calls, zero dispatches — the whole `
-  + 'stretch is riding the MAX rung. If a chunk of it is token-heavy mechanical work (bulk '
-  + 'reads, sweeps, migrations, reformatting), ship that leg a rung down with the escalation '
-  + 'contract in the brief (OPERATIONAL_RULES § Model selection) so the delegate can hand hard '
-  + 'judgment back up instead of grinding. If the stretch genuinely needs top-rung thinking, '
-  + 'carry on — make it a decision, not a default.';
 
 interface CapManifest {
   capabilities: Record<string, { state?: string }>;
@@ -633,7 +779,7 @@ interface CapManifest {
 const CAP_FIX: Record<string, string> = {
   codex: 'bun install -g @openai/codex && codex login',
   cloudflare: 'add CLOUDFLARE_API_TOKEN to <configRoot>/.env, then: bun LIFEOS/TOOLS/Doctor.ts --network',
-  voice: 'set ELEVENLABS_VOICE_ID to an API-permitted voice in <configRoot>/.env',
+  voice: 'set fish_reference_id under [da.voices.main] in LIFEOS_CONFIG.toml, then: bun LIFEOS/TOOLS/Doctor.ts --network',
   interceptor: 'install Google Chrome (or Brave), then re-run: bun LIFEOS/TOOLS/Doctor.ts',
 };
 
@@ -656,6 +802,7 @@ export function capabilityNudgeFor(command: string, manifest: CapManifest): { id
 }
 
 export function run(input: HookInput): string | null {
+  if (HEADLESS) return null;
   try {
     const sessionId = input.session_id || '';
     const event = input.hook_event_name || '';
@@ -671,44 +818,19 @@ export function run(input: HookInput): string | null {
       // transcript so tool events can be primary-gated below.
       if (input.transcript_path) state.primaryTranscript = input.transcript_path;
       const p = (input.prompt || '').trim();
+      // A slash-command prompt routes the turn explicitly — a skill or command is
+      // driving it, and the harness can load a skill from that path with no Skill
+      // tool call to observe. Treating it as skill-less would fire skill-gap on a
+      // `/rc` session, burn the 12h cooldown, and file a fabricated row in the
+      // corpus SuggestSkills weighs highest. `routeSuppressed` already scopes slash
+      // commands out for the same reason.
+      if (p.startsWith('/')) state.skillInvoked = true;
 
-      // ALWAYS-ON: skill-routing. The dominant routing failure is under-use
-      // (dynamic-range audit 2026-07-11: 4 handroll instances vs 1 over-invocation).
-      if (!routeSuppressed(p)) {
-        const idx = loadIndex();
-        if (idx) {
-          const matches = matchSkills(p, idx)
-            .filter(m => cooled(state, `route:${m.skill}`, now, ROUTE_COOLDOWN_MS));
-          if (matches.length > 0) {
-            for (const m of matches) state.lastNudgeAt[`route:${m.skill}`] = now;
-            logRoutingFire(sessionId, p, matches);
-            out.push(`This prompt matches USE WHEN of: ${matches.map(m => m.skill).join(', ')} — if the work lands there, invoke the skill rather than handrolling.`);
-          }
-        }
-      }
-
-      // ALWAYS-ON: depth directive with no registered run. Doctrine claims 10/15
-      // (ask-fidelity, spend) only have teeth inside a run — this row's whole job
-      // is getting the run to exist. (The mid-run principal row that used to follow was cut 2026-07-30.)
-      if (!active && !depthSuppressed(p) && cooled(state, 'depth', now)) {
-        const phrase = matchDepthDirective(p);
-        if (phrase) {
-          logRoutingFire(sessionId, p, [{ skill: 'DEPTH', phrase }]);
-          fire(state, 'depth', now, `He directed depth ("${phrase}"). His call outranks your judgment (claim 15): likely a run, not a chat turn — write done down, and name what the task earns (thinking skills, agents, research, verification) or state why inline is enough.`, out);
-        }
-      }
-
-      // ALWAYS-ON: design-class work → elect the top rung BEFORE building.
-      // Not run-gated: the whole point is to fire at the moment the work is described,
-      // which is before any ISA exists. Fires regardless of whether a run is active,
-      // because the planning leg is exactly what happens at run start.
-      if (!designClassSuppressed(p) && cooled(state, 'design-class', now)) {
-        const signal = matchDesignClass(p);
-        if (signal) {
-          logRoutingFire(sessionId, p, [{ skill: 'DESIGN-CLASS', phrase: signal }]);
-          fire(state, 'design-class', now, DESIGN_CLASS_NUDGE, out);
-        }
-      }
+      // The skill-routing, depth-directive and doctrine-class rows were CUT 2026-10-25 (ISA
+      // 20261025-hook-minimization, the principal: "a very low number of hooks, and then nothing but the
+      // algorithm"). Each keyed on the prompt, which is in the model's context when the row fires: the
+      // skill listing carries USE WHEN, depth is native (system prompt § Dynamic range), and the
+      // Algorithm carries doctrine-class scrutiny. Without routeMatched, skill-gap keys on skillInvoked alone.
 
       // The `principal` row was CUT here (2026-07-30). Its trigger was "the
       // principal sent a message mid-run", and that message is in my context at
@@ -717,7 +839,7 @@ export function run(input: HookInput): string | null {
       // its own context. It survived every prior review because it was DEAD
       // (same `active` gate as stale-isa), so nobody re-read it against the rule.
       // Folding his message into the ISA remains required — that is doctrine
-      // claim 14, carried by the ISA and its close gates, not by a reminder.
+      // criterion 14, carried by the ISA and its close gates, not by a reminder.
     }
 
     // Primary-only gate for tool events: subagents share the session_id but
@@ -786,10 +908,37 @@ export function run(input: HookInput): string | null {
 
     if (event === 'PostToolUse') {
       state.toolCallsTotal += 1;
+      state.primaryCalls = (state.primaryCalls ?? 0) + 1;
       const tool = input.tool_name || '';
+      // Reaching for a skill even once takes this session out of scope permanently.
+      if (tool === 'Skill') state.skillInvoked = true;
+
+      // ALWAYS-ON: skill-gap. The inverse of skill-routing: that row catches under-USE
+      // of skills that exist, this one catches work no skill covers at all. He asked for
+      // it in those terms — notice work that involved no skill and maybe should have,
+      // check that none already covers it, then propose one.
+      //
+      // NAMED EXCEPTION to this file's bounding rule (same standing as the entry rows):
+      // whether THIS turn invoked a skill is observable to the model from its own
+      // context, so the row is scaffolding by the letter of the rule. He asked for it
+      // explicitly, which outranks my judgment (criterion 15), and the part
+      // that actually is unobservable carries the row's weight anyway — the session-wide
+      // tally and the cross-session cooldown are state the model cannot see. The row
+      // stays advisory and asks a question; it never names the skill, because a hook
+      // cannot judge coverage. That judgment is the model's, and the line says so.
+      if (!state.skillGapFired
+        && !state.skillInvoked
+        && !state.routeMatched
+        && (state.primaryCalls ?? 0) >= SKILL_GAP_THRESHOLD
+        && skillGapCooled(now)) {
+        state.skillGapFired = true;
+        recordSkillGap(sessionId, state.primaryCalls ?? 0, now);
+        fire(state, 'skill-gap', now, SKILL_GAP_NUDGE(state.primaryCalls ?? 0), out);
+      }
+
       const filePath = String((input.tool_input as Record<string, unknown>)?.file_path || '');
 
-      // ALWAYS-ON: destructive infra op (claim 16, v8.7.0). Fires on success —
+      // ALWAYS-ON: destructive infra op (criterion 16, v8.7.0). Fires on success —
       // the questions are about what must be verified AFTER the op, so run-gating
       // would miss exactly the "run already declared done" case that burned us.
       if (tool === 'Bash' && cooled(state, 'destructive-infra', now)) {
@@ -798,35 +947,55 @@ export function run(input: HookInput): string | null {
           fire(state, 'destructive-infra', now, DESTRUCTIVE_INFRA_NUDGE, out);
         }
       }
-      // ALWAYS-ON: execution-delegation (down-rung mirror of design-class).
-      // A dispatch resets the inline-build counter; a model-less dispatch also
-      // gets the inherited-rung fact surfaced once per cooldown.
-      if (DISPATCH_TOOLS.has(tool)) {
-        state.buildCallsSinceDispatch = 0;
-        state.workCallsSinceDispatch = 0;
-        const hasModel = typeof (input.tool_input as Record<string, unknown>)?.model === 'string';
-        if (!hasModel && cooled(state, 'inherited-dispatch', now)) {
-          fire(state, 'inherited-dispatch', now, INHERITED_DISPATCH_NUDGE, out);
-        }
-      } else {
-        state.workCallsSinceDispatch = (state.workCallsSinceDispatch ?? 0) + 1;
-        if (BUILD_TOOLS.has(tool)) {
-          state.buildCallsSinceDispatch = (state.buildCallsSinceDispatch ?? 0) + 1;
-          if (state.buildCallsSinceDispatch >= EXEC_DELEGATION_THRESHOLD
-            && cooled(state, 'exec-delegation', now)) {
-            state.buildCallsSinceDispatch = 0;
-            state.workCallsSinceDispatch = 0;  // one question per stretch, not two
-            fire(state, 'exec-delegation', now, EXEC_DELEGATION_NUDGE, out);
-          }
-        }
-        if (state.workCallsSinceDispatch >= SWEEP_DELEGATION_THRESHOLD
-          && cooled(state, 'sweep-delegation', now)) {
-          state.workCallsSinceDispatch = 0;
-          fire(state, 'sweep-delegation', now, SWEEP_DELEGATION_NUDGE, out);
-        }
-      }
 
       const isISAEdit = (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit') && ISA_PATH_RE.test(filePath);
+
+      // ALWAYS-ON: articulation-missing (v8.27.0). Project ISAs only — task ISAs
+      // under MEMORY/WORK are exempt (Vision carries their articulation), as are
+      // bunker.isa.md health contracts (filename mismatch by construction).
+      if (isISAEdit
+        && PROJECT_ISA_RE.test(filePath)
+        && !filePath.includes('/MEMORY/WORK/')
+        && cooled(state, `articulation:${filePath}`, now, ARTICULATION_COOLDOWN_MS)) {
+        try {
+          const isaBody = readFileSync(filePath, 'utf-8');
+          if (!ARTICULATION_RE.test(isaBody)) {
+            fire(state, `articulation:${filePath}`, now, ARTICULATION_NUDGE, out);
+          }
+        } catch { /* unreadable → silent */ }
+      }
+
+      // ALWAYS-ON: alignment owed (v8.41.0). ISA.md files only (bunker.isa.md health
+      // contracts carry no ladder by design); align and deepen only.
+      if (isISAEdit
+        && PROJECT_ISA_RE.test(filePath)
+        && cooled(state, `alignment:${filePath}`, now, ALIGNMENT_COOLDOWN_MS)) {
+        try {
+          const { alignmentStatus } = require('../LIFEOS/TOOLS/IsaAlign') as typeof import('../LIFEOS/TOOLS/IsaAlign');
+          const st = alignmentStatus(readFileSync(filePath, 'utf-8'), filePath);
+          // A discover reason never hides an align or deepen one (the articulation row owns discover).
+          const owed = st.reasons.filter((r) => r.mode !== 'discover');
+          if (owed.length) {
+            const mode = owed.some((r) => r.mode === 'align') ? 'align' : 'deepen';
+            fire(state, `alignment:${filePath}`, now, ALIGNMENT_NUDGE(filePath, mode, mode === 'align' ? 'quick' : 'full', owed.map((r) => r.text)), out);
+          }
+        } catch { /* unreadable or unparsable → silent */ }
+      }
+
+      // ALWAYS-ON: absence-review-missing (v8.29.0). Any ISA carrying
+      // `## Features` with no `absence_review:` key and phase ≠ complete.
+      // Advisory; the discriminator is the on-disk section. 24h cooldown.
+      if (isISAEdit
+        && cooled(state, `absence:${filePath}`, now, ABSENCE_COOLDOWN_MS)) {
+        try {
+          const isaBody = readFileSync(filePath, 'utf-8');
+          if (FEATURES_SECTION_RE.test(isaBody) && !ABSENCE_REVIEW_RE.test(frontmatterOf(isaBody)) && !PHASE_COMPLETE_RE.test(frontmatterOf(isaBody))) {
+            fire(state, `absence:${filePath}`, now, ABSENCE_NUDGE, out);
+          }
+        } catch { /* unreadable → silent */ }
+      }
+
+      // (advisor-consult row retired 2026-09-10 with the LifeOS Advisor agent.)
 
       if (active) {
         state.runWasOpen = true;
@@ -855,7 +1024,13 @@ export function run(input: HookInput): string | null {
         // CALLS, and 25 of those elapse in under a minute on parallel blocks. It
         // also bounds the row when a run's progress oscillates around N/N, which
         // reopens and recloses it repeatedly (Forge delta audit M-A, M-B).
-        if (!state.lateISAFired
+        // Re-arm: a session that never registers a run used to get this row
+        // exactly once, then silence for hours (public issue #2074, @mefsnef;
+        // PR #2083, @Bowlerjim). LATE_ISA_REARM calls after the last fire, with
+        // still no run, it fires again; the cooldown still paces it.
+        const rearmed = state.lateISAFired
+          && state.toolCallsTotal - (state.lateISAFiredAtCalls ?? 0) >= LATE_ISA_REARM;
+        if ((!state.lateISAFired || rearmed)
           && state.toolCallsTotal >= LATE_ISA_THRESHOLD
           && cooled(state, 'late-isa', now)) {
           // ALWAYS-ON: late-ISA. This deep with no open run is either genuinely
@@ -863,9 +1038,10 @@ export function run(input: HookInput): string | null {
           // substantive work before the ISA appeared) — or a run that closed and
           // kept going, which needs the opposite instruction.
           state.lateISAFired = true;
+          state.lateISAFiredAtCalls = state.toolCallsTotal;
           const closed = closedRunFor(sessionId);
           const text = closed
-            ? `${LATE_ISA_THRESHOLD}+ tool calls since your run closed at ${closed.progress || 'its last claim'}. The work didn't stop when the ISA did — reopen it with the claims this stretch is actually proving, or scaffold a new one.`
+            ? `${LATE_ISA_THRESHOLD}+ tool calls since your run closed at ${closed.progress || 'its last criterion'}. The work didn't stop when the ISA did — reopen it with the criteria this stretch is actually proving, or scaffold a new one.`
             : `${LATE_ISA_THRESHOLD}+ tool calls and no run registered. Still trivial, or does done need writing down? If this is a real climb, scaffold the ISA now — nudge coverage starts when it exists.`;
           fire(state, 'late-isa', now, text, out);
         }
@@ -885,7 +1061,7 @@ if (import.meta.main) {
   if (process.argv.includes('--rebuild-index')) {
     try {
       const idx = buildIndex();
-      mkdirSync(join(PAI, 'LIFEOS', 'MEMORY', 'STATE'), { recursive: true });
+      mkdirSync(join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'STATE'), { recursive: true });
       writeFileSync(INDEX_PATH, JSON.stringify(idx));
       console.log(`index: ${idx.entries.length} skills, ${idx.entries.reduce((n, e) => n + e.phrases.length, 0)} phrases`);
     } catch (e) {
@@ -902,6 +1078,8 @@ if (import.meta.main) {
     if (raw) {
       try {
         const input: HookInput = JSON.parse(raw);
+        // Armed session: the prompt-time nudge runs once inside HookBridge prompt-context.
+        if (input.hook_event_name === "UserPromptSubmit" && hookCovers(input.session_id ?? "", "prompt-context")) { clearTimeout(killer); process.exit(0); }
         const text = run(input);
         if (text) {
           console.log(JSON.stringify({

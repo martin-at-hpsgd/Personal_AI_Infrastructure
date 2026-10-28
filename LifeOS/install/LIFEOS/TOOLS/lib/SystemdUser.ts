@@ -30,17 +30,21 @@
  *
  * LAUNCHD → SYSTEMD TRANSLATION
  *
- *   StartInterval N + RunAtLoad   → .timer  OnBootSec=2min, OnUnitActiveSec=N
+ *   StartInterval N + RunAtLoad   → .timer  OnBootSec=2min, OnUnitActiveSec=N,
+ *                                           plus OnCalendar when N divides an hour
  *   StartCalendarInterval H:M     → .timer  OnCalendar=*-*-* H:M:00
  *   KeepAlive + ThrottleInterval  → .service Restart=always, RestartSec=N
  *   WatchPaths [dirs]             → .path   PathModified= per directory
  *
- * All timers carry `Persistent=true`, which is the closest systemd has to
- * launchd's behaviour of firing a missed calendar job once the machine wakes.
- * It is not identical: launchd's `RunAtLoad` fires on every load, whereas
- * `Persistent=true` fires only if the window was actually missed. For these
- * jobs (sweeps and syncs that are safe to run late, never early) that
- * difference is the desirable direction.
+ * `Persistent=true` is systemd's closest analogue to launchd firing a missed
+ * job once the machine wakes — but it only acts on a CALENDAR anchor, so it is
+ * emitted only where an OnCalendar= exists. It is not identical to launchd
+ * either: `RunAtLoad` fires on every load, whereas `Persistent=true` fires only
+ * if the window was actually missed. For these jobs (sweeps and syncs that are
+ * safe to run late, never early) that difference is the desirable direction.
+ * An interval that does not map to a calendar expression keeps OnUnitActiveSec
+ * alone and no Persistent=, rather than a flag that reads as catch-up coverage
+ * and provides none.
  *
  * ported from public PR #1698, @elhoim
  */
@@ -155,6 +159,21 @@ export function renderService(spec: UnitSpec): string {
   return lines.join("\n") + "\n";
 }
 
+/**
+ * A calendar expression equivalent to an N-second interval, or null when the
+ * interval does not divide an hour evenly (in which case OnUnitActiveSec alone
+ * is the honest translation and no Persistent= is emitted).
+ *
+ * public issues #1875, @GRyndStone; #1880, @schmetti-dev
+ */
+function intervalCalendar(seconds: number): string | null {
+  if (seconds === 3600) return "hourly";
+  if (seconds < 60 || seconds % 60 !== 0) return null;
+  const minutes = seconds / 60;
+  if (minutes >= 60 || 60 % minutes !== 0) return null;
+  return `*:0/${minutes}`;
+}
+
 export function renderTimer(spec: UnitSpec): string | null {
   const s = spec.schedule;
   if (s.kind !== "interval" && s.kind !== "calendar") return null;
@@ -170,10 +189,18 @@ export function renderTimer(spec: UnitSpec): string | null {
     // OnBootSec stands in for launchd's RunAtLoad without firing the job in
     // the same instant the timer is enabled.
     lines.push("OnBootSec=2min", `OnUnitActiveSec=${s.seconds}s`);
+    // An OnUnitActiveSec-only timer has no anchor systemd can miss, so a
+    // suspended or powered-off machine simply resumes counting from the last
+    // run — the launchd behaviour these units are translating (catch up on
+    // wake) never happened, and Persistent=true was inert beside it.
+    // Deriving a calendar expression restores the anchor.
+    // public issues #1875, @GRyndStone; #1880, @schmetti-dev
+    const calendar = intervalCalendar(s.seconds);
+    if (calendar) lines.push(`OnCalendar=${calendar}`, "Persistent=true");
   } else {
-    lines.push(`OnCalendar=*-*-* ${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}:00`);
+    lines.push(`OnCalendar=*-*-* ${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}:00`, "Persistent=true");
   }
-  lines.push("Persistent=true", "", "[Install]", "WantedBy=timers.target");
+  lines.push("", "[Install]", "WantedBy=timers.target");
   return lines.join("\n") + "\n";
 }
 

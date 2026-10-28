@@ -3,7 +3,7 @@
  * LedgerDeployEvent — append a deploy event to the Ledger's estate-wide record.
  *
  * Part of the Ledger system (LIFEOS/DOCUMENTATION/Ledger/LedgerSystem.md).
- * Every gated deploy (the _CLOUDFLARE Deploy workflow, project deploy scripts)
+ * Every gated deploy (the cloud-management skill Deploy intent, project deploy scripts)
  * records one event here so "what shipped, when, at what version" has a single
  * answer across the whole estate — not just the ~/.claude tree.
  *
@@ -21,23 +21,23 @@
  *   2. <repo>/package.json "version"
  *   3. null (SHA still recorded)
  *
- * @version 1.0.0
+ * @version 1.0.4
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { invariant } from "./Invariant";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(homedir(), ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const DEPLOYS_PATH = join(LIFEOS_DIR, "MEMORY", "SYSTEMUPDATES", "deploys.jsonl");
 
 interface DeployEvent {
   ts: string;
   project: string;
-  target: string;        // e.g. "worker:<name>", "pages:<name>", "arbol:<worker>"
+  target: string;        // e.g. "worker:<name>", "pages:<name>"
   domain: string | null; // authoritative URL host if one exists
   repo: string | null;
   sha: string | null;

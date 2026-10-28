@@ -1,0 +1,91 @@
+# Workflows authoring: plain-English request in, Workflows v2 definition out.
+# Ten synthetic requests, each with structural asserts here. The eval runner is
+# single-shot with no shell, so truth ("the definition passes `workflow validate`")
+# is scored by the companion tool over the persisted run:
+#   bun skills/Workflows/Tools/CheckEvalOutput.ts            # needs >= 9 of 10 cases valid
+# Names are fixed in each prompt so the structural asserts can find them.
+name: workflows-authoring
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Workflows/Format.md"
+cases:
+  - id: scheduled_daily_command
+    prompt: 'I want a new workflow called daily-date that prints today''s date as JSON every morning at 07:00 Berlin time. Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "version: 2", weight: 1 }
+      - { type: contains, value: "name: daily-date", weight: 1 }
+      - { type: contains, value: "type: schedule", weight: 2 }
+      - { type: contains, value: "Europe/Berlin", weight: 1 }
+      - { type: contains, value: "kind: command", weight: 1 }
+
+  - id: typed_input_command
+    prompt: 'New workflow called shout-text: I pass it a piece of text at run time and it returns that text in upper case. Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: shout-text", weight: 1 }
+      - { type: contains, value: "input:", weight: 1 }
+      - { type: contains-any, value: ["toUpperCase", "toLocaleUpperCase"], weight: 2 }
+      - { type: contains, value: "kind: command", weight: 1 }
+
+  - id: weekly_model_summary
+    prompt: 'Create a workflow named weekly-summary. Every Monday at 09:00 Pacific it takes a document I pass in and has a model write a three-sentence summary. Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: weekly-summary", weight: 1 }
+      - { type: contains, value: "kind: model", weight: 2 }
+      - { type: regex, value: "lane:\\s*(sol|astra)\\b", weight: 2 }
+      - { type: contains, value: "cron:", weight: 1 }
+
+  - id: customer_update_needs_human
+    prompt: 'I want a new workflow called customer-update. A model drafts an update from my notes, I approve it, and only then does it get sent to the customer. Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: customer-update", weight: 1 }
+      - { type: contains, value: "kind: human", weight: 3 }
+      - { type: contains, value: "outbound", weight: 2 }
+      - { type: contains, value: "needs:", weight: 1 }
+
+  - id: linked_after_pair
+    prompt: 'Link two workflows. First, export-count runs manually and returns an object with an integer field count. Second, report-count runs automatically right after export-count succeeds and takes that count as its input. Write both definitions, upstream first, each in its own yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: export-count", weight: 1 }
+      - { type: contains, value: "name: report-count", weight: 1 }
+      - { type: contains, value: "type: after", weight: 3 }
+      - { type: regex, value: "workflow:\\s*export-count", weight: 2 }
+      - { type: contains, value: "output:", weight: 1 }
+
+  - id: interval_with_retries
+    prompt: 'New workflow disk-check: every 30 minutes it reads free disk space, and because the read is flaky it should retry twice. Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: disk-check", weight: 1 }
+      - { type: contains, value: "type: interval", weight: 2 }
+      - { type: regex, value: "minutes:\\s*30\\b", weight: 2 }
+      - { type: contains, value: "retries", weight: 2 }
+
+  - id: one_time_reminder
+    prompt: 'Make a workflow called domain-reminder that fires once at 09:00 Pacific on 2026-12-01 and prints the message "renew the domain". Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: domain-reminder", weight: 1 }
+      - { type: contains, value: "type: once", weight: 2 }
+      - { type: regex, value: "at:\\s*\"?2026-12-01T09:00:00-08:00", weight: 3 }
+
+  - id: deploy_needs_human_gate
+    prompt: 'New workflow deploy-site: build the site, wait for me to approve, then deploy it. Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: deploy-site", weight: 1 }
+      - { type: contains, value: "kind: human", weight: 3 }
+      - { type: regex, value: "side_effects:[\\s\\S]{0,40}deploy", weight: 2 }
+
+  - id: judgment_gates_alert
+    prompt: 'Create a workflow called triage-gate. I pass in a message; a judgment step decides whether it is urgent, and only when it is urgent does a command step build an alert object. Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: triage-gate", weight: 1 }
+      - { type: contains, value: "kind: judgment", weight: 2 }
+      - { type: contains, value: "when:", weight: 2 }
+      - { type: contains, value: "question:", weight: 1 }
+
+  - id: principal_pager
+    prompt: 'I want a new workflow called health-pager. Every hour it probes health, and if the probe fails it sends a text to me and only me, with nobody else in the loop. Reply with only the definition in one yaml fenced block.'
+    assert:
+      - { type: contains, value: "name: health-pager", weight: 1 }
+      - { type: contains, value: "recipient: principal", weight: 3 }
+      - { type: contains, value: "outbound", weight: 2 }
+      - { type: contains, value: "cron:", weight: 1 }

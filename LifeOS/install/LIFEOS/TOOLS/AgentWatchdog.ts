@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.3.8
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -18,15 +21,17 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  * Usage (inside Monitor):
  *   Monitor({
  *     description: "Agent watchdog",
- *     persistent: true,
- *     timeout_ms: 3600000,
+ *     timeout_ms: 1800000,
  *     command: "bun ${LIFEOS_DIR}/Tools/AgentWatchdog.ts"
  *   })
+ *
+ * Monitor watches end at 30 minutes (10 in `-p`); re-arm on the deadline
+ * notice. (public issue #2226, @cristbc)
  */
 
 import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
-import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -35,7 +40,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(homedir(), ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const OBS_DIR = join(LIFEOS_DIR, "MEMORY", "OBSERVABILITY");
 const ACTIVITY_FILE = join(OBS_DIR, "tool-activity.jsonl");
 const STARTS_FILE = join(OBS_DIR, "subagent-starts.json");

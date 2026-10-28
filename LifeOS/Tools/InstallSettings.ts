@@ -4,10 +4,16 @@
  * Places the payload's `install/settings.system.json` into the harness
  * `settings.json` with the one transform the copy-by-hand step kept getting
  * wrong: **`env` values are expanded at write time** (`$HOME`/`${HOME}`/`~` →
- * the real home). The harness injects env values verbatim with NO shell
+ * the real home, and a leading `$HOME/.claude` → the actual config root, so
+ * `--config-root` moves LIFEOS_DIR with the settings). The harness injects env values verbatim with NO shell
  * expansion (LifeOS#1404/#1451) — a literal `"$HOME/..."` value creates a real
  * `$HOME/` directory on disk that silently captures runtime state. Command
  * strings (hooks, statusLine) are shell-evaluated and ship untouched.
+ *
+ * It also places `install/CLAUDE.template.md` → `CLAUDE.md` when no CLAUDE.md
+ * exists (an existing one is never touched; its merge stays a Setup decision).
+ * This was a hand copy in Setup step 4, and ActivateImports exits 1 when it is
+ * skipped (fresh-VM install of RC 8.5.0, 2026-10-09).
  *
  * Semantics match the sibling installers (DeployCore/InstallHooks):
  *   - settings.json absent → write the expanded template whole.
@@ -24,7 +30,11 @@ import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { atomicWriteText } from "./lib/atomic-write";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { detectDevTree } from "./InstallEngine";
+import { refuseDevInstallWrites } from "./InstallEngine";
+import { expandEnvValue, expandLeadingHome } from "./lib/env-expand";
+import { EXEC_ALLOW_ENTRY } from "./lib/exec-allow";
+
+export { expandLeadingHome };
 
 interface Args { configRoot: string; skillRoot: string; apply: boolean; allowDev: boolean; }
 
@@ -43,23 +53,13 @@ function parseArgs(): Args {
   };
 }
 
-/** Expand a LEADING $HOME / ${HOME} / ~ path segment. Mid-string refs are left alone. */
-export function expandLeadingHome(value: string, home: string): string {
-  if (!home) return value;
-  if (value === "$HOME" || value === "${HOME}" || value === "~") return home;
-  if (value.startsWith("$HOME/")) return home + value.slice("$HOME".length);
-  if (value.startsWith("${HOME}/")) return home + value.slice("${HOME}".length);
-  if (value.startsWith("~/")) return home + value.slice(1);
-  return value;
-}
-
-function expandEnvBlock(settings: Record<string, unknown>, home: string): number {
+function expandEnvBlock(settings: Record<string, unknown>, home: string, configRoot: string): number {
   const env = settings.env;
   if (!env || typeof env !== "object") return 0;
   let n = 0;
   for (const [k, v] of Object.entries(env as Record<string, unknown>)) {
     if (typeof v === "string") {
-      const expanded = expandLeadingHome(v, home);
+      const expanded = expandEnvValue(v, home, configRoot);
       if (expanded !== v) { (env as Record<string, unknown>)[k] = expanded; n++; }
     }
   }
@@ -71,17 +71,14 @@ const home = process.env.HOME || homedir(); // public issue #1729, @umair-a11y
 const templatePath = join(args.skillRoot, "install", "settings.system.json");
 const targetPath = join(args.configRoot, "settings.json");
 
-if (detectDevTree(args.configRoot) && !args.allowDev) {
-  console.log(JSON.stringify({ ok: false, error: "dev tree detected — refusing to touch the author's live settings (--allow-dev to override)" }, null, 2));
-  process.exit(2);
-}
+refuseDevInstallWrites(args.configRoot, [targetPath, join(args.configRoot, "CLAUDE.md")], args.allowDev);
 if (!existsSync(templatePath)) {
   console.log(JSON.stringify({ ok: false, error: `payload settings.system.json not found at ${templatePath}` }, null, 2));
   process.exit(1);
 }
 
 const template = JSON.parse(readFileSync(templatePath, "utf8")) as Record<string, unknown>;
-const expandedCount = expandEnvBlock(template, home);
+const expandedCount = expandEnvBlock(template, home, args.configRoot);
 
 const report: Record<string, unknown> = { ok: true, apply: args.apply, target: targetPath, envValuesExpanded: expandedCount };
 
@@ -104,6 +101,12 @@ if (!existsSync(targetPath)) {
     if (!(k in curEnv)) { curEnv[k] = v; addedEnv.push(k); }
   }
   report.mode = "merge";
+  const allow = (current.permissions as { allow?: unknown } | undefined)?.allow;
+  const preApproved = Array.isArray(allow) ? allow.filter((e): e is string => typeof e === "string" && EXEC_ALLOW_ENTRY.test(e)) : [];
+  if (preApproved.length) {
+    report.preApprovedExecEntries = preApproved;
+    report.execEntriesNote = "settings.json already pre-approves commands that run arbitrary code; this release does not ship them. Left unchanged: ask the user whether to remove them.";
+  }
   report.addedKeys = addedKeys;
   report.addedEnv = addedEnv;
   if (args.apply && (addedKeys.length || addedEnv.length)) {
@@ -114,5 +117,17 @@ if (!existsSync(targetPath)) {
   }
 }
 
+const claudeTemplate = join(args.skillRoot, "install", "CLAUDE.template.md");
+const claudeTarget = join(args.configRoot, "CLAUDE.md");
+if (existsSync(claudeTarget)) {
+  report.claudeMd = "kept-existing";
+} else if (!existsSync(claudeTemplate)) {
+  report.ok = false;
+  report.claudeMd = `payload CLAUDE.template.md not found at ${claudeTemplate}`;
+} else {
+  report.claudeMd = args.apply ? "created" : "would-create";
+  if (args.apply) atomicWriteText(claudeTarget, readFileSync(claudeTemplate, "utf8"));
+}
+
 console.log(JSON.stringify(report, null, 2));
-process.exit(0);
+process.exit(report.ok ? 0 : 1);

@@ -1,6 +1,8 @@
 # Bias Taxonomy
 
-The category catalog the Check workflow draws from. Loaded on demand — not every category fires on every source.
+**Contents:** Layer 1 — Biases inside the data · Layer 2 — Source-organization biases · Layer 3 — Biases added by the journalism/commentary · How to use this taxonomy
+
+The category catalog the Check intent draws from. Loaded on demand — not every category fires on every source.
 
 Each category has: a one-line definition, the typical tell, and a worked example.
 
@@ -34,8 +36,9 @@ Each category has: a one-line definition, the typical tell, and a worked example
 **Definition:** The instrument's wording, scale, or order pushes responses in a direction.
 
 **Tells:**
-- Impossibly high agreement (>95% on a substantive question is almost always a low-bar yes/no)
+- Impossibly high agreement (>95% on a substantive question is almost always a low-bar yes/no); note it explicitly even when the instrument is hidden
 - Loaded vocabulary in the stem
+- Leading scale design or social-desirability cues
 - Forced-choice between an extreme and a moderate option
 - Question not publicly available (instrument hidden behind the topline number)
 
@@ -169,7 +172,7 @@ Each category has: a one-line definition, the typical tell, and a worked example
 
 ### Headline-to-source distortion
 
-**Definition:** The headline makes a stronger or different claim than the article body, which in turn is a stronger version of the underlying source's claim.
+**Definition:** The headline makes a stronger or different claim than the article body, which in turn is a stronger version of the underlying source's claim. Often the single most consequential journalism bias, because headlines travel and bodies do not.
 
 **Tell:** Headline noun-swap ("executives" → "CEOs"), verb-swap ("expect" → "plan"), or scope-swap ("affect" → "replace").
 
@@ -181,7 +184,7 @@ Each category has: a one-line definition, the typical tell, and a worked example
 
 **Tell:** Word choices throughout the article systematically push one direction (e.g., "surveillance" instead of "behavioral analytics," "replacement" instead of "augmentation").
 
-**Example:** A finding that "HR teams plan to adopt behavioral analytics" is reframed as "HR turns to surveillance."
+**Example:** A finding that "HR teams plan to adopt behavioral analytics" is reframed as "HR turns to surveillance"; "factor in workforce planning" becomes "planning mass layoffs."
 
 ### Echo-chain amplification
 
@@ -189,7 +192,7 @@ Each category has: a one-line definition, the typical tell, and a worked example
 
 **Tell:** Article cites a secondary outlet, not the primary source. Methodology details disappear at each step.
 
-**Example:** Vendor press release → TechSpot → Futurism → Twitter post. By post-stage the "99% expect any AI-related workforce change" has become "all CEOs planning mass layoffs."
+**Example:** Vendor press release → trade blog → news site → social post. By post-stage the "99% expect any AI-related workforce change" has become "all CEOs planning mass layoffs."
 
 ### Causal framing on correlational data
 
@@ -235,7 +238,7 @@ Each category has: a one-line definition, the typical tell, and a worked example
 
 ## How to use this taxonomy
 
-For any source, walk these categories top-to-bottom. Most sources fire 3–7 categories total across layers. Don't force categories that don't apply. Don't skip categories that do.
+Most sources fire 3–7 categories total across layers. Don't force categories that don't apply. Don't skip categories that do.
 
 **Rule of thumb:**
 

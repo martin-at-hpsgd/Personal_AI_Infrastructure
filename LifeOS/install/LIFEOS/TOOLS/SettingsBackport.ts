@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.2.10
  * SettingsBackport.ts — propagate direct edits on the GENERATED settings.json
  * back into the SOURCE overlay so SessionStart regeneration never steps on them.
  *
@@ -16,7 +17,7 @@
  * snapshot, NEVER against a freshly computed merge of the current sources.
  * Diffing against a fresh merge made un-merged SOURCE edits look like
  * settings.json drift and clobbered them back into the overlay (2026-07-11
- * hooks-BPE incident). With the snapshot base, source edits are invisible
+ * hooks-BLE incident). With the snapshot base, source edits are invisible
  * here and flow through the MergeSettings run that follows. No snapshot on
  * disk → skip cleanly (never guess).
  *
@@ -50,8 +51,9 @@ import path from "node:path";
 import os from "node:os";
 import { mergeSettings, deepEqual, parseJsonFileOrThrow, MERGE_SNAPSHOT_PATH } from "./MergeSettings";
 import { atomicWriteText } from "../PULSE/lib/atomic-write";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const CLAUDE_DIR = path.join(os.homedir(), ".claude");
+const CLAUDE_DIR = getClaudeDir();
 const SYSTEM_PATH = path.join(CLAUDE_DIR, "settings.system.json");
 const USER_PATH = path.join(CLAUDE_DIR, "LIFEOS", "USER", "CONFIG", "settings.user.json");
 const GENERATED_PATH = path.join(CLAUDE_DIR, "settings.json");
@@ -119,6 +121,33 @@ export function isPrefix(prefix: any[], arr: any[]): boolean {
   return prefix.length <= arr.length && prefix.every((v, i) => deepEqual(v, arr[i]));
 }
 
+// Permission rules are sets in Claude Code: a reorder is not drift, so it
+// appends instead of pinning. public issue #2162, @MatiasBarboza
+const ORDER_FREE_ROOTS = new Set(["permissions"]);
+
+/**
+ * Decide how one drifted array backports. An append annotation merges as
+ * system ++ values, so for an ordered array it reproduces `after` only when
+ * nothing was dropped AND the system half is still `after`'s head. For an
+ * order-free root (a set) it needs only that nothing was dropped; the values
+ * are the elements the system half does not already carry.
+ */
+export function planArrayBackport<D extends { segments: string[]; before: any[]; after: any[] }>(system: any, d: D) {
+  const { added, removed } = classifyArrayDrift(d.before, d.after);
+  const base = getAtPath(system, d.segments);
+  const systemArr = Array.isArray(base) ? base : [];
+  const orderFree = ORDER_FREE_ROOTS.has(d.segments[0]);
+  return {
+    ...d,
+    added,
+    removed,
+    appendable: removed.length === 0 && (orderFree || isPrefix(systemArr, d.after)),
+    appended: orderFree
+      ? d.after.filter((a) => !systemArr.some((v) => deepEqual(v, a)))
+      : d.after.slice(systemArr.length),
+  };
+}
+
 /** Deep-set a value into an object, creating intermediate objects as needed. */
 export function deepSet(target: Record<string, any>, segments: string[], value: any): void {
   let cursor = target;
@@ -147,6 +176,45 @@ export function deepDelete(target: Record<string, any>, segments: string[]): boo
   if (!isObjectRecord(cursor) || !Object.prototype.hasOwnProperty.call(cursor, leaf)) return false;
   delete cursor[leaf];
   return true;
+}
+
+const CREDENTIAL_KEY = /token|secret|key|password|auth|bearer|cookie/i;
+// Shapes of well-known credentials: vendor key prefixes, JWTs, bearer headers, PEM blocks, long opaque base64/hex runs.
+const CREDENTIAL_VALUE =
+  /\b(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{16,}|xox[abprs]-[A-Za-z0-9-]{8,}|AKIA[0-9A-Z]{12,}|AIza[0-9A-Za-z_-]{20,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,})|Bearer\s+\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b[A-Za-z0-9+/_-]{40,}={0,2}(?![A-Za-z0-9+/_-])/;
+
+/** True when a settings value, by its key path or its own shape, may be a credential. */
+export function looksLikeCredential(segments: string[], value: unknown): boolean {
+  if (segments.some((seg) => CREDENTIAL_KEY.test(seg))) return true;
+  return valueHasCredentialShape(value);
+}
+
+function valueHasCredentialShape(value: unknown): boolean {
+  if (typeof value === "string") return CREDENTIAL_VALUE.test(value);
+  if (Array.isArray(value)) return value.some(valueHasCredentialShape);
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(([k, v]) => CREDENTIAL_KEY.test(k) || valueHasCredentialShape(v));
+  }
+  return false;
+}
+
+/** Printable form of a backported value: credentials never reach the log. */
+export function displayValue(segments: string[], value: unknown): string {
+  return looksLikeCredential(segments, value) ? "[REDACTED]" : JSON.stringify(value);
+}
+
+/**
+ * The warning for an array backported as a whole-array pin. Each removed element goes through
+ * displayValue, so a removed credential prints as [REDACTED] while ordinary removed entries stay
+ * readable (the warning serialized p.removed raw).
+ */
+export function arrayPinWarning(p: { segments: string[]; removed: unknown[] }): string {
+  const removed = `[${p.removed.map((v) => displayValue(p.segments, v)).join(",")}]`;
+  return (
+    `⚠️  ${formatPath(p.segments)} ${p.removed.length > 0 ? `REMOVES ${p.removed.length} element(s)` : "REORDERS elements"}, which an append annotation ` +
+    `cannot express — backported as a whole-array replacement that PINS this array in the overlay, so ` +
+    `later settings.system.json additions will no longer reach it. Removed: ${removed}`
+  );
 }
 
 function formatPath(segments: string[]): string {
@@ -194,21 +262,10 @@ async function run(dryRun: boolean): Promise<number> {
   // `after` when the array drops nothing AND the system half is still `after`'s
   // head. Everything else keeps the whole-array replacement.
   // public issue #1722, @xmasyx
-  const arrayPlans = arrays.map((d) => {
-    const { added, removed } = classifyArrayDrift(d.before, d.after);
-    const base = getAtPath(system, d.segments);
-    const systemArr = Array.isArray(base) ? base : [];
-    return {
-      ...d,
-      added,
-      removed,
-      appendable: removed.length === 0 && isPrefix(systemArr, d.after),
-      appended: d.after.slice(systemArr.length),
-    };
-  });
+  const arrayPlans = arrays.map((d) => planArrayBackport(system, d));
 
   for (const d of changes) {
-    console.log(`backport ${formatPath(d.segments)} = ${JSON.stringify(d.value)}`);
+    console.log(`backport ${formatPath(d.segments)} = ${displayValue(d.segments, d.value)}`);
   }
   for (const p of arrayPlans) {
     if (p.appendable) {
@@ -216,13 +273,8 @@ async function run(dryRun: boolean): Promise<number> {
       continue;
     }
     console.log(`backport ${formatPath(p.segments)} = whole array (${p.after.length} value(s))`);
-    if (p.removed.length > 0) {
-      console.error(
-        `⚠️  ${formatPath(p.segments)} REMOVES ${p.removed.length} element(s), which an append annotation ` +
-          `cannot express — backported as a whole-array replacement that PINS this array in the overlay, so ` +
-          `later settings.system.json additions will no longer reach it. Removed: ${JSON.stringify(p.removed)}`,
-      );
-    }
+    // Every pin warns, reorder-only pins included. public issue #2162, @MatiasBarboza
+    console.error(arrayPinWarning(p));
   }
   for (const d of deletions) {
     console.log(`backport DELETE ${formatPath(d.segments)}`);

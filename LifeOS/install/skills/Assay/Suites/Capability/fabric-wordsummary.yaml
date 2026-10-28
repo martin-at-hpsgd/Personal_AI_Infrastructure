@@ -1,0 +1,81 @@
+# Fabric WordSummary — N levels, N words down to one. The regex asserts pin the
+# exact shape (numbered N..1, exact word counts, blank lines); the judged asserts
+# carry what code cannot: standalone meaning, reframing, specificity.
+# Synthetic inline fixtures only.
+name: fabric-wordsummary
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/WordSummary.md"
+cases:
+  - id: topic_five_levels
+    prompt: "ws 5 russian literature"
+    # SYNTHETIC ADVERSARIAL FIXTURE: right counts and numbering, but it describes
+    # the topic instead of saying what it teaches, and each level is the one
+    # above with words deleted.
+    adversarial_output: |
+      **5 Levels: Russian Literature**
+
+      **5.** Novels argued what tsars forbade
+
+      **4.** Novels argued what forbade
+
+      **3.** Novels argued forbade
+
+      **2.** Novels argued
+
+      **1.** Novels
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)[ \t]*\*\*5\.\*\*[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*4\.\*\*[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*3\.\*\*[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*2\.\*\*[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*1\.\*\*[ \t]+\S+[ \t]*(?:\n|$)'
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "Each level states a lesson or piece of wisdom Russian literature teaches, not a description of what Russian literature is, covers or contains", "Each level is a complete thought that stands on its own, not a fragment", "No level is the level above with words deleted; each smaller level reframes the whole", "The lines are specific to Russian literature and would not fit most other literatures as well", "The one-word level is a word an expert on Russian literature would accept as its core", "The heading names the read as what Russian literature teaches, or close to it" ]
+        reference: "ws 5 russian literature"
+  - id: question_three_levels_answers_it
+    prompt: "ws 3 why do startups fail"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)[ \t]*\*\*3\.\*\*[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*2\.\*\*[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*1\.\*\*[ \t]+\S+[ \t]*(?:\n|$)'
+      - type: llm-assert
+        weight: 3
+        value: [ "Every level answers why startups fail rather than restating the question", "The answer reflects expert consensus on startup failure (for example building something nobody wants) rather than a generic platitude" ]
+        reference: "ws 3 why do startups fail"
+  - id: source_text_stays_faithful
+    prompt: 'ws 4 this text: "A fictional city replaced its downtown parking garages with housing. Rents in the area fell nine percent over three years, transit ridership rose, and the main complaint from residents was construction noise, which ended when the buildings opened."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)[ \t]*\*\*4\.\*\*[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*3\.\*\*[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*2\.\*\*[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*1\.\*\*[ \t]+\S+[ \t]*(?:\n|$)'
+      - type: llm-assert
+        weight: 3
+        value: [ "Every level reflects what the supplied text says (parking replaced by housing, with good results) and adds no claim the text does not make" ]
+        reference: 'ws 4 this text: "A fictional city replaced its downtown parking garages with housing. Rents in the area fell nine percent over three years, transit ridership rose, and the main complaint from residents was construction noise, which ended when the buildings opened."'
+  - id: default_is_five
+    prompt: "ws the printing press"
+    assert:
+      - type: llm-assert
+        weight: 2
+        value: [ "The levels say what the printing press changed and why that matters, not a description of the machine or its history", "The heading names that read (for example why the printing press mattered)" ]
+        reference: "ws the printing press"
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)[ \t]*\*\*5\.\*\*[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)[ \t]*\*\*1\.\*\*[ \t]+\S+[ \t]*(?:\n|$)'
+  - id: person_means_what_to_learn
+    prompt: "ws 3 marcus aurelius"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)[ \t]*\*\*3\.\*\*[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*2\.\*\*[ \t]+\S+[ \t]+\S+[ \t]*\n[ \t]*\n[ \t]*\*\*1\.\*\*[ \t]+\S+[ \t]*(?:\n|$)'
+      - type: llm-assert
+        weight: 3
+        value: [ "The levels give what to learn from Marcus Aurelius, not biography (emperor, dates, wars)", "The lessons are recognizably his own (Stoic self-command, the inner citadel, duty), not generic self-help" ]
+        reference: "ws 3 marcus aurelius"

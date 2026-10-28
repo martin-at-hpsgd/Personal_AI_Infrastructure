@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "required": [
+    "customization",
+    "hard-prohibitions-operative-on-every-invocation",
+    "preflight-isolation-gate-mandatory",
+    "isolation-doctrine-critical-hard-rule-enforced-in-code",
+    "rendering-lifecycle-gate-the-hidden-tab-trap-mandatory-for-motion-responsive-work",
+    "background-first-contract-0-16-x",
+    "multi-context-routing-0-16-x",
+    "key-rules",
+    "common-gotchas"
+  ],
+  "sections": {
+    "customization": {
+      "file": "SKILL.md",
+      "heading": "Data & Config"
+    },
+    "what-it-does": {
+      "file": "References/CompleteGuide.md",
+      "heading": "What It Does"
+    },
+    "the-problem": {
+      "file": "References/CompleteGuide.md",
+      "heading": "The Problem"
+    },
+    "how-it-works": {
+      "file": "References/CompleteGuide.md",
+      "heading": "How It Works"
+    },
+    "capabilities-overview-six-verb-trees": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Capabilities Overview — Six Verb Trees"
+    },
+    "current-surfaces-verbs": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Current surfaces & verbs"
+    },
+    "why-interceptor": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Why Interceptor?"
+    },
+    "interceptor-vs-apify-vs-brightdata-which-one-by-scale-auth": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Interceptor vs Apify vs BrightData — which one, by scale × auth"
+    },
+    "hard-prohibitions-operative-on-every-invocation": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Hard Prohibitions — Operative on Every Invocation"
+    },
+    "preflight-isolation-gate-mandatory": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Preflight Isolation Gate (MANDATORY)"
+    },
+    "isolation-doctrine-critical-hard-rule-enforced-in-code": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Isolation Doctrine (CRITICAL — hard rule; `--context` enforced in code by InterceptorContextGuard)"
+    },
+    "rendering-lifecycle-gate-the-hidden-tab-trap-mandatory-for-motion-responsive-work": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Rendering-Lifecycle Gate — the hidden-tab trap (MANDATORY for motion/responsive work)"
+    },
+    "install-modes-0-16-x": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Install Modes"
+    },
+    "prerequisites": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Prerequisites"
+    },
+    "background-first-contract-0-16-x": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Background-First Contract"
+    },
+    "multi-context-routing-0-16-x": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Multi-Context Routing"
+    },
+    "computer-use-macos-native-helper": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Computer Use — macOS Native Helper"
+    },
+    "compound-commands-preferred": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Compound Commands (Preferred)"
+    },
+    "command-reference-moved": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Command Reference (moved)"
+    },
+    "key-rules": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Key Rules"
+    },
+    "delegating-to-agents": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Delegating to Agents"
+    },
+    "examples": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Examples"
+    },
+    "gotchas": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Gotchas"
+    },
+    "linux-flatpak-browser-the-four-hour-class-2026-07-19-fedora": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Linux + Flatpak browser — the four-hour class (2026-07-19, Fedora)"
+    },
+    "complete-guide": {
+      "file": "References/CompleteGuide.md"
+    },
+    "common-gotchas": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Gotchas",
+      "bodyOnly": true
+    },
+    "intent-overridexhr": {
+      "file": "Intents/OverrideXhr.md"
+    },
+    "intent-scrubflow": {
+      "file": "Intents/ScrubFlow.md"
+    },
+    "intent-vmlifecycle": {
+      "file": "Intents/VmLifecycle.md"
+    },
+    "intent-recordflow": {
+      "file": "Intents/RecordFlow.md"
+    },
+    "intent-trustedinputgate": {
+      "file": "Intents/TrustedInputGate.md"
+    },
+    "intent-dispatchappleevent": {
+      "file": "Intents/DispatchAppleEvent.md"
+    },
+    "intent-readaxtree": {
+      "file": "Intents/ReadAxTree.md"
+    },
+    "intent-screenshotforvlm": {
+      "file": "Intents/ScreenshotForVlm.md"
+    },
+    "intent-readandextract": {
+      "file": "Intents/ReadAndExtract.md"
+    },
+    "intent-drivericheditor": {
+      "file": "Intents/DriveRichEditor.md"
+    },
+    "intent-verifydeploy": {
+      "file": "Intents/VerifyDeploy.md"
+    },
+    "intent-drivebackgroundedapp": {
+      "file": "Intents/DriveBackgroundedApp.md"
+    },
+    "intent-recordandreplaymacflow": {
+      "file": "Intents/RecordAndReplayMacFlow.md"
+    },
+    "intent-launchtestprofile": {
+      "file": "Intents/LaunchTestProfile.md"
+    },
+    "intent-reproduce": {
+      "file": "Intents/Reproduce.md"
+    },
+    "intent-multipagecompare": {
+      "file": "Intents/MultiPageCompare.md"
+    },
+    "intent-update": {
+      "file": "Intents/Update.md"
+    },
+    "intent-testform": {
+      "file": "Intents/TestForm.md"
+    },
+    "intent-capturebackgroundedapp": {
+      "file": "Intents/CaptureBackgroundedApp.md"
+    },
+    "intent-replayflow": {
+      "file": "Intents/ReplayFlow.md"
+    },
+    "reference-commandreference": {
+      "file": "References/CommandReference.md"
+    },
+    "reference-updaterecovery": {
+      "file": "References/UpdateRecovery.md"
+    }
+  },
+  "bundles": {
+    "verify": [
+      "capabilities-overview-six-verb-trees",
+      "prerequisites",
+      "compound-commands-preferred",
+      "command-reference-moved"
+    ],
+    "motion": [
+      "capabilities-overview-six-verb-trees",
+      "prerequisites",
+      "compound-commands-preferred",
+      "command-reference-moved",
+      "intent-scrubflow"
+    ],
+    "native": [
+      "computer-use-macos-native-helper"
+    ],
+    "full": [
+      "complete-guide"
+    ]
+  }
+}

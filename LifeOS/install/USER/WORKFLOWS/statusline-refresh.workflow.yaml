@@ -1,0 +1,28 @@
+version: 2
+name: statusline-refresh
+description: "Every minute, refresh each shared statusline cache that is past its TTL (tide, sats, tonight's passes, cosmos, location and weather, Claude and Codex usage, the Claude Code version), so the statusline itself only reads caches."
+sop: STATUSLINE/README.md
+runs_on: local
+triggers:
+  - type: manual
+  - type: interval
+    minutes: 1
+    missed_run: skip
+steps:
+  refresh:
+    kind: command
+    description: "Plan the stale refreshes from the caches as they stand, run them under a 45-second deadline, report what ran."
+    side_effects: [ read, write ]
+    timeout_ms: 55000
+    env: [ LIFEOS_DIR, CLAUDE_CONFIG_DIR ]
+    argv: [ sh, -c, 'export LIFEOS_NOTIFICATION_CHANNEL=headless PATH="$HOME/.local/bin:$HOME/.bun/bin:/opt/homebrew/bin:$PATH"; exec bun "${LIFEOS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/LIFEOS}/STATUSLINE/Refresh.ts"' ]
+    output:
+      type: object
+      required: [ planned, ran, timedOut, failed ]
+      properties:
+        planned: { type: array, items: { type: string } }
+        ran: { type: array, items: { type: string } }
+        timedOut: { type: array, items: { type: string } }
+        failed: { type: array }
+        skipped: { type: string }
+result: { $ref: steps.refresh.output }

@@ -1,0 +1,67 @@
+{
+  "defaults": {
+    "min_labels": 10,
+    "provisional_threshold": 0.85
+  },
+  "judge-calibration": {
+    "mode": "shadow",
+    "note": "Registry home of the two floors a model-judge calibration record must clear to read earned (LIFEOS/TOOLS/lib/Calibration.ts calibrationFloors, moved out of code 2026-10-12): `agreement` is the share of the principal's labels the judge matched, `kappa` is Cohen's kappa over the same pairs. Never calls the engine: the budget is zero and nothing asks under this caller.",
+    "ground_truth": {
+      "agreement": null,
+      "kappa": null
+    },
+    "ground_truth_note": "No engine question: these are bars on a judge's measured agreement with principal-attested labels, not cuts on an engine answer.",
+    "corrective": {
+      "agreement": false,
+      "kappa": false
+    },
+    "fail": "open",
+    "budget": {
+      "calls_per_day": 0,
+      "tokens_per_day": 0
+    },
+    "thresholds": {
+      "agreement": {
+        "value": 0.85,
+        "calibrated": null,
+        "model": null,
+        "samples": 0,
+        "agreement": null
+      },
+      "kappa": {
+        "value": 0.4,
+        "calibrated": null,
+        "model": null,
+        "samples": 0,
+        "agreement": null
+      }
+    },
+    "enforce_evidence": null
+  },
+  "lane-train": {
+    "mode": "shadow",
+    "note": "Registry home of the learned router's hand-off cut (LIFEOS/ROUTER/LaneTrain.ts handoffThreshold, moved out of code 2026-10-12): the lane head hands work off only when its P(hand-off) reaches `handoff`. LaneTrain cross-validates at this cut and stamps it into lane-model.json as handoff_threshold, which FrontDoor applies. Never calls the engine: the budget is zero; the refit asks under thinking-train.",
+    "ground_truth": {
+      "handoff": null
+    },
+    "ground_truth_note": "No engine question: the cut applies to the trained lane head's probability; gold is the three-labeler majority LaneTrain scores against.",
+    "corrective": {
+      "handoff": false
+    },
+    "fail": "open",
+    "budget": {
+      "calls_per_day": 0,
+      "tokens_per_day": 0
+    },
+    "thresholds": {
+      "handoff": {
+        "value": 0.5,
+        "calibrated": null,
+        "model": null,
+        "samples": 0,
+        "agreement": null
+      }
+    },
+    "enforce_evidence": null
+  }
+}

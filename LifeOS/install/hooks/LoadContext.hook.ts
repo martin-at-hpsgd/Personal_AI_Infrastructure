@@ -1,29 +1,33 @@
 #!/usr/bin/env bun
 /**
- * @version 1.6.31
+ * @version 1.9.4
  * LoadContext.hook.ts - Inject LifeOS dynamic context into Claude's Context (SessionStart)
  *
  * LifeOS v5.0 Context Architecture:
  * - Constitutional rules     → LIFEOS/LIFEOS_SYSTEM_PROMPT.md (system prompt via --append-system-prompt-file)
  * - Operational procedures   → CLAUDE.md (loaded natively by Claude Code)
  * - Contextual knowledge     → @imports in CLAUDE.md (native Claude Code mechanism, v5.0)
- * - Dynamic context          → this hook (relationship, learning, work)
+ * - Dynamic context          → this hook (learning, advisory, work)
  *
  * This hook handles dynamic context only (v5.0 — static files moved to @imports):
  * - Injects dynamic, session-specific context:
- *   - Relationship context (recent opinions + notes)
- *   - Learning readback (signals, wisdom, failure patterns)
+ *   - Learning readback (wisdom frames)
  *   - Advisory readback (last session's doc/memory integrity findings)
- *   - Active work summary (last 48h sessions + tracked projects)
+ *   - Work board digest
+ *   - Active work summary (last 48h WORK sessions)
+ *
+ * Removed 2026-08-17: the relationship-notes reader and the session-progress
+ * reader (cold sources with no producer since 2026-05/06). See the comments at
+ * their former sites before re-adding either. public issue #1712, @jacobo-ortiz
  *
  * TRIGGER: SessionStart
  *
  * INPUT:
  * - Environment: LIFEOS_DIR
- *          MEMORY/WORK/*, MEMORY/STATE/progress/*.json
+ *          MEMORY/WORK/*
  *
  * OUTPUT:
- * - stdout: <system-reminder> containing dynamic context (relationship + learning)
+ * - stdout: <system-reminder> containing dynamic context (learning, advisory, work digest)
  * - stdout: Active work summary if previous sessions have pending work
  * - stderr: Status messages and errors
  * - exit(0): Normal completion
@@ -31,7 +35,7 @@
  * DESIGN (v5.0):
  * Constitutional rules live in the system prompt (LIFEOS/LIFEOS_SYSTEM_PROMPT.md).
  * Operational procedures + contextual knowledge live in CLAUDE.md (@imports, native).
- * This hook injects dynamic, session-specific context only (relationship, learning, work).
+ * This hook injects dynamic, session-specific context only (learning, advisory, work).
  *
  * PERFORMANCE:
  * - Blocking: Yes (context is essential)
@@ -39,9 +43,9 @@
  * - Skipped for subagents: Yes
  */
 
-import { readFileSync, existsSync, readdirSync, realpathSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, realpathSync, appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { getClaudeDir, getLifeosDir, getSettingsPath } from './lib/paths';
+import { getClaudeDir, getLifeosDir, getSettingsPath, lifeosPath } from './lib/paths';
 import { recordSessionStart } from './lib/notifications';
 import { loadWisdomFrames } from './lib/learning-readback';
 import { loadAdvisoryDigest } from './lib/advisory-readback';
@@ -76,10 +80,35 @@ function isTerminalWorkState(value: string): boolean {
 }
 
 interface DynamicContextConfig {
-  relationshipContext?: boolean;
   learningReadback?: boolean;
   advisoryReadback?: boolean;
   activeWorkSummary?: boolean;
+  workDigest?: boolean;
+}
+
+/**
+ * Work board digest (work-system methodology, 2026-08-15). WorkSweep writes
+ * MEMORY/STATE/work-digest.md hourly — top open priorities, overdue reminders,
+ * and the recurring-state panel. Injecting it here is what makes "check the
+ * board" structural instead of remembered: every desktop session starts knowing
+ * what the work system holds. A digest older than 26h is flagged stale rather
+ * than trusted (the sweep runs hourly; a day-old file means the sweep is down).
+ */
+function loadWorkDigest(lifeosDir: string): string | null {
+  const digestPath = join(lifeosDir, 'MEMORY', 'STATE', 'work-digest.md');
+  if (!existsSync(digestPath)) return null;
+  try {
+    const content = readFileSync(digestPath, 'utf-8').trim();
+    if (!content) return null;
+    const m = content.match(/Updated:\s*(\S+)/);
+    const ageH = m ? (Date.now() - Date.parse(m[1])) / 3600000 : null;
+    const staleNote = ageH !== null && ageH > 26
+      ? `\n\n⚠️ Digest is ${Math.round(ageH)}h old — WorkSweep may be down (com.lifeos.worksweep).`
+      : '';
+    return '\n## Work Board (digest)\n\n' + content + staleNote;
+  } catch {
+    return null;
+  }
 }
 
 interface Settings {
@@ -114,60 +143,6 @@ function loadSettings(): Settings {
 
 // v5.0: loadStartupFiles removed — static files now loaded via @imports in CLAUDE.md.template
 
-/**
- * Load relationship context for session startup.
- * Returns a lightweight summary of key opinions and recent notes.
- */
-function loadRelationshipContext(paiDir: string): string | null {
-  const parts: string[] = [];
-
-  // Load recent relationship notes (today and yesterday)
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const formatDate = (d: Date) => d.toISOString().split('T')[0];
-  const formatMonth = (d: Date) => d.toISOString().slice(0, 7);
-
-  const recentNotes: string[] = [];
-  for (const date of [today, yesterday]) {
-    const notePath = join(
-      paiDir,
-      'MEMORY/RELATIONSHIP',
-      formatMonth(date),
-      `${formatDate(date)}.md`
-    );
-    if (existsSync(notePath)) {
-      try {
-        const content = readFileSync(notePath, 'utf-8');
-        const notes = content
-          .split('\n')
-          .filter(line => line.trim().startsWith('- '))
-          .slice(0, 5);
-        if (notes.length > 0) {
-          recentNotes.push(`*${formatDate(date)}:*`);
-          recentNotes.push(...notes);
-        }
-      } catch {}
-    }
-  }
-
-  if (recentNotes.length > 0) {
-    if (parts.length > 0) parts.push('');
-    parts.push('**Recent Relationship Notes:**');
-    parts.push(recentNotes.join('\n'));
-  }
-
-  if (parts.length === 0) return null;
-
-  return `
-## Relationship Context
-
-${parts.join('\n')}
-
-`;
-}
-
 interface WorkSession {
   type: 'recent' | 'project';
   name: string;
@@ -193,8 +168,8 @@ interface WorkSession {
  * candidates ARE the same directory on installs where LIFEOS_DIR sits under
  * ~/.claude, and scanning it twice would double every row.
  */
-function getWorkRoots(paiDir: string): string[] {
-  const candidates = [join(paiDir, 'MEMORY', 'WORK'), join(getClaudeDir(), 'MEMORY', 'WORK')];
+function getWorkRoots(lifeosDir: string): string[] {
+  const candidates = [join(lifeosDir, 'MEMORY', 'WORK'), join(getClaudeDir(), 'MEMORY', 'WORK')];
   const seen = new Set<string>();
   const roots: string[] = [];
   for (const dir of candidates) {
@@ -213,12 +188,12 @@ function getWorkRoots(paiDir: string): string[] {
 /**
  * Scan recent WORK/ directories (last 48h) for active sessions.
  */
-function getRecentWorkSessions(paiDir: string): WorkSession[] {
-  const workRoots = getWorkRoots(paiDir);
+function getRecentWorkSessions(lifeosDir: string): WorkSession[] {
+  const workRoots = getWorkRoots(lifeosDir);
   if (workRoots.length === 0) return [];
 
   let sessionNames: Record<string, string> = {};
-  const namesPath = join(paiDir, 'MEMORY', 'STATE', 'session-names.json');
+  const namesPath = join(lifeosDir, 'MEMORY', 'STATE', 'session-names.json');
   try {
     if (existsSync(namesPath)) {
       sessionNames = JSON.parse(readFileSync(namesPath, 'utf-8'));
@@ -326,10 +301,15 @@ function getRecentWorkSessions(paiDir: string): WorkSession[] {
             const idMatch = isaContent.match(/^id:\s*(.+)$/m);
             const statusMatch2 = isaContent.match(/^status:\s*(.+)$/m);
             const verifyMatch = isaContent.match(/^verification_summary:\s*"?(.+?)"?$/m);
+            // Modern ISA frontmatter carries slug/phase/progress, not id/status/
+            // verification_summary (public PR #2122, @pai-scaffolde).
+            const slugMatch2 = isaContent.match(/^slug:\s*(.+)$/m);
+            const phaseMatch2 = isaContent.match(/^phase:\s*(.+)$/m);
+            const progressMatch2 = isaContent.match(/^progress:\s*"?([^"\n]*)"?/m);
             isa = {
-              id: idMatch?.[1]?.trim() || 'ISA',
-              status: statusMatch2?.[1]?.trim() || 'UNKNOWN',
-              progress: verifyMatch?.[1]?.trim() || '0/0'
+              id: idMatch?.[1]?.trim() || slugMatch2?.[1]?.trim() || 'ISA',
+              status: statusMatch2?.[1]?.trim() || phaseMatch2?.[1]?.trim() || 'UNKNOWN',
+              progress: verifyMatch?.[1]?.trim() || progressMatch2?.[1]?.trim() || '0/0'
             };
           }
         } catch { /* no artifacts */ }
@@ -352,123 +332,64 @@ function getRecentWorkSessions(paiDir: string): WorkSession[] {
   return sessions;
 }
 
-/**
- * Load persistent project progress files, flagging stale ones (>14 days).
- */
-function getProjectProgress(paiDir: string): WorkSession[] {
-  const progressDir = join(paiDir, 'MEMORY', 'STATE', 'progress');
-  if (!existsSync(progressDir)) return [];
+// MEMORY/STATE/progress/*-progress.json is deliberately NOT read here, and neither the
+// "Tracked Projects" block nor the SessionProgress.ts resume/complete tips are emitted:
+// nothing writes an active row to that store, so the block was always empty and the tips
+// pointed at a store with nothing to resume. ISA frontmatter carries the open/closed
+// signal. Recent WORK sessions below still have a producer, so that half stays.
+// public issue #1712, @jacobo-ortiz
 
-  const sessions: WorkSession[] = [];
-  const now = Date.now();
-  const staleThreshold = 14 * 24 * 60 * 60 * 1000;
-
-  try {
-    const files = readdirSync(progressDir).filter(f => f.endsWith('-progress.json'));
-
-    for (const file of files) {
-      try {
-        const content = readFileSync(join(progressDir, file), 'utf-8');
-
-        interface ProgressFile {
-          project: string;
-          status: string;
-          updated: string;
-          objectives: string[];
-          next_steps: string[];
-          handoff_notes: string;
-        }
-
-        const progress = JSON.parse(content) as ProgressFile;
-        if (progress.status !== 'active') continue;
-
-        const updatedTime = new Date(progress.updated).getTime();
-        const isStale = (now - updatedTime) > staleThreshold;
-
-        sessions.push({
-          type: 'project',
-          name: progress.project,
-          title: progress.project,
-          status: 'active',
-          timestamp: new Date(progress.updated).toISOString().split('T')[0],
-          stale: isStale,
-          objectives: progress.objectives,
-          handoff_notes: progress.handoff_notes,
-          next_steps: progress.next_steps
-        });
-      } catch { /* skip malformed */ }
-    }
-  } catch (err) {
-    console.error(`⚠️ Error reading progress files: ${err}`);
-  }
-
-  return sessions;
-}
-
-/**
- * Unified activity dashboard — merges recent WORK sessions + persistent projects.
- */
-async function checkActiveProgress(paiDir: string): Promise<string | null> {
-  const recentSessions = getRecentWorkSessions(paiDir);
-  const projects = getProjectProgress(paiDir);
-
-  if (recentSessions.length === 0 && projects.length === 0) {
-    return null;
-  }
+/** Activity dashboard — recent WORK sessions (last 48h). */
+async function checkActiveProgress(lifeosDir: string): Promise<string | null> {
+  const recentSessions = getRecentWorkSessions(lifeosDir);
+  if (recentSessions.length === 0) return null;
 
   let summary = '\n📋 ACTIVE WORK:\n';
-
-  if (recentSessions.length > 0) {
-    summary += '\n  ── Recent Sessions (last 48h) ──\n';
-    for (const s of recentSessions) {
-      summary += `\n  ⚡ ${s.title}\n`;
-      summary += `     ${s.timestamp} | Status: ${s.status}\n`;
-      if (s.isa) {
-        summary += `     ISA: ${s.isa.id} (${s.isa.status}, ${s.isa.progress})\n`;
-      }
+  summary += '\n  ── Recent Sessions (last 48h) ──\n';
+  for (const s of recentSessions) {
+    summary += `\n  ⚡ ${s.title}\n`;
+    summary += `     ${s.timestamp} | Status: ${s.status}\n`;
+    if (s.isa) {
+      summary += `     ISA: ${s.isa.id} (${s.isa.status}, ${s.isa.progress})\n`;
     }
   }
-
-  if (projects.length > 0) {
-    summary += '\n  ── Tracked Projects ──\n';
-    for (const proj of projects) {
-      const staleTag = proj.stale ? ' ⚠️ STALE (>14d)' : '';
-      summary += `\n  ${proj.stale ? '🟡' : '🔵'} ${proj.name}${staleTag}\n`;
-
-      if (proj.objectives && proj.objectives.length > 0) {
-        summary += '     Objectives:\n';
-        proj.objectives.forEach(o => summary += `     • ${o}\n`);
-      }
-
-      if (proj.handoff_notes) {
-        summary += `     Handoff: ${proj.handoff_notes}\n`;
-      }
-
-      if (proj.next_steps && proj.next_steps.length > 0) {
-        summary += '     Next steps:\n';
-        proj.next_steps.forEach(s => summary += `     → ${s}\n`);
-      }
-    }
-  }
-
-  // "TOOLS" (canonical on-disk casing) — "/Tools" only resolved on
-  // case-insensitive macOS and 404'd on Linux (public issue #1516, @christauff).
-  const toolsDir = paiDir + '/TOOLS';
-  summary += `\n💡 To resume project: \`bun run ${toolsDir}/SessionProgress.ts resume <project>\`\n`;
-  summary += `💡 To complete project: \`bun run ${toolsDir}/SessionProgress.ts complete <project>\`\n`;
 
   return summary;
 }
 
+/** Append {ts, sessionId, channel} for a non-desktop session. Best-effort; never blocks startup. */
+function recordSessionChannel(hookInput: unknown): void {
+  try {
+    const channel = getNotificationChannel();
+    if (channel === 'desktop') return;
+    const sessionId = (hookInput as { session_id?: string } | null)?.session_id;
+    if (!sessionId) return;
+    const dir = lifeosPath('MEMORY', 'OBSERVABILITY');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'session-channels.jsonl'), JSON.stringify({ ts: new Date().toISOString(), sessionId, channel }) + '\n');
+  } catch { /* observability never breaks a session start */ }
+}
+
 async function main() {
   try {
+    // A fork carries no distinguishing env var — its stamp (`source: "fork"`)
+    // arrives on stdin, so read it before the guard (see lib/subagent.ts).
+    // public PR #1958, @theNetworkChuck
+    let hookInput: unknown = null;
+    try {
+      const raw = readFileSync(0, 'utf-8');
+      if (raw.trim()) hookInput = JSON.parse(raw);
+    } catch { /* best-effort: env-only guard below */ }
+
     // Subagents don't need dynamic context injection
-    if (isSubagentContext()) {
+    if (isSubagentContext(hookInput)) {
       console.error('🤖 Subagent session - skipping context loading');
       process.exit(0);
     }
 
-    const paiDir = getLifeosDir();
+    const { resetMemoryDelivery } = await import('./lib/memory-reset');
+    resetMemoryDelivery(String((hookInput as { session_id?: string } | null)?.session_id ?? ''));
+    const lifeosDir = getLifeosDir();
 
     // Tab reset is handled by KittyEnvPersist.hook.ts (runs before this hook)
 
@@ -477,6 +398,13 @@ async function main() {
     // timing that reads this is not the thing being withheld below.
     recordSessionStart();
     console.error('⏱️ Session start time recorded');
+
+    // Session-channel registry (1.9.0, 2026-09-07): every non-desktop session
+    // (headless launchd/agent jobs, iMessage, ...) is recorded by id so the
+    // usage rollup (UsageAggregator.ts) can split automatic spend from the principal's
+    // own work deterministically — transcripts carry no channel field. Desktop
+    // sessions are not written: absence from the registry means interactive.
+    recordSessionChannel(hookInput);
 
     // Remote-channel sessions (iMessage, etc. — see lib/notification-channel.ts)
     // serve someone through a bot surface. Injecting the principal's
@@ -490,31 +418,32 @@ async function main() {
       process.exit(0);
     }
 
+    // Agent SDK hosts (T3 Code) send their own systemPrompt.append in the
+    // stream-json initialize request, and the CLI lets it REPLACE the file from
+    // --append-system-prompt-file (reproduced 2026-09-27). sdk-ts/sdk-py only:
+    // `claude -p` is sdk-cli and its spawners pass the file themselves. After the
+    // channel gate on purpose, so bot surfaces never get this.
+    // public PR #2240, @pai-scaffolde
+    const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT ?? '';
+    const startSource = (hookInput as { source?: unknown } | null)?.source;
+    const systemPromptFile = join(lifeosDir, 'LIFEOS_SYSTEM_PROMPT.md');
+    if ((entrypoint === 'sdk-ts' || entrypoint === 'sdk-py') && startSource !== 'resume' && existsSync(systemPromptFile)) {
+      console.log(`<system-reminder>\nThis ${entrypoint} session's host replaced --append-system-prompt-file, so the LifeOS constitutional layer is not loaded. Before any other tool call or reply, Read ${systemPromptFile} once in full (no offset or limit) and follow it for the rest of the session.\n</system-reminder>`);
+    }
+
     // Load settings for dynamic context controls
     const settings = loadSettings();
     console.error('✅ Loaded settings.json');
 
     // v5.0: Static startup files now loaded via @imports in CLAUDE.md (native Claude Code mechanism)
 
-    // Load relationship context (lightweight summary)
-    let relationshipContext: string | null = null;
-    if (isDynamicEnabled(settings, 'relationshipContext')) {
-      relationshipContext = loadRelationshipContext(paiDir);
-      if (relationshipContext) {
-        console.error(`💕 Loaded relationship context (${relationshipContext.length} chars)`);
-      }
-    } else {
-      console.error('⏭️ Skipped relationship context (disabled)');
-    }
-
     // Load learning readback context
     let learningContext = '';
     if (isDynamicEnabled(settings, 'learningReadback')) {
-      // 2026-07-10 ({{PRINCIPAL_NAME}} directive): keep ONLY the Wisdom Frames — the actionable
-      // behavioral guidance. Dropped the self-rating wall (Performance Signals,
-      // Complaint Clusters, Recent Learning Signals, Recent Failure Patterns): it was
-      // negative session-start priming and the biggest single one-time context block.
-      const wisdomFrames = loadWisdomFrames(paiDir);
+      // Only the Wisdom Frames load here: the actionable behavioral guidance. Self-rating
+      // blocks (performance signals, complaint clusters, failure patterns) stay out of
+      // session start, where they prime negatively and cost the most context.
+      const wisdomFrames = loadWisdomFrames(lifeosDir);
 
       learningContext = wisdomFrames
         ? '\n## Learning Context (auto-loaded)\n\n' + wisdomFrames
@@ -542,11 +471,23 @@ async function main() {
       console.error('⏭️ Skipped advisory readback (disabled)');
     }
 
+    // Work board digest — the consumption half of the work system
+    let workDigestContext = '';
+    if (isDynamicEnabled(settings, 'workDigest')) {
+      const digest = loadWorkDigest(lifeosDir);
+      workDigestContext = digest ?? '';
+      if (digest) {
+        console.error(`🗂️ Loaded work board digest (${digest.length} chars)`);
+      }
+    } else {
+      console.error('⏭️ Skipped work digest (disabled)');
+    }
+
     // Inject dynamic context if we have any
-    if (relationshipContext || learningContext || advisoryContext) {
+    if (learningContext || advisoryContext || workDigestContext) {
       const message = `<system-reminder>
 LifeOS Dynamic Context (Auto-loaded at Session Start)
-${relationshipContext ?? ''}${learningContext ? '\n---\n' + learningContext : ''}${advisoryContext ? '\n---\n' + advisoryContext : ''}
+${learningContext ? '\n---\n' + learningContext : ''}${advisoryContext ? '\n---\n' + advisoryContext : ''}${workDigestContext ? '\n---\n' + workDigestContext : ''}
 ---
 Dynamic context loaded. Constitutional rules are in the system prompt (LIFEOS/LIFEOS_SYSTEM_PROMPT.md). Operational procedures are in CLAUDE.md.
 </system-reminder>`;
@@ -559,7 +500,6 @@ Dynamic context loaded. Constitutional rules are in the system prompt (LIFEOS/LI
       // and a 28-byte "ready" was indistinguishable from the loaders working
       // (public issue #1712, @jacobo-ortiz). Presence is not delivery.
       const emptySources: string[] = [];
-      if (isDynamicEnabled(settings, 'relationshipContext')) emptySources.push('relationship-notes');
       if (isDynamicEnabled(settings, 'learningReadback')) emptySources.push('wisdom-frames');
       if (isDynamicEnabled(settings, 'advisoryReadback')) emptySources.push('advisory-findings');
       const note = emptySources.length
@@ -570,7 +510,7 @@ Dynamic context loaded. Constitutional rules are in the system prompt (LIFEOS/LI
 
     // Active work summary
     if (isDynamicEnabled(settings, 'activeWorkSummary')) {
-      const activeProgress = await checkActiveProgress(paiDir);
+      const activeProgress = await checkActiveProgress(lifeosDir);
       if (activeProgress) {
         console.log(activeProgress);
         console.error(`📋 Active work summary loaded (${activeProgress.length} chars)`);

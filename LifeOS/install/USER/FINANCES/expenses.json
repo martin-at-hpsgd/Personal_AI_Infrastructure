@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "currency": "USD",
+    "updated": "1970-01-01",
+    "note": "Expense ledger, the source of truth for money-out. The expense-management CLI is not included in this payload; edit this JSON through trusted local tooling that preserves its schema. Line shape: id, vendor, item, category, scope (business|personal|mixed), cycle (monthly|annual|quarterly|weekly), amount (number for that cycle, or null while unknown), status (needs-amount|active|cancelled|paused|free), optional source/note, and date (YYYY-MM-DD) on oneoffs. Only active and needs-amount lines count toward burn. The single example below is status cancelled so it contributes nothing; delete it once you have real lines."
+  },
+  "subscriptions": [
+    {
+      "id": "example-vendor-plan",
+      "vendor": "Example Vendor",
+      "item": "Example plan",
+      "category": "software",
+      "scope": "business",
+      "cycle": "monthly",
+      "amount": 10,
+      "status": "cancelled",
+      "source": "template",
+      "note": "Example line showing the shape. Cancelled lines are excluded from every total."
+    }
+  ],
+  "oneoffs": []
+}

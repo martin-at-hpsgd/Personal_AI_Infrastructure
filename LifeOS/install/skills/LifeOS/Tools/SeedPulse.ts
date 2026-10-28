@@ -8,8 +8,8 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 /**
- * SeedPulse — Interview final step. Seeds the Pulse data plane from the now-
- * populated USER tree by regenerating the derived artifacts Pulse reads
+ * SeedPulse — Interview final step. Seeds Pulse from the now-populated USER
+ * tree by regenerating the derived artifacts Pulse reads
  * (PRINCIPAL_TELOS.md, LIFEOS_STATE.json) via the shipped LIFEOS/TOOLS generators.
  * Best-effort: missing generators are reported, not fatal — Pulse simply shows
  * scaffold state until they run. Refuses on a dev tree unless --allow-dev.
@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { detectDevTree } from "./InstallEngine";
+import { refuseDevInstallWrites } from "./InstallEngine";
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -45,10 +45,8 @@ function main(): void {
   const apply = a.includes("--apply");
   const allowDev = a.includes("--allow-dev");
 
-  if (detectDevTree(configRoot) && !allowDev) {
-    console.log(JSON.stringify({ ok: false, refused: "dev-tree", detail: `${configRoot} is a source tree — refusing to seed Pulse.` }, null, 2));
-    process.exit(2);
-  }
+  // The generators write under LIFEOS_CONFIG_DIR, so the data home is a target too.
+  refuseDevInstallWrites(configRoot, [join(configRoot, "LIFEOS"), configDir], allowDev);
 
   const toolsDir = join(configRoot, "LIFEOS", "TOOLS");
   const present = GENERATORS.filter((g) => existsSync(join(toolsDir, g)));
@@ -74,7 +72,7 @@ function main(): void {
           ...process.env,
           LIFEOS_CONFIG_DIR: configDir,
           LIFEOS_DIR: join(configRoot, "LIFEOS"),
-          // GenerateTelosSummary resolves its TELOS dir via LifeosConfig.paiUserDir(),
+          // GenerateTelosSummary resolves its TELOS dir via LifeosConfig.lifeosUserDir(),
           // which reads LIFEOS_CONFIG_PATH (NOT LIFEOS_DIR). UpdateLifeosState resolves via
           // LIFEOS_DIR. Pass BOTH so both generators target the same install root —
           // otherwise a non-default config root mis-targets ~/.claude.

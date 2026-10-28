@@ -1,0 +1,7 @@
+{
+  "name": "wf-clock",
+  "version": "0.2.0",
+  "private": true,
+  "description": "The Workflows cloud clock Worker (WORKFLOWS ISA F27).",
+  "releaseScope": [".", "../engine/clock.ts", "../engine/v1.ts", "../engine/format.ts", "../cloud/auth.ts", "../cloud/build.ts", "../v1/Workflows", "../../TOOLS/Invariant.ts"]
+}

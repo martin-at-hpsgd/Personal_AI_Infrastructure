@@ -3,13 +3,28 @@
 Usage:
   VerifyDesign.ts <url-or-path> <out-dir> [--viewport WIDTHxHEIGHT] [--a11y|--no-a11y]
 
-Runs a thin Interceptor-driven smoke check for a rendered design. The viewport is
-validated and reported, but not applied because Interceptor exposes no viewport
-verb. Accessibility checks are viewport-independent tree heuristics, not axe-core.
+Runs a thin Interceptor-driven smoke check for a rendered design, in the pinned
+Interceptor test context only (INTERCEPTOR_TEST_CONTEXT_ID from the environment or
+the Interceptor preferences.env; it refuses to run without one, so it never drives
+the operator's own window).
+
+What it does NOT verify, and says so in its JSON under not_verified:
+- The viewport. --viewport is validated and echoed with applied: false; the page is
+  captured at the test window's current size. For a real width check use
+  skills/Interceptor/Tools/VerifyViewport.ts.
+- Colour contrast. The a11y pass is tree heuristics (names, alt text, labels,
+  heading order), not axe-core and not WCAG AA contrast.
+
+A failed open or wait-stable fails the run (exit 1) before any screenshot, so a
+stale tab is never captured and reported as the page. The screenshot goes through
+Interceptor/Tools/Capture.sh, which cannot capture a file:// page (the extension's
+tabCapture refuses it); serve a local build over http and pass that URL.
 */
+import { existsSync, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { lifeosPath } from "../../../LIFEOS/TOOLS/Paths.ts";
 
 type TreeNode = {
   ref?: string;
@@ -43,6 +58,45 @@ async function run(argv: string[], timeout: number): Promise<{ code: number; std
   const p = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe", signal: AbortSignal.timeout(timeout) });
   const [stdout, stderr, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
   return { code, stdout, stderr };
+}
+
+/** Interceptor's screenshot wrapper: `screenshot <path>` is not a CLI form, and the wrapper pins the test context. */
+const CAPTURE_SH = join(import.meta.dir, "..", "..", "Interceptor", "Tools", "Capture.sh");
+
+/** What this check never verifies; printed in every result so a pass is not read as more than it is. */
+export const NOT_VERIFIED = [
+  "viewport: --viewport is echoed, not applied; the capture is at the test window's current size (use Interceptor/Tools/VerifyViewport.ts for widths)",
+  "contrast: colour contrast (WCAG AA) is not checked; the a11y pass covers names, alt text, labels and heading order only",
+] as const;
+
+/** The pinned Interceptor test context: env first, then the Interceptor preferences.env. Null when neither sets one. */
+export function testContextId(env: Record<string, string | undefined> = process.env, prefsPath = lifeosPath("USER", "CUSTOMIZATIONS", "SKILLS", "Interceptor", "preferences.env")): string | null {
+  const fromEnv = env.INTERCEPTOR_TEST_CONTEXT_ID?.trim();
+  if (fromEnv) return fromEnv;
+  if (!existsSync(prefsPath)) return null;
+  const line = readFileSync(prefsPath, "utf8").split("\n").find((l) => /^\s*(export\s+)?INTERCEPTOR_TEST_CONTEXT_ID=/.test(l));
+  const value = line?.split("=").slice(1).join("=").trim().replace(/^["']|["']$/g, "");
+  return value ? value : null;
+}
+
+type StepResult = { code: number; stderr: string };
+/**
+ * Why the page cannot be trusted as loaded. A failed open or wait-stable is a failure on its own: a screenshot taken
+ * after it would show whatever tab was already there. `wait` is null when open failed and wait-stable never ran. Pure.
+ */
+export function loadErrors(open: StepResult, wait: StepResult | null): string[] {
+  const errors: string[] = [];
+  if (open.code !== 0) errors.push(`open failed (exit ${open.code}): ${open.stderr.trim() || "no stderr"}`);
+  if (wait === null && open.code === 0) errors.push("wait-stable did not run");
+  if (wait && wait.code !== 0) errors.push(`wait-stable failed (exit ${wait.code}): ${wait.stderr.trim() || "no stderr"}`);
+  return errors;
+}
+
+/** The run's verdict: loaded, captured, and the a11y heuristics passed (or were skipped). Pure. */
+export function verdict(o: { open: StepResult; wait: StepResult | null; screenshot: string | null; a11yPass: boolean }): { pass: boolean; errors: string[] } {
+  const errors = loadErrors(o.open, o.wait);
+  if (!errors.length && o.screenshot === null) errors.push("no screenshot");
+  return { pass: errors.length === 0 && o.a11yPass, errors };
 }
 
 function walkTree(node: TreeNode, out: TreeNode[] = []): TreeNode[] {
@@ -145,27 +199,48 @@ async function main(): Promise<void> {
     process.exit(2);
   }
   const bin = resolveInterceptorBin();
+  const context = testContextId();
+  if (!context) {
+    console.error("no Interceptor test context: set INTERCEPTOR_TEST_CONTEXT_ID (run bash ~/.claude/skills/Interceptor/Tools/PreflightIsolation.sh first). VerifyDesign never drives an unpinned window.");
+    process.exit(2);
+  }
+  const ctx = ["--context", context];
   const timestamp = new Date().toISOString();
-  await run([bin, "open", resolvedUrl], 60_000);
-  await run([bin, "wait-stable"], 30_000);
+  const viewport = { w: opts.w, h: opts.h, applied: false };
+  const open = await run([bin, "open", resolvedUrl, ...ctx], 60_000);
+  const wait = open.code === 0 ? await run([bin, "wait-stable", ...ctx], 30_000) : null;
+  const notLoaded = loadErrors(open, wait);
+  if (notLoaded.length) {
+    console.log(JSON.stringify({ url, resolvedUrl, viewport, screenshot: null, errors: notLoaded, not_verified: NOT_VERIFIED, pass: false, timestamp }, null, 2));
+    process.exit(1);
+  }
   const shot = join(outDir, `${timestamp.replace(/[:.]/g, "-")}.png`);
   let screenshot: string | null = shot;
   let screenshotError: string | undefined;
-  const s = await run([bin, "screenshot", shot], 30_000);
-  if (s.code !== 0) {
+  // The sanctioned capture: pinned context only, and a blank frame is refused (exit 12) instead of saved as the page.
+  const s = await run(["bash", CAPTURE_SH, "--current", "--out", shot], 90_000);
+  if (s.code !== 0 || !existsSync(shot)) {
     screenshot = null;
     screenshotError = s.stderr || "screenshot failed";
   }
   let a11y: A11yResult | { skipped: true };
   if (opts.a11y) {
-    const tree = await run([bin, "tree", "--json"], 30_000);
+    const tree = await run([bin, "tree", "--json", ...ctx], 30_000);
+    let parsed: TreeNode | null = null;
     if (tree.code === 0) {
-      a11y = a11yFromTree(JSON.parse(tree.stdout) as TreeNode);
+      try {
+        parsed = JSON.parse(tree.stdout) as TreeNode;
+      } catch {
+        parsed = null;
+      }
+    }
+    if (parsed) {
+      a11y = a11yFromTree(parsed);
     } else {
       a11y = {
         engine: "interceptor-tree-heuristic",
         limitations: ["no-contrast-check", "no-dynamic-aria-live-check", "no-css-parsed-check"],
-        violations: [{ type: "tree-unavailable", count: 1, examples: [{ text: tree.stderr || "tree failed" }] }],
+        violations: [{ type: "tree-unavailable", count: 1, examples: [{ text: tree.code === 0 ? "tree output was not JSON" : tree.stderr || "tree failed" }] }],
         pass: false,
       };
     }
@@ -173,14 +248,16 @@ async function main(): Promise<void> {
     a11y = { skipped: true };
   }
   const a11yPass = "skipped" in a11y ? true : a11y.pass;
-  const pass = screenshot !== null && a11yPass;
+  const { pass, errors } = verdict({ open, wait, screenshot, a11yPass });
   const result = {
     url,
     resolvedUrl,
-    viewport: { w: opts.w, h: opts.h },
+    viewport,
     screenshot,
     ...(screenshotError ? { screenshotError } : {}),
+    ...(errors.length ? { errors } : {}),
     a11y,
+    not_verified: NOT_VERIFIED,
     pass,
     timestamp,
   };
@@ -188,4 +265,4 @@ async function main(): Promise<void> {
   process.exit(pass ? 0 : 1);
 }
 
-await main();
+if (import.meta.main) await main();

@@ -1,0 +1,115 @@
+# Fabric BusinessIdeas — every business an input holds or opens up, numbered
+# under "## Extracted Ideas", then the strongest (at most ten) pivoted into an
+# adjacent business under "## Elaborated Ideas", each with one "Differentiator:"
+# and a closing "Pivot from #k."; or the single "None found:" line. The regex
+# asserts pin the literal shape (headings, numbered items, the pivot tag, a
+# named count, no bold, no narration); the judged asserts carry what code
+# cannot: businesses stated as what is sold to whom, faithfulness, no invented
+# numbers, real pivots with concrete edges, specificity, the topic read.
+# Synthetic inline fixtures only.
+name: fabric-businessideas
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/BusinessIdeas.md"
+cases:
+  - id: pasted_source_faithful_pivots
+    prompt: 'extract_business_ideas from this: "Small dental practices in the fictional county of Westmere lose about a fifth of their appointments to no-shows. Many owners tried automated text reminders, but patients ignored them and no-shows did not fall. One practice found that a personal phone call from a person the day before cut its no-shows in half, but its front desk had no time to make the calls. Meanwhile, retired dental hygienists in Westmere say they want a few hours of flexible paid work a week. Practice owners also complain that getting insurance pre-approval for a procedure means hours on hold each week."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: right headings, numbering, Differentiator
+    # and pivot tags, but it sells the automated text reminders the text says
+    # failed, invents a market size the text never gives, pads with a generic
+    # idea, and its "pivots" are the extracted ideas reworded with boasts for
+    # differentiators.
+    adversarial_output: |
+      ## Extracted Ideas
+
+      1. Automated text reminder software helps dental practices reduce no-shows in a market worth four billion dollars.
+      2. An AI-powered scheduling platform helps healthcare businesses manage their appointments more efficiently.
+      3. A staffing agency places dental hygienists in practices that need extra help.
+
+      ## Elaborated Ideas
+
+      1. Smarter automated text reminders for dental practices that want fewer missed appointments. Differentiator: best-in-class technology and an innovative experience. Pivot from #1.
+      2. A next-generation scheduling platform for all kinds of healthcare businesses everywhere. Differentiator: it leverages AI to disrupt the space. Pivot from #2.
+      3. A premium staffing agency that places dental hygienists in busy practices. Differentiator: higher quality hygienists than competitors offer. Pivot from #3.
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Extracted Ideas[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '\n## Elaborated Ideas[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\d+\. [^\n]*Differentiator: [^\n]*Pivot from #\d+\.[ \t]*(?:\n|$)'
+      - type: not-regex
+        weight: 1
+        value: '\*\*'
+      - type: not-regex
+        weight: 1
+        value: '(?:^|\n)\d+\. (?:The|This) (?:author|writer|article|text|piece|source) (?:\w+ )?(?:argues|says|suggests|describes|proposes|notes)'
+      - type: llm-assert
+        weight: 4
+        value: [ "No idea sells automated text reminders as the fix for no-shows; the text says they failed, and any idea touching reminders builds on personal phone calls instead", "One idea is a service that makes the day-before personal reminder calls for practices, and at least one idea connects those calls (or other flexible work) to the retired hygienists who want a few paid hours a week", "One idea addresses the hours practices spend on hold for insurance pre-approval", "No market size, revenue figure or statistic appears that the text did not give", "Every extracted idea names what is sold and to whom, and none is a generic platform that would fit any industry", "Each elaborated idea is a genuinely different adjacent business (a new customer, channel or model), not its extracted idea reworded, and its differentiator names a concrete mechanism rather than a boast" ]
+        reference: 'extract_business_ideas from this: "Small dental practices in the fictional county of Westmere lose about a fifth of their appointments to no-shows. Many owners tried automated text reminders, but patients ignored them and no-shows did not fall. One practice found that a personal phone call from a person the day before cut its no-shows in half, but its front desk had no time to make the calls. Meanwhile, retired dental hygienists in Westmere say they want a few hours of flexible paid work a week. Practice owners also complain that getting insurance pre-approval for a procedure means hours on hold each week."'
+  - id: bare_topic_operator_read
+    prompt: "extract business ideas elder care"
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Extracted Ideas[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '\n## Elaborated Ideas[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\d+\. [^\n]*Differentiator: [^\n]*Pivot from #\d+\.[ \t]*(?:\n|$)'
+      - type: not-regex
+        weight: 1
+        value: '\*\*'
+      - type: llm-assert
+        weight: 4
+        value: [ "Each extracted idea is a concrete business in elder care that names what is sold and to whom (for example the older adult, an adult child caregiver, a care home or an insurer), not a description of the elder-care field or a bare trend", "The ideas reflect real problems an operator in elder care would recognize, such as caregiver shortages, family caregivers' lost time, falls, medication management, or the cost of moving into care", "No precise market size, growth rate or statistic is stated as fact", "Each elaborated idea is an adjacent business built on the same insight as the idea it pivots from, with a differentiator that is a concrete mechanism specific to it", "The words are plain, with no startup jargon such as disrupt, synergy or leverage" ]
+        reference: "extract business ideas elder care"
+  - id: no_business_gets_none_found
+    prompt: 'extract business ideas from this: "Packing list: 3 shirts, 2 pairs of socks, phone charger, passport, toothbrush, rain jacket."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Extracted Ideas[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)None found: \S'
+      - type: not-regex
+        weight: 2
+        value: '## Elaborated Ideas'
+      - type: llm-assert
+        weight: 2
+        value: [ "No business is invented from the packing list; the none line says the input is a list of personal items with no problem, customer or demand to build on" ]
+        reference: 'extract business ideas from this: "Packing list: 3 shirts, 2 pairs of socks, phone charger, passport, toothbrush, rain jacket."'
+  - id: named_count_holds
+    prompt: 'give me 4 business ideas from this: "In the fictional port town of Harlow, the fishing fleet throws away about a third of each catch because the fish are species local shops will not buy. Restaurants in the nearby city say diners now ask for local, unusual fish. The town''s one ice plant closes at noon, so boats landing in the afternoon cannot keep their catch cold. Young people leave Harlow for city jobs, and several boat owners over sixty have no one to take over their boats."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '## Extracted Ideas[ \t]*\n(?:[ \t]*\n)*1\. [^\n]+\n(?:[ \t]*\n)*2\. [^\n]+\n(?:[ \t]*\n)*3\. [^\n]+\n(?:[ \t]*\n)*4\. [^\n]+\n(?:[ \t]*\n)*## Elaborated Ideas'
+      - type: regex
+        weight: 2
+        value: '## Elaborated Ideas[ \t]*\n(?:[ \t]*\n)*1\. [^\n]+\n(?:[ \t]*\n)*2\. [^\n]+\n(?:[ \t]*\n)*3\. [^\n]+\n(?:[ \t]*\n)*4\. [^\n]+\s*$'
+      - type: not-regex
+        weight: 1
+        value: '\*\*'
+      - type: llm-assert
+        weight: 4
+        value: [ "One idea sells the discarded species to city restaurants whose diners want local, unusual fish", "One idea addresses the afternoon catch going warm because the ice plant closes at noon", "The four ideas are the strongest the text supports and each traces to something the text says, with no fact or number the text does not give", "Each elaborated idea pivots from a different extracted idea into a distinct adjacent business with a concrete differentiator" ]
+        reference: 'give me 4 business ideas from this: "In the fictional port town of Harlow, the fishing fleet throws away about a third of each catch because the fish are species local shops will not buy. Restaurants in the nearby city say diners now ask for local, unusual fish. The town''s one ice plant closes at noon, so boats landing in the afternoon cannot keep their catch cold. Young people leave Harlow for city jobs, and several boat owners over sixty have no one to take over their boats."'
+  - id: question_about_the_pattern_answered_directly
+    prompt: "what does extract_business_ideas give me, and how is it different from extract_ideas?"
+    assert:
+      - type: not-regex
+        weight: 2
+        value: '^\s*## Extracted Ideas'
+      - type: llm-assert
+        weight: 3
+        value: [ "The response answers the question directly in prose rather than producing idea lists", "It says extract_business_ideas gives the businesses an input holds plus the strongest ones pivoted into adjacent businesses with a differentiator, while extract_ideas gives every idea a source holds, business or not" ]
+        reference: "what does extract_business_ideas give me, and how is it different from extract_ideas?"

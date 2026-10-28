@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { ApiError, apiFetch, apiQuery, useApi } from "@/lib/api";
 import {
   Workflow,
   ArrowRight,
@@ -104,9 +106,9 @@ const STAGE_META: Record<Stage, { label: string; dim: Dim; desc: string }> = {
 const FLOW: { name: string; desc: string; dim: Dim; files: string[] }[] = [
   { name: "Load", desc: "System prompt (constitutional, wins conflicts) + CLAUDE.md @-imports + hook-injected context and memory.", dim: "creative", files: ["system-prompt", "claude-md", "load-context-hook", "load-memory-hook"] },
   { name: "Judge", desc: "Trivial turn or a run? Discovered from the work, never a rubric. A principal depth directive outranks judgment.", dim: "freedom", files: ["doctrine", "nudge-hook"] },
-  { name: "Articulate", desc: "Done gets written down first: an ISA whose claims each name the probe that would falsify them, plus anti-claims.", dim: "money", files: ["isa-format", "isa-skill"] },
+  { name: "Articulate", desc: "Done gets written down first: an ISA whose criteria each name the probe that would falsify them, plus anti-criteria.", dim: "money", files: ["isa-format", "isa-skill"] },
   { name: "Climb", desc: "Build against the ISA. Skills, agents, research as needed; deterministic nudges fire the moment a question is answerable.", dim: "relationships", files: ["nudge-hook", "isasync-hook"] },
-  { name: "Verify", desc: "No claim closes without tool evidence of the right modality. Hooks block mechanically; 'should work' is forbidden.", dim: "ok", files: ["verification-gate", "verification-expanded", "checkpoint-hook"] },
+  { name: "Verify", desc: "No criterion closes without tool evidence of the right modality. Hooks block mechanically; 'should work' is forbidden.", dim: "ok", files: ["verification-gate", "verification-expanded", "checkpoint-hook"] },
   { name: "Learn", desc: "The run leaves a trail: ISA deltas, reflections, learnings routed to where they structurally live.", dim: "health", files: ["self-healing", "changelog"] },
   { name: "Respond", desc: "The ONE output format — answer first, CHANGE/VERIFY evidence when work mutated things. Gated on Stop.", dim: "blue", files: ["system-prompt", "format-gate", "stop-gates"] },
 ];
@@ -126,10 +128,31 @@ function ago(ts: string | null | undefined): string {
 }
 const kb = (n: number) => (n >= 1024 ? `${(n / 1024).toFixed(1)}k` : `${n}`);
 
+/** Error text as the page showed it: the server's own message when it sent one, else "HTTP <status>". */
+function errMsg(e: unknown): string {
+  if (e instanceof ApiError) {
+    try {
+      const out = JSON.parse(e.body);
+      if (out?.error) return String(out.error);
+    } catch { /* not JSON */ }
+    return `HTTP ${e.status}`;
+  }
+  return String((e as { message?: string } | null)?.message ?? e);
+}
+
 export default function AlgorithmPage() {
-  const [data, setData] = useState<AlgoData | null>(null);
-  const [evals, setEvals] = useState<{ suite: string; passed: boolean; pass_to_k: number; cases: unknown[] }[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  // While an explanation regenerate runs, the page polls faster until the server reports it finished.
+  const [regenerating, setRegenerating] = useState(false);
+  const regenStartedRef = useRef(0);
+  const tabQ = useApi<AlgoData>("/api/algorithm-tab", { refetchInterval: regenerating ? 5000 : REFRESH_MS });
+  const evalsQ = useApi<{ suites?: { suite: string; passed: boolean; pass_to_k: number; cases: unknown[] }[] }>("/api/evals", { refetchInterval: REFRESH_MS });
+  const data: AlgoData | null = tabQ.data ?? null;
+  const evals = evalsQ.data ? evalsQ.data.suites ?? [] : null;
+  // Errors from actions (regenerate) clear on the next good refresh; a failed refresh shows until one succeeds.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error = actionError ?? (tabQ.isError ? errMsg(tabQ.error) : null);
+  useEffect(() => { if (tabQ.data) setActionError(null); }, [tabQ.data, tabQ.dataUpdatedAt]);
   const [tab, setTab] = useState<TabId>("files");
 
   // files state
@@ -147,35 +170,15 @@ export default function AlgorithmPage() {
   const [docBump, setDocBump] = useState<"patch" | "feature">("patch");
   const [docNote, setDocNote] = useState("");
 
-  const [regenerating, setRegenerating] = useState(false);
-  // The regenerate poll starts in a click handler, not an effect — hold its id
-  // so unmount can clear it (it otherwise runs for up to 15 minutes).
-  // ported from public PR #1735, @elhoim
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
-
-  const load = useCallback(() => {
-    fetch("/api/algorithm-tab")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d) => { setData(d); setError(null); })
-      .catch((e) => setError(String(e?.message ?? e)));
-  }, []);
-
+  // The regenerate poll is the query's faster refetchInterval; it ends when the server says it is done or after 15 minutes.
   useEffect(() => {
-    load();
-    const t = setInterval(load, REFRESH_MS);
-    return () => clearInterval(t);
-  }, [load]);
+    if (!regenerating || !tabQ.data) return;
+    if (tabQ.dataUpdatedAt <= regenStartedRef.current) return;
+    if (!tabQ.data.generating || Date.now() - regenStartedRef.current > 15 * 60_000) setRegenerating(false);
+  }, [regenerating, tabQ.data, tabQ.dataUpdatedAt]);
 
-  useEffect(() => {
-    const loadEvals = () => fetch("/api/evals")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setEvals(d?.suites ?? []))
-      .catch(() => {});
-    loadEvals();
-    const t = setInterval(loadEvals, REFRESH_MS);
-    return () => clearInterval(t);
-  }, []);
+  const { refetch: refetchTab } = tabQ;
+  const load = useCallback(() => { void refetchTab(); }, [refetchTab]);
 
   useEffect(() => {
     const h = window.location.hash.replace("#", "");
@@ -193,10 +196,10 @@ export default function AlgorithmPage() {
   const loadFile = useCallback((id: string, version?: string | null) => {
     setFileLoading(true);
     const qs = version ? `?id=${id}&version=${version}` : `?id=${id}`;
-    return fetch(`/api/algorithm-tab/file${qs}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    return queryClient
+      .fetchQuery<FilePayload>({ ...apiQuery<FilePayload>(`/api/algorithm-tab/file${qs}`), staleTime: 0 })
       .finally(() => setFileLoading(false));
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     if (tab !== "files") return;
@@ -204,7 +207,7 @@ export default function AlgorithmPage() {
     setSaveMsg(null);
     loadFile(selectedId, isDoctrine ? doctrineVersion : null)
       .then(setFile)
-      .catch((e) => setSaveMsg(String(e?.message ?? e)));
+      .catch((e) => setSaveMsg(errMsg(e)));
   }, [tab, selectedId, doctrineVersion, isDoctrine, loadFile]);
 
   const selectedSpec = useMemo(() => data?.chain.find((c) => c.id === selectedId) ?? null, [data, selectedId]);
@@ -222,20 +225,17 @@ export default function AlgorithmPage() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      const r = await fetch("/api/algorithm-tab/file", {
+      const out = await apiFetch<any>("/api/algorithm-tab/file", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: selectedId, content: draft, expectedMtime: file.mtime }),
       });
-      const out = await r.json();
-      if (!r.ok) { setSaveMsg(out.error ?? `HTTP ${r.status}`); return; }
       setSaveMsg(`Saved · commit ${out.commit?.detail ?? "n/a"}`);
       setEditing(false);
       const fresh = await loadFile(selectedId);
       setFile(fresh);
       load();
-    } catch (e: any) {
-      setSaveMsg(String(e?.message ?? e));
+    } catch (e) {
+      setSaveMsg(errMsg(e));
     } finally {
       setSaving(false);
     }
@@ -245,13 +245,10 @@ export default function AlgorithmPage() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      const r = await fetch("/api/algorithm-tab/doctrine", {
+      const out = await apiFetch<any>("/api/algorithm-tab/doctrine", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: draft, bump: docBump, note: docNote }),
       });
-      const out = await r.json();
-      if (!r.ok) { setSaveMsg(out.error ?? `HTTP ${r.status}`); return; }
       setSaveMsg(`v${out.previous} → v${out.version} · ${out.commit?.committed ? `commit ${out.commit.detail}` : out.commit?.detail}`);
       setEditing(false);
       setDocNote("");
@@ -259,38 +256,21 @@ export default function AlgorithmPage() {
       const fresh = await loadFile("doctrine");
       setFile(fresh);
       load();
-    } catch (e: any) {
-      setSaveMsg(String(e?.message ?? e));
+    } catch (e) {
+      setSaveMsg(errMsg(e));
     } finally {
       setSaving(false);
     }
   };
 
   const regenerate = async () => {
+    regenStartedRef.current = Date.now();
     setRegenerating(true);
     try {
-      const r = await fetch("/api/algorithm-tab/summary/regenerate", { method: "POST" });
-      if (!r.ok && r.status !== 202) {
-        const out = await r.json().catch(() => ({}));
-        setError(out.error ?? `regenerate failed: HTTP ${r.status}`);
-        setRegenerating(false);
-        return;
-      }
-      const startedAt = Date.now();
-      const poll = setInterval(async () => {
-        try {
-          const d = await fetch("/api/algorithm-tab").then((x) => x.json());
-          setData(d);
-          if (!d.generating || Date.now() - startedAt > 15 * 60_000) {
-            clearInterval(poll);
-            pollRef.current = null;
-            setRegenerating(false);
-          }
-        } catch { /* keep polling */ }
-      }, 5000);
-      pollRef.current = poll;
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
+      // 202 Accepted is the normal answer; the body is not needed.
+      await apiFetch<string>("/api/algorithm-tab/summary/regenerate", { method: "POST", parse: "text" });
+    } catch (e) {
+      setActionError(e instanceof ApiError ? errMsg(e).replace(/^HTTP (\d+)$/, "regenerate failed: HTTP $1") : errMsg(e));
       setRegenerating(false);
     }
   };
@@ -618,7 +598,7 @@ export default function AlgorithmPage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-            <StatTile icon={ScrollText} label="Claims" value={data.claims.total} dim="money" sub="what must be true when a run completes" />
+            <StatTile icon={ScrollText} label="Criteria" value={data.claims.total} dim="money" sub="what must be true when a run completes" />
             <StatTile icon={ShieldCheck} label="Hook" value={data.claims.hook} dim="err" sub="teeth that block mechanically — no honor system" />
             <StatTile icon={Eye} label="Check" value={data.claims.check} dim="ok" sub="gates the run executes and records" />
             <StatTile icon={FileText} label="Self" value={data.claims.self} dim="freedom" sub="honest self-attestation, watched for decay" />

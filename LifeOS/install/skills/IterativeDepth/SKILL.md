@@ -1,61 +1,54 @@
 ---
 name: IterativeDepth
-version: 1.1.16
+evals:
+  manual:
+    reason: "the usefulness of successive analytical lenses depends on whether they reveal real requirements for the supplied problem"
+    falsifier: "the reviewer finds the passes repeat one lens, miss a material edge case, or produce unsupported criteria"
+metadata:
+  short-description: "Explore a problem through multiple analytical lenses to uncover requirements and edge cases. Use ApertureOscillation for tactical/strategic zoom."
+version: 1.2.1
 description: "Structured multi-angle exploration running 2-8 sequential passes over the same problem, each through a different scientific lens, to surface hidden requirements and edge cases invisible from one angle; each pass yields new ISC criteria. USE WHEN iterative depth, explore deeper, multi-angle analysis, surface hidden requirements, blind spot check, what am I missing. NOT FOR scope/zoom analysis (use ApertureOscillation)."
 ---
 
-## Customization
-
-**Before executing, check for user customizations at:**
-`~/.claude/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/IterativeDepth/`
-
-If this directory exists, load and apply any PREFERENCES.md, configurations, or resources found there. These override default behavior. If the directory does not exist, proceed with skill defaults.
-
-
 # IterativeDepth
 
-## What It Does
+IterativeDepth examines one problem through several structurally different lenses (literal, stakeholder, failure, temporal and more) and merges what each angle surfaces into ISC criteria a single pass misses. The method rests on 20 established techniques across cognitive science, AI/ML, requirements engineering and design thinking (`ScientificFoundation.md`).
 
-IterativeDepth examines one problem through several structurally different lenses — literal, stakeholder, failure, temporal, and more — merging what each angle surfaces into ISC criteria a single pass misses. Grounded in 20 established techniques across cognitive science, AI/ML, requirements engineering, and design thinking (see `ScientificFoundation.md`).
+## Ideal State
 
-## The Deliverable
+- A run returns ISC criteria and anti-criteria that a single pass over the same problem would have missed, each one binary-testable and deduplicated across lenses.
+- The lenses fit the problem (a security problem leans on the failure and adversary angles, a UX problem on the experiential one). A run uses between two and eight passes and ends once a pass only repeats earlier findings, usually by about the fifth.
+- The result names the lenses used and the cross-angle finding that only appeared because two lenses collided.
 
-A done run produces:
+## Intent Routing
 
-- **A deduplicated ISC set** — each criterion binary-testable, 8-12 words, phrased as a state not an action. No two criteria restate each other.
-- **Refinements** to existing criteria, each noting what changed and why.
-- **Anti-criteria** — failure modes that must NOT happen.
-- **At least one surprising cross-angle finding** — a requirement that only appeared because two lenses collided. A run that surfaces nothing a single pass would have missed added no value.
+| Intent | Trigger | File |
+|--------|---------|------|
+| **Explore** | "iterative depth", "explore deeper", "multi-angle" | `Intents/Explore.md` |
 
-Passes stop when a new lens repeats what earlier lenses already found. Non-redundant angles are what matter; more angles for their own sake are not.
+| File | Read when |
+|------|-----------|
+| `TheLenses.md` | choosing lenses: the catalog of eight exploration angles, concrete to abstract, each with its question, grounding and example prompt |
+| `ScientificFoundation.md` | justifying the method or explaining why multi-lens passes work: the 20 techniques it rests on and how it differs from CS iterative deepening |
 
-## The Lenses
+## Data & Config
 
-`TheLenses.md` is a catalog of eight exploration angles. Draw from it — pick the lenses the problem calls for, in whatever order, as many as earn their keep. No fixed count, no prescribed sequence: a security problem leans on the failure and adversary angles, a UX problem on the experiential one. Let the problem select the lenses.
-
-## Workflow Routing
-
-| Workflow | Trigger | File |
-|----------|---------|------|
-| Explore | "iterative depth", "explore deeper", "multi-angle" | `Workflows/Explore.md` |
-
-## Reference
-
-- Lens catalog: `TheLenses.md`
-- Scientific grounding: `ScientificFoundation.md`
+User customizations live at `<configRoot>/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/IterativeDepth/` (`configRoot` is `$CLAUDE_CONFIG_DIR` when set, else `~/.claude`). When that directory exists, its PREFERENCES.md, configurations and resources override the defaults; when it is absent, the defaults stand.
 
 ## Gotchas
 
-- **2-8 lens passes, not infinite.** Diminishing returns after ~5 passes for most topics.
-- **Each pass should surface genuinely NEW requirements, not restate previous findings.** If passes start repeating, stop early.
-- **This is a BPE-fragile skill.** Monitor whether smarter models make it unnecessary. Quarterly test recommended.
+None reproduced yet.
 
-## Execution Log
+## Examples
 
-After completing any workflow, append a single JSONL entry:
-
-```bash
-echo '{"ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","skill":"IterativeDepth","workflow":"WORKFLOW_USED","input":"8_WORD_SUMMARY","status":"ok|error","duration_s":SECONDS}' >> ~/.claude/LIFEOS/MEMORY/SKILLS/execution.jsonl
+```
+User: "Inline, no agents: 3 quick passes over the issue-security route design (private vs public)"
+→ Explore intent
+→ Three lenses run inline; new criteria and anti-criteria for each route outcome, with the cross-angle finding
 ```
 
-Replace `WORKFLOW_USED` with the workflow executed, `8_WORD_SUMMARY` with a brief input description, and `SECONDS` with approximate wall-clock time. Log `status: "error"` if the workflow failed.
+```
+User: "What am I missing in this ISA coordination design?"
+→ Explore intent
+→ Criteria and anti-criteria the design lacked and existing criteria refined, with the lenses named, returned to the user
+```

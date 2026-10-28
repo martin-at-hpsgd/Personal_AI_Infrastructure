@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.22
  * MemoryTypes — frozen type registry for LifeOS's unified memory subsystem.
  *
  * LifeOS autonomic memory subsystem, F12.
@@ -13,7 +14,7 @@
  * Four initial types. Extensible by adding a registry entry — no other code
  * changes required.
  *
- *   memory     — durable fact about {{PRINCIPAL_NAME}} or {{DA_NAME}} (hot-layer, always loaded)
+ *   memory     — durable fact about the principal or the assistant (hot-layer, always loaded)
  *   idea       — captured thought / insight (loads on relevance)
  *   knowledge  — entity note: person / company / research (loads on relevance)
  *   proposal   — low-confidence identity edit awaiting principal approval
@@ -35,12 +36,14 @@
  *   bun MemoryTypes.ts test                # smoke test
  */
 
-import { resolve as pathResolve, join as pathJoin } from "node:path";
+import { resolve as pathResolve, join as pathJoin, dirname as pathDirname, basename as pathBasename } from "node:path";
 import { homedir } from "node:os";
+import { existsSync, realpathSync } from "node:fs";
+import { getClaudeDir } from "./Paths"; // public issue #1665 @rogdex24, #1584 @ramazanpolat — aliased resolve sites missed by the 09-03 sweep
 
 // ── Paths ──
 
-const CLAUDE_ROOT = pathResolve(homedir(), ".claude");
+const CLAUDE_ROOT = getClaudeDir();
 const LIFEOS_DIR = pathJoin(CLAUDE_ROOT, "LIFEOS");
 const KNOWLEDGE_DIR = pathJoin(LIFEOS_DIR, "MEMORY", "KNOWLEDGE");
 
@@ -63,7 +66,7 @@ export const WRITINGSTYLE_PATH = pathJoin(LIFEOS_DIR, "USER", "PRINCIPAL", "WRIT
 export const RESUME_PATH = pathJoin(LIFEOS_DIR, "USER", "PRINCIPAL", "RESUME.md");
 export const DEFINITIONS_PATH = pathJoin(LIFEOS_DIR, "USER", "DEFINITIONS.md");
 export const CANONICAL_CONTENT_PATH = pathJoin(LIFEOS_DIR, "USER", "CANONICAL_CONTENT.md");
-export const OPERATIONAL_RULES_PATH = pathJoin(LIFEOS_DIR, "USER", "CONFIG", "OPERATIONAL_RULES.md");
+export const OPERATIONAL_PREFERENCES_PATH = pathJoin(LIFEOS_DIR, "USER", "CONFIG", "OPERATIONAL_PREFERENCES.md");
 export const PROJECTS_PATH = pathJoin(LIFEOS_DIR, "USER", "PROJECTS.md");
 export const CONTACTS_PATH = pathJoin(LIFEOS_DIR, "USER", "CONTACTS.md");
 
@@ -102,9 +105,19 @@ export interface MemoryItem {
   content?: string;
   /** Full desired entry list — used by op:"set" (REPLACES the file). */
   entries?: string[];
+  /**
+   * Declares this op:"set" a DELIBERATE consolidation (merge related entries,
+   * drop the stalest), which is the one case allowed to net-drop entries past
+   * MemoryWriter's erosion guard. Honored only at/above CONSOLIDATE_THRESHOLD
+   * occupancy — below that it is ignored, so it can never become a general
+   * erosion bypass (public issue #1905, @ksjayeshks).
+   */
+  consolidate?: boolean;
   /** How this fact is known. Defaults to "explicit" when absent. */
   provenance?: Provenance;
   confidence?: number;
+  /** Harness session that produced this item — threads to the ledger row for provenance. */
+  source_session?: string;
 }
 
 export interface IdeaItem {
@@ -177,7 +190,7 @@ export type ProposalTargetKind =
   | "definition"          // DEFINITIONS.md
   | "canonical-content"   // CANONICAL_CONTENT.md
   | "resume"              // RESUME.md
-  | "operational-rule"    // CONFIG/OPERATIONAL_RULES.md
+  | "operational-rule"    // CONFIG/OPERATIONAL_PREFERENCES.md
   | "projects"            // PROJECTS.md (Tier B; propose first-time additions)
   | "contacts";           // CONTACTS.md (Tier B; propose first-time additions)
 
@@ -197,7 +210,7 @@ export const PROPOSAL_KIND_TO_FILES: Readonly<Record<ProposalTargetKind, readonl
   definition:           Object.freeze([DEFINITIONS_PATH]),
   "canonical-content":  Object.freeze([CANONICAL_CONTENT_PATH]),
   resume:               Object.freeze([RESUME_PATH]),
-  "operational-rule":   Object.freeze([OPERATIONAL_RULES_PATH]),
+  "operational-rule":   Object.freeze([OPERATIONAL_PREFERENCES_PATH]),
   projects:             Object.freeze([PROJECTS_PATH]),
   contacts:             Object.freeze([CONTACTS_PATH]),
 });
@@ -222,11 +235,51 @@ export const ALWAYS_LOADED_KINDS: ReadonlySet<ProposalTargetKind> = Object.freez
  * proposal was rejected for the tilde alone). Expand it before any allowlist
  * comparison; the allowlist itself stays absolute.
  */
+/** Every allowlisted target across every kind — the gate's whole vocabulary. */
+const ALL_ALLOWED_TARGETS: readonly string[] = Object.freeze(Object.values(PROPOSAL_KIND_TO_FILES).flat());
+
 export function normalizeProposalTargetFile(targetFile: string): string {
-  if (targetFile === "~" || targetFile.startsWith("~/")) {
-    return pathJoin(homedir(), targetFile.slice(1));
+  // The reviewer also pads target_file with whitespace (public issue #2047, @aveneri).
+  const t = targetFile.trim();
+  if (t === "~" || t.startsWith("~/")) {
+    return pathJoin(homedir(), t.slice(1));
   }
-  return targetFile;
+  // A repo-relative path ("LIFEOS/USER/.../DA_IDENTITY.md") names a real
+  // allowlisted file but never matched the absolute allowlist, so the reviewer's
+  // proposal was rejected as "not an allowed target" (2026-08-19: a DA_IDENTITY
+  // proposal died this way while the self-test passed, because the test only
+  // ever supplied the ~-prefixed form). Resolve it against the repo root so both
+  // spellings compare equal. LEXICAL here: the allowlist stores the
+  // ~/.claude/LIFEOS/USER/... spelling, and USER is a symlink, so dereferencing
+  // would rewrite the path out of the allowlist (pinProposalTargetFile does the
+  // realpath comparison, and returns the allowlist spelling). This widens the
+  // accepted SPELLINGS, never the allowed FILES — the exact-match check below is
+  // still the gate, and a traversal resolves to something not on the list.
+  // The reviewer also emits the LIFEOS-relative form ("USER/.../DA_IDENTITY.md",
+  // public issue #2047, @aveneri): try both roots, take the first that lands on
+  // the allowlist, else keep the repo-root resolution so the gate rejects it.
+  if (!t.startsWith("/")) {
+    const candidates = [pathResolve(CLAUDE_ROOT, t), pathResolve(LIFEOS_DIR, t)];
+    return candidates.find((c) => ALL_ALLOWED_TARGETS.includes(c)) ?? candidates[0];
+  }
+  return t;
+}
+
+/**
+ * realpath of the closest existing ancestor plus the remaining segments, so a
+ * path whose file does not exist yet still canonicalizes its directory. Falls
+ * back to the input when nothing on the path exists or realpath fails.
+ */
+function realpathLenient(p: string): string {
+  let dir = p;
+  const rest: string[] = [];
+  while (!existsSync(dir)) {
+    const parent = pathDirname(dir);
+    if (parent === dir) return p;
+    rest.unshift(pathBasename(dir));
+    dir = parent;
+  }
+  try { return pathJoin(realpathSync(dir), ...rest); } catch { return p; }
 }
 
 /**
@@ -258,7 +311,7 @@ export function inferProposalKind(targetFile: string): ProposalTargetKind {
  */
 export function pinProposalTargetFile(kind: ProposalTargetKind, suppliedTargetFile: string): string | null {
   const allowed = PROPOSAL_KIND_TO_FILES[kind];
-  // Default-deny for an unknown/unmapped kind (Max review 2026-08-10, INFO #1):
+  // Default-deny for an unknown/unmapped kind (Astra review 2026-08-10, INFO #1):
   // PROPOSAL_KIND_TO_FILES is exhaustive over ProposalTargetKind and every entry
   // is non-empty, so this branch is only reachable via a runtime string that
   // isn't a real kind (e.g. a hand-written queue row). Passing its supplied path
@@ -267,7 +320,15 @@ export function pinProposalTargetFile(kind: ProposalTargetKind, suppliedTargetFi
   if (!allowed || allowed.length === 0) return null;
   if (allowed.length === 1) return allowed[0];
   const normalized = normalizeProposalTargetFile(suppliedTargetFile);
-  return allowed.includes(normalized) ? normalized : null;
+  if (allowed.includes(normalized)) return normalized;
+  // The symlink-target spelling (~/.config/LIFEOS/USER/... when LIFEOS/USER is a
+  // link) names the same physical file as an allowlist entry but never matched it
+  // (public issue #1951, @hjbrandt, @bnkath2o). Compare realpaths on BOTH sides
+  // and hand back the ALLOWLIST spelling, never the resolved one, so the gate's
+  // vocabulary is unchanged: this widens accepted spellings, not allowed files.
+  // A traversal or a foreign path resolves to something no entry resolves to.
+  const real = realpathLenient(normalized);
+  return allowed.find((a) => realpathLenient(a) === real) ?? null;
 }
 
 export function isKnownProposalKind(k: string): k is ProposalTargetKind {
@@ -309,8 +370,11 @@ export interface TypeRegistryEntry {
 // ── Helpers ──
 
 const SLUG_RE = /[^a-z0-9]+/g;
-function slugify(s: string): string {
-  return s.trim().toLowerCase().replace(SLUG_RE, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "untitled";
+// Exported for LIFEOS/TOOLS/MemoryTypes.test.ts — the Unicode cases used to run
+// against a copy of this body, so reverting the NFKD fix here left them green.
+export function slugify(s: string): string {
+  // Strip diacritics first so "ação" → "acao", not "a-o" (public issue #2131, @drpaulobernardy).
+  return s.trim().toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "").replace(SLUG_RE, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "untitled";
 }
 
 function entityTypeToSubdir(et: EntityType): string {
@@ -507,14 +571,14 @@ function smokeTest(): number {
     PROPOSAL_KIND_TO_FILES.identity.includes(PRINCIPAL_IDENTITY_PATH) &&
     PROPOSAL_KIND_TO_FILES.identity.includes(DA_IDENTITY_PATH));
   check("style → WRITINGSTYLE only", PROPOSAL_KIND_TO_FILES.style.length === 1 && PROPOSAL_KIND_TO_FILES.style[0] === WRITINGSTYLE_PATH);
-  check("operational-rule → OPERATIONAL_RULES only", PROPOSAL_KIND_TO_FILES["operational-rule"][0] === OPERATIONAL_RULES_PATH);
+  check("operational-rule → OPERATIONAL_PREFERENCES only", PROPOSAL_KIND_TO_FILES["operational-rule"][0] === OPERATIONAL_PREFERENCES_PATH);
 
   // 14. Reverse inference: target_file → kind
   check("infer: PRINCIPAL_IDENTITY → identity",   inferProposalKind(PRINCIPAL_IDENTITY_PATH) === "identity");
   check("infer: DA_IDENTITY → identity",          inferProposalKind(DA_IDENTITY_PATH) === "identity");
   check("infer: WRITINGSTYLE → style",            inferProposalKind(WRITINGSTYLE_PATH) === "style");
   check("infer: DEFINITIONS → definition",        inferProposalKind(DEFINITIONS_PATH) === "definition");
-  check("infer: OPERATIONAL_RULES → operational-rule", inferProposalKind(OPERATIONAL_RULES_PATH) === "operational-rule");
+  check("infer: OPERATIONAL_PREFERENCES → operational-rule", inferProposalKind(OPERATIONAL_PREFERENCES_PATH) === "operational-rule");
   check("infer: PROJECTS → projects",             inferProposalKind(PROJECTS_PATH) === "projects");
   check("infer: CONTACTS → contacts",             inferProposalKind(CONTACTS_PATH) === "contacts");
   check("infer: unknown path defaults to identity (legacy compat)",
@@ -524,12 +588,42 @@ function smokeTest(): number {
   check("pin: tilde-prefixed DA_IDENTITY pins to the absolute canonical path",
     pinProposalTargetFile("identity", "~/.claude/LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md") === DA_IDENTITY_PATH);
   check("pin: out-of-set identity path still rejected after normalization",
-    pinProposalTargetFile("identity", "~/.claude/evil.md") === null);
+pinProposalTargetFile("identity", "~/.claude/evil.md") === null); // Test fixture path; not shipped.
+  // 2026-08-19: the reviewer emits repo-relative target_file paths. This suite
+  // only ever exercised the ~-prefixed spelling, so it stayed green while every
+  // such proposal was rejected as "not an allowed target".
+  check("pin: repo-relative identity path resolves (DA_IDENTITY)",
+    pinProposalTargetFile("identity", "LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md") === DA_IDENTITY_PATH);
+  check("pin: repo-relative identity path resolves (PRINCIPAL_IDENTITY)",
+    pinProposalTargetFile("identity", "LIFEOS/USER/PRINCIPAL/PRINCIPAL_IDENTITY.md") === PRINCIPAL_IDENTITY_PATH);
+  check("pin: repo-relative traversal still rejected",
+    pinProposalTargetFile("identity", "LIFEOS/../../../etc/passwd") === null);
+  // public issues #1951 (@hjbrandt, @bnkath2o) + #2047 (@aveneri): the trimmed,
+  // LIFEOS-relative (USER/...), and symlink-target spellings all name the same
+  // allowlisted file, and every one of them must come back as the ALLOWLIST spelling.
+  check("pin: whitespace-padded target trims",
+    pinProposalTargetFile("identity", "  LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md \n") === DA_IDENTITY_PATH);
+  check("pin: LIFEOS-relative USER/... resolves (DA_IDENTITY)",
+    pinProposalTargetFile("identity", "USER/DIGITAL_ASSISTANT/DA_IDENTITY.md") === DA_IDENTITY_PATH);
+  check("pin: LIFEOS-relative traversal still rejected",
+    pinProposalTargetFile("identity", "USER/../../etc/passwd") === null);
+  check("infer: LIFEOS-relative target infers its kind",
+    inferProposalKind("USER/CONFIG/OPERATIONAL_PREFERENCES.md") === "operational-rule");
+  {
+    let realUser: string | null = null;
+    try { realUser = realpathSync(pathJoin(LIFEOS_DIR, "USER")); } catch { /* no USER dir on this machine: the two checks below are moot */ }
+    if (realUser) {
+      check("pin: symlink-target spelling returns the allowlist spelling",
+        pinProposalTargetFile("identity", pathJoin(realUser, "DIGITAL_ASSISTANT", "DA_IDENTITY.md")) === DA_IDENTITY_PATH);
+      check("pin: symlink-target sibling outside the set still rejected",
+        pinProposalTargetFile("identity", pathJoin(realUser, "evil.md")) === null);
+    }
+  }
 
   // 14b. pinProposalTargetFile — single-file kinds pin (supplied path ignored),
   //      identity validates within its set, out-of-set identity → null (reject).
   check("pin: operational-rule ignores a hallucinated path → canonical",
-    pinProposalTargetFile("operational-rule", "/Users/anyone/LifeOS/USER/CONFIG/OPERATIONAL_RULES.md") === OPERATIONAL_RULES_PATH);
+    pinProposalTargetFile("operational-rule", "/opt/hallucinated/LifeOS/USER/CONFIG/OPERATIONAL_PREFERENCES.md") === OPERATIONAL_PREFERENCES_PATH);
   check("pin: style ignores any supplied path → canonical",
     pinProposalTargetFile("style", "/tmp/whatever.md") === WRITINGSTYLE_PATH);
   check("pin: identity keeps an in-set path (PRINCIPAL_IDENTITY)",

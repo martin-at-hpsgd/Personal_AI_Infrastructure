@@ -1,4 +1,5 @@
 /**
+ * @version 1.7.22
  * Central Identity Loader — the one module hooks and tools import for DA
  * (Digital Assistant) and Principal identity.
  *
@@ -23,24 +24,25 @@ import {
   type LifeosPrincipal,
 } from '../../LIFEOS/TOOLS/LifeosConfig';
 import { homedir } from "node:os";
+import { getClaudeDir, lifeosPath } from "./paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // HOME ?? USERPROFILE: Windows defines only the latter (public issue #1694, @dissembler21-png)
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const SETTINGS_PATH = join(HOME, '.claude/settings.json');
+const SETTINGS_PATH = join(getClaudeDir(), 'settings.json');
 
 // Identity-file paths derive from LifeosConfig's userDir. On fresh installs where
 // LIFEOS_CONFIG.toml hasn't been created yet, fall back to the conventional
 // LIFEOS/USER/ location so identity loading still bootstraps. Lazy try/catch so
 // a malformed LifeosConfig never breaks identity bootstrap.
-function paiUserDir(): string {
+function lifeosUserDir(): string {
   try {
     return loadLifeosConfig().paths.userDir;
   } catch {
-    return join(HOME, '.claude/LIFEOS/USER');
+    return lifeosPath('USER');
   }
 }
-const DA_IDENTITY_PATH = join(paiUserDir(), 'DIGITAL_ASSISTANT/DA_IDENTITY.md');
-const PRINCIPAL_IDENTITY_PATH = join(paiUserDir(), 'PRINCIPAL/PRINCIPAL_IDENTITY.md');
+const DA_IDENTITY_PATH = join(lifeosUserDir(), 'DIGITAL_ASSISTANT/DA_IDENTITY.md');
+const PRINCIPAL_IDENTITY_PATH = join(lifeosUserDir(), 'PRINCIPAL/PRINCIPAL_IDENTITY.md');
 
 const DEFAULT_IDENTITY = {
   name: 'LifeOS',
@@ -56,12 +58,30 @@ const DEFAULT_PRINCIPAL = {
   timezone: 'UTC',
 };
 
+/**
+ * The identity values the shipped scaffold config carries verbatim
+ * (the shipped USER configuration template). They are
+ * non-empty, so an emptiness-only guard treats them as a real answer and a
+ * never-interviewed install resolves to a DA named "Aria" addressing a
+ * principal named "Your Name" — with nothing failing.
+ *
+ * Anything in this set means "the principal has not answered yet": callers
+ * treat it as absent and fall through to the legacy chain / defaults.
+ *
+ * public issue #1885, @MatiasBarboza
+ */
+export const SCAFFOLD_SENTINELS: ReadonlySet<string> = new Set([
+  'Your Name',              // [principal] name
+  'Aria',                   // [da] name
+  '21m00Tcm4TlvDq8ikWAM',   // [da.voices.main] voice_id (the shipped scaffold's placeholder)
+]);
+
+/** True when a config value is still the shipped scaffold placeholder. */
+export function isScaffoldSentinel(value: string | null | undefined): boolean {
+  return typeof value === 'string' && SCAFFOLD_SENTINELS.has(value.trim());
+}
+
 export interface VoiceProsody {
-  stability: number;
-  similarityBoost: number;
-  style: number;
-  speed: number;
-  useSpeakerBoost: boolean;
   volume?: number;
 }
 
@@ -150,14 +170,7 @@ function loadSettings(): Settings {
 
 function mapFrontmatterVoice(v: any): VoiceProsody | undefined {
   if (!v) return undefined;
-  return {
-    stability: v.stability ?? 0,
-    similarityBoost: v.similarity_boost ?? v.similarityBoost ?? 0,
-    style: v.style ?? 0,
-    speed: v.speed ?? 1,
-    useSpeakerBoost: v.use_speaker_boost ?? v.useSpeakerBoost ?? false,
-    volume: v.volume,
-  };
+  return { volume: v.volume };
 }
 
 function mapFrontmatterPersonality(traits: any, baseVoice: string | undefined): VoicePersonality | undefined {
@@ -203,9 +216,13 @@ export function getIdentity(): Identity {
   } catch {
     return base; // no config yet (fresh install) — legacy chain governs
   }
-  if (!da?.name) return base;
+  // Empty AND still-scaffold both mean unanswered (public issue #1885, @MatiasBarboza).
+  if (!da?.name || isScaffoldSentinel(da.name)) return base;
 
-  const main = da.voices?.main;
+  // The voice block is judged separately: a renamed DA can still be carrying the
+  // scaffold's public default voice_id, which is not this DA's voice.
+  const configured = da.voices?.main;
+  const main = configured && !isScaffoldSentinel(configured.voiceId) ? configured : undefined;
   return {
     ...base,
     name: da.name,
@@ -213,16 +230,7 @@ export function getIdentity(): Identity {
     displayName: da.displayName || da.name,
     color: da.color || base.color,
     mainDAVoiceID: main?.voiceId || base.mainDAVoiceID,
-    voice: main
-      ? {
-          stability: main.stability ?? 0,
-          similarityBoost: main.similarityBoost ?? 0,
-          style: main.style ?? 0,
-          speed: main.speed ?? 1,
-          useSpeakerBoost: main.useSpeakerBoost ?? false,
-          volume: main.volume,
-        }
-      : base.voice,
+    voice: main ? { volume: main.volume } : base.voice,
   };
 }
 
@@ -284,7 +292,9 @@ export function getPrincipal(): Principal {
   } catch {
     return base; // no config yet (fresh install) — legacy chain governs
   }
-  if (!p?.name) return base;
+  // Same contract as getIdentity(): the scaffold's "Your Name" is not a name
+  // the principal gave us (public issue #1885, @MatiasBarboza).
+  if (!p?.name || isScaffoldSentinel(p.name)) return base;
 
   return {
     name: p.name,

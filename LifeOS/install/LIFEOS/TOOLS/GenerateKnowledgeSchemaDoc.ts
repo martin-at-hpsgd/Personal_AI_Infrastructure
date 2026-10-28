@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.3
  * GenerateKnowledgeSchemaDoc — regenerate `MEMORY/KNOWLEDGE/_schema.md` FROM
  * `KnowledgeSchema.ts`, so the human-readable schema doc is derived from the code
  * and can never drift from it (the two-homes drift that produced three dialects
@@ -13,15 +14,21 @@
  *   bun GenerateKnowledgeSchemaDoc.ts --stdout   # print, don't write
  */
 
-import { writeFileSync } from "node:fs";
-import { resolve as pathResolve } from "node:path";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { resolve as pathResolve, dirname } from "node:path";
 import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths";
 import {
   ENVELOPE, CANONICAL_TYPES, TYPE_TO_DIR, PER_TYPE_REQUIRED,
   RELATION_VOCAB, SOURCE_KINDS, STATUS_VALUES, SCHEMA_VERSION,
 } from "./KnowledgeSchema";
 
-const OUT = pathResolve(homedir(), ".claude/LIFEOS/MEMORY/KNOWLEDGE/_schema.md");
+// Resolve through the shared resolver, not homedir(): hardcoding the home
+// profile here meant a sandbox/scratch-configRoot install silently wrote its
+// schema doc into the REAL ~/.claude profile on any machine that had one, and
+// ENOENT'd on any machine that didn't
+// (discussion #1900 finding 2, @Patrickraveaux).
+const OUT = pathResolve(getLifeosDir(), "MEMORY/KNOWLEDGE/_schema.md");
 
 /** Absolute path of the generated doc — importers compare against it. */
 export const SCHEMA_DOC_PATH = OUT;
@@ -88,6 +95,11 @@ export function render(): string {
   L.push("");
   L.push("Bookmarks are NOT a type: an unprocessed saved URL is `status: inbox` + `source_kind: bookmark` on the type it will become; `ingest` promotes it.");
   L.push("");
+  // public PR #2042, @hjbrandt — the two types the old four-type lists never explained.
+  L.push("A `book` note is about a book. The book is the thing you would look up later. One insight you took from a book is its own note, usually `type: idea`, with the book credited in `source_author` and `source_name`.");
+  L.push("");
+  L.push("A `blog` note is the post itself: the article's own text, archived whole. A note about what a post taught you is its own type, usually `idea`, with `source_kind: blog` carrying the provenance.");
+  L.push("");
 
   L.push("## Querying");
   L.push("");
@@ -111,6 +123,9 @@ export function render(): string {
 function main() {
   const doc = render();
   if (process.argv.includes("--stdout")) { console.log(doc); return; }
+  // Fresh installs have no KNOWLEDGE dir yet — without this the generator
+  // exits 1 mid-deploy (discussion #1900 finding 2, @Patrickraveaux).
+  mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, doc, "utf8");
   console.log(`✓ wrote ${OUT.replace(homedir(), "~")} (${doc.split("\n").length} lines, generated from KnowledgeSchema.ts)`);
 }

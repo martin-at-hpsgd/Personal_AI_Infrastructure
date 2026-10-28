@@ -19,20 +19,12 @@ Templates/
 │   └── Gate.hbs      # Validation checklists
 ├── Data/             # YAML data sources
 │   ├── Agents.yaml   # All agent definitions
-│   ├── Skills.yaml   # All skill definitions
 │   ├── VoicePresets.yaml    # Voice calibration presets
 │   └── ValidationGates.yaml # Standard validation gates
-├── Evals/            # Eval-specific templates
-│   ├── Judge.hbs     # LLM-as-Judge prompt template
-│   ├── Rubric.hbs    # Evaluation rubric generator
-│   ├── TestCase.hbs  # Test case definition
-│   ├── Comparison.hbs # A/B comparison template
-│   └── Report.hbs    # Eval results report
-├── Compiled/         # Generated output (gitignored)
-└── Tools/            # Rendering utilities
-    ├── RenderTemplate.ts   # Core rendering engine
-    └── ValidateTemplate.ts # Template syntax checker
+└── Compiled/         # Generated output (gitignored)
 ```
+
+The rendering tools live beside this folder in `Prompting/Tools/` (`RenderTemplate.ts`, `ValidateTemplate.ts`).
 
 ## Core Syntax
 
@@ -66,7 +58,7 @@ Parameterized voice and tone settings.
 - Speaking rate calibration
 - Character archetype mapping
 
-### 3. STRUCTURE — Workflow Patterns
+### 3. STRUCTURE — Intent Patterns
 
 Standardized multi-step execution patterns.
 
@@ -93,31 +85,15 @@ Reusable quality and completion checks.
 - Development completion gates
 - Research source verification
 
-## Eval Templates
+## Evals
 
-### JUDGE — LLM-as-Judge Prompt
-
-Configurable judge prompts with reasoning-first pattern.
-
-### RUBRIC — Evaluation Criteria
-
-Structured rubrics with dimensions and scoring scales.
-
-### TEST_CASE — Test Definition
-
-Input/expected output pairs with metadata.
-
-### COMPARISON — A/B Testing
-
-Side-by-side prompt variant comparison.
-
-### REPORT — Results Summary
-
-Statistical reporting with confidence intervals.
+Eval, judge and rubric prompts are not built from these templates. Every eval and judge runs through Assay (`LIFEOS/DOCUMENTATION/Assay/AssaySystem.md` § One eval system).
 
 ## Usage
 
 ### Basic Rendering
+
+Relative template, data and output paths are looked up under `Templates/` first (then, for template and data, the current directory), so `Primitives/Roster.hbs` and `Data/Agents.yaml` below are `Templates/Primitives/Roster.hbs` and `Templates/Data/Agents.yaml`. Without `--output` the result prints to stdout.
 
 ```bash
 bun run ~/.claude/skills/Prompting/Tools/RenderTemplate.ts \
@@ -150,7 +126,7 @@ bun run ~/.claude/skills/Prompting/Tools/RenderTemplate.ts \
    - Enable A/B testing of structures
 
 4. **Validate Before Rendering**
-   - Check all required variables exist
+   - Check variables against a data file with `-d`; the check reports each variable the data lacks (an error under `--strict`, a warning otherwise), and a data file you name that is missing is an error. Without `-d` only syntax and block balance are checked
    - Validate data against schema
    - Test with edge cases
 
@@ -161,15 +137,7 @@ bun run ~/.claude/skills/Prompting/Tools/RenderTemplate.ts \
 
 ## Rollback Instructions
 
-If anything breaks, rollback to v2.5.0:
-
-```bash
-cd ~/.claude
-git checkout v2.5.0
-# Or to just undo templating:
-rm -rf Templates/
-git checkout v2.5.0 -- LIFEOS/Prompting.md
-```
+If a template change breaks rendering, restore the templates from your install's previous release with the LifeOS updater's backup, or reinstall the Prompting skill.
 
 ## Token Savings
 
@@ -239,8 +207,8 @@ bun run ~/.claude/skills/Prompting/Tools/RenderTemplate.ts \
 
 ```bash
 bun run ~/.claude/skills/Prompting/Tools/RenderTemplate.ts \
-  --template Evals/Judge.hbs \
-  --data path/to/judge-config.yaml \
+  --template Primitives/Gate.hbs \
+  --data Data/ValidationGates.yaml \
   --preview
 ```
 
@@ -249,7 +217,7 @@ bun run ~/.claude/skills/Prompting/Tools/RenderTemplate.ts \
 ```bash
 bun run ~/.claude/skills/Prompting/Tools/ValidateTemplate.ts \
   --template Primitives/Briefing.hbs \
-  --data Data/sample-briefing.yaml
+  --data Data/Agents.yaml
 ```
 
 ## Quick Reference
@@ -263,10 +231,6 @@ bun run ~/.claude/skills/Prompting/Tools/ValidateTemplate.ts \
 | Create workflow structure | `Structure.hbs` | Custom YAML |
 | Brief an agent | `Briefing.hbs` | Task context |
 | Create validation checklist | `Gate.hbs` | `ValidationGates.yaml` |
-| Create LLM judge prompt | `Judge.hbs` | Judge config |
-| Define evaluation rubric | `Rubric.hbs` | Rubric config |
-| Set up A/B test | `Comparison.hbs` | Comparison config |
-| Generate results report | `Report.hbs` | Results data |
 
 ### Common Patterns
 
@@ -304,7 +268,5 @@ This system is based on research from:
 
 ## Related Documentation
 
-- `~/.claude/LIFEOS/Prompting.md` (Templating section)
-- `~/.claude/History/research/2025-12/2025-12-09-templating-system-research.md`
-- `~/.claude/History/learnings/2025-12/2025-12-09-021700_LEARNING_complete-templating-system-and-evals-integration.md`
-- `~/.claude/skills/Evals/SKILL.md`
+- `~/.claude/skills/Prompting/Standards.md` (prompt engineering standards)
+- `~/.claude/skills/Assay/SKILL.md`

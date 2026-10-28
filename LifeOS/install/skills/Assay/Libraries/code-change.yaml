@@ -1,0 +1,42 @@
+# Shared check library: code-change.
+# Checks every code change needs before it goes live: it typechecks, its tests pass, and a model
+# that did not write it has reviewed it. An ISA pulls them in with `output: code-change`. The
+# checks run where the ISA's checks run (its directory, or `probe_cwd`), so they need no binding.
+# Format: ISAFormat § `## Evals` stages. Switch one off with
+# `disable: code-change.<check> because <reason>`.
+#
+# Origin: the deploy rules (a sanctioned deploy gates on typecheck and the full test suite; every
+# diff gets an independent review before it goes live). The review check reads the latest review
+# record; it never starts the review itself, so it calls no model.
+library: code-change
+version: 1
+bindings: {}
+match: {}
+checks:
+  - id: typecheck
+    title: the code typechecks
+    reason: >-
+      A type error is a crash waiting on the right input; the sanctioned deploy refuses to ship
+      without a clean typecheck.
+    stages:
+      - code: |-
+          test -f tsconfig.json && bunx tsc --noEmit
+
+  - id: tests
+    title: the full test suite passes
+    reason: >-
+      The deploy gate runs the whole suite, not the tests near the change; a change that breaks a
+      distant test still breaks the product.
+    stages:
+      - code: |-
+          bun test ./
+
+  - id: independent-review
+    title: an independent review passed at HEAD
+    reason: >-
+      Every diff gets a review from a model that did not write it before it goes live. The check
+      passes only when the working tree here is clean (so the reviewed revision is the code that
+      ships) and the latest review record for this directory is a pass at the current revision.
+    stages:
+      - code: |-
+          test -z "$(git status --porcelain -- .)" && bun "${LIFEOS_DIR:-$HOME/.claude/LIFEOS}/TOOLS/Review.ts" status . --json | jq -e --arg h "$(git rev-parse HEAD)" '.status == "pass" and .head == $h'

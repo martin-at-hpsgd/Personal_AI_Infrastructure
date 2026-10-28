@@ -1,0 +1,6 @@
+import {join} from 'node:path';
+import {readFeed} from './backend';
+import {isFeed} from './model';
+const files=new Set(['index.html','renderer.js','style.css','fonts/body.woff','fonts/bold.otf','fonts/mono.woff2','fonts/display.woff2','icon.png']);
+Bun.serve({hostname:'127.0.0.1',port:31419,async fetch(req){const url=new URL(req.url);if(req.headers.get('host')!=='127.0.0.1:31419'||(req.headers.get('origin')&&req.headers.get('origin')!=='http://127.0.0.1:31419'))return new Response('Forbidden',{status:403});if(req.method!=='GET')return new Response('Method not allowed',{status:405});if(req.headers.get('sec-fetch-site')==='cross-site')return new Response('Forbidden',{status:403});if(url.pathname.startsWith('/feed/')){const id=url.pathname.slice(6);if(!isFeed(id))return new Response('Not found',{status:404});try{return Response.json(await readFeed(id),{headers:{'Cache-Control':'no-store'}})}catch{return Response.json({error:'Feed unavailable'},{status:503})}}const file=url.pathname==='/'?'index.html':url.pathname.slice(1);if(!files.has(file))return new Response('Not found',{status:404});return new Response(Bun.file(join(import.meta.dir,'dist',file)),{headers:{'Cache-Control':'no-store'}})}});
+console.log('Dashboard preview: http://127.0.0.1:31419');

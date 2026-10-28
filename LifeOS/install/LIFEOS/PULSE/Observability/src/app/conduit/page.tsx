@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiSend, invalidateApi, useApi } from "@/lib/api";
 import { Radar, Circle, GitCommit, Cpu, MonitorSmartphone, Sparkles, Github } from "lucide-react";
 import { PageShell, PageHeader, Panel, PanelHeader, StatTile, EmptyState } from "@/components/ui/chrome";
 
@@ -73,51 +75,44 @@ function ago(ts: string | null | undefined): string {
 }
 
 export default function ConduitPage() {
-  const [today, setToday] = useState<DailyRecord | null>(null);
-  const [recent, setRecent] = useState<DailyRecord[]>([]);
-  const [sources, setSources] = useState<SourcesReport | null>(null);
-  const [insight, setInsight] = useState<Insight | null>(null);
-  const [error, setError] = useState<string | null>(null);
   // Locally-known "a run is in flight". The server is the authority (it reports
   // `building` on /insight), but the button has to respond to the click before the
   // first poll comes back. public PR #1647, @elhoim
   const [building, setBuilding] = useState(false);
+  const buildStartedAt = useRef(0);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [blockKind, setBlockKind] = useState<string | null>(null); // filters the "Where the time went" list by kind
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetch("/api/conduit/today").then((r) => r.json()).then(setToday).catch((e) => setError(String(e)));
-    fetch("/api/conduit/recent?days=7").then((r) => r.json()).then((d) => Array.isArray(d) && setRecent(d)).catch(() => {});
-    fetch("/api/conduit/sources").then((r) => r.json()).then(setSources).catch(() => {});
-    fetch("/api/conduit/insight").then((r) => r.json()).then(setInsight).catch(() => {});
-  }, []);
-
+  const { data: today = null, error: todayError } = useApi<DailyRecord>("/api/conduit/today");
+  const { data: recent = [] } = useApi<DailyRecord[], DailyRecord[]>("/api/conduit/recent?days=7", { select: (d) => (Array.isArray(d) ? d : []) });
+  const { data: sources = null } = useApi<SourcesReport>("/api/conduit/sources");
   // Poll while a run is in flight; stop as soon as the server says it's done.
   // The insight job is an inference call — seconds, not milliseconds — so the
   // POST returns 202 immediately and the result arrives through this poll.
+  const { data: insight = null, dataUpdatedAt: insightUpdatedAt } = useApi<Insight>("/api/conduit/insight", { refetchInterval: building ? 3000 : false });
+  const error = buildError ?? (todayError ? String(todayError) : null);
+
+  useEffect(() => {
+    if (building && insight && insightUpdatedAt > buildStartedAt.current && !insight.building) setBuilding(false);
+  }, [building, insight, insightUpdatedAt]);
+
+  // Hard stop so a server-side crash can't leave the button spinning forever.
   useEffect(() => {
     if (!building) return;
-    let cancelled = false;
-    const id = setInterval(async () => {
-      try {
-        const next: Insight = await (await fetch("/api/conduit/insight")).json();
-        if (cancelled) return;
-        setInsight(next);
-        if (!next.building) setBuilding(false);
-      } catch {
-        /* transient — keep polling until the timeout below */
-      }
-    }, 3000);
-    // Hard stop so a server-side crash can't leave the button spinning forever.
     const timeout = setTimeout(() => setBuilding(false), 180_000);
-    return () => { cancelled = true; clearInterval(id); clearTimeout(timeout); };
+    return () => clearTimeout(timeout);
   }, [building]);
 
   async function runInsight() {
+    buildStartedAt.current = Date.now();
     setBuilding(true);
     try {
-      await fetch("/api/conduit/insight/build", { method: "POST" });
+      await apiSend("/api/conduit/insight/build", "POST");
+      void invalidateApi(queryClient, "/api/conduit/insight");
     } catch (e) {
       setBuilding(false);
-      setError(String(e));
+      setBuildError(String(e));
     }
   }
 
@@ -234,12 +229,29 @@ export default function ConduitPage() {
             </div>
           </div>
 
-          {/* Where the time went */}
-          <Section title="Where the time went (today)">
-            {today.blocks.length === 0 && <Row left="—" right="no app-focus events yet" />}
-            {today.blocks.map((b) => (
-              <Row key={b.label} left={b.label} right={hm(b.minutes)} note={b.kind} noteClass={kindColor[b.kind]} />
-            ))}
+          {/* Where the time went — kind tiles filter the block list */}
+          <Section title={`Where the time went (today)${blockKind ? ` · ${blockKind}` : ""}`}>
+            {today.blocks.length > 0 && (() => {
+              const counts: Record<string, number> = { creation: 0, consumption: 0, neutral: 0 };
+              for (const b of today.blocks) counts[b.kind] = (counts[b.kind] ?? 0) + 1;
+              const dim: Record<string, "ok" | "warn" | "neutral"> = { creation: "ok", consumption: "warn", neutral: "neutral" };
+              return (
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  {(["creation", "consumption", "neutral"] as const).map((k) => (
+                    <StatTile key={k} label={k} value={counts[k]} dim={dim[k]}
+                      active={blockKind === k}
+                      onClick={() => setBlockKind(blockKind === k ? null : k)} />
+                  ))}
+                </div>
+              );
+            })()}
+            {(() => {
+              const shown = blockKind ? today.blocks.filter((b) => b.kind === blockKind) : today.blocks;
+              if (shown.length === 0) return <Row left="—" right={blockKind ? `no ${blockKind} blocks today` : "no app-focus events yet"} />;
+              return shown.map((b) => (
+                <Row key={b.label} left={b.label} right={hm(b.minutes)} note={b.kind} noteClass={kindColor[b.kind]} />
+              ));
+            })()}
           </Section>
 
           {/* Recent days */}

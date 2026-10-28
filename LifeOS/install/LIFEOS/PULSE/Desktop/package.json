@@ -1,0 +1,25 @@
+{
+  "name": "pulse-desktop",
+  "productName": "Pulse Desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "bun build.ts",
+    "start": "bun run build && electron .",
+    "test": "bun test",
+    "package": "bun test && bun build.ts --package",
+    "install-app": "bun test && bun build.ts --install"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.3.0"
+  },
+  "trustedDependencies": [
+    "electron",
+    "node-pty"
+  ],
+  "dependencies": {
+    "node-pty": "1.1.0"
+  }
+}

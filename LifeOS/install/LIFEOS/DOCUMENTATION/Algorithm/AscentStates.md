@@ -1,7 +1,7 @@
 ---
-version: 1.3.2
+version: 1.3.10
 last_updated: 2026-08-11
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 source_of_truth: LIFEOS/TOOLS/ascent.ts
 ---
 
@@ -34,16 +34,15 @@ Nothing agreed with anything. A run read `CLIMBING` in a tab and `Ascending` on 
 - **Hooks** call it with what the ISA declares → the **bracket**.
 - **Pulse** calls it with the live tool stream on top → the **in-flight detail**.
 
-Both agree on the bracket, so a Kitty tab can never contradict the board — the board is just more precise. The status line reads a resolved blob written onto the `work.json` row at sync time, so bash holds zero derivation logic and cannot drift.
+Both agree on the bracket, so a Kitty tab can never contradict the board — the board is just more precise. The band above the prompt reads a resolved blob written onto the `work.json` row at sync time, so the plugin holds zero derivation logic and cannot drift.
 
 ```
 ISA frontmatter phase:  ─┐
-claims closed / total   ─┼─►  deriveAscent()  ─►  AscentState  ─►  ASCENT[state]
+criteria closed / total   ─┼─►  deriveAscent()  ─►  AscentState  ─►  ASCENT[state]
 tracked / active        ─┤                                          │
 live tool stream        ─┘  (Pulse only)                            │
                                                                     ├─► Kitty tab (icon, colour)
-                                                                    ├─► cmux sidebar (pill, progress)
-                                                                    ├─► work.json .ascent → status line
+                                                                    ├─► work.json .ascent → prompt band
                                                                     ├─► Pulse board lane
                                                                     └─► ISA HTML mirror stage bar
 ```
@@ -52,21 +51,21 @@ live tool stream        ─┘  (Pulse only)                            │
 
 The theme is climbing a hill you had to name first — the Algorithm's own loop. A run marks the summit (states what done means), ascends, anchors each hold in evidence, and leaves a cairn.
 
-**SIX states since 2026-07-30** ({{PRINCIPAL_NAME}}: "unify them into six and then synchronize the six across the whole system"). These are UI/UX indicators only — the Algorithm itself doesn't consume them. The fold: Routefinding and Roped merged into Ascending (exploring and delegating are *how* you climb, not stages), Summit merged into Cairn (a minutes-long transient that was almost always an empty column). Legacy keys resolve forever via `LEGACY_ASCENT_ALIASES`.
+**SIX states since 2026-07-30** (principal directive). These are UI/UX indicators only — the Algorithm itself doesn't consume them. The fold: Routefinding and Roped merged into Ascending (exploring and delegating are *how* you climb, not stages), Summit merged into Cairn (a minutes-long transient that was almost always an empty column). Legacy keys resolve forever via `LEGACY_ASCENT_ALIASES`.
 
 | State | What it means | How it's derived |
 |---|---|---|
 | **Traverse** | Live work with no ISA — moving, no route declared | untracked + live |
-| **Marking** | Articulating what done means — claims not yet on the hill | tracked + live + no claims parsed, or `phase: scoping`/`marking` |
+| **Marking** | Articulating what done means — criteria not yet on the hill | tracked + live + no criteria parsed, or `phase: scoping`/`marking` |
 | **Ascending** | On the wall — exploring, building, delegating; everything that moves the climb | tool stream exploring/building/delegating, or `phase: climbing` with no stream |
 | **Anchoring** | Weighting a hold before trusting it — probes running, evidence landing | tool stream verifying |
 | **Camped** | Quiet mid-hill — resumable, not dead | tracked + gone quiet |
-| **Cairn** | Closed out — every claim held; the marker proving the route went | closed ≥ total, `phase: learn`, or `phase: complete` |
+| **Cairn** | Closed out — every criterion held; the marker proving the route went | closed ≥ total, `phase: learn`, or `phase: complete` |
 | *Idle* | Nothing running (not a run state; never a column) | untracked + quiet (hidden) |
 
-**Anchoring is the verification doctrine in one word.** A climber weights a hold before trusting it; a claim closes on evidence, never on "should work."
+**Anchoring is the verification doctrine in one word.** A climber weights a hold before trusting it; a criterion closes on evidence, never on "should work."
 
-**Colors are a staged gradient (2026-08-12), in two registers.** Traverse is gray — off the scheme because no route is declared — then the arc escalates blue → green (marking → ascending → anchoring → cairn). Camped sits off the ramp on a dim slate: a run can camp at any point, so its color can't honestly encode progress; 💤 carries the pause. Pulse surfaces read the bright `color`; Kitty tabs read `tabBg`, the same hue darkened. The tab title also carries an activity glyph from `TAB_ACTIVITY` (⚡ working · ⏳ waiting on the principal · ✅ done · 💤 quiet) — state says where in the climb, activity says whether anything is moving. Values live only in the table; `hooks/TabTitleComposition.test.ts` pins both registers.
+**Colors are a staged gradient (2026-08-12), in two registers.** Traverse is gray — off the scheme because no route is declared — then the arc escalates blue → green (marking → ascending → anchoring → cairn). Camped sits off the ramp on a dim slate: a run can camp at any point, so its color can't honestly encode progress; 💤 carries the pause. Pulse surfaces read the bright `color`; Kitty tabs read `tabBg`, the same hue darkened. The tab title also carries an activity glyph from `TAB_ACTIVITY` (⚡ working · ⏳ waiting on the principal · ❌ failed, the turn died on an API error until the next prompt · ✅ done · 💤 quiet) — state says where in the climb, activity says whether anything is moving. Values live only in the table; `hooks/TabTitleComposition.test.ts` (not in the public release) pins both registers.
 
 ## What the model writes
 
@@ -87,33 +86,33 @@ Found 2026-07-27, all fixed by deriving from `PHASE_TO_ASCENT`:
 Found 2026-07-30, when the new gate's first run enumerated the rest of the class:
 
 4. **Both ISA nudge rows were silent for a week** — `AlgorithmNudge`'s `ACTIVE_PHASES` held the retired 8-station enum, so no run resolved as live and `stale-isa` never fired (last fire 2026-07-23; `toolCallsSinceISAEditAbs` = 0 across all 392 recorded sessions). Its sibling `hasRegisteredRun` counted the `native-<uuid>` placeholder as a registered run, so `late-isa` had never fired once. A nudge that doesn't fire breaks nothing visibly — nothing fails, so nothing tells you.
-5. **`ULWorkSync` and `WorkSweep` each carried `["execute","verify","learn","complete"]`** — a modern `climbing` run read as an abandoned scaffold, so it was skipped for issue creation.
+5. **`ULWorkSync` (maintainer-side hook) and `WorkSweep` each carried `["execute","verify","learn","complete"]`** — a modern `climbing` run read as an abandoned scaffold, so it was skipped for issue creation.
 
-For consumers that hold only a phase string and no claim counts, `phaseBracket()` and `phaseHasWorkStarted()` are the sanctioned readers — feeding a countless row to `deriveAscent` correctly reports `marking`, which is the wrong answer to "has work started?".
+For consumers that hold only a phase string and no criterion counts, `phaseBracket()` and `phaseHasWorkStarted()` are the sanctioned readers — feeding a countless row to `deriveAscent` correctly reports `marking`, which is the wrong answer to "has work started?".
 
 ### The row's `ascent` blob is derived state that we store
 
-`work.json` rows carry a denormalized `{key, icon, label, color}` for exactly ONE consumer: `LIFEOS_StatusLine.sh`, which is a pure `jq` read and cannot derive anything. **The Pulse board does not read it** — `lifecycle.ts` re-derives with the live tool stream, so a stale blob corrupts the status line only. (Board drift is a different lane: stale `phase` in the row.)
+`work.json` rows carry a denormalized `{key, icon, label, color}` for exactly ONE consumer: the LifeOSHooks band above the prompt, which reads it as written and derives nothing. **The Pulse board does not read it** — `lifecycle.ts` re-derives with the live tool stream, so a stale blob corrupts the band only. (Board drift is a different lane: stale `phase` in the row.)
 
 Stored derived state has one rule: **any writer that moves a row's `phase` or `progress` recomputes the blob through `applyAscent()` in `hooks/lib/isa-utils.ts`** — the single derivation site, which reads `tracked` off the row's own `isa` pointer so placeholder rows resolve to 🥾 traverse rather than a run state.
 
-Four writers touch rows. `syncToWorkJson`, `WorkReconcile` and `SessionCleanup` all call it; `upsertSession` writes placeholder rows and leaves them blob-less, which the status line handles by rendering no chip. Two of the four skipped the recompute until 2026-07-30 — `WorkReconcile` reconciled a row to `climbing 6/7` while its blob still said 📐 Marking, and `SessionCleanup` stamped `complete` over a blob still reading 🧗 Ascending — leaving six rows contradicting themselves. `WorkReconcile` now heals this BEFORE its per-ISA mtime memo, so a blob that was wrong at write time recovers without the ISA file ever changing.
+Four writers touch rows. `syncToWorkJson`, `WorkReconcile` and `SessionCleanup` all call it; `upsertSession` writes placeholder rows and leaves them blob-less, which the band handles by rendering no chip. Two of the four skipped the recompute until 2026-07-30 — `WorkReconcile` reconciled a row to `climbing 6/7` while its blob still said 📐 Marking, and `SessionCleanup` stamped `complete` over a blob still reading 🧗 Ascending — leaving six rows contradicting themselves. `WorkReconcile` now heals this BEFORE its per-ISA mtime memo, so a blob that was wrong at write time recovers without the ISA file ever changing.
 
 ## Consumers
 
 | File | Reads |
 |---|---|
 | `hooks/lib/tab-constants.ts` | re-exports the table; owns only the non-run tab colours |
-| `hooks/lib/tab-setter.ts` | `setAscentTab()`, cmux pill + progress, prefix stripping |
+| `hooks/lib/tab-setter.ts` | `setAscentTab()`, prefix stripping |
 | `hooks/ISASync.hook.ts` | derives on every ISA write, stamps the tab; injects the response-format phase strip as a `<lifeos-ascent-delta>` block on derived-state change (model echoes verbatim, never self-computes — 2026-08-11, after a self-computed strip said 🧗 while the board derived 🥾) |
 | `hooks/lib/isa-utils.ts` | writes the `ascent` blob onto the `work.json` row |
 | `hooks/PromptProcessing.hook.ts` | re-stamps the run's state across iterations; stamps `traverse` for un-ISA'd work and skill runs (the pre-Algorithm ⚙️ working gear is retired, 2026-07-28 — 🧠 thinking remains as the transient prompt-processing flash) |
 | `hooks/TabState.hook.ts` | question flow — carries the run's ascent through the teal question stamp via `previousAscent`, restores it after (fallback `traverse`) |
-| `hooks/handlers/TabState.ts` | stamps `cairn` at completion |
-| `LIFEOS/LIFEOS_StatusLine.sh` | pure `jq` read of `.ascent` |
+| `hooks/handlers/TabState.ts` | at a turn end, stamps `cairn` when the run has no ISA or its work.json row resolves to cairn; a mid-run ISA keeps its derived state (a turn ending is not a run ending, 2026-09-07) |
+| `skills/LifeOSHooks/hooks/LifeOSHooks.ts` | the band above the prompt reads `.ascent` off the `work.json` row. The statusline stopped drawing it on 2026-09-21: a 5-second refresh lagged the run and the band already showed it |
 | `PULSE/Observability/src/lib/lifecycle.ts` | `deriveLifecycle` = `deriveAscent` + tool stream |
 | `PULSE/Observability/.../WorkBoard.tsx` | static lanes from the table's `board` placement field (2026-07-30 — every run state is a permanent column; lane membership is table policy, never a component-local list), ordering, table glyphs |
 | `LIFEOS/TOOLS/ISARender.ts` | stage bar + phase badge |
 | `hooks/AlgorithmNudge.hook.ts` | `isTrackedRow` / `isInFlightRow` — which rows count as a registered run and as live, for the ISA nudge rows |
-| `hooks/ULWorkSync.hook.ts`, `LIFEOS/TOOLS/WorkSweep.ts` | `phaseHasWorkStarted()` — has the run left articulation |
+| `hooks/ULWorkSync.hook.ts` (maintainer tree, not in the release payload), `LIFEOS/TOOLS/WorkSweep.ts` | `phaseHasWorkStarted()` — has the run left articulation |
 | `LIFEOS/TOOLS/IntegrityCheck.ts` | the gate: label + icon lanes, living-doc lane, phase-key lane |

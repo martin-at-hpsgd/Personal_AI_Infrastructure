@@ -2,7 +2,7 @@
 //
 // 2026-07-14 agents-dashboard redesign: modes, effort tiers, presets, and the
 // per-phase ceremony are gone. A session is either TRACKED (an ISA backs it —
-// claims close on evidence, the climb is the story) or UNTRACKED (liveness
+// criteria close on evidence, the climb is the story) or UNTRACKED (liveness
 // only). `phase` survives as a coarse lifecycle signal (the values actually
 // written today: an active value at start, learn/complete at close).
 
@@ -60,7 +60,7 @@ export interface AlgorithmAgent {
   task?: string;
 }
 
-/** One step of a run's ascent: claims closed / total at a moment in time. */
+/** One step of a run's ascent: criteria closed / total at a moment in time. */
 export interface ClimbPoint {
   ts: number;
   done: number;
@@ -92,7 +92,7 @@ export interface AlgorithmState {
   /** ISA iteration (1 = first run; 2+ = reopened/rework) */
   iteration?: number;
   reworkCount?: number;
-  /** An ISA backs this session — claims, evidence, the climb */
+  /** An ISA backs this session — criteria, evidence, the climb */
   tracked: boolean;
   /** Ascent history folded from work-events.jsonl */
   climb: ClimbPoint[];

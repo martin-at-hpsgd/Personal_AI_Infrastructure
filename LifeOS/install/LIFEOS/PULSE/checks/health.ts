@@ -53,6 +53,12 @@ async function checkSite(site: { name: string; url: string }): Promise<HealthRes
 }
 
 async function main() {
+  // public PR #2208, @pai-scaffolde: no sites configured is "not configured", not healthy.
+  if (SITES.length === 0) {
+    console.error("no sites configured (set LIFEOS_PULSE_HEALTH_SITES); health check is not configured")
+    process.exitCode = 78
+    return
+  }
   const results = await Promise.all(SITES.map(checkSite))
   const failures = results.filter((r) => !r.ok)
 
@@ -71,5 +77,6 @@ async function main() {
 
 main().catch((err) => {
   console.error(`health-check error: ${err}`)
-  console.log("NO_ACTION")
+  // A crash is not health: exit nonzero so Pulse counts it (same class as public PR #2208).
+  process.exitCode = 1
 })

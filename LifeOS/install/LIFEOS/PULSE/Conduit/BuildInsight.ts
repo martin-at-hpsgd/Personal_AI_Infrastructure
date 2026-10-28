@@ -52,7 +52,15 @@ export interface ConduitInsight {
 }
 
 /** Build a bounded, metadata-only summary of the day's events for the prompt. */
-function summarize(events: ConduitEvent[]): { text: string; since: string | null } {
+// Event stamps mix `Z` (toISOString) and local offsets (git %aI): order by
+// instant, never by string; an unparseable stamp never wins.
+// public issue #2170, @pybe
+const instant = (ts: string): number => {
+  const n = Date.parse(ts);
+  return Number.isNaN(n) ? -Infinity : n;
+};
+
+export function summarize(events: ConduitEvent[]): { text: string; since: string | null } {
   const appMin = new Map<string, number>();
   const subjects: string[] = [];
   const slugs = new Set<string>();
@@ -63,7 +71,7 @@ function summarize(events: ConduitEvent[]): { text: string; since: string | null
   let since: string | null = null;
 
   for (const e of events) {
-    if (since === null || e.ts > since) since = e.ts;
+    if (since === null || instant(e.ts) > instant(since)) since = e.ts;
     if (e.type === "app-focus" && e.app) {
       const sec = Number(e.detail?.intervalSec) || 120;
       appMin.set(e.app, (appMin.get(e.app) ?? 0) + sec / 60);

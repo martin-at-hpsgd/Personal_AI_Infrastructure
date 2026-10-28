@@ -7,7 +7,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 /**
- * @version 1.5.14
+ * @version 1.5.17
  * WorkCompletionLearning.hook.ts - Extract Learnings from Completed Work (SessionEnd)
  *
  * PURPOSE:
@@ -62,7 +62,7 @@ import { join } from 'path';
 import { getISOTimestamp, getPSTDate } from './lib/time';
 import { getLearningCategory } from './lib/learning-utils';
 import { findArtifactPath, findActiveSessionByUUID } from './lib/isa-utils';
-import { homedir } from "node:os";
+import { getLifeosDir } from "./lib/paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -71,7 +71,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 
-const BASE_DIR = process.env.LIFEOS_DIR || join(homedir(), '.claude', 'LIFEOS');
+const BASE_DIR = getLifeosDir();
 const MEMORY_DIR = join(BASE_DIR, 'MEMORY');
 const WORK_DIR = join(MEMORY_DIR, 'WORK');
 const LEARNING_DIR = join(MEMORY_DIR, 'LEARNING');
@@ -230,7 +230,7 @@ ${idealContent || 'Not specified'}
 
 ## What Was Done
 
-- **Claims closed:** ${closed}/${total}
+- **Criteria closed:** ${closed}/${total}
 - **Phase at close:** ${workMeta.phase || 'unknown'}
 
 *Per-file and per-tool lineage is not recorded in ISA frontmatter. The change
@@ -304,8 +304,8 @@ async function main() {
       workMeta.completed_at = getISOTimestamp();
     }
 
-    // Extract claim counts from the ISA's criteria section, or ISC.json (legacy).
-    // The heading vocabulary is `## Claims` today; `## Criteria` / `## ISC
+    // Extract criterion counts from the ISA's criteria section, or ISC.json (legacy).
+    // The heading vocabulary is `## Criteria` today; `## Claims` / `## ISC
     // Criteria` are legacy spellings that ISAFormat.md still parses. The old
     // regex here matched neither `Claims` nor `ISC Criteria`, so it missed the
     // current convention outright — the same read-a-field-that-isn't-written
@@ -322,7 +322,7 @@ async function main() {
           const unchecked = (iscMatch[0].match(/- \[ \]/g) || []).length;
           totalClaims = closedClaims + unchecked;
           if (totalClaims > 0) {
-            idealContent = `**Claims:** ${closedClaims}/${totalClaims} closed`;
+            idealContent = `**Criteria:** ${closedClaims}/${totalClaims} closed`;
           }
         }
       } catch { /* ignore */ }
@@ -349,7 +349,7 @@ async function main() {
     workMeta.session_id = workMeta.session_id || sessionId || 'unknown';
     workMeta.created_at = workMeta.created_at || workMeta.started;
 
-    // Significance is "the run closed at least one claim" — the one durable
+    // Significance is "the run closed at least one criterion" — the one durable
     // signal an ISA actually records. The previous test asked for a files-changed
     // count and a MANUAL source that no ISA has ever carried, so it was false on
     // every session and the WORK->LEARNING bridge wrote nothing for four months.
@@ -362,7 +362,7 @@ async function main() {
     if (hasSignificantWork) {
       writeLearning(workMeta, idealContent, closedClaims, totalClaims);
     } else {
-      console.error('[WorkCompletionLearning] No claims closed this session, skipping learning capture');
+      console.error('[WorkCompletionLearning] No criteria closed this session, skipping learning capture');
     }
 
     process.exit(0);

@@ -1,0 +1,11 @@
+{
+  "_about": "OpenAI (codex) logins the Pulse /usage page tracks. The default row is the login in ~/.codex. Every other row gets its own CODEX_HOME at <configDirRoot>/<slug>; log in there once by hand.",
+  "configDirRoot": "~/.codex-accounts",
+  "accounts": [
+    {
+      "slug": "primary",
+      "email": "your-email@example.com",
+      "default": true
+    }
+  ]
+}

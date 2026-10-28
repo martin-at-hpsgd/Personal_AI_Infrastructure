@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { localOnlyApiCall } from "@/lib/local-api";
+import { useState, useMemo } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
+import { useApi } from "@/lib/api";
 import {
   Zap,
   Bot,
@@ -21,8 +22,7 @@ import type { LucideIcon } from "lucide-react";
 // MCP tools, web tools. Fed by /api/capabilities, which parses hook-written
 // JSONL (tool-activity, subagent-events). Zero tokens: pure log parsing.
 //
-// 2026-07-28 dynamic pass ({{PRINCIPAL_NAME}}: "make the top area more dynamic in terms
-// of what capabilities are being used"): chips order themselves by recency —
+// 2026-07-28 dynamic pass (principal directive): chips order themselves by recency —
 // whatever fired last leads the strip — fresh use (<2 min) pulses, a
 // sparkline carries tool-call volume across the window, and capabilities
 // with zero use collapse into one quiet trailing group instead of a row of
@@ -134,7 +134,7 @@ function Chip({ chip }: { chip: ChipDef }) {
         </span>
       )}
       {chip.tooltip && chip.tooltip.length > 0 && (
-        <div className="absolute top-full left-0 mt-1.5 px-2.5 py-1.5 rounded-md bg-[rgba(20,28,56,0.97)] border border-line-2 text-[13px] text-ink-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30 min-w-[160px] max-w-[320px] whitespace-nowrap">
+        <div className="absolute top-full left-0 mt-1.5 px-2.5 py-1.5 rounded-md glass-raised text-[13px] text-ink-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30 min-w-[160px] max-w-[320px] whitespace-nowrap">
           {chip.tooltip.map((line, i) => (
             <div key={i} className="leading-snug font-mono">
               {line}
@@ -147,30 +147,14 @@ function Chip({ chip }: { chip: ChipDef }) {
 }
 
 export default function CapabilityStrip() {
-  const [data, setData] = useState<CapabilitiesData | null>(null);
   const [windowMin, setWindowMin] = useState(60);
 
-  const fetchData = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const d = await localOnlyApiCall<CapabilitiesData>(
-        `/api/capabilities?window=${windowMin}`,
-        { signal },
-      );
-      if (!signal?.aborted) setData(d);
-    } catch {
-      // strip stays hidden until data arrives
-    }
-  }, [windowMin]);
-
-  useEffect(() => {
-    // Aborted on window switch, so a slower response for the old window can
-    // never land on top of the newer one.
-    // ported from public PR #1735, @elhoim
-    const ac = new AbortController();
-    fetchData(ac.signal);
-    const interval = setInterval(() => fetchData(ac.signal), 10000);
-    return () => { ac.abort(); clearInterval(interval); };
-  }, [fetchData]);
+  // Keeps the previous window's data on screen while a window switch loads, and a failed refetch keeps the last good data.
+  const { data: fetched } = useApi<CapabilitiesData>(`/api/capabilities?window=${windowMin}`, {
+    refetchInterval: 10000,
+    placeholderData: keepPreviousData,
+  });
+  const data = fetched ?? null;
 
   const { active, quiet } = useMemo(() => {
     if (!data) return { active: [] as ChipDef[], quiet: [] as ChipDef[] };
@@ -286,7 +270,7 @@ export default function CapabilityStrip() {
   if (!data) return null;
 
   return (
-    <div className="flex items-center flex-wrap gap-x-5 gap-y-1 px-4 py-1.5 bg-[rgba(15,26,51,0.5)] border-b border-white/[0.04] shrink-0">
+    <div className="flex items-center flex-wrap gap-x-5 gap-y-1 px-4 py-1.5 bg-surface-1 border-b border-white/[0.04] shrink-0">
       <span className="text-[13px] font-semibold text-ink-2 tracking-wide shrink-0 uppercase">
         Capabilities
       </span>

@@ -1,0 +1,5 @@
+{
+  "_note": "Daily growth budget per MEMORY/OBSERVABILITY stream, in bytes per 24h. A stream over its budget is a memory-health warning naming it. Streams not listed use default_bytes_per_day (10 MB). Add a stream name under streams to give it its own budget.",
+  "default_bytes_per_day": 10485760,
+  "streams": {}
+}

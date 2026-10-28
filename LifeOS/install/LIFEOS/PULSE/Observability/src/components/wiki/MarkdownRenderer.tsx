@@ -3,6 +3,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeHighlight from "rehype-highlight";
 import Link from "next/link";
 import type { Components } from "react-markdown";
@@ -12,6 +13,32 @@ interface MarkdownRendererProps {
   onWikiLinkClick?: (slug: string) => void;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character];
+  });
+}
+
+// GHSA-f3j2-2rq6-34g4, @elhoim: sanitize raw HTML before rendering harvested notes.
+const wikiSchema: typeof defaultSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    a: [
+      ...(defaultSchema.attributes?.a ?? []),
+      ["className", "wikilink"],
+      "dataSlug",
+    ],
+  },
+};
+
 // Transform [[wikilinks]] into <a> tags before rendering
 function preprocessWikilinks(content: string): string {
   return content.replace(
@@ -19,7 +46,7 @@ function preprocessWikilinks(content: string): string {
     (_, slug, label) => {
       const displayText = label || slug;
       const href = slug.trim().toLowerCase().replace(/\s+/g, "-");
-      return `<a href="/system?doc=${href}" class="wikilink" data-slug="${href}">${displayText}</a>`;
+      return `<a href="/system?doc=${escapeHtml(href)}" class="wikilink" data-slug="${escapeHtml(href)}">${escapeHtml(displayText)}</a>`;
     }
   );
 }
@@ -201,7 +228,7 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
     <div className="wiki-content max-w-none">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw, rehypeHighlight]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, wikiSchema], rehypeHighlight]}
         components={components}
       >
         {processed}

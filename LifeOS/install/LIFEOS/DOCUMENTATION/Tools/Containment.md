@@ -1,5 +1,6 @@
 ---
-version: 1.2.3
+last_updated: 2026-09-15
+version: 1.3.3
 ---
 
 # LifeOS Containment Policy
@@ -7,7 +8,7 @@ version: 1.2.3
 > Containment zones draw the Life OS boundary at release time (`LIFEOS/DOCUMENTATION/LifeOs/LifeOsThesis.md`): the OS ships; the life never does.
 
 **Status:** Authoritative. Contributors and future DA sessions read this before adding a new file.
-**Enforcement:** two points. (1) The release pipeline's containment gates (G1-G14 + G17-G25, release-build time). (2) `hooks/SystemFileGuard.hook.ts` — a runtime PreToolUse Write/Edit gate that reads the same zone inventory (restored 2026-05-21 in Phase E of the system/user separation rebuild; it superseded the 2026-05-06 "release-build only" consolidation, which had removed the prospective `ContainmentGuard.hook.ts`).
+**Enforcement:** two points. (1) The release cut, `release.ts cut` (maintainer-side release tooling, not in the public release): it checks every path against `Release/classification.txt`, scans the export (`scan.ts`), checks references and contract, and boots the payload; the legacy `ShadowRelease.ts` containment gates (G1-G14 + G17-G28, including G27 top-level allowlist and G28 setup inventory) remain as an advisory parity check until the release-rebuild ISA retires them. (2) The `pre-commit` leak scan (`LIFEOS/TOOLS/githooks/StagedLeakScan.ts`), which reads the same zone inventory on staged bytes. It replaced the runtime `SystemFileGuard` PreToolUse Write/Edit gate, which was restored 2026-05-21 in Phase E of the system/user separation rebuild (superseding the 2026-05-06 "release-build only" consolidation that had removed the prospective `ContainmentGuard.hook.ts`) and retired 2026-10-24.
 **Zone inventory (authoritative):** `hooks/lib/containment-zones.ts` — the source of truth ShadowRelease imports.
 **Last updated:** 2026-05-10
 
@@ -33,25 +34,28 @@ Today's zones:
 | `config-secrets` | `settings.json`, `settings.local.json`, `.vscode/settings.json`, `.env`, `.env.*`, `LIFEOS/.env`, `LIFEOS/.env.*` | API tokens, allowed command lists, MCP auth |
 | `runtime-memory` | `LIFEOS/MEMORY/**` | Work sessions, learnings, observability, research, raw data, bookmarks, relationship notes |
 | `private-skills` | `skills/_*/**` (underscore prefix) | Principal-specific and proprietary skills |
-| `install-state` | `history.jsonl`, `Plugins/**`, `plugins/installed_plugins.json`, `plugins/known_marketplaces.json` | Claude Code runtime install state written by the harness |
-| `private-infra` | `LIFEOS/ARBOL/**`, `LIFEOS/PULSE/Assistant/**`, `LIFEOS/PULSE/Plans/**`, `LIFEOS/PULSE/logs/**`, `LIFEOS/PULSE/state/**`, `LIFEOS/PULSE/Observability/out/**`, `LIFEOS/PULSE/.playwright-cli/**`, `LIFEOS/ScheduledTasks/**` | Top-level private infrastructure: cloud worker source, DA-specific assistant, planning docs, runtime logs/state, rendered HTML, scheduled tasks |
+| `install-state` | `history.jsonl`, `Plugins/**`, `plugins/**`, `debug/**`, `daemon/**`, `jobs/**`, `remote-settings.json`, `stats-cache.json`, `stats.json`, `ids.txt`, `checkpoint-repos.txt` (and the plugin registry files) | Claude Code runtime install state written by the harness |
+| `private-infra` | `LIFEOS/PULSE/Assistant/state/**`, `LIFEOS/PULSE/Plans/**`, `LIFEOS/PULSE/logs/**`, `LIFEOS/PULSE/state/**`, `LIFEOS/PULSE/Observability/out/**`, `LIFEOS/PULSE/.playwright-cli/**`, `LIFEOS/PULSE/Bunker/**`, `LIFEOS/WATCHES/**`, `LIFEOS/ScheduledTasks/**` | Top-level private infrastructure (`LIFEOS/WORKFLOWS/v1/**` left this zone 2026-09-09 and ships as SYSTEM): DA assistant runtime state, planning docs, runtime logs/state, rendered HTML, Bunker app-harness code, watch workflows, scheduled tasks |
+| `pre-sanitization-backups` | `LIFEOS/Backups/**` | Snapshots of SYSTEM files from before sanitization; never ship |
+| `skill-runtime-data` | `skills/*/profile-data/**`, `skills/*/state/**` and `State/`, `cache/` and `Cache/`, `Logs/`, `.playwright-cli/`, `.cache/`, `node_modules/` variants | Runtime data that accumulates under public-named skills |
+| `security-sdk-runtime` | `security/**` | Agent-SDK runtime and bootstrap state for security skills |
 
 The underscore-prefix rule for `private-skills` is the interface contract. If a skill name does NOT start with `_`, that skill directory must be clean enough to ship to strangers.
 
 ---
 
-## Mandatory zone review before every shadow release
+## Mandatory zone review before every release candidate
 
-Zones drift. Before running `ShadowRelease --create <version>`:
+Zones drift. Before cutting a release candidate (the maintainer-side `rc` command, not in the public release):
 
 1. Open `hooks/lib/containment-zones.ts`.
 2. Walk `~/.claude/` at depth 1-2 (e.g. `ls -la && ls -la LIFEOS/ && ls -la skills/`) and compare against the zone list.
 3. Ask, for every new top-level or first-nested dir since the last release:
     - Does it contain anything principal-specific? → **Add a zone or extend an existing one.**
-    - Is it runtime state the harness writes? → **Add it to `install-state` or the RSYNC_EXCLUDES in `ShadowRelease.ts`.**
+    - Is it runtime state the harness writes? → **Add it to `install-state`, and give it a `private` line in `Release/classification.txt`.**
     - Is it clean-by-construction and intended for public? → **Leave it; document via README if its purpose is ambiguous.**
 4. Update `CONTAINMENT_ZONES` and/or `PATTERN_ALLOWLIST_FILES` in `hooks/lib/containment-zones.ts` accordingly.
-5. Commit the zone change BEFORE the shadow-release commit. The zone file is the contract; the release gates verify against it. Releasing against a stale contract is the failure mode this step exists to prevent.
+5. Commit the zone change BEFORE the release-candidate commit. The zone file is the contract; the release gates verify against it. Releasing against a stale contract is the failure mode this step exists to prevent.
 
 **Rule of thumb:** if you look at the zone file and you cannot immediately tell that it matches reality, stop and reconcile before building a release.
 
@@ -62,17 +66,17 @@ Zones drift. Before running `ShadowRelease --create <version>`:
 A file outside every configured zone is a policy violation if it contains any of:
 
 - **Identity** — absolute user paths, personal email, personal domain names, principal-specific hostnames
-- **Infrastructure IDs** — Cloudflare account or KV namespace IDs, ElevenLabs voice IDs, launchd bundle IDs, any UUID that identifies a specific account or resource
+- **Infrastructure IDs** — Cloudflare account or KV namespace IDs, Fish voice model IDs, launchd bundle IDs, any UUID that identifies a specific account or resource
 - **Secrets** — API tokens, private keys (`.pem`, `.key`), session cookies, OAuth refresh tokens
-- **Private-tree references** — pointers to something only this machine has: a dated work-session path (`MEMORY/WORK/<date>-<slug>`) or a dated incident citation (`INC-<date>-<slug>`)
+- **Private-tree references** — pointers to something only this machine has: a dated work-session path (`LIFEOS/MEMORY/WORK/<date>-<slug>`) or a dated incident citation (`INC-<date>-<slug>`)
 
-The `ShadowRelease --check` gates enforce all four categories at release-build time; `SystemFileGuard.hook.ts` enforces the zone boundary at write time between releases.
+The `ShadowRelease --check` gates enforce all four categories at release-build time; the `pre-commit` leak scan enforces the zone boundary at commit time between releases.
 
 ### Writing rule: shipped prose keeps the lesson, never the citation
 
 The private-tree category is an **authoring** rule, so it is worth stating as one. When a rule, a gate, or a comment exists because something went wrong, the shipped file explains **what to do and why** — it never cites the private artifact that recorded it. A dated incident ID tells a public reader nothing except that something somewhere broke; the sentence "a DNS record was deleted without a restore plan, so destructive infra ops now require one" carries the entire value with none of the disclosure. Private files (anything inside a containment zone, and archived Algorithm snapshots) may cite freely — this rule binds only what ships.
 
-Two harms motivate it, and neither is visible to the identity or secret gates: the reference is **dangling** for every reader who is not the maintainer, and the slug itself **discloses operational history** — which project broke, when, and how. Structural references stay: the naming convention `INC-YYYYMMDD-<slug>.md`, the `MEMORY/LEARNING/INCIDENTS/` directory itself, and generic tree paths (`MEMORY/KNOWLEDGE/`, `MEMORY/STATE/`, undated `MEMORY/WORK/`) all describe structure every install has. Only the DATE makes a reference session-specific, which is why both gate patterns require one.
+Two harms motivate it, and neither is visible to the identity or secret gates: the reference is **dangling** for every reader who is not the maintainer, and the slug itself **discloses operational history** — which project broke, when, and how. Structural references stay: the naming convention `INC-YYYYMMDD-<slug>.md`, the `MEMORY/LEARNING/INCIDENTS/` directory itself, and generic tree paths (`MEMORY/KNOWLEDGE/`, `MEMORY/STATE/`, undated `LIFEOS/MEMORY/WORK/`) all describe structure every install has. Only the DATE makes a reference session-specific, which is why both gate patterns require one.
 
 Enforced by **G25 private-tree refs**. It was added 2026-08-14 after a publish review found 98 such references across 38 shipped files — content that every other gate and three independent audits had passed, because nothing was looking for pointers *into* the private tree (G8 and G22 look for private *skill* references only).
 
@@ -125,17 +129,19 @@ Record such files in `PATTERN_ALLOWLIST_FILES` in `hooks/lib/containment-zones.t
 
 ## Release pipeline — how the policy is verified
 
+The cut that produces a release is `release.ts cut <version>` (maintainer-side release tooling, not in the public release). It checks every path against `Release/classification.txt` (a newly public path must be accepted before the cut proceeds), exports the committed tree, scans the payload (`scan.ts`: identity, secret, home-path, infrastructure-ID and customer-data classes), checks references and contract, boots the payload in a fresh VM, and stages the two-lane audit. A zone in `containment-zones.ts` and a line in `classification.txt` must not contradict each other (`Release/zone-classification.test.ts`). The numbered steps below describe the legacy `ShadowRelease.ts` builder and its gates, which still run as an advisory parity check until the release-rebuild ISA retires them.
+
 1. **Zone review** — per the mandatory step above. Happens before anything else.
 2. **Source audit** — grep the live tree against the identity plus CF-ID pattern list. Every hit outside the configured zones is a policy violation; fix at source (sanitize, relocate, or allowlist with justification).
 3. **Staging build** — the release pipeline's `ShadowRelease.ts --create <version>` clones the live tree with hard rsync exclusions, deletes zone contents (preserving only top-level READMEs as scaffold), overlays the public `settings.json`, `CLAUDE.md`, and `LIFEOS_CONFIG.toml` templates. This `.claude/` tree is an intermediate: `EmitSkill.ts` then reshapes it into the shippable `LifeOS/` skill, so the published release is that emitted skill, not the tree-clone itself.
-4. **The containment gates run against the staging tree (G1-G14 + G17-G25 — see the release pipeline's `GateKey` type for the canonical roster; G1-G14 listed here):**
+4. **The containment gates run against the staging tree (G1-G14 + G17-G28, including G27 top-level allowlist and G28 setup inventory — see the release pipeline's `GateKey` type for the canonical roster; G1-G14 listed here):**
     - **G1 — Zone deletion:** required public READMEs survive; forbidden personal files and persona dirs do not.
     - **G2 — Identity grep:** no identity patterns in the staging tree (except allowlisted files).
     - **G3 — CF ID grep:** no hardcoded CF account or KV namespace IDs (except allowlisted files).
     - **G4 — trufflehog:** no live secrets detected; gate marked skipped (not failed) when trufflehog isn't installed.
     - **G5 — .env strays:** no `.env*` files survived rsync exclusion.
     - **G6 — Private tokens:** no principal-specific identity-bound tokens (voice IDs, chat/bot IDs) outside allowlist.
-    - **G7 — Reference integrity:** `ReferenceCheck.ts` on the live tree reports zero missing refs; a broken ref in source means the release would ship with a 404 link.
+    - **G7 — Reference integrity (two lanes):** `ReferenceCheck.ts` on the live tree reports zero missing refs (a broken ref in source means the release would ship with a 404 link), AND `ReferenceCheck.ts --root <staging> --shipped-paths` reports zero missing install paths (LIFEOS/TOOLS, LIFEOS/PULSE, hooks, commands, workflows, relative imports) in the staged payload — a shipped file naming a path the scrub removes resolves live but 404s on every install (public issue #1955, @pybe).
     - **G8 — Private skill refs:** no references to `_*` skills in the staged public tree (the `_` prefix is the privacy contract; refs to those skills mean the public release expects something it deleted).
     - **G9 — Username-path leak:** no absolute `/Users/<name>/` or principal hostname paths survived.
     - **G10 — Staging boot:** structural sanity — the staging tree contains the files a fresh-install harness needs to boot.
@@ -163,11 +169,11 @@ Populated by the audit. Updated as files are sanitized or relocated.
 | File | Reason listed | Disposition |
 |------|---------------|-------------|
 | `hooks/lib/containment-zones.ts` | Zone inventory module ShadowRelease imports from | **KEEP** — legitimate exception |
-| the release pipeline's `ShadowRelease.ts` | Release tool must embed patterns for G2/G3 gates | **KEEP** — legitimate exception |
+| the maintainer release pipeline's `ShadowRelease.ts` | Release tool must embed patterns for G2/G3 gates | **KEEP** — legitimate exception |
 | `LIFEOS/DOCUMENTATION/Tools/Containment.md` | Policy doc describes zones and references patterns categorically | **KEEP** — legitimate exception |
-| `skills/Daemon/Docs/SecurityClassification.md` | Documents the exact path patterns the Daemon filter should scrub | **KEEP** — legitimate exception |
-| `skills/Daemon/Tools/SecurityFilter.ts` | Pattern inspector test cases embed the patterns they filter | **KEEP** — legitimate exception |
-| `skills/CreateSkill/Workflows/ValidateSkill.md` | Lists example patterns a skill author should NOT hardcode | **KEEP** — legitimate exception |
+| the maintainer-side public-profile skill's security classification doc | Documents the exact path patterns its filter should scrub | **KEEP** — legitimate exception |
+| the maintainer-side public-profile skill's security filter | Pattern inspector test cases embed the patterns they filter | **KEEP** — legitimate exception |
+| `skills/CreateSkill/Intents/ValidateSkill.md` | Lists example patterns a skill author should NOT hardcode | **KEEP** — legitimate exception |
 | `LIFEOS/TOOLS/SessionHarvester.ts` | Comment references derivation, not literal path | **KEEP** — uses `CLAUDE_DIR.replace(...)` dynamically |
 | `LIFEOS/TOOLS/gmail.ts` | Uses `homedir()` at runtime, not a literal path | **KEEP** — dynamic resolution |
 | `LIFEOS/PULSE/checks/health.ts` | Hardcoded site list for health monitoring | **TODO-REFACTOR** — move site list to `LIFEOS_CONFIG.toml`, read at startup |
@@ -177,7 +183,7 @@ Populated by the audit. Updated as files are sanitized or relocated.
 
 ## Updating this policy
 
-Edit this file directly. Commit with a message that starts with `policy:` so it's easy to find in git log. After any policy change, re-run `ShadowRelease --create <version>` and verify no gates regress.
+Edit this file directly. Commit with a message that starts with `policy:` so it's easy to find in git log. After any policy change, re-run `release.ts classify` and `release.ts scan` on the latest cut and verify nothing regresses.
 
 ---
 
@@ -187,7 +193,7 @@ Edit this file directly. Commit with a message that starts with `policy:` so it'
 
 A contributor adds a troubleshooting doc under `LIFEOS/DOCUMENTATION/` and, to make the fix copy-pasteable, drops in the exact command they ran — which includes an absolute home path and a Cloudflare account ID. The doc sits outside every containment zone, so it must be clean. It isn't.
 
-Nothing happens at write time; there is no runtime guard. The catch comes at release build. `ShadowRelease --create` clones the tree, and the gates scan the staging copy: **G9** flags the `/Users/<name>/…` path, **G3** flags the account ID. The build stops with both hits named. The fix is at the source, never the allowlist — swap the path for `${HOME}` and load the ID from `process.env` at runtime. Re-run, gates green, ship.
+Nothing is guaranteed to stop the write itself, and the commit-time leak scan refuses only what the deny list already knows. The catch comes at release build: `release.ts cut` exports only the public paths and scans the payload, where the `home-path-literal` class flags the `/Users/<name>/…` path and the `infra-identifier` class flags the account ID. The cut stops with both hits named. The fix is at the source, never the allowlist — swap the path for `${HOME}` and load the ID from `process.env` at runtime. Re-run, gates green, ship.
 
 ### Where a string lives decides whether it's a problem
 

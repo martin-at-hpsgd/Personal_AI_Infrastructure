@@ -20,7 +20,7 @@ export function CoverPage({
 
       <div className="flex-1 flex flex-col justify-center">
         {/* A bare angle-bracket ORG_NAME placeholder here parsed as an unclosed JSX tag and broke `next build`
-            (public issue #1557, @tzioup); the referenced /ul-icon.png was never
+            (public issue #1557, @tzioup); the referenced logo file was never
             shipped. Drop your own logo into public/ and restore an <img> here. */}
         <div className="font-accent text-lg tracking-[0.25em] text-primary uppercase mb-4">
           TELOS Assessment

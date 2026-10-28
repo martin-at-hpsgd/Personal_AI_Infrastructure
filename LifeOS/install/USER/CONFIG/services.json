@@ -1,0 +1,15 @@
+[
+  {
+    "_docs": "Per-install background services (launchd on macOS). Read by LIFEOS/TOOLS/Services.ts loadUserServices(): the file must be a JSON array; entries without a string `label` AND a string `install` are ignored (this docs entry is ignored that way). DeployComponents.ts records declined core service labels in this entry's `_declined` array. InstallAgentJobs.ts appends one entry per enabled job in agent-jobs.json with category `jobs`. Shipped system services live in Services.ts itself; only YOUR private machinery goes here.",
+    "_declined": [],
+    "_entry_shape": {
+      "label": "com.lifeos.example (the launchd label; `com.lifeos.<x>` for services you install, a vendor label for a mounted sidecar)",
+      "title": "Human title shown in Pulse and `Services.ts status`",
+      "purpose": "One line on what it does",
+      "category": "one of: pulse | sidecar | capture | sync | sweep | maintenance | jobs",
+      "optIn": "boolean — true for opt-in extras, false for default-on core",
+      "install": "shell command that installs and loads it; a `#`-prefixed string is a note, not runnable",
+      "uninstall": "optional shell command that unloads and removes it"
+    }
+  }
+]

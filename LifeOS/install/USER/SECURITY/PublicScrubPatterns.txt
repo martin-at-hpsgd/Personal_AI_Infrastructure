@@ -1,0 +1,41 @@
+# PublicScrubPatterns.txt — public-push scrub patterns (template; replace the REPLACE-ME lines)
+#
+# WHAT THIS IS
+#   The second half of "release-clean". DENY_LIST.txt guards the LifeOS release
+#   pipeline; THIS file guards every ad-hoc push to a PUBLIC GitHub repo and every
+#   `gh repo create --public` / `gh repo edit --visibility public`.
+#   Consumers (both read ~/.claude/LIFEOS/USER/SECURITY/PublicScrubPatterns.txt):
+#     hooks/PublicPushGate.hook.ts        — scans HEAD tree + reachable history with
+#                                           `git grep -I -i -n -E` before a public push
+#     LIFEOS/TOOLS/SkillHygieneGate.ts    — folds these into the skill scan (rg -i)
+#
+# FORMAT
+#   One pattern per line, matched case-insensitively.
+#   Blank lines and lines starting with `#` are ignored.
+#   Patterns run in TWO engines — git grep -E (POSIX ERE) and ripgrep — so use
+#   only syntax both accept: literals, `.`, `*`, `+`, `?`, `[0-9]`, `[A-Za-z]`,
+#   `(a|b)`. Do NOT use `\b`, `\d`, `\w`, or `(?-i)`.
+#   Escape a literal dot as `\.`.
+#
+# WHAT BELONGS HERE
+#   Things that must never land in a public repo even inside a commit message or
+#   old history: your personal email, phone, street address, private hostnames,
+#   cloud account ids, private repo names, family names. Generic secret shapes
+#   (Anthropic/GitHub/AWS/Slack keys, PEM headers) are BUILT IN to the gate —
+#   you do not need to list them.
+#
+# A missing file is fine: the gate still runs with the built-in secret shapes.
+# Never paste these patterns into any file that will itself be scanned.
+
+# --- Contact details ---
+REPLACE-ME-personal-email@example\.invalid
+REPLACE-ME-mobile-number-digits
+REPLACE-ME-street-address
+
+# --- Private infrastructure ---
+REPLACE-ME-home-hostname\.lan
+REPLACE-ME-private-domain\.example
+REPLACE-ME-cloud-account-id
+
+# --- Household ---
+REPLACE-ME-partner-name

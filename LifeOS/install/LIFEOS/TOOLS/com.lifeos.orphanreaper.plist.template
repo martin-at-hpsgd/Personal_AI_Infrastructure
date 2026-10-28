@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.lifeos.orphanreaper.plist.template - Source template. Install via:
+    bun ~/.claude/LIFEOS/TOOLS/InstallOrphanReaper.ts
+  Runs OrphanReaper.ts --apply every 900s: kills dev servers (vitepress/vite/
+  astro/next/wrangler/workerd/`bun run dev`…) re-parented to launchd with no
+  controlling terminal and older than ten minutes — the servers a dead session
+  left behind. Headless: no voice, no notification; each kill is one row in
+  MEMORY/OBSERVABILITY/orphan-reaper.jsonl. Template stays clean of
+  principal-specific paths so it ships in the public LifeOS release.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeos.orphanreaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{BUN}}</string>
+    <string>{{HOME}}/.claude/LIFEOS/TOOLS/OrphanReaper.ts</string>
+    <string>--apply</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>900</integer>
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/OBSERVABILITY/orphan-reaper-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/OBSERVABILITY/orphan-reaper-launchd.log</string>
+  <key>WorkingDirectory</key>
+  <string>{{HOME}}/.claude</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{BUN_DIR}}:{{HOME}}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>LIFEOS_NOTIFICATION_CHANNEL</key>
+    <string>headless</string>
+  </dict>
+</dict>
+</plist>

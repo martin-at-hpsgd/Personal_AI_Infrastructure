@@ -1,0 +1,4 @@
+dist/
+stage/
+release/
+node_modules/

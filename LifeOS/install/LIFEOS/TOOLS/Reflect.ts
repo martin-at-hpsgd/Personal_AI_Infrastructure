@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.1.0
+ * @version 1.1.3
  * Reflect.ts — the reflection writer. Schema 9.
  *
  * WHY THIS EXISTS (2026-07-24, spend-dial fix F3/F4):
@@ -9,7 +9,7 @@
  * one malformed line (an unescaped \Z) made the whole file unstreamable by jq —
  * the file the /algo loop reads.
  *
- * The worse defect was `within_budget`. Algorithm claim 15 checks spend via
+ * The worse defect was `within_budget`. Algorithm criterion 15 checks spend via
  * "SELF + reflection within_budget", and self-attestation returned true in
  * nearly all records. Over the same period SpendAuditor — which already runs
  * on its own trigger set — disagreed on the large majority of them. Two
@@ -43,9 +43,9 @@
 
 import { existsSync, appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const LIFEOS = process.env.LIFEOS_DIR ?? join(homedir(), ".claude", "LIFEOS");
+const LIFEOS = getLifeosDir();
 const REFLECTIONS = join(LIFEOS, "MEMORY", "LEARNING", "REFLECTIONS", "algorithm-reflections.jsonl");
 const SPEND_AUDIT = join(LIFEOS, "MEMORY", "OBSERVABILITY", "spend-audit.jsonl");
 const SUBAGENT_EVENTS = join(LIFEOS, "MEMORY", "OBSERVABILITY", "subagent-events.jsonl");
@@ -133,6 +133,23 @@ export function deriveWithinBudget(spend: SpendFacts): boolean | null {
   return spend.verdict === "match";
 }
 
+/**
+ * Read the iteration number from an ISA file's frontmatter (PR #2122).
+ * Returns the iteration number or 1 if not found.
+ */
+export function isaIteration(isaPath: string): number {
+  try {
+    if (!existsSync(isaPath)) return 1;
+    const head = readFileSync(isaPath, "utf-8").substring(0, 600);
+    const iterMatch = head.match(/^iteration:\s*(\d+)/m);
+    if (iterMatch) return parseInt(iterMatch[1], 10);
+    // Legacy: check for revision key
+    const revMatch = head.match(/^revision:\s*(\d+)/m);
+    if (revMatch) return parseInt(revMatch[1], 10);
+  } catch { /* default to 1 */ }
+  return 1;
+}
+
 /** Schema-8 shape gate. Returns the list of problems; empty means valid. */
 export function validate(r: Partial<Reflection>): string[] {
   const errs: string[] = [];
@@ -202,7 +219,7 @@ if (import.meta.main) {
     ts: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
     session_id,
     slug,
-    iteration: Number(arg("iteration") ?? 1),
+    iteration: Number(arg("iteration") ?? isaIteration(join(getLifeosDir(), "MEMORY", "WORK", slug, "ISA.md"))), // PR #2122, @pai-scaffolde
     work_kind: arg("work-kind") ?? null,
     claims_closed: list("claims"),
     evidence_classes: list("evidence"),

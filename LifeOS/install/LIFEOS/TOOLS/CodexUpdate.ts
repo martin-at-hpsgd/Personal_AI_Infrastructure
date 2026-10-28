@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.2.8
  * CodexUpdate.ts — Keep the OpenAI Codex CLI current.
  *
  *   bun ~/.claude/LIFEOS/TOOLS/CodexUpdate.ts            # update to @latest
  *   bun ~/.claude/LIFEOS/TOOLS/CodexUpdate.ts --check    # report versions only
  *
- * codex is the agentic runtime behind the cross-vendor GPT-5.6 Sol agents (Forge,
+ * codex is the agentic runtime behind the cross-vendor GPT-5.6 Sol agents (the builders and
  * the researchers). It's a Bun global (`@openai/codex`), so "stay updated" means
  * `bun install -g @openai/codex@latest` on a cadence. The com.lifeos.codexupdate
  * launchd agent runs this daily; see InstallCodexUpdate.ts.
@@ -19,10 +20,11 @@ import { spawnSync } from "child_process";
 import { appendFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "node:os";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
 const PKG = "@openai/codex";
-const LOG = join(HOME, ".claude", "LIFEOS", "MEMORY", "OBSERVABILITY", "codex-update.jsonl");
+const LOG = lifeosPath("MEMORY", "OBSERVABILITY", "codex-update.jsonl");
 
 function codexVersion(): string | null {
   const r = spawnSync("codex", ["--version"], { encoding: "utf-8" });

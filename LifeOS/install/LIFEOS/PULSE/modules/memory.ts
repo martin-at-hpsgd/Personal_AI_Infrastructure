@@ -28,6 +28,7 @@ import {
   statSync,
 } from "node:fs";
 import { join } from "node:path";
+import { readJsonlTail } from "../lib/jsonl-window.ts";
 import { parseMemoryContent } from "../../TOOLS/MemoryWriter";
 import { isTerminalStatus } from "../lib/memory-proposals";
 import { homedir } from "node:os";
@@ -87,27 +88,10 @@ function safeReadJson(path: string): any | null {
 }
 
 function safeReadJsonLines(path: string, lastN: number = 50): any[] {
-  try {
-    if (!existsSync(path)) return [];
-    const raw = readFileSync(path, "utf-8");
-    const lines = raw
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-    const tail = lines.slice(-lastN);
-    return tail
-      .map((l) => {
-        try {
-          return JSON.parse(l);
-        } catch {
-          return null;
-        }
-      })
-      .filter((x) => x !== null);
-  } catch {
-    return [];
-  }
+  // Byte-bounded tail (2026-09-04): memory-health.jsonl is 23 MB and grows.
+  return readJsonlTail(path, lastN, 8192);
 }
+
 
 function readMemoryFile(path: string): { entries: string[]; count: number; charsUsed: number } {
   if (!existsSync(path)) return { entries: [], count: 0, charsUsed: 0 };

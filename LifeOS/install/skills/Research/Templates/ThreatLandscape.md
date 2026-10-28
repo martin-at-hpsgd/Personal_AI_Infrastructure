@@ -1,6 +1,6 @@
 # Threat Landscape Domain Template
 
-Domain-specific configuration for the Deep Investigation workflow applied to cybersecurity threat analysis.
+Domain-specific configuration for the Deep Investigation intent applied to cybersecurity threat analysis.
 
 ---
 

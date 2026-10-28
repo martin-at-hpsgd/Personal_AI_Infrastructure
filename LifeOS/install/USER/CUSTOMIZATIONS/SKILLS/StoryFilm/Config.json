@@ -1,0 +1,5 @@
+{
+  "runsRoot": "~/StoryFilms",
+  "fonts": { "serif": "~/Fonts/ExampleSerif-Regular.otf", "serifItalic": "~/Fonts/ExampleSerif-Italic.otf" },
+  "provingRun": "the-lantern-keeper"
+}

@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.5
  * ProseInCode — fails on doctrine prose living inside source comments.
  *
- * BPE exempts `.ts`, which is right for code and wrong for the essays that collect above it:
+ * BLE exempts `.ts`, which is right for code and wrong for the essays that collect above it:
  * a rule file's audit never reads a comment, so policy hides there and drifts from the file
  * that owns it. Three classes are flagged, all of them git's job:
  *   - HISTORY     narration of what the file once did or when it changed
@@ -25,9 +26,9 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { homedir } from "node:os";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const ROOT = join(homedir(), ".claude");
+const ROOT = getClaudeDir();
 const DEFAULT_SCAN = ["hooks", "LIFEOS/TOOLS", "LIFEOS/ATLAS", "LIFEOS/PULSE/modules", "skills"];
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "Plugins", "LIFEOS_RELEASES", "archive", "dist", "build", "MEMORY"]);
@@ -47,7 +48,7 @@ const RULES: Array<{ kind: Kind; re: RegExp; why: string }> = [
   // thing being superseded.
   { kind: "SUPERSEDED", re: /\bsupersed(?:es|ed|ing)\b[^\n]*(?:\d{4}-\d{2}-\d{2}|\bv\d+\.\d+|\bdirective\b|\bbaseline\b|\.tsx?\b)/i, why: "a superseded directive asserted in code drifts from the rule file that owns it" },
   { kind: "SUPERSEDED", re: /\b(?:BASELINE|baseline) \(\d{4}-\d{2}-\d{2}/, why: "dated baseline — policy, not data" },
-  { kind: "SUPERSEDED", re: /\bprincipal directive\b/i, why: "doctrine belongs in OPERATIONAL_RULES, cited not restated" },
+  { kind: "SUPERSEDED", re: /\bprincipal directive\b/i, why: "doctrine belongs in OPERATIONAL_PREFERENCES, cited not restated" },
   { kind: "SUPERSEDED", re: /\bRETIRED \d{4}-\d{2}-\d{2}\b/, why: "retirement notice — the retirement registry owns this" },
   // Narrow deliberately: "the item was deleted mid-stage" describes runtime behavior and is
   // code, not history. A tombstone is the same phrase ANCHORED to a date, version, or symbol.

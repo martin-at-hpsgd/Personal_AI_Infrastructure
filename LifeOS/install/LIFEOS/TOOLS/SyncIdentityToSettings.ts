@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.2.6
  * SyncIdentityToSettings.ts — Mirror PRINCIPAL_IDENTITY.md frontmatter
  * `preferences` block into settings.json `.preferences`.
  *
@@ -17,12 +18,11 @@
  */
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
-import { paiUserDir } from './LifeosConfig';
+import { lifeosUserDir } from './LifeosConfig';
+import { getClaudeDir } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const HOME = homedir();
-const PRINCIPAL_PATH = join(paiUserDir(), 'PRINCIPAL/PRINCIPAL_IDENTITY.md');
-const SETTINGS_PATH = join(HOME, '.claude/settings.json');
+const PRINCIPAL_PATH = join(lifeosUserDir(), 'PRINCIPAL/PRINCIPAL_IDENTITY.md');
+const SETTINGS_PATH = join(getClaudeDir(), 'settings.json');
 const VERBOSE = process.argv.includes('--verbose');
 
 function snakeToCamel(s: string): string {

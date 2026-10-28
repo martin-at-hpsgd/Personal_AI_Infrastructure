@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.lifeos.velocity.plist.template - Source template. Install via:
+    bun ~/.claude/LIFEOS/TOOLS/InstallVelocitySync.ts
+  Hourly recount of commits-to-main across every configured repo into
+  MEMORY/STATE/velocity/ (the Pulse /velocity page). ShippingVelocity.ts then runs
+  VelocityDeeds.ts (caps, fixes, tends via the deeds CLI, which needs gh and git on
+  PATH) and VelocityPrs.ts, so one job keeps all three views current. Runs once at
+  load so a fresh install has data immediately. Headless: never voices.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeos.velocity</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{BUN}}</string>
+    <string>{{HOME}}/.claude/LIFEOS/TOOLS/ShippingVelocity.ts</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/OBSERVABILITY/velocity-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/OBSERVABILITY/velocity-launchd.log</string>
+  <key>WorkingDirectory</key>
+  <string>{{HOME}}/.claude</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{BUN_DIR}}:{{HOME}}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>LIFEOS_NOTIFICATION_CHANNEL</key>
+    <string>headless</string>
+  </dict>
+</dict>
+</plist>

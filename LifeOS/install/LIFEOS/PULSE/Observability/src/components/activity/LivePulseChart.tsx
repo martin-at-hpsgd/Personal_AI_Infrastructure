@@ -64,7 +64,7 @@ const TOOL_STYLE_MAP: Record<string, { bg: string; text: string }> = {
   TodoWrite: { bg: "bg-[#f7768e]/10", text: "text-[#f7768e]" },
 };
 
-const DEFAULT_STYLE = { bg: "bg-[rgba(107,128,171,0.1)]", text: "text-[var(--ink-2)]" };
+const DEFAULT_STYLE = { bg: "bg-surface-1", text: "text-[var(--ink-2)]" };
 
 // ─── Agent Colors ───
 
@@ -80,7 +80,8 @@ const AGENT_HEX_COLORS: Record<string, string> = {
   "gemini-researcher": "#EAB308",
   main: "#3B82F6",
   da: "#3B82F6",
-  pai: "#3B82F6",
+  pai: "#3B82F6", // legacy events
+  lifeos: "#3B82F6",
   "claude-code": "#3B82F6",
 };
 
@@ -142,7 +143,7 @@ export default function LivePulseChart({
     allEvents,
   } = useChartData();
 
-  const { eventsPerMinute, totalTokens, topTools, skillsAndWorkflows, agentActivity, estimatedCost } =
+  const { eventsPerMinute, totalTokens, topTools, skillsAndIntents, agentActivity, estimatedCost } =
     useAdvancedMetrics(allEvents, dataPoints, timeRange, currentConfig);
 
   const activeAgentCount = agentActivity.length;
@@ -223,7 +224,12 @@ export default function LivePulseChart({
     animationDuration: 300,
     barWidth: 3,
     barGap: 1,
-    colors: { primary: "#3B82F6", glow: "#60A5FA", axis: "#333", text: "#565f89" },
+    colors: {
+      primary: "#3B82F6",
+      glow: "#60A5FA",
+      axis: "rgba(255,255,255,0.10)",
+      text: "rgba(255,255,255,0.35)",
+    },
   });
 
   const getDimensions = (): ChartDimensions => ({
@@ -306,12 +312,12 @@ export default function LivePulseChart({
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasData = dataPoints.some((dp) => dp.count > 0);
-  const skills = skillsAndWorkflows.filter((sw) => sw.type === "skill");
-  const workflows = skillsAndWorkflows.filter((sw) => sw.type === "workflow");
+  const skills = skillsAndIntents.filter((sw) => sw.type === "skill");
+  const intents = skillsAndIntents.filter((sw) => sw.type === "intent");
 
   return (
     <div className="flex flex-col">
-      {/* Header Bar: Skills, Workflows, Tools, Tokens, Cost */}
+      {/* Header Bar: Skills, Intents, Tools, Tokens, Cost */}
       <div className="px-5 py-2 border-b border-white/[0.03]">
         <div className="flex items-center gap-4 flex-wrap">
           {/* Skills */}
@@ -331,16 +337,16 @@ export default function LivePulseChart({
 
           <span className="text-[var(--line-2)]">|</span>
 
-          {/* Workflows */}
+          {/* Intents */}
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-sm text-[var(--ink-3)] font-medium uppercase">WORKFLOWS:</span>
-            {workflows.length === 0 ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm bg-[rgba(107,128,171,0.2)]">
+            <span className="text-sm text-[var(--ink-3)] font-medium uppercase">INTENTS:</span>
+            {intents.length === 0 ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm bg-surface-2">
                 <Hammer size={14} className="text-[var(--ink-3)]" />
                 <span className="font-medium text-[var(--ink-3)]">None</span>
               </div>
             ) : (
-              workflows.slice(0, 3).map((w) => (
+              intents.slice(0, 3).map((w) => (
                 <div key={w.name} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm bg-[#7aa2f7]/10">
                   <Hammer size={14} className="text-[#7aa2f7]" />
                   <span className="font-medium text-[#7aa2f7]">{w.name}</span>
@@ -358,7 +364,7 @@ export default function LivePulseChart({
               ["Read", "Edit", "Bash"].map((t) => {
                 const Icon = TOOL_ICON_MAP[t] || Wrench;
                 return (
-                  <div key={t} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm bg-[rgba(107,128,171,0.2)]">
+                  <div key={t} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm bg-surface-2">
                     <Icon size={14} className="text-[var(--ink-3)]" />
                     <span className="font-medium text-[var(--ink-3)]">{t}</span>
                   </div>
@@ -408,7 +414,7 @@ export default function LivePulseChart({
             ["User", "Agent"].map((name) => (
               <div
                 key={name}
-                className="flex-1 min-w-0 text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-2 justify-center bg-[rgba(107,128,171,0.2)]"
+                className="flex-1 min-w-0 text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-2 justify-center bg-surface-2"
               >
                 <Moon size={10} className="shrink-0 text-[var(--ink-3)]" />
                 <span className="font-mono truncate text-[var(--ink-3)]">{name}</span>

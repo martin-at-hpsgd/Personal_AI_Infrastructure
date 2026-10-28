@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.1.0
+ * @version 1.1.1
  * MemoryHealthGate.hook.ts — Stop-chain hook that runs the autonomic-memory
  * health check on every turn end.
  *
@@ -17,9 +17,10 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { lifeosPath } from "./lib/paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const CHECK = join(HOME, ".claude/LIFEOS/TOOLS/MemoryHealthCheck.ts");
+const CHECK = lifeosPath("TOOLS", "MemoryHealthCheck.ts");
 
 try {
   const out = execFileSync("bun", [CHECK], {

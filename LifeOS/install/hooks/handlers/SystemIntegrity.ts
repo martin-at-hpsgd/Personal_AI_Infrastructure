@@ -15,10 +15,10 @@
  * - Deduplicates identical change sets
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, openSync, closeSync, statSync, renameSync } from 'fs';
 import { spawn } from 'child_process';
 import { join } from 'path';
-import { paiPath } from '../lib/paths';
+import { lifeosPath } from '../lib/paths';
 
 import {
   parseToolUseBlocks,
@@ -40,9 +40,43 @@ interface HookInput {
   hook_event_name: string;
 }
 
-const STATE_DIR = paiPath('MEMORY', 'STATE');
+const STATE_DIR = lifeosPath('MEMORY', 'STATE');
 const STATE_FILE = join(STATE_DIR, 'integrity-state.json');
-const INTEGRITY_SCRIPT = paiPath("TOOLS", 'IntegrityMaintenance.ts');
+const INTEGRITY_SCRIPT = lifeosPath("TOOLS", 'IntegrityMaintenance.ts');
+const INTEGRITY_LOG_DIR = lifeosPath('MEMORY', 'OBSERVABILITY');
+export const INTEGRITY_LOG = join(INTEGRITY_LOG_DIR, 'integrity-maintenance.log');
+/** Where the change list waits for the child. A stdin pipe lost it every time: the hook calls process.exit(0)
+ *  straight after spawning, before the pipe write flushes, so all 15 logged runs read "No input received" (2026-10-10). */
+export const INTEGRITY_INPUT_DIR = join(STATE_DIR, 'integrity-inputs');
+
+/** Write the child's input to its own file and return the path; the child deletes it after reading. */
+export function writeIntegrityInput(data: string, sessionId: string, dir: string = INTEGRITY_INPUT_DIR): string {
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, '_') || 'session'}-${process.pid}-${Date.now()}.json`);
+  writeFileSync(path, data);
+  return path;
+}
+/** Past this size the log rolls to `.1` (one prior generation kept). ObservabilityPrune
+ *  only trims timestamped .jsonl rows, so this plain-text log bounds itself. */
+export const INTEGRITY_LOG_MAX_BYTES = 1024 * 1024;
+
+/**
+ * Open the child's append-only log fd, rolling it first when it outgrows
+ * INTEGRITY_LOG_MAX_BYTES. Returns null when the log cannot be opened; the
+ * caller then discards the child's output rather than skip the maintenance run.
+ */
+export function openIntegrityLog(logPath: string = INTEGRITY_LOG): number | null {
+  try {
+    mkdirSync(join(logPath, '..'), { recursive: true });
+    if (existsSync(logPath) && statSync(logPath).size > INTEGRITY_LOG_MAX_BYTES) {
+      renameSync(logPath, `${logPath}.1`);
+    }
+    return openSync(logPath, 'a');
+  } catch (error) {
+    console.error('[SystemIntegrity] Integrity log unavailable, child output discarded:', error);
+    return null;
+  }
+}
 
 
 /**
@@ -104,16 +138,16 @@ function spawnIntegrityMaintenance(
       })),
     });
 
-    // Spawn detached process
-    const child = spawn('bun', [INTEGRITY_SCRIPT], {
+    // An inherited stderr pipe held SessionEnd open until the child exited;
+    // a log fd lets the hook return at once (public issue #2210, @corobis).
+    const inputPath = writeIntegrityInput(inputData, hookInput.session_id ?? '');
+    const logFd = openIntegrityLog();
+    const child = spawn('bun', [INTEGRITY_SCRIPT, '--input', inputPath], {
       detached: true,
-      stdio: ['pipe', 'ignore', 'inherit'],  // stdin for input, ignore stdout, inherit stderr for logging
+      stdio: ['ignore', logFd ?? 'ignore', logFd ?? 'ignore'],
       env: { ...process.env },
     });
-
-    // Write input data to stdin
-    child.stdin?.write(inputData);
-    child.stdin?.end();
+    if (logFd !== null) closeSync(logFd); // the child holds its own copy
 
     // Detach from parent
     child.unref();

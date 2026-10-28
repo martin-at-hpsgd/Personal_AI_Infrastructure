@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.2.10
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -21,13 +24,15 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  * Docs: https://docs.pangram.com/quickstart-rest
  *
  * Key: PANGRAM_API_KEY in ~/.claude/.env (not present yet — add it before running).
- * Override the endpoint with PANGRAM_API_URL if Pangram moves it.
+ * Override the endpoint with PANGRAM_API_URL if Pangram moves it; the override must still be an https
+ * URL on an approved Pangram host (resolvePangramUrl), because that URL receives the key and the text.
  */
 
 import { readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { parseEnv } from "./Env";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { getClaudeDir, getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -36,13 +41,12 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 
-const ENV_PATH = `${homedir()}/.claude/.env`;
+const ENV_PATH = `${getClaudeDir()}/.env`;
 
 // Run-record: proof the detector actually executed on a specific text. The
-// WritingGate Stop hook reads this so its pass condition is "Pangram ran on
-// this content", not "a token string is present" (Forge audit 2026-07-01).
+// The pass condition was "Pangram ran on this content", not "a token string is present" (cross-vendor audit 2026-07-01).
 const RUNS_PATH = join(
-  process.env.LIFEOS_DIR || `${homedir()}/.claude/LIFEOS`,
+  getLifeosDir(),
   "MEMORY", "OBSERVABILITY", "pangram-runs.jsonl",
 );
 export function normalizeForHash(text: string): string {
@@ -62,13 +66,33 @@ function appendRunRecord(text: string, aiPct: unknown): void {
 }
 const DEFAULT_URL = "https://text.external-api.pangram.com/task";
 
+/** Hosts that may receive the Pangram key and the submitted text. HTTPS only. */
+export const APPROVED_PANGRAM_HOSTS: readonly string[] = ["text.external-api.pangram.com"];
+
+/**
+ * The endpoint the key and the text are sent to, or an Error. An override (PANGRAM_API_URL) is honoured only
+ * when it is an https URL on an approved host, with no embedded credentials and no non-default port: a
+ * caller-controlled URL must never receive the credential. Redirects are refused at the fetch sites.
+ */
+export function resolvePangramUrl(override: string | undefined = process.env.PANGRAM_API_URL): string {
+  const raw = override && override.length > 0 ? override : DEFAULT_URL;
+  let u: URL;
+  try { u = new URL(raw); } catch { throw new Error(`PANGRAM_API_URL is not a valid URL: refusing to send the key or text`); }
+  if (u.protocol !== "https:") throw new Error(`PANGRAM_API_URL must be https (got ${u.protocol.replace(":", "")}): refusing to send the key or text`);
+  if (u.username || u.password) throw new Error("PANGRAM_API_URL must not embed credentials");
+  if (u.port) throw new Error("PANGRAM_API_URL must use the default https port");
+  if (!APPROVED_PANGRAM_HOSTS.includes(u.hostname.toLowerCase())) throw new Error(`PANGRAM_API_URL host ${u.hostname} is not an approved Pangram origin: refusing to send the key or text`);
+  return u.toString().replace(/\/+$/, "");
+}
+
 function loadKey(): string {
   const fromEnv = process.env.PANGRAM_API_KEY;
   if (fromEnv) return fromEnv;
   try {
     const env = readFileSync(ENV_PATH, "utf8");
-    const line = env.split("\n").find((l) => l.startsWith("PANGRAM_API_KEY="));
-    if (line) return line.slice("PANGRAM_API_KEY=".length).replace(/^["']|["']$/g, "").trim();
+    // public issue #2100, @bowlax: use unified parseEnv to handle CRLF and export prefix
+    const parsed = parseEnv(env);
+    if (parsed.PANGRAM_API_KEY) return parsed.PANGRAM_API_KEY;
   } catch {}
   console.error("No PANGRAM_API_KEY found. Add it to ~/.claude/.env, then re-run.");
   process.exit(1);
@@ -102,7 +126,7 @@ async function main() {
   const text = (await readInput(args)).trim();
   if (!text) usage();
 
-  const url = process.env.PANGRAM_API_URL || DEFAULT_URL;
+  const url = resolvePangramUrl();
   const key = loadKey();
 
   // Step 1: submit the task.
@@ -110,7 +134,13 @@ async function main() {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": key },
     body: JSON.stringify({ text, public_dashboard_link: false }),
+    signal: AbortSignal.timeout(30_000),
+    redirect: "manual", // a redirect would carry the key to another origin
   });
+  if (submit.status >= 300 && submit.status < 400) {
+    console.error(`Pangram submit redirected (${submit.status}): refusing to follow, the key stays on the approved origin.`);
+    process.exit(1);
+  }
   if (!submit.ok) {
     console.error(`Pangram submit ${submit.status}: ${await submit.text()}`);
     process.exit(1);
@@ -125,7 +155,11 @@ async function main() {
   let data: any = {};
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const poll = await fetch(`${url}/${task_id}`, { headers: { "x-api-key": key } });
+    const poll = await fetch(`${url}/${encodeURIComponent(task_id)}`, { headers: { "x-api-key": key }, signal: AbortSignal.timeout(15_000), redirect: "manual" });
+    if (poll.status >= 300 && poll.status < 400) {
+      console.error(`Pangram poll redirected (${poll.status}): refusing to follow, the key stays on the approved origin.`);
+      process.exit(1);
+    }
     if (!poll.ok) {
       console.error(`Pangram poll ${poll.status}: ${await poll.text()}`);
       process.exit(1);
@@ -170,7 +204,9 @@ async function main() {
   console.log(`\n→ Lower AI% = reads more human.`);
 }
 
-main().catch((e) => {
-  console.error(e instanceof Error ? e.message : String(e));
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  });
+}

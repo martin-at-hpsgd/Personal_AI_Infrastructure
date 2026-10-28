@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.5.9
  * Session Progress CLI
  *
  * Manages session continuity files for multi-session work.
@@ -9,9 +10,11 @@
  *   bun run ~/.claude/LIFEOS/TOOLS/SessionProgress.ts <command> [options]
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
-import { join } from 'path';
-import { homedir } from "node:os";
+import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, realpathSync, lstatSync, renameSync, unlinkSync } from 'fs';
+import { randomBytes } from 'crypto';
+import { join, dirname, sep } from 'path';
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { invariant } from "./Invariant";
 
 interface Decision {
   timestamp: string;
@@ -31,7 +34,7 @@ interface Blocker {
   resolution: string | null;
 }
 
-interface SessionProgress {
+export interface SessionProgress {
   project: string;
   created: string;
   updated: string;
@@ -45,10 +48,49 @@ interface SessionProgress {
 }
 
 // Progress files are now in STATE/progress/ (consolidated from MEMORY/PROGRESS/)
-const PROGRESS_DIR = join(homedir(), '.claude', 'LIFEOS', 'MEMORY', 'STATE', 'progress');
+const PROGRESS_DIR = lifeosPath('MEMORY', 'STATE', 'progress');
 
-function getProgressPath(project: string): string {
-  return join(PROGRESS_DIR, `${project}-progress.json`);
+/**
+ * A project id becomes a file name, so it is one path segment of letters, digits, dot, underscore and
+ * dash, starting with a letter or digit. A slash, a backslash, a leading dot, a NUL or an empty id would
+ * let the CLI argument reach outside the progress directory.
+ */
+export const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+export function getProgressPath(project: string, dir: string = PROGRESS_DIR): string {
+  if (typeof project !== 'string' || !PROJECT_ID.test(project)) {
+    throw new Error(`invalid project id ${JSON.stringify(String(project).slice(0, 60))}: use letters, digits, dot, underscore or dash (one path segment, starting with a letter or digit)`);
+  }
+  return join(dir, `${project}-progress.json`);
+}
+
+/** True when a directory entry exists at the path, a dangling symlink included (existsSync follows links and says no). */
+function entryExists(path: string): boolean {
+  try { lstatSync(path); return true; } catch { return false; }
+}
+
+/**
+ * The deepest existing ancestor of a path, resolved through symlinks, with the not-yet-existing tail re-attached.
+ * A dangling symlink is an existing entry, so realpathSync throws on it instead of the lexical name being re-attached
+ * as if nothing were there.
+ */
+function realpathOfPlanned(path: string): string {
+  const tail: string[] = [];
+  let cur = path;
+  while (!entryExists(cur)) {
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    tail.unshift(cur.slice(parent.length + 1));
+    cur = parent;
+  }
+  return join(realpathSync(cur), ...tail);
+}
+
+/** A write destination must resolve, symlinks followed, to a file directly inside the progress directory. */
+export function assertInsideProgressDir(path: string, dir: string = PROGRESS_DIR): void {
+  const root = realpathOfPlanned(dir);
+  const target = realpathOfPlanned(path);
+  invariant(dirname(target) === root && target.startsWith(root + sep), `progress file ${path} resolves outside ${dir}`);
 }
 
 function loadProgress(project: string): SessionProgress | null {
@@ -57,9 +99,19 @@ function loadProgress(project: string): SessionProgress | null {
   return JSON.parse(readFileSync(path, 'utf-8'));
 }
 
-function saveProgress(progress: SessionProgress): void {
+export function saveProgress(progress: SessionProgress, dir: string = PROGRESS_DIR): void {
+  const path = getProgressPath(progress.project, dir); // validates the id
+  assertInsideProgressDir(path, dir);
   progress.updated = new Date().toISOString();
-  writeFileSync(getProgressPath(progress.project), JSON.stringify(progress, null, 2));
+  mkdirSync(dirname(path), { recursive: true }); // absent on a fresh clone: git cannot track an empty dir (public PR #2030, @abseg)
+  assertInsideProgressDir(path, dir); // again with the directory real: a symlinked parent or file is now resolvable
+  // The destination itself is never a symlink, and the write never opens it: the bytes go to an exclusive temp file
+  // in the same directory, then rename() replaces the directory entry, so a link substituted after the check is
+  // replaced, never followed.
+  invariant(!entryExists(path) || !lstatSync(path).isSymbolicLink(), `progress file ${path} is a symlink; refusing to write through it`);
+  const tmp = join(dirname(path), `.${progress.project}-progress.${randomBytes(8).toString('hex')}.tmp`);
+  writeFileSync(tmp, JSON.stringify(progress, null, 2), { flag: 'wx', mode: 0o600 });
+  try { renameSync(tmp, path); } catch (e) { try { unlinkSync(tmp); } catch { /* already gone */ } throw e; }
 }
 
 // Commands
@@ -273,80 +325,80 @@ function completeProgress(project: string): void {
 
 // CLI Parser
 
-const args = process.argv.slice(2);
-const command = args[0];
+function main(args: string[]): void {
+  const command = args[0];
 
-switch (command) {
-  case 'create':
-    if (!args[1]) {
-      console.error('Usage: session-progress create <project> [objective1] [objective2] ...');
-      process.exit(1);
-    }
-    createProgress(args[1], args.slice(2));
-    break;
+  switch (command) {
+    case 'create':
+      if (!args[1]) {
+        console.error('Usage: session-progress create <project> [objective1] [objective2] ...');
+        process.exit(1);
+      }
+      createProgress(args[1], args.slice(2));
+      break;
 
-  case 'decision':
-    if (!args[1] || !args[2]) {
-      console.error('Usage: session-progress decision <project> "<decision>" "<rationale>"');
-      process.exit(1);
-    }
-    addDecision(args[1], args[2], args[3] || '');
-    break;
+    case 'decision':
+      if (!args[1] || !args[2]) {
+        console.error('Usage: session-progress decision <project> "<decision>" "<rationale>"');
+        process.exit(1);
+      }
+      addDecision(args[1], args[2], args[3] || '');
+      break;
 
-  case 'work':
-    if (!args[1] || !args[2]) {
-      console.error('Usage: session-progress work <project> "<description>" [artifact1] [artifact2] ...');
-      process.exit(1);
-    }
-    addWork(args[1], args[2], args.slice(3));
-    break;
+    case 'work':
+      if (!args[1] || !args[2]) {
+        console.error('Usage: session-progress work <project> "<description>" [artifact1] [artifact2] ...');
+        process.exit(1);
+      }
+      addWork(args[1], args[2], args.slice(3));
+      break;
 
-  case 'blocker':
-    if (!args[1] || !args[2]) {
-      console.error('Usage: session-progress blocker <project> "<blocker>" ["resolution"]');
-      process.exit(1);
-    }
-    addBlocker(args[1], args[2], args[3]);
-    break;
+    case 'blocker':
+      if (!args[1] || !args[2]) {
+        console.error('Usage: session-progress blocker <project> "<blocker>" ["resolution"]');
+        process.exit(1);
+      }
+      addBlocker(args[1], args[2], args[3]);
+      break;
 
-  case 'next':
-    if (!args[1]) {
-      console.error('Usage: session-progress next <project> <step1> <step2> ...');
-      process.exit(1);
-    }
-    setNextSteps(args[1], args.slice(2));
-    break;
+    case 'next':
+      if (!args[1]) {
+        console.error('Usage: session-progress next <project> <step1> <step2> ...');
+        process.exit(1);
+      }
+      setNextSteps(args[1], args.slice(2));
+      break;
 
-  case 'handoff':
-    if (!args[1] || !args[2]) {
-      console.error('Usage: session-progress handoff <project> "<notes>"');
-      process.exit(1);
-    }
-    setHandoff(args[1], args[2]);
-    break;
+    case 'handoff':
+      if (!args[1] || !args[2]) {
+        console.error('Usage: session-progress handoff <project> "<notes>"');
+        process.exit(1);
+      }
+      setHandoff(args[1], args[2]);
+      break;
 
-  case 'resume':
-    if (!args[1]) {
-      console.error('Usage: session-progress resume <project>');
-      process.exit(1);
-    }
-    resumeProgress(args[1]);
-    break;
+    case 'resume':
+      if (!args[1]) {
+        console.error('Usage: session-progress resume <project>');
+        process.exit(1);
+      }
+      resumeProgress(args[1]);
+      break;
 
-  case 'list':
-    listActive();
-    break;
+    case 'list':
+      listActive();
+      break;
 
-  case 'complete':
-    if (!args[1]) {
-      console.error('Usage: session-progress complete <project>');
-      process.exit(1);
-    }
-    completeProgress(args[1]);
-    break;
+    case 'complete':
+      if (!args[1]) {
+        console.error('Usage: session-progress complete <project>');
+        process.exit(1);
+      }
+      completeProgress(args[1]);
+      break;
 
-  default:
-    console.log(`
+    default:
+      console.log(`
 Session Progress CLI - Multi-session continuity management
 
 Commands:
@@ -367,4 +419,14 @@ Examples:
   session-progress next auth-feature "Write auth tests" "Implement login endpoint"
   session-progress resume auth-feature
 `);
+  }
+}
+
+if (import.meta.main) {
+  try {
+    main(process.argv.slice(2));
+  } catch (error) {
+    console.error(`session-progress: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 }

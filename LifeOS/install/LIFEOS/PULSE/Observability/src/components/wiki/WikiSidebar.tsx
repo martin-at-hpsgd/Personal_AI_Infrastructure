@@ -62,7 +62,6 @@ const CATEGORY_ICONS: Record<string, typeof BookOpen> = {
   Overview: Compass,
   Agents: Bot,
   Algorithm: Cpu,
-  Arbol: TreePine,
   Config: Wrench,
   Delegation: GitBranch,
   Fabric: Layers,
@@ -76,6 +75,7 @@ const CATEGORY_ICONS: Record<string, typeof BookOpen> = {
   Security: ShieldCheck,
   Skills: Zap,
   Tools: Server,
+  Workflows: TreePine,
   // Memory object types
   People: Users,
   Companies: Building2,
@@ -96,7 +96,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   Overview: "text-emerald-400",
   Agents: "text-violet-400",
   Algorithm: "text-cyan-400",
-  Arbol: "text-emerald-400",
   Config: "text-ink-2",
   Delegation: "text-amber-400",
   Fabric: "text-violet-400",
@@ -110,6 +109,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Security: "text-rose-400",
   Skills: "text-amber-400",
   Tools: "text-ink-2",
+  Workflows: "text-emerald-400",
   People: "text-sky-400",
   Companies: "text-amber-400",
   Ideas: "text-violet-400",
@@ -188,7 +188,7 @@ function TreeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
 
 export default function WikiSidebar({ tree, onSearchClick }: WikiSidebarProps) {
   return (
-    <aside className="w-64 shrink-0 border-r border-line-1 bg-surface-1 overflow-y-auto h-[calc(100vh-3.5rem)]">
+    <aside className="w-64 shrink-0 glass rounded-2xl m-3 mr-0 overflow-y-auto self-stretch">
       {/* Search trigger */}
       <div className="p-3 border-b border-line-1">
         <button

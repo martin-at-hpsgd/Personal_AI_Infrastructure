@@ -1,0 +1,23 @@
+{
+  "intent": "ReportFinding",
+  "cases": [
+    {
+      "id": "idor_invoices",
+      "pattern": "create_report_finding",
+      "input": "Write this up as a finding for the Harborline Freight pentest report. Title: Insecure direct object reference on invoice download. What I saw: logged in as a normal customer user (tenant 4412) at https://portal.example.com. The invoice PDF link looks like GET /api/v2/invoices/90317/pdf. I changed 90317 to 90318, 90319 and so on and got back other customers' invoices with HTTP 200, including names, billing addresses, and line items. IDs are sequential. I pulled about 40 and stopped. No rate limiting, no alerts that I could see. Same bearer token worked the whole time. Tested 2026-10-19 from 203.0.113.45.",
+      "expects": "A finding that states exactly what was shown: authenticated cross-tenant read of invoices through sequential IDs with no server-side ownership check, no rate limiting, about 40 records pulled. Risk is tied to the exposed data (names, billing addresses, line items) and recommendations are concrete and accurate (object-level authorization, non-guessable identifiers as defence in depth, rate limits and alerting), with no invented evidence, and references only ones that are real and well known."
+    },
+    {
+      "id": "improve_weak_finding",
+      "pattern": "improve_report_finding",
+      "input": "improve this finding from our pentest report, it's too vague and the client pushed back:\n\nTitle: Weak TLS\n\nDescription: The server uses bad TLS settings. This is insecure.\n\nRisk: Attackers could read traffic. High risk.\n\nRecommendations: Fix the TLS. Use good ciphers.\n\nEvidence from the scan of mail.example.net (198.51.100.20) port 443: protocols enabled TLS 1.0, TLS 1.1, TLS 1.2. TLS 1.0 and 1.1 accepted. Cipher suites accepted on TLS 1.2 include TLS_RSA_WITH_AES_128_CBC_SHA and TLS_RSA_WITH_3DES_EDE_CBC_SHA. No ECDHE-only ordering, server cipher preference off. Certificate is valid, RSA 2048, expires 2027-03-02.",
+      "expects": "A rewritten finding that replaces the vague wording with the specific facts in the evidence: legacy TLS 1.0 and 1.1 accepted, static-RSA and 3DES suites offered, no forward secrecy enforced, server cipher preference off. It states the real risk without overstating it (the valid certificate is not a problem, and 'attackers can read traffic' needs the conditions that make it true), and gives specific, correct remediation."
+    },
+    {
+      "id": "thin_ambiguous_notes",
+      "pattern": "create_report_finding",
+      "input": "finding from my notes, sorry they're a mess:\n\nadmin panel on staging.example.org:8443?? default creds maybe. tried admin/admin got 302 then back to login, looks like it failed but response was 5 bytes longer than a normal bad login. didn't dig. someone said the box is prod-adjacent, not sure. also banner says Jetty 9.4.x something. 198.51.100.77. Also I think I saw the same login on a second host but didn't note the IP. Client is Northgate Clinics (fictional) so be careful about data stuff. just make it a proper finding.",
+      "expects": "A finding that only claims what the notes support: an exposed admin login on a non-standard port with an unconfirmed default-credential lead, a response-length difference that is not proof of access, and an old Jetty banner. It marks the unconfirmed points plainly rather than writing them up as a confirmed compromise, makes no invented CVEs, versions or second-host details, and its recommendations (restrict exposure, verify the credential lead, patch) fit what is actually known."
+    }
+  ]
+}

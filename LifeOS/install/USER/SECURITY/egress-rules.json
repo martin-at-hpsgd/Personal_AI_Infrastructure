@@ -1,0 +1,7 @@
+{
+  "_comment": "Optional trust rules for the ingestion guard. Empty arrays (as shipped) mean nothing extra is trusted: every skill tool and every git clone keeps the default framing. Add entries only for tools and accounts you own. Keys starting with _ are ignored.",
+  "trusted": [],
+  "skillTools": [],
+  "trustedScripts": [],
+  "ownedGitOwners": []
+}

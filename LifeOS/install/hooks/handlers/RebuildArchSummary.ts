@@ -22,7 +22,7 @@ import { spawn } from "child_process";
 import { getLifeosDir, getClaudeDir } from "../lib/paths";
 
 export async function handleRebuildArchSummary(): Promise<void> {
-  const paiDir = getLifeosDir();
+  const lifeosDir = getLifeosDir();
   const claudeDir = getClaudeDir();
   // Both paths were wrong, in ways that hid each other.
   //   1. The generator writes ARCHITECTURE_SUMMARY.md (ArchitectureSummaryGenerator.ts
@@ -33,8 +33,8 @@ export async function handleRebuildArchSummary(): Promise<void> {
   //   2. The directory is TOOLS, not Tools. existsSync only resolved on case-insensitive
   //      macOS; on Linux — which install.sh explicitly supports — the guard below
   //      returned early and the summary was never regenerated, silently.
-  const output = join(paiDir, "DOCUMENTATION", "ARCHITECTURE_SUMMARY.md");
-  const generator = join(paiDir, "TOOLS/ArchitectureSummaryGenerator.ts");
+  const output = join(lifeosDir, "DOCUMENTATION", "ARCHITECTURE_SUMMARY.md");
+  const generator = join(lifeosDir, "TOOLS/ArchitectureSummaryGenerator.ts");
 
   if (!existsSync(generator)) return;
 
@@ -42,18 +42,18 @@ export async function handleRebuildArchSummary(): Promise<void> {
     const outputStat = existsSync(output) ? statSync(output) : null;
     if (!outputStat) {
       console.error("[RebuildArchSummary] Architecture summary missing - regenerating");
-      await rebuild(generator, paiDir);
+      await rebuild(generator, lifeosDir);
       return;
     }
 
     const trackedDirs = [
-      join(paiDir, ""),
-      join(paiDir, "DOCUMENTATION"),
+      join(lifeosDir, ""),
+      join(lifeosDir, "DOCUMENTATION"),
       join(claudeDir, "hooks"),
-      join(paiDir, "ALGORITHM"),
-      join(paiDir, "TOOLS"),
-      join(paiDir, "USER", "CONFIG"),
-      join(paiDir, "USER", "SECURITY"),
+      join(lifeosDir, "ALGORITHM"),
+      join(lifeosDir, "TOOLS"),
+      join(lifeosDir, "USER", "CONFIG"),
+      join(lifeosDir, "USER", "SECURITY"),
     ];
 
     const trackedExtensions = new Set([".ts", ".md", ".yaml", ".yml", ".sh", ".json"]);
@@ -94,7 +94,7 @@ export async function handleRebuildArchSummary(): Promise<void> {
     if (newestMtime > outputStat.mtimeMs) {
       const rel = newestSystemFile.replace(claudeDir + "/", "");
       console.error(`[RebuildArchSummary] System file changed (${rel}) - regenerating`);
-      await rebuild(generator, paiDir);
+      await rebuild(generator, lifeosDir);
     } else {
       console.error("[RebuildArchSummary] DOCUMENTATION/ARCHITECTURE_SUMMARY.md is current");
     }

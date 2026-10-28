@@ -1,0 +1,23 @@
+{
+  "intent": "CheckFalsifiability",
+  "cases": [
+    {
+      "id": "vendor_ai_claim",
+      "pattern": "check_falsifiability",
+      "input": "Can you tell me if this claim from a vendor's security whitepaper holds up? Here's the passage:\n\n\"Helix Sentinel, from the fictional vendor Corvane Systems, uses proprietary adaptive intelligence to neutralize threats before they materialize. Our customers are protected against all known and unknown attack classes. Because the model continuously learns, any breach that occurs simply reflects a gap in the customer's deployment rather than in the product. Independent testing is unnecessary, since our detection engine already outperforms any benchmark that could be constructed. Organizations that doubt these results are typically those who have not yet embraced a modern security posture.\"",
+      "expects": "Identifies the distinct claims (neutralizes threats before they materialize, protects against all unknown attacks, breaches are always the customer's fault, no benchmark could test it) and says plainly which can be tested and what result would refute each. Calls out the moving-goalposts and blame-the-deployment escape hatch and the dismissal of doubters, and proposes concrete tests such as a blind red-team exercise with a stated detection-rate threshold, without padding or generic security advice."
+    },
+    {
+      "id": "essay_check_falsifiability",
+      "pattern": "check_falsifiability",
+      "input": "Run a falsifiability check on this passage from a draft essay of mine:\n\n\"Within five years, most knowledge work will be done by AI agents, and the companies that fail to adapt will be left behind. Skeptics keep pointing at today's agent failures, but those failures are just the growing pains that prove how close we are. Any specific prediction I make could be wrong on timing and still be right in spirit, because the direction of travel is what matters. And if work doesn't change in five years, it will be because incumbents are suppressing the technology, which is itself evidence of how disruptive it is.\"",
+      "expects": "Treats this as the principal's own draft and gives an honest audit: separates the claims (most knowledge work done by agents in five years, failures prove proximity, right in spirit despite wrong timing, non-change proves suppression), marks which are falsifiable only if 'most' and 'knowledge work' are defined, and points out the escape hatches and the failure-as-confirmation loop in plain words. Proposes a specific revision with a measurable threshold and date that would let the essay be wrong."
+    },
+    {
+      "id": "incident_report_mixed",
+      "pattern": "check_falsifiability",
+      "input": "check_falsifiability on this, it's from an internal incident write-up at a fictional company, Brightwell Logistics. Be straight with me, I need to know what's actually testable before I sign off.\n\nINCIDENT SUMMARY (draft 2)\n2026-10-14 03:12 UTC: Outbound traffic from host app-07 (198.51.100.23) to 203.0.113.77:443 totaled 4.1 GB over 40 minutes. No matching ticket.\n\nAnalyst conclusions:\n1. The traffic was exfiltration by a state-sponsored actor. We cannot see the payload, but the sophistication is exactly why we can't see it.\n2. Absence of any malicious indicators on app-07 confirms the attacker cleaned up after themselves. If we had found indicators, that would also confirm compromise.\n3. The nightly backup job could not have caused this, since backups were reviewed by the infra lead and he says they are fine. (The backup job's destination is 203.0.113.77, per the config in appendix B.)\n4. Anyone on the review board who objects to this attribution should recuse, since it suggests they are not taking the threat seriously.\n5. We expect further activity soon.\n\nProposed action: disable the contractor VPN accounts for the whole Reno team until the attribution is cleared.",
+      "expects": "Separates the checkable facts (the 4.1 GB flow, the backup destination matching the IP in appendix B) from the conclusions, and shows that conclusions 1, 2, 4 and 5 cannot be refuted as written (no payload, both presence and absence of indicators count as proof, objectors are told to recuse, no timeline or criteria). Flags that conclusion 3 is contradicted by the report's own parenthetical, treats the VPN shutdown affecting a team of people as a high-stakes action resting on weak claims, and proposes concrete tests such as comparing backup job logs and byte counts to the flow, with what result would refute the exfiltration claim."
+    }
+  ]
+}

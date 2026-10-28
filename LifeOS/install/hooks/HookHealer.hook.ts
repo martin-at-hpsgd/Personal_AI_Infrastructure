@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.4
+ * @version 1.1.0
  * HookHealer.hook.ts - Self-healing for the registered-script exec-bit class
  *
  * PURPOSE:
@@ -36,8 +36,9 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { getClaudeDir } from './lib/paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const CLAUDE_DIR = join(homedir(), '.claude');
+const CLAUDE_DIR = getClaudeDir();
 const OBS_DIR = join(CLAUDE_DIR, 'LIFEOS', 'MEMORY', 'OBSERVABILITY');
 const LOG_FILE = join(OBS_DIR, 'hook-healer.jsonl');
 const SETTINGS_FILES = ['settings.json', 'settings.local.json'];
@@ -72,7 +73,17 @@ function hasShebang(p: string): boolean {
  */
 type HealResult = 'healed' | 'noop' | 'refused' | 'failed';
 
+/** The exec-bit class only exists on POSIX filesystems. */
+export function execBitSupported(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== 'win32';
+}
+
 function heal(p: string, source: string): HealResult {
+  // NTFS has no exec bit: the harness runs hooks through Git Bash where the
+  // shebang path works without one. chmod on win32 is meaningless at best, so
+  // the sweep skips it and says so once (external review of the v7.40.4
+  // payload, 2026-09-03: "chmodSync — meaningless on NTFS").
+  if (!execBitSupported()) { log({ event: 'skipped-win32', path: p, source }); return 'noop'; }
   if (!p.startsWith(CLAUDE_DIR + '/')) return 'noop';
   if (!existsSync(p) || isExecutable(p)) return 'noop';
   try {
@@ -207,4 +218,4 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-main();
+if (import.meta.main) main();

@@ -1,0 +1,4 @@
+{
+  "_comment": "Extra send/publish command shapes the taint guard should ask about. Empty rows (as shipped) add nothing; the built-in shapes (repository pushes, gh writes, deploys, mail sends) always apply. Each row is { \"pattern\": \"<regex source>\", \"flags\": \"<optional regex flags>\", \"class\": \"<label shown in the ask>\" }. Keys starting with _ are ignored.",
+  "rows": []
+}

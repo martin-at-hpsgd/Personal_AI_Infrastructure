@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.0
+ * @version 1.1.0
  * TimeContext.hook.ts — inject a LIVE, per-turn wall-clock line on UserPromptSubmit
  * so the assistant always knows the current time, date, and day of week.
  *
@@ -16,12 +16,15 @@
  * without the line — a timestamp is nice-to-have, never worth blocking.
  */
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { hookCovers } from "./lib/function-hooks";
+import { getClaudeDir } from "./lib/paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
+/** The live wall-clock block, or null on any failure (fail open). */
+export function run(): string | null {
 try {
   let TZ = "UTC";
   try {
-    const s = JSON.parse(readFileSync(`${homedir()}/.claude/settings.json`, "utf8"));
+    const s = JSON.parse(readFileSync(`${getClaudeDir()}/settings.json`, "utf8"));
     if (s?.principal?.timezone) TZ = s.principal.timezone;
   } catch {
     // keep UTC
@@ -36,9 +39,23 @@ try {
     h < 5 ? "late night" : h < 9 ? "early morning" : h < 12 ? "morning" :
     h < 17 ? "afternoon" : h < 21 ? "evening" : "late night";
   const line = `${g("weekday")} ${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")} ${g("timeZoneName")} (${rel})`;
-  process.stdout.write(
-    `<time-now>\n🕐 Current time: ${line}\n(The harness date line is date-only and can be stale mid-session — trust this live value.)\n</time-now>\n`,
-  );
+  return `<time-now>\n🕐 Current time: ${line}\n(The harness date line is date-only and can be stale mid-session — trust this live value.)\n</time-now>\n`;
 } catch {
   // fail open — never block a turn over a missing timestamp
+  return null;
+}
+}
+
+if (import.meta.main) {
+  let input: { session_id?: string; prompt?: string; prompt_id?: string; transcript_path?: string } = {};
+  try { input = JSON.parse(readFileSync(0, "utf8") || "{}"); } catch { /* no stdin */ }
+  // The ⏱️ SHAPE line and deadline row (hooks/lib/prompt-shape.ts) go in every session: the plugin draws no shape.
+  const { shapeLine } = await import("./lib/prompt-shape");
+  const shape = await shapeLine(input.prompt, input.session_id, input.prompt_id || crypto.randomUUID(), { transcriptPath: input.transcript_path });
+  // Armed session: the LifeOSHooks plugin writes the time line from $.clock itself.
+  // The presence block (hooks/lib/presence-context.ts) rides the same cap: HookBridge prompt-context composes it when armed.
+  const covered = hookCovers(input.session_id ?? "", "prompt-context");
+  const out = covered ? null : run();
+  const reach = covered ? null : (await import("./lib/presence-context")).presenceContext();
+  if (out || reach || shape) process.stdout.write((out ?? "") + (reach ?? "") + (shape ? `${shape}\n` : ""));
 }

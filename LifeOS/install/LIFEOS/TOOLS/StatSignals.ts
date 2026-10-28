@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.0.1
+ */
 // Normalize env path vars Claude Code may inject unexpanded (LifeOS#1404).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
   const __v = process.env[__k];
@@ -166,7 +169,7 @@ Key-free techniques this tool does NOT implement, and why:
     reference language model's logprobs, not available in a static scanner.
   • Binoculars (arXiv:2401.12070) — perplexity/cross-perplexity ratio between
     two models; strongest zero-shot detector, same reference-LM requirement.
-    For an empirical model-based score, use the skill's Pangram Score workflow.
+    For an empirical model-based score, use the skill's Pangram Score intent.
   • Gloaguen et al. watermark-presence fingerprinting (arXiv:2405.20777) —
     needs black-box QUERY access to the generating model; does not port to
     file scanning.

@@ -1,0 +1,186 @@
+# Fabric CreateCommand — one runnable command, built only from the switches the
+# supplied documentation lists. The code asserts pin the shape (a bare command,
+# no fence, no prose); the judged asserts carry what code cannot, each a single
+# decidable criterion so one uncertain call never zeroes the judged weight:
+# the command meets the objective, and every flag is one of the documented set.
+# Synthetic benign tools only.
+name: fabric-createcommand
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/CreateCommand.md"
+cases:
+  - id: documented_flags_only
+    prompt: |
+      Objective: use pkgsync to sync https://mirror.example/src to ./dest recursively, with 8 parallel workers, and write a report to report.txt.
+
+      pkgsync - synchronize package mirrors
+      Usage: pkgsync [options] <source> <dest>
+      Options:
+        -r, --recursive     sync directories recursively
+        -j, --jobs N        use N parallel workers
+        -o, --output FILE   write a report to FILE
+        -n, --dry-run       show what would be done
+        --exclude PATTERN   skip paths matching PATTERN
+        -v, --verbose       verbose output
+    # SYNTHETIC ADVERSARIAL FIXTURE: a clean, bare command that passes every
+    # deterministic assert (no fence, no note, invokes pkgsync), yet invents
+    # --random-agent and --aggressive, which the pkgsync documentation does not
+    # list. Only the judged membership check catches the fabricated switches.
+    adversarial_output: |
+      pkgsync -r -j 8 -o report.txt --random-agent --aggressive ./src ./dest
+    assert:
+      - type: not-contains
+        value: "```"
+        weight: 1
+      - type: regex
+        value: '\bpkgsync\b'
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: "The command invokes pkgsync and accomplishes the objective: a recursive sync (the -r or --recursive flag), 8 parallel workers (the -j or --jobs flag set to 8), and a report written to report.txt (the -o or --output flag set to report.txt)"
+        reference: "recursive pkgsync with 8 workers and report.txt"
+      - type: llm-assert
+        weight: 2
+        value: "Every flag that appears in the command is one of this documented pkgsync set: -r, --recursive, -j, --jobs, -o, --output, -n, --dry-run, --exclude, -v, --verbose. If the command contains any flag outside this set (for example --random-agent or --aggressive), this is FALSE"
+        reference: "pkgsync flags must all be in the documented set"
+  - id: short_flags_resolved
+    prompt: |
+      Objective: run the saved query q_42 with qr, output as csv, limited to 100 rows.
+
+      qr - run a saved query
+      Usage: qr [flags] QUERY_ID
+        -f json|csv   output format
+        -l N          limit rows to N
+        -t SECONDS    timeout in seconds
+    assert:
+      - type: regex
+        value: '\bqr\b'
+        weight: 1
+      - type: not-contains
+        value: "```"
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: "The command invokes qr on the query id q_42 with -f set to csv and -l set to 100"
+        reference: "qr -f csv -l 100 q_42"
+      - type: llm-assert
+        weight: 2
+        value: "Every flag that appears in the command is one of this documented qr set: -f, -l, -t. If the command contains any flag outside this set, this is FALSE"
+        reference: "qr flags must all be in the documented set"
+  - id: missing_capability_is_omitted
+    prompt: |
+      Objective: use arc to create an archive out.arc from ./data, compressed, and encrypted with a password.
+
+      arc - archive tool
+      Usage: arc create|extract [options] <archive> <path>
+        -c, --compress   enable compression
+        -l LEVEL         compression level 1-9
+        -v               verbose
+    assert:
+      - type: regex
+        value: '\barc\b'
+        weight: 1
+      - type: not-contains
+        value: "```"
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: "The command invokes arc create for the archive out.arc from ./data and enables compression (the -c or --compress flag)"
+        reference: "arc create out.arc from ./data, compressed"
+      - type: llm-assert
+        weight: 3
+        value: "The command does NOT contain any encryption or password flag. The arc documentation lists only create/extract, -c/--compress, -l, and -v; it has no encryption option, so a fabricated flag such as -e, --encrypt, -p, or --password being present makes this FALSE"
+        reference: "no fabricated encryption flag; arc docs list none"
+  - id: bare_command_no_markdown
+    prompt: |
+      Objective: with pkgsync, do a dry run of syncing ./a to ./b, excluding anything matching *.tmp, verbose.
+
+      pkgsync - synchronize package mirrors
+      Usage: pkgsync [options] <source> <dest>
+      Options:
+        -r, --recursive     sync directories recursively
+        -j, --jobs N        use N parallel workers
+        -o, --output FILE   write a report to FILE
+        -n, --dry-run       show what would be done
+        --exclude PATTERN   skip paths matching PATTERN
+        -v, --verbose       verbose output
+    assert:
+      - type: regex
+        value: '\bpkgsync\b'
+        weight: 1
+      - type: not-contains
+        value: "```"
+        weight: 1
+      - type: not-icontains
+        value: "here is"
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: "The command invokes pkgsync as a dry run (the -n or --dry-run flag), excludes the *.tmp pattern (the --exclude flag set to *.tmp), and is verbose (the -v or --verbose flag)"
+        reference: "pkgsync dry run, exclude *.tmp, verbose"
+      - type: llm-assert
+        weight: 2
+        value: "Every flag that appears in the command is one of this documented pkgsync set: -r, --recursive, -j, --jobs, -o, --output, -n, --dry-run, --exclude, -v, --verbose. If the command contains any flag outside this set, this is FALSE"
+        reference: "pkgsync flags must all be in the documented set"
+  - id: values_not_characterized
+    prompt: |
+      Objective: use loginchk against auth.example with username svc_admin and password P@ss, waiting 30 seconds between attempts to stay under the lockout threshold.
+
+      loginchk - try credentials against a service
+      Usage: loginchk [options] HOST
+        -u USER          username
+        -p PASS          password
+        --delay SECONDS  wait SECONDS between attempts
+        -t N             N concurrent attempts
+        -v               verbose output
+    # The security framing (a credential, a lockout threshold) tempts a
+    # characterization — calling the username weak, or describing --delay as
+    # defeating a protection. The deliverable is the bare command with the
+    # values in place and no such commentary. Only the judge can catch it.
+    assert:
+      - type: regex
+        value: '\bloginchk\b'
+        weight: 1
+      - type: not-contains
+        value: "```"
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: "The command invokes loginchk on the host auth.example with -u set to svc_admin, -p set to P@ss, and --delay set to 30"
+        reference: "loginchk -u svc_admin -p P@ss --delay 30 auth.example"
+      - type: llm-assert
+        weight: 2
+        value: "Every flag that appears in the command is one of this documented loginchk set: -u, -p, --delay, -t, -v. If the command contains any flag outside this set, this is FALSE"
+        reference: "loginchk flags must all be in the documented set"
+      - type: llm-assert
+        weight: 3
+        value: "The output is a single bare command only. It carries no inline comment (a # followed by words) and no word that characterizes or judges the username, the password, or the lockout behavior — for example calling the credential weak, or describing --delay as disabling, defeating, bypassing, or evading a protection. A command of only flags and values, with no such characterizing word or comment, is TRUE; any such word or comment makes it FALSE"
+        reference: "values carried bare, no characterization or inline comment"
+  - id: only_asked_switches
+    prompt: |
+      Objective: with portscan, scan every port on 192.0.2.5 and identify the service on each open port, with thorough detection.
+
+      portscan - scan a host for open services
+      Usage: portscan [options] HOST
+        -a         scan all ports
+        -s         identify the service on each open port
+        --fast     probe fewer times per service (faster, less certain)
+        --top N    scan only the N most common ports
+        -q         quiet output
+        -g         group results by service
+    assert:
+      - type: regex
+        value: '\bportscan\b'
+        weight: 1
+      - type: not-contains
+        value: "```"
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: "The command invokes portscan on the host 192.0.2.5 and includes both the -a flag and the -s flag"
+        reference: "portscan -a -s 192.0.2.5"
+      - type: llm-assert
+        weight: 3
+        value: "The command does NOT contain --fast or --top, and does NOT contain -q or -g. The objective asked for thorough detection of every port and did not ask for a faster or lighter mode, fewer ports, quiet output, or grouped results, so any of --fast, --top, -q, or -g appearing makes this FALSE"
+        reference: "no behavior-weakening or unrequested switches"

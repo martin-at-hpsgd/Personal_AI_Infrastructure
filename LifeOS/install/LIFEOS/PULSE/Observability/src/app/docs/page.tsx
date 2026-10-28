@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useApi } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 import MarkdownRenderer from "@/components/wiki/MarkdownRenderer";
 import WikiMeta from "@/components/wiki/WikiMeta";
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { wikiPageUrl } from "@/lib/wiki-links";
+import { fmtDateParts } from "@/lib/time";
 import { PageShell, PageHeader, Panel, StatTile, Pill } from "@/components/ui/chrome";
 import type { LucideIcon } from "lucide-react";
 
@@ -30,7 +31,7 @@ interface WikiPage {
   title: string;
   category: string;
   tags?: string[];
-  quality?: number;
+  quality?: number | null;
   lastModified: string;
   wordCount: number;
   group?: string;
@@ -52,7 +53,7 @@ interface PageDetail {
   backlinks: Array<{ slug: string; title: string; category: string }>;
   wikilinks: string[];
   tags?: string[];
-  quality?: number;
+  quality?: number | null;
   filePath?: string;
   group?: string;
 }
@@ -76,9 +77,11 @@ const START_HERE_SLUGS = [
   },
 ];
 
-function qualityLabel(quality: number | undefined): string {
-  if (quality === undefined) return "quality n/a";
-  return `${Math.round(quality * 100)}% quality`;
+function qualityLabel(quality: number | null | undefined): string {
+  // null means the page has no rating; the scale is 1-10, the same one WikiMeta prints
+  // (public issue #2266, @rikitikitavi2012-debug).
+  if (quality == null) return "quality n/a";
+  return `quality ${quality}/10`;
 }
 
 function flattenTree(nodes: TreeNode[] | undefined): TreeNode[] {
@@ -234,7 +237,7 @@ function DocsLanding({ data }: { data: WikiIndex }) {
                     <div className="hidden sm:flex items-center gap-2 shrink-0">
                       <Pill dim="rhythms">updated</Pill>
                       <span className="text-ink-3 tabular-nums" style={{ fontSize: 12 }}>
-                        {new Date(page.lastModified).toLocaleDateString("en-US", {
+                        {fmtDateParts(page.lastModified, {
                           month: "short",
                           day: "numeric",
                         })}
@@ -259,26 +262,9 @@ function DocsPageInner() {
   const docSlug = searchParams.get("doc");
   const isViewing = !!docSlug;
 
-  const { data: indexData } = useQuery<WikiIndex>({
-    queryKey: ["wiki-index"],
-    queryFn: async () => {
-      const res = await fetch("/api/wiki");
-      if (!res.ok) throw new Error("Failed to fetch wiki index");
-      return res.json();
-    },
-    staleTime: 30_000,
-    enabled: !isViewing,
-  });
+  const { data: indexData } = useApi<WikiIndex>("/api/wiki", { staleTime: 30_000, enabled: !isViewing });
 
-  const { data: docDetail } = useQuery<PageDetail>({
-    queryKey: ["wiki-doc", docSlug],
-    queryFn: async () => {
-      const res = await fetch(`/api/wiki/doc/${docSlug}`);
-      if (!res.ok) throw new Error("Failed to fetch doc");
-      return res.json();
-    },
-    enabled: isViewing,
-  });
+  const { data: docDetail } = useApi<PageDetail>(isViewing ? `/api/wiki/doc/${encodeURIComponent(docSlug)}` : null);
 
   if (isViewing && docDetail) {
     return (

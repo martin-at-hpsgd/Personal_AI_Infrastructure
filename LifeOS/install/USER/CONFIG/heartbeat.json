@@ -1,0 +1,18 @@
+{
+  "_docs": "Heartbeat and quiet-hours config. Three readers, each spreading this file over its own defaults so a missing key falls back silently: LIFEOS/TOOLS/AgentJob.ts (quietHours: agent-job deliveries inside the window go to the heartbeat ledger instead of your phone), LIFEOS/HERMES/Heartbeat/Tick.ts (calendar, mail, location, quietHours), LIFEOS/HERMES/Heartbeat/ArtistScan.ts (artistScan). Times are 24h local `HH:MM`; a window that crosses midnight (start > end) is handled. mail.vipSenders are substrings matched against the From header, lowercase; mail.importantPatterns are case-insensitive regexes against the subject. artistScan reads starred rows from MUSIC/MusicReference.md plus extraArtists, minus skipArtists; homeRegionPatterns are regexes matched against event venue/region strings; discoveryWeekday like \"Mon\" enables the weekly worldwide sweep, \"\" disables it.",
+  "quietHours": { "start": "23:30", "end": "07:00" },
+  "calendar": { "lookaheadMinutes": 90 },
+  "mail": {
+    "vipSenders": [],
+    "importantPatterns": [],
+    "maxAgeHours": 24
+  },
+  "location": { "enabled": false },
+  "artistScan": {
+    "appId": "lifeos-heartbeat",
+    "homeRegionPatterns": [],
+    "discoveryWeekday": "",
+    "extraArtists": [],
+    "skipArtists": []
+  }
+}

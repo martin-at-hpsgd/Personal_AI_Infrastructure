@@ -1,7 +1,7 @@
 /**
  * Pulse module: local-intelligence
  *
- * Read-only over the LocalIntelligence skill output at
+ * Read-only over the local-intelligence skill output at
  * MEMORY/DATA/LocalIntelligence/latest.json. Serves the LOCAL dashboard tab.
  *
  * Endpoints:
@@ -19,19 +19,21 @@ import { readFile, readdir, mkdir, writeFile, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { randomUUID } from "node:crypto"
+import { existsSync } from "node:fs"
+import { PRIVATE_SKILL_NAMES } from "../../TOOLS/CodeDataBoundary.ts"
 
 const HOME = process.env.HOME ?? homedir()
 const MODULE_NAME = "local-intelligence"
 
-// Primary path: user-scoped customizations directory (per {{PRINCIPAL_NAME}} directive 2026-05-03).
+// Primary path: user-scoped customizations directory (OPERATIONAL_PREFERENCES § Model selection).
 // Fallback path: legacy MEMORY/DATA path (used when customizations file absent).
-const CUSTOMIZATIONS_DIR = join(HOME, ".claude", "LIFEOS", "USER", "CUSTOMIZATIONS", "SKILLS", "LocalIntelligence")
+const CUSTOMIZATIONS_DIR = join(HOME, ".claude", "LIFEOS", "USER", "CUSTOMIZATIONS", "SKILLS", PRIVATE_SKILL_NAMES.localintelligence)
 const LEGACY_DATA_DIR = join(HOME, ".claude", "LIFEOS", "MEMORY", "DATA", "LocalIntelligence")
 const LATEST_PATH = join(CUSTOMIZATIONS_DIR, "latest.json")
 const LEGACY_LATEST_PATH = join(LEGACY_DATA_DIR, "latest.json")
 const DATA_DIR = CUSTOMIZATIONS_DIR  // alias for existing references in this file
 const RUNS_DIR = join(CUSTOMIZATIONS_DIR, "runs")
-const REFRESH_SCRIPT = join(HOME, ".claude", "skills", "LocalIntelligence", "Tools", "Refresh.ts")
+const REFRESH_SCRIPT = join(HOME, ".claude", "skills", PRIVATE_SKILL_NAMES.localintelligence, "Tools", "Refresh.ts")
 
 async function readLatest(): Promise<string | null> {
   try { return await readFile(LATEST_PATH, "utf8") } catch {}
@@ -106,6 +108,13 @@ async function spawnRefresh(): Promise<string> {
   const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}_${randomUUID().slice(0, 8)}`
   const logPath = join(RUNS_DIR, `${runId}.log`)
   const out = await Bun.file(logPath).writer()
+  if (!existsSync(REFRESH_SCRIPT)) {
+    // The local-intelligence skill is optional; without it there is nothing to run.
+    out.write("[exit] skipped: the local-intelligence skill is not installed\n")
+    await out.end()
+    await writeFile(logPath + ".started", new Date().toISOString())
+    return runId
+  }
   const child = spawn("bun", ["run", REFRESH_SCRIPT, "--fill"], {
     stdio: ["ignore", "pipe", "pipe"],
     env: process.env,

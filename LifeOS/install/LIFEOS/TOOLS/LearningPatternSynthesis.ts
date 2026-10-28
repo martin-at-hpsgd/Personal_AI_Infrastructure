@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.7.20
  * LearningPatternSynthesis - Aggregate ratings into actionable patterns
  *
- * Analyzes LEARNING/SIGNALS/ratings.jsonl to find recurring patterns
+ * Analyzes the Errata ledger (replacement since 2026-09-20) to find recurring patterns
  * and generates synthesis reports for continuous improvement.
  *
  * Commands:
@@ -17,12 +18,12 @@
  *   --no-inference Skip the patch-proposal inference step (deriver v2)
  *
  * Deriver v3 (2026-07-13, true-healing-loop ISA): intake widened beyond
- * ratings.jsonl to the observability failure streams via RecurrenceLedger
+ * Errata ledger to the observability failure streams via RecurrenceLedger
  * (gate blocks, tool failures, healer events). A recurring failure class that
  * crosses HEALING_RECURRENCE_THRESHOLD gets a HEALING FIXTURE drafted — a RED
  * replay fixture (DATA, never code) proving the class isn't caught, landed in
  * test/regression/pending/. The fix is done through the normal Algorithm;
- * PromoteFixture.ts moves a now-green fixture into the blocking corpus. The
+ * the fixture promoter (maintainer-side) moves a now-green fixture into the blocking corpus. The
  * deriver never authors code that touches a hook.
  *
  * Examples:
@@ -36,23 +37,24 @@ import { parseArgs } from "util";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
-import { homedir } from "node:os";
 import { getPrincipalName } from "../../hooks/lib/identity";
 import {
   FRUSTRATION_PATTERNS, SUCCESS_PATTERNS,
   collectObservabilityClusters, readPatchRegistry,
   type ObservabilityCluster,
 } from "./RecurrenceLedger";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { bumpMemoryGeneration } from "./MemoryRetriever";
+import { ErrataStore } from "../ERRATA/Store";
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const CLAUDE_DIR = path.join(homedir(), ".claude");
+const CLAUDE_DIR = getClaudeDir();
 const LIFEOS_DIR = path.join(CLAUDE_DIR, "LIFEOS");
 const MEMORY_DIR = path.join(LIFEOS_DIR, "MEMORY");
 const LEARNING_DIR = path.join(MEMORY_DIR, "LEARNING");
-const RATINGS_FILE = path.join(LEARNING_DIR, "SIGNALS", "ratings.jsonl");
 // v2 (2026-07-13): observability streams are now an intake source via
 // RecurrenceLedger.collectObservabilityClusters. REFLECTIONS/WORK fusion
 // remains future work.
@@ -89,6 +91,21 @@ interface Rating {
   sentiment_summary: string;
   confidence: number;
   comment?: string;
+}
+
+function loadRatings(): Rating[] {
+  return new ErrataStore().all().flatMap((e) => {
+    if (e.rating === null && e.kind !== "praise") return [];
+    return [{
+      timestamp: e.ts,
+      rating: e.rating ?? 10,
+      session_id: e.context.session_id ?? "",
+      source: e.rating === null ? "implicit" : "explicit",
+      sentiment_summary: e.complaint,
+      confidence: 1,
+      comment: e.complaint,
+    }];
+  });
 }
 
 interface PatternGroup {
@@ -182,7 +199,11 @@ function analyzeRatings(ratings: Rating[], period: string): SynthesisResult {
     };
   }
 
-  const avgRating = ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length;
+  // The mean covers explicitly rated rows only. Unrated praise carries a
+  // placeholder 10 so it can feed the success patterns below, but it must not
+  // lift the complaint-severity mean the report prints.
+  const rated = ratings.filter(r => r.source === "explicit");
+  const avgRating = rated.length ? rated.reduce((sum, r) => sum + r.rating, 0) / rated.length : 0;
 
   // Separate frustrations (rating <= 4) and successes (rating >= 7)
   const frustrationRatings = ratings.filter(r => r.rating <= 4);
@@ -246,7 +267,7 @@ function formatSynthesisReport(result: SynthesisResult): string {
 **Period:** ${result.period}
 **Generated:** ${date}
 **Total Ratings:** ${result.totalRatings}
-**Average Rating:** ${result.avgRating.toFixed(1)}/10
+**Mean severity of rated complaints:** ${result.avgRating.toFixed(1)}/10 — NOT a satisfaction score. Errata's rated rows are complaint-weighted (nearly every rated row is a complaint); praise carries a null rating because the principal gave no number, so it cannot lift this mean. Read it as "how bad were the bad ones", never as "how happy is the principal".
 
 ---
 
@@ -323,6 +344,7 @@ function writeSynthesis(result: SynthesisResult, period: string): string {
 
   const content = formatSynthesisReport(result);
   fs.writeFileSync(filepath, content);
+  bumpMemoryGeneration();
 
   return filepath;
 }
@@ -331,7 +353,7 @@ function writeSynthesis(result: SynthesisResult, period: string): string {
 // Hypothesis Generation (Proactive Deriver Loop)
 // ============================================================================
 //
-// Reads recent LEARNING/SIGNALS, REFLECTIONS, FAILURES, and WORK/*/ISA.md
+// Reads recent Errata (replacement since 2026-09-20), REFLECTIONS, FAILURES, and WORK/*/ISA.md
 // content within a window. Clusters by lexical overlap. Emits ≤3 hypothesis
 // notes per run that meet floors (confidence ≥ 0.6, sample ≥ 5).
 // Idempotent via claim-hash dedup against the prior 30 days.
@@ -351,7 +373,7 @@ interface HypothesisFrontmatter {
 // The deriver's drafted output is DATA, never code (iteration-3 pivot): a red
 // replay fixture that PROVES the class isn't handled yet. The fix is done
 // through the normal Algorithm; a now-green fixture is promoted into the
-// blocking corpus by PromoteFixture.ts. No model-authored code touches a hook.
+// blocking corpus by the fixture promoter. No model-authored code touches a hook.
 interface HealingFixtureProposal {
   rationale: string;
   surface: "hook" | "rule" | "skill" | "settings";
@@ -423,15 +445,6 @@ function claimHash(claim: string): string {
   return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 16);
 }
 
-function loadJsonl<T>(filepath: string): T[] {
-  if (!fs.existsSync(filepath)) return [];
-  return fs.readFileSync(filepath, "utf-8")
-    .split("\n")
-    .filter(line => line.trim())
-    .map(line => { try { return JSON.parse(line); } catch { return null; } })
-    .filter((x): x is T => x !== null);
-}
-
 function listPeopleSlugs(): Set<string> {
   if (!fs.existsSync(KNOWLEDGE_PEOPLE_DIR)) return new Set();
   const slugs = new Set<string>();
@@ -441,13 +454,37 @@ function listPeopleSlugs(): Set<string> {
   return slugs;
 }
 
-function violatesPrivacy(text: string, peopleSlugs: Set<string>): boolean {
+/**
+ * Word-boundary matching, not substring (public PR #1921, @Pfassmeyer).
+ * KNOWLEDGE/People can hold very short slugs (an initial, a nickname); with
+ * `includes()` a short slug matches almost any text, so every candidate
+ * hypothesis is privacy-blocked and the deriver silently emits nothing, a clean
+ * `emitted=0` indistinguishable from "nothing to report". Boundary matching keeps
+ * the guard's intent: a claim that actually names a person still blocks.
+ * `\b` is ASCII-only, so a needle carrying any non-`\w` char (diacritics) falls
+ * back to `includes()` rather than silently never matching.
+ */
+export function violatesPrivacy(text: string, peopleSlugs: Set<string>): boolean {
   const norm = text.toLowerCase();
+  // Separators are normalized on BOTH sides: the text's `-`/`_` runs become spaces too, so
+  // the slug as written (`jane-doe`), its spaced form and its joined form all meet the same normalized text.
+  const normSep = norm.replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+  const texts = [norm, normSep];
   for (const slug of peopleSlugs) {
-    // Slug typically `firstname-lastname`; check for both joined and space-separated.
-    const flat = slug.replace(/-/g, "");
-    const spaced = slug.replace(/-/g, " ");
-    if (norm.includes(spaced) || norm.includes(flat)) return true;
+    // Slug may be `firstname-lastname` or `firstname_lastname`; check the
+    // original, separator-normalized and joined forms.
+    const spaced = slug.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+    const flat = slug.replace(/[-_]/g, "");
+    for (const needle of new Set([slug.trim(), spaced, flat])) {
+      if (!needle) continue;
+      if (/[^\w ]/.test(needle)) {
+        if (texts.some((t) => t.includes(needle))) return true;
+        continue;
+      }
+      const esc = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`\\b${esc}\\b`, "i");
+      if (texts.some((t) => re.test(t))) return true;
+    }
   }
   return false;
 }
@@ -549,11 +586,21 @@ function buildHypothesisFromCluster(
   };
 }
 
+// Classes the deriver must NOT hypothesize about — mechanism-free noise that
+// two improvement passes (2026-08-10, 2026-08-17) both dispositioned STALE and
+// archived, only for raw event volume to regenerate the same dead hypothesis.
+// A class earns a row here only via an improvement-pass disposition; remove the
+// row if the class ever correlates with a captured failure.
+const SUPPRESSED_OBS_CLASSES = new Set<string>([
+  "tool:bash:exit-code", // normal-work exit codes; no mechanism, never failure-correlated
+]);
+
 function buildObservabilityCandidate(
   cluster: ObservabilityCluster,
   windowDays: number,
   frames: { name: string; body: string }[]
 ): HypothesisCandidate | null {
+  if (SUPPRESSED_OBS_CLASSES.has(cluster.classId)) return null;
   if (cluster.count < OBS_SAMPLE_FLOOR) return null;
   // Deterministic confidence: recurrence-driven, saturating well below 1.
   const confidence = Math.min(0.6 + cluster.count * 0.02, 0.95);
@@ -585,7 +632,7 @@ function buildObservabilityCandidate(
 // call, output is a ReplayFixture (JSON), run by the fixed/audited hook-replay
 // runner. The fixture is verified RED at draft time (proof the gap is real) and
 // lands in test/regression/pending/ (quarantine, never blocking). The fix is
-// done through the normal Algorithm; PromoteFixture moves a now-green fixture
+// done through the normal Algorithm; the fixture promoter moves a now-green fixture
 // into the blocking corpus. No model-authored code ever reaches a hook.
 
 const HOOK_REF_RE = /^hooks\/[A-Za-z0-9_]+\.hook\.ts$/;
@@ -752,7 +799,7 @@ function renderHypothesisFile(c: HypothesisCandidate, priorChangelog: string[] =
       "",
       `Target hook: \`${(c.healing.fixture as any).hook}\` · surface: ${c.enforcement_surface} · pending: \`test/regression/pending/${c.healing.pending_slug}/\``,
       "",
-      "This is a FAILING replay fixture (data, not a patch). Fixing the class through the normal Algorithm turns it green; PromoteFixture then moves it into the blocking corpus. No code was authored by the deriver.",
+      "This is a FAILING replay fixture (data, not a patch). Fixing the class through the normal Algorithm turns it green; the fixture promoter (maintainer-side) then moves it into the blocking corpus. No code was authored by the deriver.",
       "",
       "```json",
       JSON.stringify(c.healing.fixture, null, 2),
@@ -762,7 +809,7 @@ function renderHypothesisFile(c: HypothesisCandidate, priorChangelog: string[] =
     "## Suggested Action",
     "",
     c.healing
-      ? `Graduating this in Pulse promotes the fixture IF it is already green (the class got fixed); if still red, it stays a pending healing task. The deriver never writes code — it wrote a failing test. Fix the class through normal work, then \`bun LIFEOS/TOOLS/PromoteFixture.ts ${c.healing.pending_slug}\`.`
+      ? `Graduating this in Pulse promotes the fixture IF it is already green (the class got fixed); if still red, it stays a pending healing task. The deriver never writes code — it wrote a failing test. Fix the class through normal work, then \`bun LIFEOS/TOOLS/PromoteFixture.ts ${c.healing.pending_slug}\` (maintainer-side; on a public install graduation reports promotion unavailable).`
       : c.target_frame === "new"
       ? `Start a new frame at \`MEMORY/WISDOM/FRAMES/${c.slug}.md\` if ${getPrincipalName()} reviews and confirms the pattern.`
       : `Append a section to \`MEMORY/WISDOM/FRAMES/${c.target_frame}.md\` under \`## Hypothesis-Sourced\` if ${getPrincipalName()} graduates this hypothesis.`,
@@ -855,7 +902,7 @@ export async function runDeriver(opts: { window: number; dryRun: boolean; noInfe
 
   // Load signals within window
   const cutoff = Date.now() - opts.window * 86400 * 1000;
-  const allRatings = loadJsonl<Rating>(RATINGS_FILE);
+  const allRatings = loadRatings();
   const ratings = allRatings.filter(r => new Date(r.timestamp).getTime() >= cutoff);
   const obsClusters = collectObservabilityClusters(opts.window);
   log.push(`signals: total=${allRatings.length} in_window=${ratings.length} obs_clusters=${obsClusters.length}`);
@@ -1064,25 +1111,8 @@ if (values.hypothesize) {
   process.exit(0);
 }
 
-// Check ratings file exists
-if (!fs.existsSync(RATINGS_FILE)) {
-  console.log("No ratings file found at:", RATINGS_FILE);
-  process.exit(0);
-}
-
-// Read all ratings
-const content = fs.readFileSync(RATINGS_FILE, 'utf-8');
-const allRatings: Rating[] = content
-  .split('\n')
-  .filter(line => line.trim())
-  .map(line => {
-    try {
-      return JSON.parse(line);
-    } catch {
-      return null;
-    }
-  })
-  .filter((r): r is Rating => r !== null);
+// Read satisfaction signals from Errata, the canonical store since 2026-09-20.
+const allRatings = loadRatings();
 
 console.log(`📊 Loaded ${allRatings.length} total ratings`);
 
@@ -1117,7 +1147,7 @@ if (filteredRatings.length === 0) {
 const result = analyzeRatings(filteredRatings, period);
 
 console.log(`\n📈 Analysis Results:`);
-console.log(`   Average Rating: ${result.avgRating.toFixed(1)}/10`);
+console.log(`   Mean severity of rated complaints: ${result.avgRating.toFixed(1)}/10 (not a satisfaction score)`);
 console.log(`   Frustration Patterns: ${result.frustrations.length}`);
 console.log(`   Success Patterns: ${result.successes.length}`);
 

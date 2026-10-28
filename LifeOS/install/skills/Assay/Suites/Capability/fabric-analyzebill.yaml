@@ -1,0 +1,158 @@
+# Fabric AnalyzeBill — a bill's metadata, summary, overt goals, covert goals
+# tied to the provisions that produce them, and a verdict. The code asserts pin
+# what is literal (sections, the introduction date, Not stated for absent facts,
+# the verdict label, the two single-line outcomes); the judged asserts carry
+# covert goals found in the real provisions, no invented motive on a clean
+# bill, and the short form's size. Synthetic inline fixtures only: every
+# jurisdiction, bill and sponsor below is fictional.
+name: fabric-analyzebill
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AnalyzeBill.md"
+cases:
+  - id: buried_provisions_found
+    prompt: |
+      analyze_bill:
+
+      S.B. 2291 — State of Corwin Senate. Introduced 2026-02-11 by Senator Alma Reyes and Senator Dale Whitcombe.
+      NEIGHBORHOOD HOUSING ACCESS ACT
+      Sec. 1. Short title. This Act may be cited as the Neighborhood Housing Access Act.
+      Sec. 2. Findings. The Legislature finds that Corwin faces a severe shortage of homes that working families can afford, and that slow permitting raises costs.
+      Sec. 3. Down-payment grants. The Department of Housing shall award $40,000,000 in grants of up to $15,000 each to first-time homebuyers.
+      Sec. 4. Permit timelines. A city or county shall approve or deny a complete permit application for a residential project of four or more units within 90 days.
+      Sec. 5. Definitions. In this Act, "qualified developer" means an entity that completed at least 2,000 residential units in this state during the preceding five years.
+      Sec. 6. Eligibility. Only a qualified developer may use the permit timeline in Section 4.
+      Sec. 7. Uniform rental rules. No city or county may adopt or enforce any ordinance limiting the rental of single-family homes owned by an entity that owns more than 100 single-family homes in this state.
+      Sec. 8. Conforming amendment. Section 65915(c) of the Housing Code, which requires developments of 50 or more units to reserve 10 percent of units as affordable housing, is repealed.
+      Sec. 9. Effective date. This Act takes effect on 2027-01-01.
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section, field and format is right and
+    # it keeps the real date and "Not stated" status, but its covert goals are
+    # generic suspicion with motives the text never supports (banks, donors),
+    # and it misses the Sec. 5-6 fast-track limit, the Sec. 7 preemption and the
+    # Sec. 8 repeal of the affordable set-aside.
+    adversarial_output: |
+      ## Bill
+
+      - **Bill:** S.B. 2291, Neighborhood Housing Access Act
+      - **Jurisdiction:** State of Corwin Senate
+      - **Sponsors:** Sen. Alma Reyes, Sen. Dale Whitcombe
+      - **Introduced:** 2026-02-11
+      - **Status:** Not stated
+
+      ## Summary
+
+      Addresses Corwin's housing shortage with down-payment grants for first-time buyers and faster permit decisions for new housing.
+
+      ## Overt goals
+
+      - **Sec. 2:** Respond to a severe shortage of affordable homes for working families.
+      - **Sec. 3:** Fund $40 million in grants for first-time homebuyers.
+      - **Sec. 4:** Speed up city permit decisions on new housing to 90 days.
+
+      ## Covert goals
+
+      - **Sec. 3:** Funnel grant money to politically connected mortgage banks that donate to the sponsors.
+      - **Sec. 2:** Expand state government control over local housing markets.
+
+      ## Verdict
+
+      **Mixed:** The grants in Section 3 help buyers, but the bill quietly grows state power over housing.
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Bill[ \t]*\n[\s\S]*\n## Summary[ \t]*\n[\s\S]*\n## Overt goals[ \t]*\n[\s\S]*\n## Covert goals[ \t]*\n[\s\S]*\n## Verdict[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '\*\*Introduced:\*\*[ \t]+2026-02-11'
+      - type: regex
+        weight: 1
+        value: '\*\*Status:\*\*[ \t]+Not stated'
+      - type: contains
+        weight: 1
+        value: "Reyes"
+      - type: regex
+        weight: 1
+        value: '\*\*(?:Mostly overt|Mixed|Mostly covert):\*\*'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 3
+        value: [ "The covert goals identify that Section 7 stops cities from limiting rentals by owners of more than 100 single-family homes, protecting large landlords", "The covert goals identify that Sections 5 and 6 restrict the 90-day permit track to the largest builders", "The covert goals identify that Section 8 repeals the 10 percent affordable housing set-aside" ]
+        reference: "S.B. 2291's buried provisions: Sec. 5-6 limit the fast track to developers with 2,000+ recent units; Sec. 7 preempts local limits on rentals by owners of 100+ single-family homes; Sec. 8 repeals the 10% affordable set-aside for 50+ unit developments."
+      - type: llm-assert
+        weight: 2
+        value: [ "No covert goal asserts a motive, backer or beneficiary the bill text does not support (such as donors, banks or lobbyists)", "The verdict is Mixed or Mostly covert and names a provision that decided it" ]
+        reference: "S.B. 2291's buried provisions: Sec. 5-6 limit the fast track to developers with 2,000+ recent units; Sec. 7 preempts local limits on rentals by owners of 100+ single-family homes; Sec. 8 repeals the 10% affordable set-aside for 50+ unit developments."
+
+  - id: clean_bill_no_invented_motive
+    prompt: |
+      analyze bill: "H.B. 118, State of Corwin House of Representatives, introduced 2026-03-02 by Representative Tomas Okafor. LIBRARY HOURS ACT. Sec. 1. Short title. Sec. 2. Appropriates $3,000,000 for fiscal year 2027 to the State Library to fund Sunday opening hours at public libraries in counties with fewer than 50,000 residents. Sec. 3. Funds are distributed to eligible counties in proportion to population. Sec. 4. The State Librarian shall report annually to the Legislature on Sunday visitor counts. Sec. 5. This appropriation expires on 2029-06-30 unless renewed."
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Mostly overt:\*\*'
+      - type: regex
+        weight: 2
+        value: '\*\*Introduced:\*\*[ \t]+2026-03-02'
+      - type: not-regex
+        weight: 2
+        value: '\*\*Introduced:\*\*[ \t]+2029'
+      - type: llm-assert
+        weight: 3
+        value: [ "The Covert goals section either says None found or lists only effects the text plainly contains, and invents no hidden motive, beneficiary or agenda", "The overt goals describe funding Sunday library hours in small counties, distributed by population, with annual reporting" ]
+        reference: "H.B. 118 is a transparent appropriation: $3M for Sunday library hours in counties under 50,000, distributed by population, reported annually, expiring 2029-06-30 unless renewed. There is no hidden agenda in the text."
+
+  - id: not_legislation
+    prompt: |
+      analyze_bill on this: "Brown the onions in olive oil for eight minutes, add two cups of red lentils, a can of tomatoes and a litre of stock, then simmer for twenty-five minutes and finish with lemon juice."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*No bill found:\*\*'
+      - type: not-contains
+        weight: 2
+        value: "## Overt goals"
+      - type: llm-assert
+        weight: 1
+        value: [ "The output says the input is a recipe (or cooking instructions) rather than legislation, in one line" ]
+        reference: "The input is a lentil soup recipe, not legislation, so the output is the single No bill found line."
+
+  - id: short_form_missing_metadata
+    prompt: |
+      analyze_bill_short: "Ordinance 26-14, City of Harlow Bay. Section 1. Beginning 2027-01-01, no person shall operate a gas-powered leaf blower within city limits. Section 2. Each violation is punishable by a fine of $100. Section 3. This ordinance does not apply to properties larger than 20 acres or to any golf course. Section 4. Fine revenue shall be deposited in the general fund."
+    assert:
+      - type: regex
+        weight: 2
+        value: '\*\*Sponsors:\*\*[ \t]+Not stated'
+      - type: regex
+        weight: 2
+        value: '\*\*Introduced:\*\*[ \t]+Not stated'
+      - type: not-regex
+        weight: 2
+        value: '\*\*Introduced:\*\*[ \t]+2027'
+      - type: regex
+        weight: 2
+        value: '## Overt goals[ \t]*\n\s*(?:[-*][^\n]*\n\s*){1,3}## Covert goals'
+      - type: regex
+        weight: 1
+        value: '## Covert goals[ \t]*\n\s*(?:[-*][^\n]*\n\s*){1,3}## Verdict'
+      - type: llm-assert
+        weight: 3
+        value: [ "The covert goals note that Section 3 exempts golf courses and properties over 20 acres from the ban", "Each goal bullet is short, about eight words or fewer after its provision label, and the summary is about sixteen words or fewer" ]
+        reference: "Ordinance 26-14 bans gas leaf blowers from 2027 with $100 fines, but Section 3 exempts golf courses and properties over 20 acres; sponsors and introduction date are not given."
+
+  - id: unreadable_bill_not_invented
+    prompt: "analyze_bill H.R. 98765 of the 141st Congress"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*Bill text unavailable:\*\*'
+      - type: not-contains
+        weight: 2
+        value: "## Covert goals"
+      - type: llm-assert
+        weight: 1
+        value: [ "The output does not describe any sponsors, provisions or goals for the bill, and says its text could not be read" ]
+        reference: "H.R. 98765 of the 141st Congress does not exist and no text is supplied, so the only honest output is the Bill text unavailable line."

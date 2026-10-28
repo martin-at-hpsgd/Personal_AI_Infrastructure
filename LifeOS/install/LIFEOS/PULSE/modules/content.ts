@@ -13,15 +13,18 @@
  *   GET    /api/content/stream  → text/event-stream, one `data:` board frame per change
  *   GET    /api/content/status  → module health
  *   DELETE /api/content/:id     → kill an item: dead card, dead tasks, no resurrection
- *   POST   /api/content/:id/run → request the regular run (edit → augment → clips → social,
- *                                 staged): writes requested_run to the ledger; {{DA_NAME}} in-session
+ *   POST   /api/content/:id/run → request the item's TYPE-named run (regular | sponsored | podcast,
+ *                                 all staged): writes requested_run to the ledger; {{DA_NAME}} in-session
  *                                 or the stage-runner (P3) picks it up. Publishing stays gated.
+ *   POST   /api/content/:id/type → {type}: re-derive legs/steps/run from the type profile;
+ *                                 inbox/prep only (409 once produce starts).
  */
 
 import { existsSync, mkdirSync, renameSync, rmSync, watch } from "fs";
 import { basename, dirname, join } from "path";
 import { homedir } from "os";
-import { LEGS, appendEvents, eventsPath, readState } from "../../TOOLS/Conveyor/Ledger";
+import { LEGS, appendEvents, eventsPath, isContentType, profileFor, readState, setTypeEvent } from "../../TOOLS/Conveyor/Ledger";
+import { CONTENT_TYPE_KEYS, typeCatalog } from "../../TOOLS/Conveyor/ContentTypes";
 
 const MODULE = "content";
 const STAGES = ["inbox", "prep", "produce", "review", "publishing", "done"] as const;
@@ -59,7 +62,7 @@ function buildBoard(): Record<string, unknown> {
   const counts: Record<string, number> = {};
   for (const s of STAGES) counts[s] = 0;
   for (const it of items) counts[String(it.stage ?? "inbox")] = (counts[String(it.stage ?? "inbox")] ?? 0) + 1;
-  return { columns: STAGES, legs: LEGS, items, counts, generatedAt: new Date().toISOString() };
+  return { columns: STAGES, legs: LEGS, types: typeCatalog(), items, counts, generatedAt: new Date().toISOString() };
 }
 
 /** SSE: push a board frame now, then on every ledger change (debounced), plus heartbeats. */
@@ -186,22 +189,48 @@ function deleteItem(id: string): Response {
   return Response.json({ ok: true, id, trashed: moved.length, artifactsRemoved: true, runnerKicked: kicked });
 }
 
-/** Request the regular run for an item: one ledger upsert; executors poll the flag. */
+/** Request the item's TYPE-named run (regular | sponsored | podcast): one ledger upsert; executors poll the flag. */
 function requestRun(id: string): Response {
   const item = readState().items[id];
   if (!item) return Response.json({ error: `no item ${id}` }, { status: 404 });
-  if (item.requested_run) return Response.json({ ok: true, id, already: true });
+  if (item.requested_run) return Response.json({ ok: true, id, already: true, requested_run: item.requested_run });
+  const run = item.run ?? profileFor(item.type).run;
   appendEvents([
     {
       v: 1,
       ts: new Date().toISOString(),
       id,
       op: "upsert",
-      fields: { requested_run: "regular", requested_at: new Date().toISOString(), updated: new Date().toISOString() },
+      fields: { requested_run: run, requested_at: new Date().toISOString(), updated: new Date().toISOString() },
       src: "dashboard",
     },
   ]);
-  return Response.json({ ok: true, id, requested_run: "regular" });
+  return Response.json({ ok: true, id, requested_run: run });
+}
+
+/**
+ * Re-type an item before produce starts. Legs, steps, and run are re-derived
+ * from the type profile (Ledger.setTypeEvent). Once the item has left prep the
+ * branches are being worked, so the type is frozen: 409.
+ */
+async function setType(id: string, req: Request): Promise<Response> {
+  const item = readState().items[id];
+  if (!item) return Response.json({ error: `no item ${id}` }, { status: 404 });
+  let type: unknown;
+  try {
+    type = ((await req.json()) as { type?: unknown }).type;
+  } catch {
+    return Response.json({ error: "body must be JSON {type}" }, { status: 400 });
+  }
+  if (!isContentType(type)) {
+    return Response.json({ error: `unknown type`, types: CONTENT_TYPE_KEYS }, { status: 400 });
+  }
+  if (item.stage !== "inbox" && item.stage !== "prep") {
+    return Response.json({ error: `type is frozen once produce starts (stage: ${item.stage})` }, { status: 409 });
+  }
+  const ev = setTypeEvent(id, type, "dashboard");
+  appendEvents([ev]);
+  return Response.json({ ok: true, id, type, legs: ev.fields?.legs, steps: ev.fields?.steps, run: ev.fields?.run });
 }
 
 export async function handleRequest(req: Request, pathname: string): Promise<Response | null> {
@@ -212,6 +241,9 @@ export async function handleRequest(req: Request, pathname: string): Promise<Res
 
   const runMatch = sub.match(/^\/([A-Za-z0-9]+)\/run$/);
   if (req.method === "POST" && runMatch) return requestRun(runMatch[1]);
+
+  const typeMatch = sub.match(/^\/([A-Za-z0-9]+)\/type$/);
+  if (req.method === "POST" && typeMatch) return setType(typeMatch[1], req);
 
   const idMatch = sub.match(/^\/([A-Za-z0-9]+)$/);
   if (req.method === "DELETE" && idMatch) return deleteItem(idMatch[1]);

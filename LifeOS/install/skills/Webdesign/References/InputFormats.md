@@ -1,5 +1,7 @@
 # Input Formats
 
+**Contents:** The Ideal Brief · Aesthetic Direction · Reference Images · Importing a Design System (native-first) · Codebase Preparation (for design-system extraction) · Prompt Length Sweet Spot · Iteration vs Restart · Examples of Effective Briefs
+
 How to prepare briefs, reference materials, and codebases so Claude Design produces the best output on the first pass.
 
 ## The Ideal Brief
@@ -7,7 +9,7 @@ How to prepare briefs, reference materials, and codebases so Claude Design produ
 An effective Claude Design brief has five parts:
 
 1. **Purpose** — what the interface does, who uses it (1 sentence)
-2. **Aesthetic direction** — ONE committed choice from the catalog (brutally minimal, maximalist chaos, editorial, retro-futuristic, etc.)
+2. **Aesthetic direction** — one committed register (brutally minimal, maximalist chaos, editorial, retro-futuristic, etc.)
 3. **Constraints** — framework, responsive tier, a11y tier, dark-mode, specific elements required
 4. **Differentiation** — the one memorable detail that makes this not-generic
 5. **Scope** — sections, key components, must-haves / must-nots
@@ -36,41 +38,16 @@ SCOPE:
 - Must-NOTs: [list]
 ```
 
-## Aesthetic Catalog
+## Aesthetic Direction
 
-Use these as starting points, not final prescriptions. Blending two is fine; picking three guarantees muddled output.
+The AESTHETIC line names one register from `References/FrontendDesignPhilosophy.md` § Aesthetic registers, or one designed true to the brief. Blending two is fine; picking three guarantees muddled output.
 
-| Direction | Feels like | Works for |
-|-----------|-----------|-----------|
-| **Brutally minimal** | Raw, unstyled, type-led | Personal sites, essays, manifestos |
-| **Maximalist chaos** | Layered, dense, texture-heavy | Music, fashion, indie games |
-| **Retro-futuristic** | 70s-80s computer-mag energy | Dev tools, infra companies |
-| **Editorial / magazine** | Big photography, grid-breaking | Publications, longform content |
-| **Brutalist / raw** | Concrete textures, stark lines | Indie software, art sites |
-| **Art deco / geometric** | Symmetry, gold, ornamentation | Luxury, finance, legal |
-| **Soft / pastel** | Rounded, warm, approachable | Wellness, health, kids |
-| **Industrial / utilitarian** | Dense info, mono fonts, sharp | Dashboards, admin tools |
-| **Playful / toy-like** | Cartoon, bouncy, vibrant | Consumer apps, games |
-| **Luxury / refined** | Generous space, muted palette, serif | High-end brands, services |
-| **Editorial newspaper** | Serif-led, columnar, dated | Journalism, thinkfluencer |
-| **Poster / swiss-modernist** | Big type, grids, no ornament | Agencies, portfolios |
+Claude Design (like any model) defaults to generic when the brief is vague, so the brief names what to avoid (`FrontendDesignPhilosophy.md` § Forbidden defaults (the AI-slop list); Space Grotesk is overused) and what to deliver:
 
-### Avoid Generic Defaults
-
-Claude Design (like any model) defaults to generic when the brief is vague. Explicit directions block:
-
-- ❌ Inter / Roboto / Arial / system-ui-only
-- ❌ Purple gradients on white
-- ❌ Space Grotesk (overused)
-- ❌ Identical card-grid layouts
-- ❌ Timid, evenly-distributed color palettes
-
-Request:
-
-- ✅ Distinctive display + body font pair (name both)
-- ✅ Dominant color + sharp accents (specify hex or named)
-- ✅ Asymmetric or grid-breaking layout
-- ✅ One orchestrated animation moment (not scattered micro-interactions)
+- Distinctive display + body font pair (name both)
+- Dominant color + sharp accents (specify hex or named)
+- Asymmetric or grid-breaking layout
+- One orchestrated animation moment (not scattered micro-interactions)
 
 ## Reference Images
 
@@ -83,18 +60,18 @@ Feeding 1-5 reference images dramatically lifts first-pass quality. Best practic
 
 ## Importing a Design System (native-first)
 
-`ExtractDesignSystem` builds the system from your real code, not from a Figma file. Order of preference:
+Build the design system from your real code (`/design-sync` pull, or a Claude Design import), not from a Figma file. Order of preference:
 
 1. **Link the GitHub repo** — Claude Design reads components and tokens straight from code, so the system matches what ships. Best path when the design system lives in a repo.
 2. **Local codebase path** — same idea for code not yet pushed; curate the bundle (below).
 3. **Component + token files** — upload a focused folder of UI components and token sources (`tokens.json`, CSS variables, `tailwind.config.*`).
 4. **Brand assets / guide** — logos, fonts, PDF or PPTX style guide.
 
-Do NOT import via `.fig` exports. Code and tokens in the repo are the source of truth; the skill is deliberately not coupled to Figma.
+Never import via `.fig` exports, and no Figma round-trip in either direction: code and tokens in the repo are the source of truth, and the skill is deliberately not coupled to Figma.
 
 ## Codebase Preparation (for design-system extraction)
 
-Before feeding a codebase (or repo link) to `ExtractDesignSystem`:
+Before feeding a codebase (or repo link) to Claude Design:
 
 1. **Curate** — don't upload the whole repo. Pull 20-50 focused files.
 2. **Include** — `tailwind.config.*`, `src/styles/`, `src/components/ui/`, primary layout components, `package.json`.
@@ -114,7 +91,7 @@ If a brief starts exceeding 300 words, split into phases: first brief for protot
 
 | Situation | What to do |
 |-----------|-----------|
-| Prototype is 80% right, small fixes needed | `RefinePrototype` with specific adjustments |
+| Prototype is 80% right, small fixes needed | Iterate on the artboard with specific adjustments |
 | Aesthetic is wrong | Restart with a sharper aesthetic direction |
 | Structure is wrong (missing sections, wrong flow) | Restart with a fuller scope section in the brief |
 | "Just not loving it" | Restart — the brief was underspecified; don't refine your way to the right answer |

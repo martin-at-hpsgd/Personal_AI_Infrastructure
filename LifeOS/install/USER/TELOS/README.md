@@ -20,27 +20,31 @@ it directly — `GenerateTelosSummary.ts` parses its sections, and
 `TelosFreshness.ts` tracks the `<!-- updated: YYYY-MM-DD by:who -->` markers
 you can leave on each section to record when it was last reviewed.
 
+<!-- generated/yours/legacy rows: public issue #1960, @hjbrandt -->
 | File | What it is |
 |------|------------|
 | `TELOS.md` | **The canonical TELOS.** All sections in one file. Edit this one. |
 | `PRINCIPAL_TELOS.md` | **Auto-generated summary** of `TELOS.md`. Loaded into every session via CLAUDE.md. Never edit by hand. |
+| `LIFEOS_STATE.json` | **Generated** by `LIFEOS/TOOLS/UpdateLifeosState.ts` from `CURRENT_STATE/` and `IDEAL_STATE/`: one `pct` per dimension, read by the statusline and the Pulse rings. Never edit by hand; a dimension whose files are still templates reads `null` ("not captured"). |
+| `SPARKS.md` | **Yours.** Things that refuel you, as bold-lead bullets under H3 categories; the /life Spark card shows one at random. A `## Sparks` section in `TELOS.md` takes precedence. |
+| `BOOKS.md` | **Yours.** Plain bullets under headings work as-is; Pulse reads `USER/BOOKS.md` first (the `- title:` pseudo-YAML shape) and falls back to this file. Keep one, not both. |
 
 ## Legacy per-topic files
 
-The split files in this directory — `MISSION.md`, `GOALS.md`, `PROBLEMS.md`,
-`STRATEGIES.md`, `NARRATIVES.md`, `CHALLENGES.md`, `BELIEFS.md`, `WISDOM.md`,
-`BOOKS.md` — are **legacy samples** retained for backward compatibility. They
-show the shape of each section, and the tools fall back to them only when the
-matching `##` section is absent from `TELOS.md`. Do not re-split a unified
-`TELOS.md` back into per-topic files; consolidating into `TELOS.md` is the
-correct direction.
+Older installs kept TELOS as split files (`MISSION.md`, `GOALS.md`,
+`PROBLEMS.md`, `STRATEGIES.md`, `NARRATIVES.md`, `CHALLENGES.md`, `BELIEFS.md`,
+`WISDOM.md`, …). A new install does not get them. On an upgrade, the
+`8.28.0-telos-consolidate` migration folds any split file that holds your own
+writing into `TELOS.md` and keeps the original in a backup. The tools still read
+a split file that is left over, so nothing an older install wrote goes missing.
+Do not re-split a unified `TELOS.md` back into per-topic files.
 
 ## Subdirectories
 
 | Dir | Purpose |
 |-----|---------|
-| `CURRENT_STATE/` | Where you are right now across the dimensions of your life — health, finances, relationships, work, learning. The DA uses this as the starting point for any "how do I get from here to there" question. Sample scaffolds inside. |
-| `IDEAL_STATE/` | Where you want to be — the vision you're aiming at across the same dimensions. Sample scaffolds inside. |
+| `CURRENT_STATE/` | **Yours.** Where you are right now across the dimensions of your life — health, finances, relationships, work, learning. The DA uses this as the starting point for any "how do I get from here to there" question. Ships as scaffolds marked `provenance: template` in the frontmatter; a file still carrying that marker counts as "not captured" (no number anywhere in Pulse). `/interview` clears that state when it reviews the file (it stamps `last_updated_by`); if you fill one in by hand, delete the `provenance: template` line. |
+| `IDEAL_STATE/` | **Yours.** Where you want to be — the vision you're aiming at across the same dimensions. Same `provenance: template` rule as `CURRENT_STATE/`. |
 | `Backups/` | Versioned snapshots of your TELOS files. Tools that bulk-edit TELOS write a backup here before changing anything. Empty until something is backed up. |
 
 ## How to fill it in

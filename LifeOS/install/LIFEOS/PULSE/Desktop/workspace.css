@@ -1,0 +1,80 @@
+/* Status glyphs and bold subjects make the session rail scannable. */
+@font-face{font-family:Concourse;src:url('assets/body.woff')}@font-face{font-family:Advocate;src:url('assets/display.woff2')}
+:root{color-scheme:dark;font-family:Concourse,system-ui;color:#dce9f8;background:#050b17;font-size:14px}*{box-sizing:border-box}body{margin:0;overflow:hidden}button,input{font:inherit}button{color:inherit;background:none;border:0;cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid #79c9ff;outline-offset:-2px}button:hover{background:#152944}aside{position:absolute;inset:0 auto 0 0;width:248px;background:#081322;border-right:1px solid #213650;display:flex;flex-direction:column}.brand{height:72px;padding:20px;display:flex;align-items:center;gap:11px}.brand img{width:24px;height:28px;object-fit:contain}.brand>span:not(.desktop){font-family:Advocate;font-size:25px;letter-spacing:5px}.desktop{font-size:9px;letter-spacing:1.6px;color:#85a2c3;border-left:1px solid #29435e;padding-left:10px}nav{padding:0 10px 15px;border-bottom:1px solid #20344c}nav button{width:100%;text-align:left;border-radius:5px;display:flex;align-items:center;gap:12px;padding:10px 12px;color:#a6bad2}nav button span:first-child{color:#70a9e0;width:18px}nav kbd{margin-left:auto}.active{background:#152e4d!important;color:#edf7ff!important;box-shadow:inset 2px 0 #68bfff}.section-heading{display:flex;justify-content:space-between;padding:20px 20px 10px;font-size:10px;letter-spacing:2px;color:#85a4c5}.section-heading span:last-child{font-variant-numeric:tabular-nums;color:#71b6f2}.create{display:flex;margin:0 12px 12px;border:1px solid #2b4666;border-radius:5px}.create button{padding:10px}.create button:first-child{flex:1;text-align:left}.create kbd{float:right}.create button+button{width:34px;border-left:1px solid #2b4666;color:#88cfff}.session-scroll{flex:1;overflow-y:auto;scrollbar-width:thin}#sessions,#kitty{padding:0 10px}.session{display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;text-align:left;border-radius:4px;margin-bottom:3px;min-width:0}.session .number{font:15px Advocate;color:#65a9de;width:22px;flex-shrink:0;font-variant-numeric:tabular-nums}.session .copy{min-width:0;flex:1}.session .name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}.session small{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:4px;color:#829dbb;font-size:11px}.session .live{width:5px;height:5px;border-radius:50%;background:#5ed6bb}.kitty-heading{margin-top:16px;border-top:1px solid #20344c}.kitty-session{align-items:flex-start}.kitty-session .name{font-size:12px;line-height:1.5;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.kitty-session .number{font-family:Concourse;font-size:15px}.session-scroll p{color:#7891ad;font-size:12px;padding:0 20px;line-height:1.6}footer{padding:16px;border-top:1px solid #20344c;font-size:11px;color:#8fa5bf;display:grid;gap:9px}footer div{display:flex;align-items:center;gap:5px}footer div span{margin-left:4px}kbd{font:10px Concourse;color:#89a3c1;letter-spacing:.5px}.persist{margin-top:5px;display:flex;gap:7px;align-items:center;color:#7ab5a9;font-size:10px}.persist i{width:4px;height:4px;border-radius:100%;background:#58b69e}header{position:absolute;left:248px;right:0;top:0;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:1px solid #243b55;background:#0a1626;gap:16px}header>div{display:flex;align-items:center;gap:14px;min-width:0}#kind{color:#7bbaf0;font-size:9px;letter-spacing:1.8px}#title{font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#detail{font-size:11px;color:#7e99b7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.actions{flex-shrink:0;font-size:11px;color:#8ca5c1}.actions button{padding:6px 9px;border:1px solid #29415b;border-radius:4px}.actions #end{color:#dba5a5}.actions #keyhint{font-size:10px}#terminal-host{position:absolute;left:248px;top:52px;right:0;bottom:0;background:#07101e;padding:18px 14px 12px 22px}.terminal-pane{position:absolute;inset:18px 14px 12px 22px}.terminal-pane[hidden]{display:none}.terminal-pane canvas{display:block;width:100%;height:100%;cursor:text}.terminal-pane [role=scrollbar]{position:absolute;top:4px;right:2px;bottom:4px;width:8px;z-index:1}.terminal-pane [role=scrollbar]>div{position:absolute;left:1px;right:1px;border-radius:3px;background:#ffffff2e}.terminal-pane [role=scrollbar]:hover>div{background:#ffffff55}#notice{position:fixed;top:6px;right:12px;max-width:650px;background:#452c29;border:1px solid #a36153;padding:10px 15px;border-radius:5px;font-size:12px;z-index:10}dialog{background:#101f33;border:1px solid #385c82;border-radius:10px;color:#e3efff;width:400px;padding:24px}dialog::backdrop{background:#010713bb}dialog label{display:block;margin-bottom:14px;font-size:18px}dialog input{width:100%;padding:12px;background:#07101e;border:1px solid #395673;border-radius:4px;color:#fff}dialog form>div{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}dialog button{padding:10px 14px;border-radius:4px}.primary{background:#1765af}button[hidden]{display:none}@media(max-width:1150px){#detail{display:none}#keyhint{display:none}}
+@font-face{font-family:PulseTerminal;src:url('assets/terminal.ttf') format('truetype');font-style:normal;font-weight:400;font-display:block}
+#terminal-host{background:var(--terminal-background,#24283b)}
+/* Kitty background image, whole window. The backdrop is the image tinted by the terminal background in linear light
+   (the #kitty-tint filter mirrors kitty's shader); the terminal pane is transparent over it, and the rail, header and
+   page strip keep a translucent wash so the image runs edge to edge while the layout still reads. */
+#backdrop{position:fixed;inset:0;z-index:-1;background:var(--window-background,#24283b) var(--window-image) var(--window-image-position)/var(--window-image-size) var(--window-image-repeat);filter:url(#kitty-tint)}
+:root.has-image aside,:root.has-image #pages,:root.has-image #page-tabs{background:#08132299}
+:root.has-image header{background:#0a162699}
+:root.has-image .terminal-pane canvas{background:transparent}
+.session{background:var(--tab-bg,transparent);color:var(--tab-fg,inherit)}
+.session.active{background:var(--active-bg,#002B80)!important;color:var(--active-fg,#fff)!important}
+.session{position:relative;align-items:flex-start;gap:8px;padding:8px 9px 27px;margin-bottom:4px;border:1px solid #ffffff12;border-radius:7px}
+.session:hover{border-color:#ffffff40;filter:brightness(1.12)}
+.session.active{border-color:#83caff88;box-shadow:inset 3px 0 #83caff}
+.session .copy{display:block;min-width:0;flex:1}
+.session .session-heading{display:flex;align-items:center;gap:6px;min-width:0}
+.session .session-icon{display:flex;align-items:center;justify-content:center;width:18px;min-height:19px;flex-shrink:0;font-size:16px;line-height:1}
+.session .name{min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.18;font-size:16px;font-weight:700;letter-spacing:-.02em}
+.session .session-detail{display:block;margin-top:3px;font-size:12px;line-height:1.32;overflow-wrap:anywhere;color:inherit;opacity:.86}
+.session .session-runtime{position:absolute;right:10px;bottom:8px;max-width:calc(100% - 36px);display:block;font:10px Triplicate,monospace;line-height:1.2;color:inherit;opacity:.78;overflow:hidden;text-align:right;text-overflow:ellipsis;white-space:nowrap}
+.provider-mark{display:inline-flex;width:16px;height:16px;margin-right:5px;vertical-align:middle;align-items:center;justify-content:center;overflow:hidden}
+.provider-mark img{display:block;max-width:none;flex:none}
+.provider-mark--claude img{width:16px;height:16px;object-fit:cover;object-position:left center}
+.provider-mark--chatgpt img{width:15px;height:15px;filter:invert(1)}
+.provider-mark--lifeos,.provider-mark--text{width:auto;padding:0 2px;border:1px solid currentColor;border-radius:3px;font:7px/1 Triplicate,monospace;letter-spacing:-.08em}
+.session small{margin-top:5px;font-size:10px;color:inherit;opacity:.65}
+.session .live{flex-shrink:0;margin-top:8px}
+@font-face{font-family:Concourse;src:url('assets/body-bold.otf') format('opentype');font-weight:700;font-display:swap}
+@font-face{font-family:Triplicate;src:url('assets/mono.woff2') format('woff2');font-display:swap}
+.session .number,.section-heading span:last-child{font-family:Concourse,sans-serif;font-weight:700;letter-spacing:-.035em}
+.session .number{font-size:19px}
+.section-heading,.session small,kbd,#detail{font-family:Triplicate,monospace;font-weight:400;letter-spacing:0}
+.desktop,#kind,#title{font-family:Advocate,sans-serif;font-weight:400}
+.desktop,#kind{font-size:18px;letter-spacing:.4px;line-height:1.1;flex-shrink:0}
+.brand .desktop{margin-left:-5px;padding-left:6px}
+#title{font-size:22px;line-height:1.15}
+#pages{position:absolute;left:248px;right:0;top:0;height:48px;display:flex;align-items:stretch;overflow-x:auto;scrollbar-width:thin;padding:0 12px;border-bottom:1px solid #29435e;background:#081322;gap:2px}
+#pages button{width:auto;flex-shrink:0;justify-content:center;padding:0 14px;border-radius:0;gap:7px;font-size:14px}
+#pages button.active{box-shadow:inset 0 -2px #68bfff}
+#pages kbd{display:none}
+#pages .page-icon{width:16px;height:16px;flex-shrink:0;color:#85afd5}
+#pages button.active .page-icon{color:#b1dcff}
+header{top:48px}
+#terminal-host{top:100px}
+/* The shortcut column makes the existing workspace controls discoverable. */
+#commands{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid #355577;border-radius:5px;text-align:left;color:#dce9f8}
+#command-dialog{width:min(640px,calc(100vw - 64px));max-height:calc(100vh - 100px);padding:0;margin:80px auto 0;box-shadow:0 24px 100px #0009;border-color:#466d98;overflow:hidden}
+.command-search{display:flex;gap:14px;align-items:center;padding:16px 20px;border-bottom:1px solid #35516f}
+.command-search>span{font-size:24px;color:#89cfff}
+#command-query{border:0;background:transparent;padding:8px 0;font-size:18px;outline:none;min-width:0}
+#command-query::placeholder{color:#9fb4cd}
+#command-dismiss{padding:5px 7px;color:#afc6e1;border:1px solid #426080;font:11px Triplicate}
+#command-results{max-height:min(430px,calc(100vh - 255px));overflow:auto;padding:8px;scrollbar-width:thin}
+.command-group{padding:12px 12px 7px;font:11px Triplicate;color:#9fb9d6}
+.command-option{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:11px 12px;border-radius:5px;cursor:pointer}
+.command-option[aria-selected=true]{background:#193c64;box-shadow:inset 2px 0 #86cfff}
+.command-option[aria-disabled=true]{cursor:default}
+.command-option .command-copy{min-width:0;display:grid;gap:4px}
+.command-option small{font-size:11px;color:#a8bdd5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.command-option kbd{flex-shrink:0;font-size:12px;color:#d4e6fb}
+.command-footer{padding:13px 20px;border-top:1px solid #35516f;display:flex;justify-content:space-between;color:#a8bdd5;font-size:11px}
+.command-footer kbd{margin:0 4px 0 10px;color:#d4e6fb}
+.command-empty{padding:30px 20px;color:#b2c6df;line-height:1.7}
+#page-tabs{position:absolute;left:248px;right:0;top:0;height:48px;display:flex;background:#081322;border-bottom:1px solid #29435e}
+#page-tabs #pages{position:static;flex:1;min-width:0;height:48px;padding:0;border-bottom:0}
+#page-tabs>button{width:30px;flex-shrink:0;color:#b7d9fa;font-size:24px}
+#page-tabs>button:disabled{color:#49627d;cursor:default}
+/* Sidebar footer (commands, shortcuts, helper text): sized to match the session list, not a legal footnote. */
+footer{padding:16px;gap:10px;font-size:15px;line-height:1.3;color:#a9bdd4}
+footer #commands{padding:10px 12px;gap:10px;font-size:15px}
+footer #commands kbd{margin-left:auto}
+footer div{gap:0}
+footer .keys{display:inline-flex;gap:5px;flex-shrink:0;min-width:58px}
+footer div span{margin-left:0}
+footer kbd,.persist{font-size:14px}
+.persist{margin-top:4px;gap:8px}
+.persist i{width:6px;height:6px}

@@ -2,7 +2,7 @@
 provenance: template
 last_updated: 1970-01-01T00:00:00Z
 last_updated_by: bootstrap-template
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 ---
 
 # Projects
@@ -15,9 +15,12 @@ A compact table of every project you work on. The DA reads this at startup to ro
 
 ## Projects Table
 
+> Keep each project name **bold**: the memory router and the work sweep read rows as ``| **Name** | `path` |``.
+<!-- public issue #2175, @selinium -->
+
 | Project | Path | URL | Deploy | Stack |
 |---------|------|-----|--------|-------|
-| (interview — first project) | `~/code/example` | example.com | `bun run deploy` | TS, React |
+| **(interview — first project)** | `~/code/example` | example.com | `bun run deploy` | TS, React |
 
 ## Routing Aliases
 

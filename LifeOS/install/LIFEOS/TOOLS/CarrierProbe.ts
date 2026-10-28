@@ -1,19 +1,20 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.4
  * CarrierProbe.ts — end-to-end probe of the Agent-dispatch carrier reality.
  *
  * THE FACT UNDER TEST (canonical home: models.ts § CARRIER REALITY +
  * DISPATCH_EXECUTES_FABLE): does an Agent dispatch with model "fable" execute
  * genuine Fable? The Fable-carrier safety rule, the statusline's dispatch-rung
  * mapping, and Algorithm §Spend all rest on this fact staying current. Harness
- * updates flip it silently (it flipped 2026-07-12, caught by this tool's first
+ * updates flip it silently (it has flipped before, caught by this tool's first
  * run); this turns "re-probe periodically" into infrastructure.
  *
- * HOW: spawns a cheap haiku `claude --print` session instructed to dispatch
+ * HOW: spawns a cheap sonnet `claude --print` session instructed to dispatch
  * ONE subagent with model "fable", then reads the child session's subagent
  * transcripts (projects/<slug>/<session>/subagents/agent-*.jsonl) and extracts
  * the assistant messages' `message.model` — the same evidence class the manual
- * 2026-07-07/-11/-12 probes used. A subagent's self-report is NOT evidence;
+ * probes used. A subagent's self-report is NOT evidence;
  * the transcript is.
  *
  * VERDICTS (recorded to MEMORY/STATE/carrier-probe.json, appended to
@@ -34,8 +35,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, rea
 import { join } from "path";
 import { homedir } from "os";
 import { DISPATCH_EXECUTES_FABLE } from "./models";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const CLAUDE_DIR = join(homedir(), ".claude");
+const CLAUDE_DIR = getClaudeDir();
 const STATE_FILE = join(CLAUDE_DIR, "LIFEOS", "MEMORY", "STATE", "carrier-probe.json");
 const OBS_FILE = join(CLAUDE_DIR, "LIFEOS", "MEMORY", "OBSERVABILITY", "model-verification.jsonl");
 const MAX_AGE_DAYS = 30;
@@ -52,36 +54,48 @@ interface ProbeState {
   note: string;
 }
 
-function readState(): ProbeState | null {
+function readState(): unknown {
   try {
-    return JSON.parse(readFileSync(STATE_FILE, "utf8")) as ProbeState;
+    return JSON.parse(readFileSync(STATE_FILE, "utf8"));
   } catch {
     return null;
   }
 }
 
+const VERDICTS: readonly Verdict[] = ["HOLDS", "FLIPPED", "INCONCLUSIVE"];
+
+/**
+ * The freshness gate as a pure function of the stored state and the clock. Only a schema-valid record whose
+ * verdict is HOLDS and whose age is finite, nonnegative and within MAX_AGE_DAYS passes; anything else (no record,
+ * a malformed timestamp, an unknown verdict, a future-dated probe) fails.
+ */
+export function checkState(raw: unknown, now: number = Date.now()): { code: 0 | 1; message: string } {
+  const rerun = "re-run `bun LIFEOS/TOOLS/CarrierProbe.ts`";
+  if (raw === null || raw === undefined) return { code: 1, message: "CarrierProbe: NEVER RUN — run `bun LIFEOS/TOOLS/CarrierProbe.ts` to establish the fact" };
+  if (typeof raw !== "object" || Array.isArray(raw)) return { code: 1, message: `CarrierProbe: state file is not a record — ${rerun}` };
+  const s = raw as Partial<Record<keyof ProbeState, unknown>>;
+  if (typeof s.ts !== "string" || typeof s.verdict !== "string" || !Array.isArray(s.sidechainModels) || !s.sidechainModels.every((m) => typeof m === "string")) {
+    return { code: 1, message: `CarrierProbe: state file is malformed (ts, verdict, sidechainModels) — ${rerun}` };
+  }
+  if (!VERDICTS.includes(s.verdict as Verdict)) return { code: 1, message: `CarrierProbe: unknown verdict ${JSON.stringify(s.verdict)} — ${rerun}` };
+  if (s.verdict === "FLIPPED") {
+    return { code: 1, message: `CarrierProbe: FLIPPED at ${s.ts} — observation contradicts models.ts DISPATCH_EXECUTES_FABLE; update the constant and its consumers, then re-probe` };
+  }
+  if (s.verdict !== "HOLDS") return { code: 1, message: `CarrierProbe: last run ${s.ts} was ${s.verdict} (${typeof s.note === "string" ? s.note : ""}) — ${rerun}` };
+  const ageDays = (now - Date.parse(s.ts)) / 86_400_000;
+  if (!Number.isFinite(ageDays)) return { code: 1, message: `CarrierProbe: unreadable probe timestamp ${JSON.stringify(s.ts)} — ${rerun}` };
+  if (ageDays < 0) return { code: 1, message: `CarrierProbe: probe timestamp ${s.ts} is in the future — ${rerun}` };
+  if (ageDays > MAX_AGE_DAYS) {
+    return { code: 1, message: `CarrierProbe: STALE — last probe ${s.ts} (${Math.floor(ageDays)}d > ${MAX_AGE_DAYS}d); ${rerun}` };
+  }
+  return { code: 0, message: `CarrierProbe: HOLDS (probed ${s.ts}, ${Math.floor(ageDays)}d ago; sidechain ran ${(s.sidechainModels as string[]).join(", ") || "?"})` };
+}
+
 /** --check: freshness gate, zero spend. Designed for /ic. */
 function check(): number {
-  const s = readState();
-  if (!s) {
-    console.error(`CarrierProbe: NEVER RUN — run \`bun LIFEOS/TOOLS/CarrierProbe.ts\` to establish the fact`);
-    return 1;
-  }
-  const ageDays = (Date.now() - Date.parse(s.ts)) / 86_400_000;
-  if (s.verdict === "FLIPPED") {
-    console.error(`CarrierProbe: FLIPPED at ${s.ts} — observation contradicts models.ts DISPATCH_EXECUTES_FABLE; update the constant and its consumers, then re-probe`);
-    return 1;
-  }
-  if (s.verdict === "INCONCLUSIVE") {
-    console.error(`CarrierProbe: last run ${s.ts} was INCONCLUSIVE (${s.note}) — re-run the probe`);
-    return 1;
-  }
-  if (ageDays > MAX_AGE_DAYS) {
-    console.error(`CarrierProbe: STALE — last probe ${s.ts} (${Math.floor(ageDays)}d > ${MAX_AGE_DAYS}d); re-run \`bun LIFEOS/TOOLS/CarrierProbe.ts\``);
-    return 1;
-  }
-  console.log(`CarrierProbe: HOLDS (probed ${s.ts}, ${Math.floor(ageDays)}d ago; sidechain ran ${s.sidechainModels.join(", ") || "?"})`);
-  return 0;
+  const r = checkState(readState());
+  (r.code === 0 ? console.log : console.error)(r.message);
+  return r.code;
 }
 
 function resolveClaudeBin(): string {
@@ -101,7 +115,10 @@ function runChild(): Promise<{ envelope: Record<string, unknown> | null; raw: st
     delete env.ANTHROPIC_API_KEY;
     delete env.ANTHROPIC_AUTH_TOKEN;
     // Headless subprocess: never the desktop voice channel (2026-08-14 leak).
-    env.LIFEOS_NOTIFICATION_CHANNEL = env.LIFEOS_NOTIFICATION_CHANNEL || 'headless';
+    // Unset AND `desktop` collapse to headless (public issue #1975, @emarcelcom).
+    env.LIFEOS_NOTIFICATION_CHANNEL = !env.LIFEOS_NOTIFICATION_CHANNEL || env.LIFEOS_NOTIFICATION_CHANNEL === 'desktop'
+      ? 'headless'
+      : env.LIFEOS_NOTIFICATION_CHANNEL;
     delete env.ANTHROPIC_BASE_URL;
 
     const prompt =
@@ -111,10 +128,10 @@ function runChild(): Promise<{ envelope: Record<string, unknown> | null; raw: st
 
     const args = [
       "--print",
-      "--model", "haiku", // cheap driver; the DISPATCH is what's under test
+      "--model", "sonnet", // cheap driver; the DISPATCH is what's under test
       "--allowedTools", "Task,Agent",
       "--output-format", "json",
-      "--setting-sources", "", // no hooks: keeps agent-starts.json/statusline clean of synthetic entries
+      "--safe-mode", // public PR #2120, @pai-scaffolde: replace --setting-sources '' with --safe-mode
       "--system-prompt", "You are a test driver. Follow the instruction literally.",
     ];
 
@@ -170,7 +187,7 @@ function record(state: ProbeState): void {
 }
 
 async function probe(): Promise<number> {
-  console.error("CarrierProbe: spawning haiku driver session (dispatches one model:fable subagent)…");
+  console.error("CarrierProbe: spawning sonnet driver session (dispatches one model:fable subagent)…");
   const { envelope, raw } = await runChild();
   const ts = new Date().toISOString();
   if (!envelope) {
@@ -192,7 +209,7 @@ async function probe(): Promise<number> {
     note = `model:fable dispatch executed ${sidechain.join(", ")} — matches DISPATCH_EXECUTES_FABLE=${DISPATCH_EXECUTES_FABLE}`;
   } else {
     verdict = "FLIPPED";
-    note = `model:fable dispatch executed ${sidechain.join(", ")} — CONTRADICTS DISPATCH_EXECUTES_FABLE=${DISPATCH_EXECUTES_FABLE}; update models.ts (constant + CARRIER REALITY), then statusline mapping + OPERATIONAL_RULES line + Algorithm §Spend`;
+    note = `model:fable dispatch executed ${sidechain.join(", ")} — CONTRADICTS DISPATCH_EXECUTES_FABLE=${DISPATCH_EXECUTES_FABLE}; update models.ts (constant + CARRIER REALITY), then statusline mapping + OPERATIONAL_PREFERENCES line + Algorithm §Spend`;
   }
   record({ ts, verdict, sidechainModels: sidechain, envelopeModels, sessionId, note });
   const out = verdict === "HOLDS" ? console.log : console.error;

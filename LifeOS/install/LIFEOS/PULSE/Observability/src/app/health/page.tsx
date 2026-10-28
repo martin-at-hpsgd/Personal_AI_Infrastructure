@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { FreshnessIndicator, type FreshnessData } from "@/components/FreshnessIndicator";
 import EmptyStateGuide from "@/components/EmptyStateGuide";
+import { ApiError, useApi } from "@/lib/api";
+import { fmtClock, fmtDateParts } from "@/lib/time";
+import TrendBoard, { type HealthDay, type HealthJournalDay } from "@/components/health/TrendBoard";
 import {
   PageShell,
   PageHeader,
@@ -37,9 +40,45 @@ interface Section {
   body: string;
 }
 
+interface LiveDaily {
+  day: string;
+  sleep: number | null;
+  readiness: number | null;
+  activity: number | null;
+  steps: number | null;
+  spo2: number | null;
+}
+
+interface LiveSource {
+  status: string;
+  records?: number;
+  lastSuccess?: string | null;
+  lastError?: string | null;
+  note?: string;
+}
+
+interface LiveCurrent {
+  generated_at?: string;
+  day?: string;
+  last_night?: {
+    oura_sleep_score?: number | null;
+    oura_readiness_score?: number | null;
+    sleep_duration_h?: number | null;
+  };
+  sources?: Record<string, LiveSource>;
+}
+
+interface HealthLive {
+  current: LiveCurrent | null;
+  daily: LiveDaily[];
+  days?: HealthDay[];
+  journal?: HealthJournalDay[];
+}
+
 interface HealthData {
   files?: HealthFile[];
   supplements?: Section[];
+  live?: HealthLive;
   freshness?: FreshnessData;
 }
 
@@ -189,6 +228,7 @@ function SupplementCard({ s }: { s: Supplement }) {
 }
 
 function SupplementsTab({ sections }: { sections: Section[] }) {
+  const [dailyOnly, setDailyOnly] = useState(false);
   const { items, notes } = parseSupplements(sections);
 
   if (items.length === 0) {
@@ -202,7 +242,9 @@ function SupplementsTab({ sections }: { sections: Section[] }) {
     );
   }
 
-  const daily = items.filter((s) => /daily/i.test(s.cadence || "")).length;
+  const dailyItems = items.filter((s) => /daily/i.test(s.cadence || ""));
+  const daily = dailyItems.length;
+  const shown = dailyOnly ? dailyItems : items;
   const categories = Array.from(
     new Set(items.map((s) => s.category).filter(Boolean) as string[]),
   ).sort((a, b) => {
@@ -225,6 +267,8 @@ function SupplementsTab({ sections }: { sections: Section[] }) {
           value={<span data-sensitive>{daily}</span>}
           dim="rhythms"
           icon={Activity}
+          active={dailyOnly}
+          onClick={() => setDailyOnly(!dailyOnly)}
         />
         <StatTile
           label="Categories"
@@ -239,7 +283,8 @@ function SupplementsTab({ sections }: { sections: Section[] }) {
       </p>
 
       {categories.map((cat) => {
-        const group = items.filter((s) => s.category === cat);
+        const group = shown.filter((s) => s.category === cat);
+        if (group.length === 0) return null;
         return (
           <section key={cat}>
             <h2 className="text-[13px] font-medium uppercase tracking-widest text-ink-3 mb-4">
@@ -266,6 +311,100 @@ function SupplementsTab({ sections }: { sections: Section[] }) {
   );
 }
 
+// ── Live data (health sync pipeline) ──
+
+const SOURCE_LABEL: Record<string, string> = {
+  oura: "Oura",
+  apple: "Apple Health",
+  eightsleep: "Eight Sleep",
+  function: "Function Health",
+};
+
+function sourceDim(status: string): Dim {
+  if (status === "ok") return "health";
+  if (status === "awaiting-first-export") return "creative";
+  return "blue";
+}
+
+function shortDay(day: string): string {
+  // A day key has no zone: anchor at noon UTC so the principal's zone never shifts the day.
+  return fmtDateParts(`${day}T12:00:00Z`, { month: "short", day: "numeric" });
+}
+
+function LiveSection({ live }: { live: HealthLive }) {
+  const cur = live.current;
+  const today = live.daily.length > 0 ? live.daily[live.daily.length - 1] : null;
+  const sleep = cur?.last_night?.oura_sleep_score ?? today?.sleep ?? null;
+  const readiness = cur?.last_night?.oura_readiness_score ?? today?.readiness ?? null;
+  const spo2 = today?.spo2 ?? null;
+  // Oura finalizes activity (incl. Apple Health-synced steps) at end of day —
+  // fall back to the most recent finalized day rather than showing "–" all day.
+  const lastAct = [...live.daily].reverse().find((d) => d.activity != null || d.steps != null) ?? null;
+  const actLabel = lastAct && lastAct !== today ? ` · ${shortDay(lastAct.day)}` : "";
+  const sources = cur?.sources ? Object.entries(cur.sources) : [];
+
+  return (
+    <section>
+      <h2 className="text-[13px] font-medium uppercase tracking-widest text-ink-3 mb-4 flex items-center gap-2">
+        <Heart className="w-4 h-4" /> Live — {cur?.day || "today"}
+      </h2>
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-5 mb-4">
+        <StatTile
+          label="Sleep Score"
+          value={<span data-sensitive>{sleep ?? "–"}</span>}
+          dim="health"
+          icon={Heart}
+        />
+        <StatTile
+          label="Readiness"
+          value={<span data-sensitive>{readiness ?? "–"}</span>}
+          dim="rhythms"
+          icon={Activity}
+        />
+        <StatTile
+          label="SpO2"
+          value={<span data-sensitive>{spo2 != null ? `${spo2.toFixed(1)}%` : "–"}</span>}
+          dim="blue"
+          icon={Stethoscope}
+        />
+        <StatTile
+          label={`Activity${actLabel}`}
+          value={<span data-sensitive>{lastAct?.activity ?? "–"}</span>}
+          dim="creative"
+          icon={Activity}
+        />
+        <StatTile
+          label={`Steps${actLabel}`}
+          value={
+            <span data-sensitive>
+              {lastAct?.steps != null ? lastAct.steps.toLocaleString() : "–"}
+            </span>
+          }
+          dim="money"
+          icon={Activity}
+        />
+      </div>
+
+      {(live.days?.length ?? 0) > 1 && (
+        <TrendBoard days={live.days ?? []} journal={live.journal ?? []} />
+      )}
+
+      {sources.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          {sources.map(([key, s]) => (
+            <Pill key={key} dim={sourceDim(s.status)}>
+              {SOURCE_LABEL[key] || key}: {s.status}
+              {s.status === "ok" && s.lastSuccess
+                ? ` · ${fmtClock(s.lastSuccess)}`
+                : ""}
+            </Pill>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── Page ──
 
 type TabKey = "overview" | "supplements";
@@ -274,12 +413,15 @@ const TABS: TabSpec<TabKey>[] = [
   { id: "supplements", label: "Supplements", icon: PillIcon, dim: "rhythms", hint: "2" },
 ];
 
-function OverviewTab({ files }: { files: HealthFile[] }) {
+function OverviewTab({ files, live }: { files: HealthFile[]; live?: HealthLive }) {
+  const [labsOnly, setLabsOnly] = useState(false);
   const labs = files.filter((f) => f.name.startsWith("lab_results"));
   const nonLabs = files.filter((f) => !f.name.startsWith("lab_results"));
+  const hasLive = !!live && (live.current != null || live.daily.length > 0);
 
   return (
     <div className="space-y-6">
+      {hasLive && <LiveSection live={live!} />}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
         <StatTile
           label="Tracked Sources"
@@ -292,6 +434,8 @@ function OverviewTab({ files }: { files: HealthFile[] }) {
           value={<span data-sensitive>{labs.length}</span>}
           dim="rhythms"
           icon={FlaskConical}
+          active={labsOnly}
+          onClick={() => setLabsOnly(!labsOnly)}
         />
       </div>
 
@@ -311,7 +455,7 @@ function OverviewTab({ files }: { files: HealthFile[] }) {
           </div>
         </section>
       )}
-      {nonLabs.length > 0 && (
+      {!labsOnly && nonLabs.length > 0 && (
         <section>
           <h2 className="text-[13px] font-medium uppercase tracking-widest text-ink-3 mb-4">
             Core Files
@@ -328,16 +472,10 @@ function OverviewTab({ files }: { files: HealthFile[] }) {
 }
 
 export default function HealthPage() {
-  const [data, setData] = useState<HealthData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data = null, error: queryError } = useApi<HealthData>("/api/life/health", { retry: false });
+  // A non-2xx reply stays "loading" as before; only a network failure surfaces as an error.
+  const error = !data && queryError && !(queryError instanceof ApiError) ? String(queryError) : null;
   const [tab, setTab] = useState<TabKey>("overview");
-
-  useEffect(() => {
-    fetch("/api/life/health")
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setData)
-      .catch((e) => setError(String(e)));
-  }, []);
 
   // Hash-routed tab state (matches finances/agents pattern).
   useEffect(() => {
@@ -402,7 +540,7 @@ export default function HealthPage() {
 
       <TabBar tabs={TABS} active={tab} onChange={changeTab} />
 
-      {tab === "overview" && <OverviewTab files={files} />}
+      {tab === "overview" && <OverviewTab files={files} live={data.live} />}
       {tab === "supplements" && <SupplementsTab sections={data.supplements || []} />}
     </PageShell>
   );

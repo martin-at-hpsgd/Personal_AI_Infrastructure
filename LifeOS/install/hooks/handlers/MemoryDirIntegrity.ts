@@ -37,13 +37,13 @@
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { paiPath, getLifeosDir } from '../lib/paths';
+import { lifeosPath, getLifeosDir } from '../lib/paths';
 import { emitFindingSet } from '../lib/events';
 
 const TAG = '[MemoryDirIntegrity]';
 const LIFEOS_DIR = getLifeosDir();
 const MEMORY_DIR = join(LIFEOS_DIR, 'MEMORY');
-const INVENTORY_DOC = paiPath('DOCUMENTATION/Memory/MemorySystem.md');
+const INVENTORY_DOC = lifeosPath('DOCUMENTATION/Memory/MemorySystem.md');
 
 // Directories that exist on disk but are not subsystems and should be ignored.
 const IGNORED_NAMES = new Set(['.DS_Store', '.git', 'node_modules']);
@@ -115,7 +115,7 @@ export function parseInventoryTable(content: string): InventoryRow[] | null {
   // Bind to the inventory TABLE, not to the whole section. The section also
   // contains prose tables (§ Status defines the Status vocabulary in a table of
   // its own), and a whole-section scan reads those rows as inventory rows —
-  // caught live on 2026-08-05, when the § Status table's own `active` row was
+  // caught live, when the § Status table's own `active` row was
   // reported as a memory subsystem with an unrecognised status.
   const lines = section.split('\n');
   const headerIdx = lines.findIndex((l) => /^\|\s*Directory\s*\|\s*Class\s*\|\s*Status\s*\|/.test(l.trim()));
@@ -195,7 +195,7 @@ export function computeDrift(inventory: InventoryRow[], onDisk: string[]): Drift
   // Direction 1: dirs on disk not in inventory.
   for (const dir of onDisk) {
     // Skill-private dirs are recognized by CONVENTION, not by enumeration: any
-    // `_`-prefixed dir is owned by the skill named `_<dir>` (see the `_X`
+    // `_`-prefixed dir is owned by the skill named `_<dir>` (see the `_<skill>`
     // convention in MemorySystem.md). They are deliberately NOT listed by name
     // in the shipping inventory — naming each private skill in a public doc is
     // a leak, and enumerating them here just duplicates the convention. Their

@@ -1,15 +1,22 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.3
- * TRIGGER: PostToolUse (catchall, matcher "") — must stay on the empty matcher so it fires on EVERY tool call.
+ * @version 1.0.13
+ * TRIGGER: PostToolUse (catchall, matcher "*") — fires on EVERY tool call.
  * PostToolObserver.hook.ts — the ONE sync catchall PostToolUse hook.
  *
- * Consolidation (2026-07-11, hooks BPE pass): merges the two sync catchall
- * spawns that fire on EVERY tool call into one process:
+ * Consolidation (2026-09-21): one process runs the three catchall observers,
+ * followed by the applicable per-tool members:
  *
- *   1. LoopDetector.run()    — exact-repeat / oscillation / hammering detection
- *   2. AlgorithmNudge.run()  — Algorithm live nudge layer (run-scoped nudges +
+ *   (LoopDetector retired 2026-10-25, ISA 20261025-hook-minimization: a repeat the model can already see in its own context)
+ *   1. AlgorithmNudge.run()  — Algorithm live nudge layer (run-scoped nudges +
  *                              always-on late-ISA; renamed from ISANudge 2026-07-11)
+ *   2. SystemChangeSurface.run()
+ *   Members: ISASync, CheckpointPerISC, AtlasEventCapture, KnowledgeWriteGuard
+ *   (ISAStaleWriteGuard retired 2026-10-24: Claude Code refuses a write to a file changed since it was read)
+ *   (SkillInvocationLog retired 2026-09-30: EventLogger writes the one run line)
+ *   WorkflowPulseNudge (2026-10-11): after a Workflow launch, hands the DA the Monitor call for its one-line-a-minute pulse (maintainer-side; not in the public release)
+ *   OutputRecord (2026-09-30, assay-everywhere S4): writes the output line for a file handed to the principal (maintainer-side; not in the public release)
+ *   (Write/Edit/MultiEdit/Bash/Artifact/ArtifactData/ArtifactComments), after the tool succeeded, from the bytes that landed.
  *
  * Both emit additionalContext; outputs are joined with a newline into one
  * hookSpecificOutput. EventLogger stays separately registered (async — pure
@@ -17,11 +24,77 @@
  * owner of its logic and runnable standalone.
  *
  * Failure mode: per-sub-hook try/catch; never blocks the session; exit 0.
+ *
  */
 
-import { run as loopDetector } from "./LoopDetector.hook";
 import { run as algorithmNudge } from "./AlgorithmNudge.hook";
-import { run as systemChangeSurface } from "./SystemChangeSurface.hook";
+import { recordDoctrine, run as systemChangeSurface } from "./SystemChangeSurface.hook";
+import { HookTimer } from "./lib/hook-timing";
+import { hookDrawn } from "./lib/function-hooks";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+export const MEMBERS_BY_TOOL = {
+  Read: ["ISASync"],
+  Write: ["ISASync", "CheckpointPerISC", "AtlasEventCapture", "KnowledgeWriteGuard", "OutputRecord"], // maintainer-side; not in the public release
+  Edit: ["ISASync", "CheckpointPerISC", "AtlasEventCapture", "KnowledgeWriteGuard", "OutputRecord"], // maintainer-side; not in the public release
+  MultiEdit: ["ISASync", "CheckpointPerISC", "AtlasEventCapture", "KnowledgeWriteGuard", "OutputRecord"], // maintainer-side; not in the public release
+  Bash: ["AtlasEventCapture", "OutputRecord"], // maintainer-side; not in the public release
+  Artifact: ["OutputRecord"], // maintainer-side; not in the public release
+  ArtifactData: ["OutputRecord"], // maintainer-side; not in the public release
+  ArtifactComments: ["OutputRecord"], // maintainer-side; not in the public release
+  NotebookEdit: ["OutputRecord"], // maintainer-side; not in the public release
+  Workflow: ["WorkflowPulseNudge"], // maintainer-side; not in the public release
+} as const;
+
+export type MemberName = (typeof MEMBERS_BY_TOOL)[keyof typeof MEMBERS_BY_TOOL][number];
+export type MemberRun = (input: any) => unknown | Promise<unknown>;
+export type MemberLoader = (name: MemberName) => Promise<MemberRun | null>;
+
+/** Private members are release-zoned out of some installs, so absence is normal. */
+export const loadMember: MemberLoader = async (name) => {
+  const path = join(import.meta.dir, `${name}.hook.ts`);
+  if (!existsSync(path)) return null;
+  const mod = await import(path);
+  return typeof mod.run === "function" ? mod.run as MemberRun : null;
+};
+
+type Timer = Pick<HookTimer, "timed">;
+
+/** Run applicable members in registration order and return their model-visible text. */
+export async function runMembers(
+  input: Record<string, unknown>,
+  timer: Timer,
+  loader: MemberLoader = loadMember,
+): Promise<string[]> {
+  const names = MEMBERS_BY_TOOL[input.tool_name as keyof typeof MEMBERS_BY_TOOL] ?? [];
+  const parts: string[] = [];
+  for (const name of names) {
+    try {
+      const result = await timer.timed(name, async () => {
+        const member = await loader(name);
+        return member ? await member(input) : null;
+      });
+      // These are the only standalone shims that print run()'s returned context.
+      if ((name === "ISASync" || name === "KnowledgeWriteGuard" || name === "OutputRecord" || name === "WorkflowPulseNudge") && typeof result === "string" && result) { // maintainer-side; not in the public release
+        parts.push(result);
+      }
+    } catch {
+      // Each member fails open; continue with the rest.
+    }
+  }
+  return parts;
+}
+
+export function mergedOutput(input: Record<string, unknown>, parts: string[]): object | null {
+  if (parts.length === 0) return null;
+  return {
+    hookSpecificOutput: {
+      hookEventName: (input.hook_event_name as string) || "PostToolUse",
+      additionalContext: parts.join("\n"),
+    },
+  };
+}
 
 /** The ⚙️ line follows the 🧠 contract: computed by the hook, echoed verbatim.
  *  Stating that beside the line is what keeps it from being paraphrased. */
@@ -41,24 +114,25 @@ async function readStdin(): Promise<string> {
   });
 }
 
-(async () => {
+async function main(): Promise<void> {
   const raw = await readStdin();
   if (!raw.trim()) process.exit(0);
   let input: Record<string, unknown>;
   try { input = JSON.parse(raw); } catch { process.exit(0); }
 
   const parts: string[] = [];
-  try { const m = loopDetector(input as never); if (m) parts.push(m); } catch {}
-  try { const m = algorithmNudge(input as never); if (m) parts.push(m); } catch {}
-  try { const m = systemChangeSurface(input as never); if (m) parts.push(SURFACE_PREAMBLE + m + "\n</lifeos-system-delta>"); } catch {}
+  const timer = new HookTimer("PostToolUse", input as never); // per-module timing → hook-timing.jsonl (/ic hook-latency)
+  const m2 = await timer.timed("AlgorithmNudge", () => algorithmNudge(input as never)); if (m2) parts.push(m2);
+  // When the LifeOSHooks plugin stamped this session it keeps the ⚙️ ledger in
+  // memory and draws the line itself; the echo block is the fallback path only.
+  recordDoctrine(input as never); // the statusline's doctrine mark, fed whether or not the plugin draws ⚙️
+  const m3 = hookDrawn(input.session_id as string) ? null : await timer.timed("SystemChangeSurface", () => systemChangeSurface(input as never)); if (m3) parts.push(SURFACE_PREAMBLE + m3 + "\n</lifeos-system-delta>");
+  parts.push(...await runMembers(input, timer));
+  timer.flush();
 
-  if (parts.length > 0) {
-    console.log(JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: (input.hook_event_name as string) || "PostToolUse",
-        additionalContext: parts.join("\n"),
-      },
-    }));
-  }
+  const output = mergedOutput(input, parts);
+  if (output) console.log(JSON.stringify(output));
   process.exit(0);
-})().catch(() => process.exit(0));
+}
+
+if (import.meta.main) main().catch(() => process.exit(0));

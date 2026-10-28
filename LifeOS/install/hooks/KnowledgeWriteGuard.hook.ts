@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.0
+ * @version 1.0.1
  * KnowledgeWriteGuard.hook.ts — schema feedback at the moment a note is written.
  *
  * PURPOSE:
@@ -33,6 +33,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import { getLifeosDir } from "./lib/paths";
+import { emitContext, readStdinJson } from "./lib/hook-stdin";
 import {
   parseNote,
   validate,
@@ -54,44 +55,41 @@ function knowledgeDirOf(path: string): string | null {
   return DIR_TO_TYPE[rest[0]] ? rest[0] : null;
 }
 
-let input: { hook_event_name?: string; tool_input?: { file_path?: string } };
-try {
-  input = JSON.parse(readFileSync(0, "utf-8"));
-} catch {
+type GuardInput = { hook_event_name?: string; tool_input?: { file_path?: string } };
+
+/** Advisory additionalContext for an off-schema Knowledge note write, else null. */
+export function run(input: GuardInput): string | null {
+  const path = input.tool_input?.file_path ?? "";
+  const dir = path ? knowledgeDirOf(path) : null;
+  if (!dir || !existsSync(path)) return null;
+
+  let violations: { key: string; problem: string }[];
+  try {
+    violations = validate(
+      parseNote(readFileSync(path, "utf-8")),
+      slugFromPath(path),
+      DIR_TO_TYPE[dir] as CanonicalType,
+    );
+  } catch {
+    violations = [{ key: "frontmatter", problem: "could not be parsed" }];
+  }
+  if (violations.length === 0) return null;
+
+  const listed = violations.slice(0, MAX_LISTED).map((v) => `  - \`${v.key}\` — ${v.problem}`);
+  const more = violations.length > MAX_LISTED ? `\n  …and ${violations.length - MAX_LISTED} more` : "";
+
+  return (
+    `⚠ Knowledge note written off-schema — \`${path.split(sep).slice(-2).join("/")}\`\n` +
+    listed.join("\n") +
+    more +
+    `\n\nNotes are born on the schema via \`MemorySystem.renderInitialNote\`. ` +
+    `Do not hand-write frontmatter by copying a sibling — that is how a legacy dialect spreads. ` +
+    `Fix this note now, or run \`bun LIFEOS/TOOLS/MigrateKnowledge.ts\` (dry-run by default) for a bulk repair.`
+  );
+}
+
+if (import.meta.main) {
+  const input = await readStdinJson();
+  if (input) emitContext((input.hook_event_name as string) || "PostToolUse", run(input as GuardInput));
   process.exit(0);
 }
-
-const path = input.tool_input?.file_path ?? "";
-const dir = path ? knowledgeDirOf(path) : null;
-if (!dir || !existsSync(path)) process.exit(0);
-
-let violations: { key: string; problem: string }[];
-try {
-  violations = validate(
-    parseNote(readFileSync(path, "utf-8")),
-    slugFromPath(path),
-    DIR_TO_TYPE[dir] as CanonicalType,
-  );
-} catch {
-  violations = [{ key: "frontmatter", problem: "could not be parsed" }];
-}
-if (violations.length === 0) process.exit(0);
-
-const listed = violations.slice(0, MAX_LISTED).map((v) => `  - \`${v.key}\` — ${v.problem}`);
-const more = violations.length > MAX_LISTED ? `\n  …and ${violations.length - MAX_LISTED} more` : "";
-
-console.log(
-  JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: input.hook_event_name || "PostToolUse",
-      additionalContext:
-        `⚠ Knowledge note written off-schema — \`${path.split(sep).slice(-2).join("/")}\`\n` +
-        listed.join("\n") +
-        more +
-        `\n\nNotes are born on the schema via \`MemorySystem.renderInitialNote\`. ` +
-        `Do not hand-write frontmatter by copying a sibling — that is how a legacy dialect spreads. ` +
-        `Fix this note now, or run \`bun LIFEOS/TOOLS/MigrateKnowledge.ts\` (dry-run by default) for a bulk repair.`,
-    },
-  }),
-);
-process.exit(0);

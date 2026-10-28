@@ -12,7 +12,7 @@ import type { AssetObs, CollectResult, Collector, EdgeObs } from "../Store";
 const API = "https://api.cloudflare.com/client/v4";
 
 /** Token, or null when there is no .env / no token in it (absent source). */
-function token(): string | null {
+export function token(): string | null {
   const envPath = join(homedir(), ".claude/.env");
   if (!existsSync(envPath)) return null;
   const env = readFileSync(envPath, "utf8");
@@ -20,13 +20,13 @@ function token(): string | null {
   return m ? m[1] : null;
 }
 
-async function cf(path: string, tok: string): Promise<unknown[]> {
+export async function cf(path: string, tok: string, extra?: Record<string, string>): Promise<unknown[]> {
   const out: unknown[] = [];
   let page = 1;
   for (;;) {
     const sep = path.includes("?") ? "&" : "?";
     const res = await fetch(`${API}${path}${sep}per_page=50&page=${page}`, {
-      headers: { Authorization: `Bearer ${tok}` },
+      headers: { Authorization: `Bearer ${tok}`, ...extra },
     });
     if (!res.ok) throw new Error(`CF ${path} -> ${res.status}`);
     const body = (await res.json()) as {
@@ -45,7 +45,7 @@ async function cf(path: string, tok: string): Promise<unknown[]> {
 }
 
 /** Single-object GET (settings, subdomain, schedules). Returns null on any non-OK. */
-async function cfOne(path: string, tok: string): Promise<any | null> {
+export async function cfOne(path: string, tok: string): Promise<any | null> {
   const res = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${tok}` } });
   if (!res.ok) return null;
   const body = (await res.json()) as { success: boolean; result: unknown };
@@ -65,9 +65,9 @@ async function cfOne(path: string, tok: string): Promise<any | null> {
  *
  * ported from public PR #1744, @schmetti-dev
  */
-async function cfSoft(path: string, tok: string, label: string, onFail: () => void): Promise<unknown[]> {
+async function cfSoft(path: string, tok: string, label: string, onFail: () => void, extra?: Record<string, string>): Promise<unknown[]> {
   try {
-    return await cf(path, tok);
+    return await cf(path, tok, extra);
   } catch (err) {
     onFail();
     console.error(`[cloudflare] ${label} failed: ${(err as Error).message}`);
@@ -76,7 +76,7 @@ async function cfSoft(path: string, tok: string, label: string, onFail: () => vo
 }
 
 /** Bounded-concurrency map — keeps the per-worker fan-out from hammering the API. */
-async function mapPool<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+export async function mapPool<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let i = 0;
   await Promise.all(
@@ -98,13 +98,27 @@ interface Binding {
   id?: string;
   namespace_id?: string;
   bucket_name?: string;
+  jurisdiction?: string;
   database_id?: string;
+  index_name?: string;
+}
+
+/**
+ * The ONE key for an R2 bucket, used by both the bucket listing and worker bindings.
+ * The default jurisdiction keeps the bare key every existing row and edge already uses;
+ * only a non-default jurisdiction is suffixed. Suffixing "default" (2026-09-17 port of
+ * PR #2096) gave every bucket a second asset row with a fresh first_observed_at, which
+ * read as a batch of brand-new data stores to the new-store standing question.
+ */
+export function r2Key(name: string, jurisdiction?: string): string {
+  return jurisdiction && jurisdiction !== "default" ? `cloudflare:r2:${name}:${jurisdiction}` : `cloudflare:r2:${name}`;
 }
 
 /** Resolve a data-store binding to the Atlas asset it points at, or null if it isn't one. */
 function datastoreTarget(b: Binding, d1ByUuid: Map<string, string>): { key: string; kind: string } | null {
   if (b.type === "kv_namespace" && b.namespace_id) return { key: `cloudflare:kv:${b.namespace_id}`, kind: "kv_namespace" };
-  if (b.type === "r2_bucket" && b.bucket_name) return { key: `cloudflare:r2:${b.bucket_name}`, kind: "r2_bucket" };
+  if (b.type === "r2_bucket" && b.bucket_name) return { key: r2Key(b.bucket_name, b.jurisdiction), kind: "r2_bucket" };
+  if (b.type === "vectorize" && b.index_name) return { key: `cloudflare:vectorize:${b.index_name}`, kind: "vectorize_index" };
   if (b.type === "d1" || b.type === "d1_database") {
     // Bindings carry the uuid; the asset is keyed by name. An unmapped uuid means the
     // database listing didn't include it — skip rather than invent a key.
@@ -171,13 +185,37 @@ export const cloudflare: Collector = {
     const kv = (await cfSoft(`/accounts/${acct.id}/storage/kv/namespaces`, tok, "KV namespaces", () => { partial = true; })) as Array<{ id: string; title: string }>;
     for (const ns of kv) assets.push({ kind: "kv_namespace", key: `cloudflare:kv:${ns.id}`, name: ns.title });
 
-    const r2 = (await cfSoft(`/accounts/${acct.id}/r2/buckets`, tok, "R2 buckets", () => { partial = true; })) as Array<{ name?: string; buckets?: Array<{ name: string }> }>;
-    // Endpoint wraps the list: result = { buckets: [...] } → cf() returns [wrapper].
-    const buckets = r2.flatMap((item) => (item.buckets ? item.buckets : item.name ? [{ name: item.name }] : []));
-    for (const b of buckets) assets.push({ kind: "r2_bucket", key: `cloudflare:r2:${b.name}`, name: b.name });
+    // R2 buckets are jurisdiction-specific; query both "default" and "eu" jurisdictions.
+    // fnv (FedRAMP) is not probed as it returns 403 for ordinary accounts.
+    // public PR #2096, @timrutzen
+    const jurisdictions = ["default", "eu"];
+    for (const jurisdiction of jurisdictions) {
+      const r2 = (await cfSoft(
+        `/accounts/${acct.id}/r2/buckets`,
+        tok,
+        `R2 buckets (${jurisdiction})`,
+        () => { partial = true; },
+        { "cf-r2-jurisdiction": jurisdiction },
+      )) as Array<{ name?: string; buckets?: Array<{ name: string }> }>;
+      // Endpoint wraps the list: result = { buckets: [...] } → cf() returns [wrapper].
+      const buckets = r2.flatMap((item) => (item.buckets ? item.buckets : item.name ? [{ name: item.name }] : []));
+      for (const b of buckets) {
+        assets.push({
+          kind: "r2_bucket",
+          key: r2Key(b.name, jurisdiction),
+          name: b.name,
+          attrs: { jurisdiction },
+        });
+      }
+    }
 
     const d1 = (await cfSoft(`/accounts/${acct.id}/d1/database`, tok, "D1 databases", () => { partial = true; })) as Array<{ uuid: string; name: string }>;
     for (const db of d1) assets.push({ kind: "d1_database", key: `cloudflare:d1:${db.name}`, name: db.name, attrs: { uuid: db.uuid } });
+
+    // Vectorize indexes are a data store like D1 and R2: a corpus of embeddings a worker depends on.
+    // Once untracked: a live index had no asset row.
+    const vec = (await cfSoft(`/accounts/${acct.id}/vectorize/v2/indexes`, tok, "Vectorize indexes", () => { partial = true; })) as Array<{ name: string; config?: { dimensions?: number; metric?: string } }>;
+    for (const v of vec) assets.push({ kind: "vectorize_index", key: `cloudflare:vectorize:${v.name}`, name: v.name, attrs: { dimensions: v.config?.dimensions ?? null, metric: v.config?.metric ?? null } });
 
     // D1 assets are keyed by NAME but bindings reference the uuid — map it before the
     // worker loop so a binding can be resolved to the asset it actually points at.
@@ -192,6 +230,13 @@ export const cloudflare: Collector = {
         cfOne(`/accounts/${acct.id}/workers/scripts/${w.id}/settings`, tok),
         cfOne(`/accounts/${acct.id}/workers/scripts/${w.id}/subdomain`, tok),
       ]);
+      // GHSA-mqwg-v87w-pggm (@elhoim): cfOne returns null on any non-OK, a 429
+      // included. A lost settings read drops this worker's HOLDS/CALLS/SERVES
+      // edges; a run that claims complete would then sweep them to stale.
+      if (sched === null || settings === null || subdomain === null) {
+        partial = true;
+        console.error(`[cloudflare] per-worker wiring for ${w.id} incomplete; run marked partial`);
+      }
       const cron = Array.isArray(sched?.schedules) && sched.schedules.length > 0;
       const workersDev = subdomain?.enabled === true;
       const bindings = (settings?.bindings ?? []) as Binding[];

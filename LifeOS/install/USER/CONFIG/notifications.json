@@ -1,0 +1,4 @@
+{
+  "_docs": "How many unrequested interruptions per day may reach you. Read by LIFEOS/TOOLS/Interruptions.ts ceiling() and the AS3 interruption probe (LIFEOS/AS3/Probes.ts). Only `interruptions_per_day` is used: a finite number, counted over a rolling 24 hours of the interruption ledger. A missing file, a missing key or a non-number falls back to 12, which is also the value shipped here.",
+  "interruptions_per_day": 12
+}

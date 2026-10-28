@@ -1,12 +1,26 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.5
+ * @version 1.2.0
+ * 1.2.0 (2026-10-25, STATVS ISA F16 step 1, dual-write): the record gets one `skill-run` row per Skill call (skill,
+ *   intent when the args name one of the skill's intent files, session, the run line's run_id, an args digest) and one
+ *   `tool-run` row per Bash call that runs a LifeOS tool with bun (a .ts under skills/<S>/Tools/ or LIFEOS/TOOLS/), with
+ *   the exit code and the harness's duration_ms, on success (PostToolUse) and failure (PostToolUseFailure). Both go
+ *   through LIFEOS/STATVS/lib/quality.ts, imported only when a call qualifies, so every other tool call pays one string
+ *   test; execution.jsonl and tool-activity.jsonl keep writing exactly as before, and a record fault is logged and never
+ *   fails the hook.
+ * 1.1.1 (2026-10-14): the skill run line is appended through
+ *   appendPrivateRecord (0600 file, owner-only directory, existing ones tightened), and its arguments
+ *   are redacted and cut to SKILL_ARGS_KEEP characters.
  * EventLogger.hook.ts - Unified observability event logger
  *
- * Consolidation (2026-07-10, {{PRINCIPAL_NAME}}'s hook consolidation): merges FIVE
+ * Consolidation (2026-07-10, the principal's hook consolidation): merges FIVE
  * behavior-preserving append-JSONL loggers into one dispatcher keyed on
  * `hook_event_name`. None of these emit model-context output — they only
  * append structured events and (for PostToolUse) bump the ISA heartbeat.
+ *
+ * 2026-09-30: the Skill branch writes THE run line —
+ * session_id, turn, run_id, parent_run_id beside the original fields.
+ * SkillInvocationLog (second writer, invocations.jsonl) is retired.
  *
  * Merged sources (each logic block preserved byte-for-behavior):
  *   1. ToolActivityTracker.hook.ts  → PostToolUse (all tools). Ground-truth
@@ -21,8 +35,16 @@
  *   5. ConfigAudit.hook.ts          → ConfigChange →
  *      MEMORY/OBSERVABILITY/config-changes.jsonl.
  *
+ * 2026-10-09 (intent anatomy, ISA 20261009-intent-ideal-state ISC-6): PostToolUse
+ * also runs the intent voice (lib/intent-voice.ts). A main-session Read of
+ * skills/<Skill>/Intents/<Intent>.md during that skill's execution says "Running
+ * the <Intent> intent in the <Skill> skill" once, replacing the per-intent curl
+ * blocks. The POST is awaited under a short timeout before exit; this hook is
+ * registered async on PostToolUse, so the wait never holds the tool.
+ *
  * DISPATCH:
- *   PostToolUse        → tool-activity ALWAYS, + skill-execution when tool==Skill
+ *   PostToolUse        → tool-activity ALWAYS, + skill-execution when tool==Skill,
+ *                        + intent voice when tool==Read of an intent file
  *   PostToolUseFailure → tool-failure
  *   StopFailure        → stop-failure
  *   ConfigChange       → config-audit
@@ -33,24 +55,37 @@
  * (previously it lost its baseline on every restart, forcing an "initial
  * snapshot" no-diff on the first ConfigChange after boot).
  *
+ * SECRETS (GHSA-8qfr-7fpx-68x9, @godagoo): every captured string is redacted
+ * before it is truncated, the settings snapshot stores env values as sha256
+ * hashes, and every file written here is 0600 — see lib/event-capture.ts.
+ *
  * Every event path is registered to this ONE file (matcher * for PostToolUse
  * subsumes the former Skill-matcher entry). Fail-open throughout: any error is
  * logged to stderr and the process exits 0 so a logging fault never blocks a turn.
  */
 
 import {
-  existsSync,
   mkdirSync,
-  appendFileSync,
   readFileSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from 'fs';
-import { dirname, join } from 'path';
-import { execFileSync, spawn } from 'child_process';
-import { paiPath, getSettingsPath } from './lib/paths';
+import { randomUUID } from 'crypto';
+import { createHash } from 'crypto';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { spawn } from 'child_process';
+import { lifeosPath, getSettingsPath, getSkillsDir } from './lib/paths';
+import { redactLabelled } from './lib/label-redact';
+import { appendPrivateLine, appendPrivateRecord, capture, captureGroundTruth, diffSettings, previewJson } from './lib/event-capture';
 import { resolveBun } from './lib/resolve-bin';
 import { getISOTimestamp, getPSTDate, getYearMonth } from './lib/time';
+import { invariant } from '../LIFEOS/TOOLS/Invariant';
+import { PULSE_BASE } from '../LIFEOS/PULSE/endpoint';
+import { maybeAnnounceIntent, postIntentVoice } from './lib/intent-voice';
+import { isDesktopChannel, logSkippedVoice } from './lib/notification-channel';
+import { readPick } from './lib/router-pick';
 import { bumpLastToolActivity, bumpLastToolActivityByUUID } from './lib/isa-utils';
 import {
   buildExecutionLine,
@@ -94,6 +129,8 @@ interface ToolUseInput {
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   tool_response?: unknown;
+  /** Tool execution time in milliseconds (harness field; excludes permission-prompt and hook time). */
+  duration_ms?: number;
   // Present ONLY when the call originates from a subagent; absent in the main
   // session. The only signal distinguishing delegated work from the operator's
   // own session (session_id/transcript_path/cwd are byte-identical between the
@@ -102,99 +139,122 @@ interface ToolUseInput {
   agent_type?: string;
 }
 
-const OBS_DIR = paiPath('MEMORY', 'OBSERVABILITY');
+const OBS_DIR = lifeosPath('MEMORY', 'OBSERVABILITY');
 const ACTIVITY_FILE = join(OBS_DIR, 'tool-activity.jsonl');
 
-const SKILLS_DIR = paiPath('MEMORY', 'SKILLS');
+const SKILLS_DIR = lifeosPath('MEMORY', 'SKILLS');
 const EXECUTION_FILE = join(SKILLS_DIR, 'execution.jsonl');
 
-// Tools that mutate filesystem state — capture extra ground truth.
-const WRITE_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
-const BASH_TOOLS = new Set(['Bash']);
+// Capture rules (redact before truncate, 0600 files) live in lib/event-capture.ts
+// (GHSA-8qfr-7fpx-68x9, @godagoo).
 
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + '...[truncated]' : s;
-}
-
-function gitSnapshot(cwd: string): { head?: string; dirty?: boolean } | undefined {
-  try {
-    const head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
-      cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 500,
-    }).trim();
-    const status = execFileSync('git', ['status', '--porcelain'], {
-      cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 500,
-    });
-    return { head, dirty: status.trim().length > 0 };
-  } catch {
-    return undefined;
-  }
-}
-
-function captureGroundTruth(toolName: string, input: Record<string, unknown>, response: unknown) {
-  const gt: Record<string, unknown> = {};
-
-  if (WRITE_TOOLS.has(toolName) && typeof input.file_path === 'string') {
-    gt.file_path = input.file_path;
-    // Edit/MultiEdit carry the before/after diff in args; capture bounded.
-    if (typeof input.old_string === 'string' && typeof input.new_string === 'string') {
-      gt.diff = {
-        removed: truncate(input.old_string, 500),
-        added: truncate(input.new_string, 500),
-      };
-    }
-    if (typeof input.content === 'string') {
-      gt.content_preview = truncate(input.content, 500);
-      gt.content_bytes = input.content.length;
-    }
-    const gs = gitSnapshot(process.cwd());
-    if (gs) gt.git = gs;
-  }
-
-  if (BASH_TOOLS.has(toolName) && typeof input.command === 'string') {
-    gt.command = truncate(input.command, 500);
-    // Claude Code puts stdout/stderr/exit in tool_response — shape varies.
-    if (response && typeof response === 'object') {
-      const r = response as Record<string, unknown>;
-      if ('stdout' in r && typeof r.stdout === 'string') {
-        gt.stdout_preview = truncate(r.stdout, 800);
-        gt.stdout_bytes = r.stdout.length;
-      }
-      if ('stderr' in r && typeof r.stderr === 'string') {
-        gt.stderr_preview = truncate(r.stderr, 800);
-      }
-      if ('exit_code' in r || 'exitCode' in r) {
-        gt.exit_code = r.exit_code ?? r.exitCode;
-      }
-    }
-  }
-
-  return Object.keys(gt).length > 0 ? gt : undefined;
-}
-
+/** The skill run line goes through the private append: 0600 file, owner-only directory, an existing
+ * file or directory tightened (2026-10-14). */
 function appendSkillJsonLine(filePath: string, line: unknown): void {
-  const dir = dirname(filePath);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  appendFileSync(filePath, JSON.stringify(line) + '\n', 'utf-8');
+  appendPrivateRecord(filePath, line);
 }
 
-function handlePostToolUse(raw: string): void {
+/** Skill arguments can be personal (names, drafts, topics): kept redacted and bounded, never whole. */
+export const SKILL_ARGS_KEEP = 200;
+
+// ── The run line ─────────────────────────────────────────────────────────────
+// execution.jsonl is the ONE skill-run record. Besides the original fields it
+// carries session_id, turn, a generated run_id, parent_run_id and
+// prior_run_id_same_turn. Unknown values stay null; nothing here guesses.
+//   turn          — the router turn id of the prompt being worked, read through
+//                   readPick (hooks/lib/router-pick.ts) with its staleness guard:
+//                   a pick older than TURN_MAX_AGE_MS belongs to an earlier
+//                   prompt the advisor did not overwrite, so it reads as null.
+//   parent_run_id — ONLY an explicit carrier: LIFEOS_PARENT_RUN_ID in the
+//                   environment, set by whatever spawned this session for a
+//                   run it owns. Sequence is not parentage, so absent carrier
+//                   means null (F-W7 / A4).
+//   prior_run_id_same_turn — the previous run recorded for this session when it
+//                   shares a known turn with this one: an ordering fact, never
+//                   a claim of nesting. Run state is one small file per session.
+//   NESTING THROUGH AGENTS (ISC-25, checked 2026-09-30): a Skill called from inside a
+//                   subagent arrives with session_id identical to the parent's plus agent_id and
+//                   agent_type, and NOTHING that names the parent run or the Agent call that spawned
+//                   it (the payload shape is the ToolUseInput above; AgentInvocation.hook.ts documents
+//                   that SubagentStart/Stop add no link either). So the parent run id cannot be
+//                   propagated from the payload, and it is not guessed: the line records agent_id and
+//                   agent_type so the agent's runs group together, and parent_run_id stays null. The
+//                   only explicit carrier is LIFEOS_PARENT_RUN_ID, which a spawner that owns a run
+//                   (a headless child process) must set; no spawner in this tree sets it today.
+const SAFE_SESSION = /^[A-Za-z0-9_-]{1,128}$/;
+const RUN_ID = /^run_[0-9a-f-]{36}$/;
+const TURN_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const RUN_STATE_DIR = (): string => process.env.LIFEOS_RUN_STATE_DIR || lifeosPath('MEMORY', 'STATE', 'run-state');
+
+interface RunState { run_id: string; turn: string | null; skill: string; ts: string }
+
+function currentTurn(session: string | null, now = Date.now()): string | null {
+  if (!session || !SAFE_SESSION.test(session)) return null;
+  const pick = readPick(session, now - TURN_MAX_AGE_MS);
+  return pick && typeof pick.turn === 'string' && pick.turn.length > 0 ? pick.turn : null;
+}
+
+/** The explicit parent carrier, or null. A malformed value is ignored rather than recorded as a parent. */
+function explicitParent(): string | null {
+  const v = process.env.LIFEOS_PARENT_RUN_ID;
+  return typeof v === 'string' && RUN_ID.test(v) ? v : null;
+}
+
+function readRunState(session: string | null): RunState | null {
+  if (!session || !SAFE_SESSION.test(session)) return null;
+  try {
+    const s = JSON.parse(readFileSync(join(RUN_STATE_DIR(), session + '.json'), 'utf8')) as RunState;
+    return typeof s.run_id === 'string' && s.run_id ? s : null;
+  } catch { return null; }
+}
+
+function writeRunState(session: string | null, state: RunState): void {
+  if (!session || !SAFE_SESSION.test(session)) return;
+  const dir = RUN_STATE_DIR();
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, session + '.json');
+  const tmp = path + '.' + process.pid + '.tmp';
+  writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 });
+  renameSync(tmp, path);
+}
+
+function buildRunLine(data: ToolUseInput, skill: string, args: string, ts: string): Record<string, unknown> {
+  const session = typeof data.session_id === 'string' && data.session_id ? data.session_id : null;
+  const turn = currentTurn(session);
+  const prior = readRunState(session);
+  const run_id = 'run_' + randomUUID();
+  const parent_run_id = explicitParent();
+  const prior_run_id_same_turn = prior && turn !== null && prior.turn === turn ? prior.run_id : null;
+  invariant(skill.length > 0 && RUN_ID.test(run_id), 'a run line names a skill and carries a run id');
+  invariant(parent_run_id !== run_id && prior_run_id_same_turn !== run_id, 'a run is never its own parent or predecessor');
+  try { writeRunState(session, { run_id, turn, skill, ts }); } catch { /* state is best effort; the line still lands */ }
+  return {
+    ...buildExecutionLine(skill, args, ts),
+    session_id: session,
+    turn,
+    run_id,
+    parent_run_id,
+    prior_run_id_same_turn,
+    ...(typeof data.agent_id === 'string' ? { agent_id: data.agent_id } : {}),
+    ...(typeof data.agent_type === 'string' ? { agent_type: data.agent_type } : {}),
+  };
+}
+
+function handlePostToolUse(raw: string): StatvsWork | null {
   // ── ToolActivityTracker logic (ALWAYS) ────────────────────────────────
   let data: ToolUseInput;
   try {
     data = JSON.parse(raw) as ToolUseInput;
   } catch (e) {
     console.error('[ToolActivityTracker]', e instanceof Error ? e.message : String(e));
-    return;
+    return null;
   }
+  const work: StatvsWork = { skillRun: null, toolRuns: toolRunsFor(data, 'success') };
 
   try {
     const toolName = data.tool_name || 'unknown';
 
-    let inputPreview = '';
-    if (data.tool_input) {
-      const raw2 = JSON.stringify(data.tool_input);
-      inputPreview = raw2.length > 300 ? raw2.slice(0, 300) + '...' : raw2;
-    }
+    const inputPreview = data.tool_input ? previewJson(data.tool_input, 300) : '';
 
     const groundTruth = data.tool_input
       ? captureGroundTruth(toolName, data.tool_input, data.tool_response)
@@ -214,14 +274,13 @@ function handlePostToolUse(raw: string): void {
       ...(groundTruth ? { ground_truth: groundTruth } : {}),
     };
 
-    if (!existsSync(OBS_DIR)) mkdirSync(OBS_DIR, { recursive: true });
-    appendFileSync(ACTIVITY_FILE, JSON.stringify(event) + '\n', 'utf-8');
+    appendPrivateLine(ACTIVITY_FILE, event);
 
     // Heartbeat (2026-07-15 reversal of the narrow-bump design): EVERY tool
     // call bumps the session's row (30s debounce inside). The old rule bumped
     // only on files under MEMORY/WORK/<slug>/, which made runs doing real work
-    // between ISA edits read as dead within 10 minutes ("I'm working right now
-    // and I don't see it" — {{PRINCIPAL_NAME}}, twice). Phantom-dead proved worse than the
+    // between ISA edits read as dead within 10 minutes, so live work showed as
+    // dead to the principal. Phantom-dead proved worse than the
     // phantom-active the old rule guarded against. The path-based bump stays
     // for cross-session ISA touches (a different UUID working an ISA's files).
     if (typeof data.session_id === 'string') bumpLastToolActivityByUUID(data.session_id);
@@ -236,7 +295,7 @@ function handlePostToolUse(raw: string): void {
     // Spawn gate: state-file mtime check keeps this to one detached spawn per
     // minute; the tool itself debounces again internally.
     try {
-      const reconcileState = paiPath('MEMORY', 'STATE', 'work-reconcile.json');
+      const reconcileState = lifeosPath('MEMORY', 'STATE', 'work-reconcile.json');
       let due = true;
       try {
         due = Date.now() - statSync(reconcileState).mtimeMs > 60_000;
@@ -247,7 +306,7 @@ function handlePostToolUse(raw: string): void {
         // this sync try/catch — so it was swallowed, WorkReconcile never wrote
         // its state file, and `due` stayed true on every single tool call.
         // (ported from public PR #1738, @elhoim)
-        const proc = spawn(resolveBun(), [paiPath('TOOLS', 'WorkReconcile.ts')], {
+        const proc = spawn(resolveBun(), [lifeosPath('TOOLS', 'WorkReconcile.ts')], {
           detached: true,
           stdio: 'ignore',
         });
@@ -268,11 +327,148 @@ function handlePostToolUse(raw: string): void {
       if (skill) {
         const args = extractSkillArgs(data.tool_input);
         const ts = isoZTimestamp(getISOTimestamp());
-        appendSkillJsonLine(EXECUTION_FILE, buildExecutionLine(skill, args, ts));
+        const line = buildRunLine(data, skill, capture(args, SKILL_ARGS_KEEP), ts);
+        appendSkillJsonLine(EXECUTION_FILE, line);
+        work.skillRun = skillRunRow(data, skill, args, typeof line.run_id === 'string' ? line.run_id : null);
       }
     } catch (error) {
       console.error('[SkillExecutionLog]', error instanceof Error ? error.message : String(error));
     }
+  }
+  return work;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// STATVS dual-write: skill-run and tool-run rows (STATVS ISA F16, step 1)
+// ═════════════════════════════════════════════════════════════════════════
+// The record module (LIFEOS/STATVS/lib/quality.ts, which loads the record engine) is imported only when a call owes a
+// row: a Skill call, or a Bash call that runs a LifeOS tool with bun. Every other call pays toolRunsFor's string test.
+
+export interface SkillRunRow { skill: string; intent?: string; session_id?: string; run_id?: string; args_hash?: string }
+export interface ToolRunRow { tool: string; exit_code: number; ms: number; session_id?: string; skill?: string }
+interface StatvsWork { skillRun: SkillRunRow | null; toolRuns: ToolRunRow[] }
+
+const ID_SHAPE = /^[^\s\u0000-\u001f]{1,160}$/;
+const INTENT_WORD = /^[A-Z][A-Za-z0-9]{1,63}$/;
+/** At most this many tool rows per Bash call; a longer chain is one command, not a batch job. */
+export const MAX_TOOL_ROWS = 5;
+
+/** The intent a Skill call names: the first word of its args when skills/<skill>/Intents/<Word>.md exists, else undefined. */
+export function intentFor(skill: string, args: string, skillsDir: string = process.env.LIFEOS_SKILLS_DIR || getSkillsDir()): string | undefined {
+  const word = args.trim().split(/\s+/, 1)[0] ?? '';
+  if (!INTENT_WORD.test(word) || !/^[A-Za-z0-9_.-]+$/.test(skill)) return undefined;
+  try { return existsSync(join(skillsDir, skill, 'Intents', word + '.md')) ? word : undefined; } catch { return undefined; }
+}
+
+function skillRunRow(data: ToolUseInput, skill: string, args: string, runId: string | null): SkillRunRow {
+  const row: SkillRunRow = { skill };
+  const intent = intentFor(skill, args);
+  if (intent) row.intent = intent;
+  if (typeof data.session_id === 'string' && ID_SHAPE.test(data.session_id)) row.session_id = data.session_id;
+  if (runId && ID_SHAPE.test(runId)) row.run_id = runId;
+  if (args) row.args_hash = createHash('sha256').update(args).digest('hex').slice(0, 16);
+  return row;
+}
+
+/**
+ * The LifeOS tools a shell command runs with bun, as repo-relative paths with their skill: a simple command whose program
+ * is bun, `bun [run] [flags] <path>.ts`, where the path ends in skills/<Skill>/Tools/<...>.ts or LIFEOS/TOOLS/<...>.ts.
+ * The command line is walked with the shared shell parser (hooks/lib/shell-commands.ts: quotes, heredocs, `sh -c`,
+ * wrappers), so a tool path inside a heredoc, a quoted string or another program's arguments is not a run. `bun test`,
+ * `bun -e` and test files are not tool runs. Distinct paths, in order, at most MAX_TOOL_ROWS. The parser loads only when
+ * the cheap text test passes, so other calls never pay for it.
+ */
+export function bunToolRuns(command: string): Array<{ tool: string; skill?: string }> {
+  if (!command.includes('bun') || !(command.includes('/Tools/') || command.includes('LIFEOS/TOOLS/'))) return [];
+  let commands: Array<{ argv: string[] }>;
+  try {
+    const sh = require('./lib/shell-commands') as typeof import('./lib/shell-commands');
+    commands = sh.simpleCommands(command).commands.filter((c) => sh.programName(c.argv[0]) === 'bun');
+  } catch (e) {
+    console.error('[EventLogger] tool-run parse failed:', e instanceof Error ? e.message : String(e));
+    return [];
+  }
+  const out: Array<{ tool: string; skill?: string }> = [];
+  const seen = new Set<string>();
+  for (const { argv } of commands) {
+    let i = 1;
+    if (argv[i] === 'run') i++;
+    while (i < argv.length && argv[i]!.startsWith('-')) i++;
+    const path = argv[i] ?? '';
+    if (!path.endsWith('.ts') || /\.test\.ts$/.test(path)) continue;
+    const sk = path.match(/(?:^|\/)(skills\/([A-Za-z0-9_.-]+)\/Tools\/[A-Za-z0-9_.\/-]+\.ts)$/);
+    const lt = sk ? null : path.match(/(?:^|\/)(LIFEOS\/TOOLS\/[A-Za-z0-9_.\/-]+\.ts)$/);
+    const tool = sk?.[1] ?? lt?.[1];
+    if (!tool || tool.includes('/../') || seen.has(tool)) continue;
+    seen.add(tool);
+    out.push(sk ? { tool, skill: sk[2]! } : { tool });
+    if (out.length >= MAX_TOOL_ROWS) break;
+  }
+  return out;
+}
+
+/** The exit code of a Bash call: the response's own code on success (else 0); on failure "Exit code N" from the error, 130 for an interrupt, else 1. */
+export function exitCodeOf(data: { tool_response?: unknown; error?: unknown; is_interrupt?: unknown }, outcome: 'success' | 'failure'): number {
+  if (outcome === 'success') {
+    const r = data.tool_response;
+    if (r && typeof r === 'object') {
+      const c = (r as Record<string, unknown>).exit_code ?? (r as Record<string, unknown>).exitCode;
+      if (typeof c === 'number' && Number.isInteger(c)) return c;
+    }
+    return 0;
+  }
+  if (data.is_interrupt === true) return 130;
+  const m = typeof data.error === 'string' ? data.error.match(/exit code (\d{1,3})/i) : null;
+  return m ? Number(m[1]) : 1;
+}
+
+/** The tool rows one Bash call owes; [] for any other tool, a command with no LifeOS tool, or a payload with no duration. */
+export function toolRunsFor(data: { session_id?: unknown; tool_name?: unknown; tool_input?: Record<string, unknown>; tool_response?: unknown; duration_ms?: unknown; error?: unknown; is_interrupt?: unknown }, outcome: 'success' | 'failure'): ToolRunRow[] {
+  if (data.tool_name !== 'Bash' || typeof data.tool_input?.command !== 'string') return [];
+  const runs = bunToolRuns(data.tool_input.command);
+  if (!runs.length) return [];
+  // The harness's own timing is the only honest duration; a payload without it gets no row rather than a made-up 0.
+  if (typeof data.duration_ms !== 'number' || !Number.isFinite(data.duration_ms) || data.duration_ms < 0) {
+    console.error('[EventLogger] tool-run skipped: the payload carries no duration_ms');
+    return [];
+  }
+  const exit_code = exitCodeOf(data, outcome);
+  const session = typeof data.session_id === 'string' && ID_SHAPE.test(data.session_id) ? data.session_id : undefined;
+  return runs.map((r) => ({ tool: r.tool, exit_code, ms: Math.round(data.duration_ms as number), ...(session ? { session_id: session } : {}), ...(r.skill ? { skill: r.skill } : {}) }));
+}
+
+/** Append the rows a call owes. Never throws: the record's own refusals are logged by quality.ts, anything else here. */
+async function writeStatvs(work: StatvsWork | null): Promise<void> {
+  if (!work || (!work.skillRun && work.toolRuns.length === 0)) return;
+  try {
+    const q = await import('../LIFEOS/STATVS/lib/quality.ts');
+    if (work.skillRun) q.recordSkillRun(work.skillRun);
+    for (const t of work.toolRuns) q.recordToolRun(t);
+  } catch (e) {
+    console.error('[EventLogger] STATVS row not written:', e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ── Intent voice (PostToolUse, Read only) ────────────────────────────────────
+// One announcement per intent per execution, replacing the per-intent curl blocks.
+// All gating (main session, recent Skill call, dedupe, desktop channel) lives in
+// lib/intent-voice.ts. Fail-open: any fault is logged to stderr and swallowed.
+const INTENT_VOICE_STATE_DIR = lifeosPath('MEMORY', 'STATE', 'intent-voice');
+
+async function announceIntentIfDue(raw: string): Promise<void> {
+  try {
+    const data = JSON.parse(raw) as ToolUseInput;
+    if (data.tool_name !== 'Read') return;
+    await maybeAnnounceIntent(data, {
+      now: Date.now(),
+      executionFile: EXECUTION_FILE,
+      stateDir: INTENT_VOICE_STATE_DIR,
+      isDesktop: isDesktopChannel,
+      post: (message) => postIntentVoice(PULSE_BASE, message),
+      onChannelSkip: (message, sessionId) => logSkippedVoice({ hookLabel: 'IntentVoice', message, sessionId }),
+    });
+  } catch (e) {
+    console.error('[IntentVoice]', e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -287,6 +483,8 @@ interface ToolFailureInput {
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   error?: string;
+  is_interrupt?: boolean;
+  duration_ms?: number;
 }
 
 interface ToolFailureEvent {
@@ -300,34 +498,33 @@ interface ToolFailureEvent {
 
 const FAILURES_FILE = join(OBS_DIR, 'tool-failures.jsonl');
 
-function handlePostToolUseFailure(raw: string): void {
+function handlePostToolUseFailure(raw: string): StatvsWork | null {
+  let work: StatvsWork | null = null;
   try {
     const data: ToolFailureInput = JSON.parse(raw);
+    try { work = { skillRun: null, toolRuns: toolRunsFor(data, 'failure') }; } catch { /* the failure log still lands */ }
     const toolName = data.tool_name || 'unknown';
     const error = data.error || 'unknown error';
 
-    // Truncate tool input for storage
-    let inputPreview = '';
-    if (data.tool_input) {
-      const rawIn = JSON.stringify(data.tool_input);
-      inputPreview = rawIn.length > 500 ? rawIn.slice(0, 500) + '...' : rawIn;
-    }
+    // Redact, then truncate, tool input for storage
+    const inputPreview = data.tool_input ? previewJson(data.tool_input, 500) : '';
+    const cleanError = redactLabelled(error.slice(0, 1000 + 4096));
 
     const event: ToolFailureEvent = {
       timestamp: getISOTimestamp(),
       event: 'tool_failure',
       session_id: data.session_id,
       tool_name: toolName,
-      error: error.slice(0, 1000),
+      error: cleanError.slice(0, 1000),
       tool_input_preview: inputPreview,
     };
 
-    if (!existsSync(OBS_DIR)) mkdirSync(OBS_DIR, { recursive: true });
-    appendFileSync(FAILURES_FILE, JSON.stringify(event) + '\n', 'utf-8');
-    console.error(`[ToolFailureTracker] Logged failure: ${toolName} — ${error.slice(0, 80)}`);
+    appendPrivateLine(FAILURES_FILE, event);
+    console.error(`[ToolFailureTracker] Logged failure: ${toolName} — ${cleanError.slice(0, 80)}`);
   } catch (err) {
     console.error(`[ToolFailureTracker] Error: ${err}`);
   }
+  return work;
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -350,26 +547,18 @@ function handleStopFailure(raw: string): void {
 
   const timestamp = getISOTimestamp();
   const [year, month] = getYearMonth().split('-');
-  const logDir = paiPath('MEMORY', 'SECURITY', year, month);
-
-  // Log the failure
-  if (!existsSync(logDir)) {
-    mkdirSync(logDir, { recursive: true });
-  }
+  const logDir = lifeosPath('MEMORY', 'SECURITY', year, month);
 
   const logEntry = {
     timestamp,
     session_id: input.session_id || 'unknown',
     event_type: 'stop_failure',
     hook_event: input.hook_event_name || 'StopFailure',
-    error_details: input.error || 'unknown API error',
+    error_details: typeof input.error === 'string' && input.error ? capture(input.error, 4000) : 'unknown API error',
   };
 
   try {
-    appendFileSync(
-      `${logDir}/stop-failures-${getPSTDate()}.jsonl`,
-      JSON.stringify(logEntry) + '\n',
-    );
+    appendPrivateLine(join(logDir, `stop-failures-${getPSTDate()}.jsonl`), logEntry);
   } catch {
     // Silent — don't block on logging failure
   }
@@ -406,7 +595,7 @@ interface ConfigChangeEvent {
 const AUDIT_FILE = join(OBS_DIR, 'config-changes.jsonl');
 // IMPROVEMENT (2026-07-10): moved from volatile /tmp so the diff baseline
 // survives reboots. STATE dir is created on demand before writing the snapshot.
-const SNAPSHOT_PATH = paiPath('MEMORY', 'STATE', 'pai-settings-snapshot.json');
+const SNAPSHOT_PATH = lifeosPath('MEMORY', 'STATE', 'pai-settings-snapshot.json');
 
 // Sensitive keys that warrant extra logging
 const SENSITIVE_KEYS = new Set([
@@ -414,96 +603,12 @@ const SENSITIVE_KEYS = new Set([
   'permissions.allow', 'permissions.deny', 'permissions.ask',
 ]);
 
-/**
- * Diff current settings.json against cached snapshot.
- * Returns array of top-level keys that changed, plus a summary string.
- */
-function diffSettings(): { changedKeys: string[]; summary: string } {
-  const settingsPath = getSettingsPath();
-  let current: Record<string, unknown> = {};
-  let snapshot: Record<string, unknown> = {};
-
-  try {
-    current = JSON.parse(readFileSync(settingsPath, 'utf-8'));
-  } catch {
-    return { changedKeys: ['settings.json'], summary: 'could not read settings.json' };
-  }
-
-  try {
-    if (existsSync(SNAPSHOT_PATH)) {
-      snapshot = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf-8'));
-    }
-  } catch {
-    // No snapshot or corrupt — treat everything as new
-  }
-
-  // Save new snapshot for next comparison
-  try {
-    mkdirSync(dirname(SNAPSHOT_PATH), { recursive: true });
-    writeFileSync(SNAPSHOT_PATH, JSON.stringify(current), 'utf-8');
-  } catch {
-    // Non-fatal
-  }
-
-  // If no prior snapshot, we can't diff
-  if (Object.keys(snapshot).length === 0) {
-    return { changedKeys: ['initial'], summary: 'initial snapshot (no prior to diff)' };
-  }
-
-  // Compare top-level keys
-  const allKeys = new Set([...Object.keys(current), ...Object.keys(snapshot)]);
-  const changed: string[] = [];
-  const summaryParts: string[] = [];
-
-  for (const key of allKeys) {
-    const curVal = JSON.stringify(current[key]);
-    const snapVal = JSON.stringify(snapshot[key]);
-
-    if (curVal !== snapVal) {
-      changed.push(key);
-
-      if (!(key in snapshot)) {
-        summaryParts.push(`${key}: added`);
-      } else if (!(key in current)) {
-        summaryParts.push(`${key}: removed`);
-      } else {
-        // For arrays/objects, try to show what changed at second level
-        if (typeof current[key] === 'object' && current[key] && typeof snapshot[key] === 'object' && snapshot[key]) {
-          const curObj = current[key] as Record<string, unknown>;
-          const snapObj = snapshot[key] as Record<string, unknown>;
-          const subKeys = new Set([...Object.keys(curObj), ...Object.keys(snapObj)]);
-          const subChanged: string[] = [];
-          for (const sk of subKeys) {
-            if (JSON.stringify(curObj[sk]) !== JSON.stringify(snapObj[sk])) {
-              subChanged.push(sk);
-            }
-          }
-          if (subChanged.length <= 3) {
-            summaryParts.push(`${key}.{${subChanged.join(',')}}: modified`);
-          } else {
-            summaryParts.push(`${key}: ${subChanged.length} sub-keys modified`);
-          }
-        } else {
-          const newStr = JSON.stringify(current[key]).slice(0, 80);
-          summaryParts.push(`${key}: → ${newStr}`);
-        }
-      }
-    }
-  }
-
-  if (changed.length === 0) {
-    return { changedKeys: ['unchanged'], summary: 'no diff detected (possible race)' };
-  }
-
-  return { changedKeys: changed, summary: summaryParts.join('; ') };
-}
-
 function handleConfigChange(raw: string): void {
   try {
     const data: ConfigChangeInput = JSON.parse(raw);
 
     // Use file-diff to determine what actually changed
-    const { changedKeys, summary } = diffSettings();
+    const { changedKeys, summary } = diffSettings(getSettingsPath(), SNAPSHOT_PATH);
     const configKey = changedKeys.join(',');
     const isSensitive = changedKeys.some(k => SENSITIVE_KEYS.has(k));
 
@@ -516,8 +621,7 @@ function handleConfigChange(raw: string): void {
       change_summary: summary,
     };
 
-    if (!existsSync(OBS_DIR)) mkdirSync(OBS_DIR, { recursive: true });
-    appendFileSync(AUDIT_FILE, JSON.stringify(event) + '\n', 'utf-8');
+    appendPrivateLine(AUDIT_FILE, event);
 
     const sensitivity = isSensitive ? ' [SENSITIVE]' : '';
     console.error(`[ConfigAudit] Logged: ${configKey}${sensitivity} — ${summary}`);
@@ -546,11 +650,13 @@ async function main(): Promise<void> {
     }
 
     switch (eventName) {
-      case 'PostToolUse':
-        handlePostToolUse(raw);
+      case 'PostToolUse': {
+        const work = handlePostToolUse(raw);
+        await Promise.all([announceIntentIfDue(raw), writeStatvs(work)]);
         break;
+      }
       case 'PostToolUseFailure':
-        handlePostToolUseFailure(raw);
+        await writeStatvs(handlePostToolUseFailure(raw));
         break;
       case 'StopFailure':
         handleStopFailure(raw);
@@ -568,4 +674,5 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-main();
+// Run as the hook; imported by a test, only the pure helpers above are used.
+if (import.meta.main) main();

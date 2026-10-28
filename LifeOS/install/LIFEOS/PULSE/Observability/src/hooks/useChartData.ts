@@ -201,7 +201,7 @@ export function useChartData(agentIdFilter?: string) {
   // Slow UI refresh — updates React-dependent parts (pills, badges, counts) every 5s.
   // Canvas chart reads from refs directly and doesn't need this.
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = setInterval(() => { // not-data: local prune of the in-memory chart buffers and a re-render, no request
       cleanOldData();
       cleanOldEvents();
       forceUpdate((n) => n + 1);

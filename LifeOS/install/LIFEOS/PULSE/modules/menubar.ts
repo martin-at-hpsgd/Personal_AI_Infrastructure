@@ -17,7 +17,8 @@
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { hermesHealth } from "./scheduled.ts"
+import { hermesHealth, type HermesHealth } from "./scheduled.ts"
+import { workflowsConfigPath } from "../../TOOLS/WorkflowsConfig"
 
 const MODULE_NAME = "menubar"
 const state = { running: false, startedAt: null as Date | null }
@@ -41,7 +42,9 @@ interface FeedItem {
 
 /** The sidecar as the menu bar needs it — status word plus the one-line summary. */
 interface HermesBlock {
-  status: "absent" | "down" | "flapping" | "degraded" | "up"
+  // Taken from the health probe rather than restated, so a new status there
+  // can't silently fail to reach the menu bar.
+  status: HermesHealth["status"]
   summary: string
   channels: string
 }
@@ -118,6 +121,25 @@ function fmtUptime(sec: number): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`
 }
 
+const MAX_FAILURES = 3
+
+/**
+ * Count jobs at the failure ceiling, ENABLED jobs only: the same rule /healthz applies
+ * (pulse.ts healthz). state.jobs keeps history for jobs disabled in PULSE.toml (#1768),
+ * so without the filter a disabled job's leftover counter reads as failing forever.
+ * Older state files lack enabledJobs: count every job, as before, rather than zero
+ * (public issue #2204, @bak3r).
+ */
+export function countFailingJobs(st: { jobs?: unknown; enabledJobs?: unknown }): number {
+  const jobs = st.jobs && typeof st.jobs === "object" ? (st.jobs as Record<string, unknown>) : {}
+  const enabled = Array.isArray(st.enabledJobs) ? new Set(st.enabledJobs.filter((n): n is string => typeof n === "string")) : undefined
+  return Object.entries(jobs).filter(([name, j]) => {
+    if (enabled !== undefined && !enabled.has(name)) return false
+    const failures = j && typeof j === "object" ? (j as { consecutiveFailures?: unknown }).consecutiveFailures : undefined
+    return typeof failures === "number" && failures >= MAX_FAILURES
+  }).length
+}
+
 function daemonBlock(): MenuBarPayload["daemon"] {
   const statePath = join(STATE_DIR, "state.json")
   const pidPath = join(STATE_DIR, "pulse.pid")
@@ -126,7 +148,8 @@ function daemonBlock(): MenuBarPayload["daemon"] {
     const st = JSON.parse(readFileSync(statePath, "utf8"))
     const jobs = st.jobs || {}
     const jobCount = Object.keys(jobs).length
-    const failingJobs = Object.values(jobs).filter((j: any) => (j?.consecutiveFailures ?? 0) >= 3).length
+    // Enabled jobs only, with the old count-all fallback (public issue #2204, @bak3r).
+    const failingJobs = countFailingJobs(st)
     const fileAgeSec = (Date.now() - statSync(statePath).mtimeMs) / 1000
 
     let alive = false
@@ -143,7 +166,9 @@ function daemonBlock(): MenuBarPayload["daemon"] {
     if (!alive && fileAgeSec > 120) return { status: "stopped", label: "Stopped", uptimeSec: 0, failingJobs, jobCount }
     if (failingJobs > 0)
       return { status: "failing", label: `Failing — ${failingJobs} job${failingJobs === 1 ? "" : "s"}`, uptimeSec: 0, failingJobs, jobCount }
-    if (fileAgeSec > 120) return { status: "stale", label: "Running — tick stale", uptimeSec: 0, failingJobs, jobCount }
+    // public issue #2064, @0bsolescence: Pulse heartbeats state.json every loop pass (MAX_SLEEP_MS = 60s),
+    // so 120s here means two consecutive passes were missed: a wedged loop, not a quiet one.
+    if (fileAgeSec > 120) return { status: "stale", label: "Running — loop stalled", uptimeSec: 0, failingJobs, jobCount }
     const uptimeSec = Math.max(0, Math.floor(Date.now() / 1000 - (st.startedAt || 0) / 1000))
     return { status: "running", label: `Running — ${fmtUptime(uptimeSec)}`, uptimeSec, failingJobs, jobCount }
   } catch {
@@ -158,7 +183,7 @@ let amberCache: { at: number; captures: any[] } = { at: 0, captures: [] }
 
 function amberToken(): string | null {
   try {
-    const cfg = join(homedir(), ".config", "arbol", "config.yaml")
+    const cfg = workflowsConfigPath()
     const m = readFileSync(cfg, "utf8").match(/^\s*auth_token:\s*["']?([^"'\n]+)["']?\s*$/m)
     return m ? m[1].trim() : null
   } catch {
@@ -245,23 +270,43 @@ async function buildPayload(): Promise<MenuBarPayload> {
     const rec = typeof conduit.todayRecordPublic === "function" ? conduit.todayRecordPublic() : null
     if (rec && typeof rec.creationMinutes === "number") {
       conduitMinutes = rec.creationMinutes
-      // Stable "today" stamp — a daily summary row, not a discrete event, so it must not
-      // re-badge on every poll (it would never clear once seen).
-      feed.push({
-        subsystem: "conduit",
-        glyph: "◆",
-        title: `Conduit ${conduitMinutes}m creation today`,
-        tsMs: startOfTodayMs(),
-        ago: "today",
-        actionable: false,
-      })
+      // public issue #2064, @0bsolescence: A zero-minute day is not an event.
+      // A Conduit that is installed but dark (config present, nothing captured)
+      // must add no row — the same rule the Hermes block applies to an absent sidecar.
+      // Verified 2026-09-04: the row was showing "Conduit 0m creation today" on every LifeOS bar.
+      if (rec && typeof rec.creationMinutes === "number" && rec.creationMinutes > 0) {
+        // Stable "today" stamp — a daily summary row, not a discrete event, so it must not
+        // re-badge on every poll (it would never clear once seen).
+        feed.push({
+          subsystem: "conduit",
+          glyph: "◆",
+          title: `Conduit ${conduitMinutes}m creation today`,
+          tsMs: startOfTodayMs(),
+          ago: "today",
+          actionable: false,
+        })
+      }
     }
   } catch {
     /* conduit section empty */
   }
 
-  // Memory — today's writes + pending proposals
-  const memoryToday = countRecent(join(OBS, "memory-writes.jsonl"), 24) + countRecent(join(OBS, "reviewer-runs.jsonl"), 24)
+  // Memory — today's writes + pending proposals. The ledger interleaves
+  // non-write kinds (checkpoint, restore, redact, proposal/apply); count only
+  // write rows (no kind = legacy memory-writes.jsonl row shape).
+  const LEDGER_EVENTS = join(LIFEOS, "MEMORY", "LEDGER", "cortex-events.jsonl")
+  let ledgerWritesToday = 0
+  try {
+    const dayAgo = Date.now() - 24 * 3600 * 1000
+    for (const line of tailLines(LEDGER_EVENTS, 500)) {
+      try {
+        const o = JSON.parse(line)
+        if (o.kind !== undefined && o.kind !== "memory/set" && o.kind !== "memory/rejected") continue
+        if (new Date(o.ts || 0).getTime() >= dayAgo) ledgerWritesToday++
+      } catch { /* skip */ }
+    }
+  } catch { /* none */ }
+  const memoryToday = ledgerWritesToday + countRecent(join(OBS, "reviewer-runs.jsonl"), 24)
   let memoryPending = 0
   let newestPendingMs = 0
   try {
@@ -293,8 +338,10 @@ async function buildPayload(): Promise<MenuBarPayload> {
       actionable: true,
     })
   }
-  // recent memory writes as feed lines
-  for (const line of tailLines(join(OBS, "memory-writes.jsonl"), 4)) {
+  // recent memory writes as feed lines (write rows only — see kind note above)
+  for (const line of tailLines(LEDGER_EVENTS, 12).filter((l) => {
+    try { const o = JSON.parse(l); return o.kind === undefined || o.kind === "memory/set" || o.kind === "memory/rejected" } catch { return false }
+  }).slice(-4)) {
     try {
       const o = JSON.parse(line)
       const ts = new Date(o.ts || o.timestamp || Date.now()).getTime()

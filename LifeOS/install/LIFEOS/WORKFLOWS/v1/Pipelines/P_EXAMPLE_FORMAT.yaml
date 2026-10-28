@@ -1,0 +1,4 @@
+name: P_EXAMPLE_FORMAT
+description: Deterministic legacy-format pipeline for local use.
+actions:
+  - A_EXAMPLE_FORMAT

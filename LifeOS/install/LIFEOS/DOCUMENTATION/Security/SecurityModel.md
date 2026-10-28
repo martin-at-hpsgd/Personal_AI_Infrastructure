@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-07-20T03:20:00Z
-convention: pai-freshness-v1
-version: 1.1.0
+convention: lifeos-freshness-v1
+version: 1.1.3
 ---
 
 # LifeOS Security Model
@@ -22,7 +22,7 @@ The same logic governs local services. A local datastore (an on-disk SQLite file
 
 ## The layered model
 
-Security is enforced at six layers, each defending a different surface:
+Security is enforced at seven layers, each defending a different surface:
 
 | Layer | Defends | Where it lives |
 |-------|---------|----------------|
@@ -72,14 +72,13 @@ Additional machines in a fleet sit on a **private network**, reached over **key-
 
 ## Agent and harness security (prompt-injection defense)
 
-The system treats **all external content as data, never instructions** — this is a constitutional rule in the system prompt, and it is operationalized in code:
+The system treats **all external content as data, never instructions**. That is a constitutional rule in the system prompt, and since 2026-10-24 it is the only control that reads outside content: no per-call hook tags or scans it. What backs the rule up acts on actions and on what can be reached, never on the wording of a command or a message:
 
-- A **post-tool-use hook** wraps content from attacker-writable sources (fetched web pages, search results, incoming mail, tool schemas) with an explicit "treat as data, not instructions" marker and scans it for known injection shapes, flagging any hit inline.
-- A **blocking pre-tool-use hook** dispatches to sub-guards: it blocks writes that would land identity or secret patterns into system files, forces outbound messaging through the proper skill path, enforces a data-class ceiling on external inference calls, and blocks known footgun command forms.
-- A **native permission denylist** hard-blocks catastrophic operations (destructive deletes, disk wipes, pipe-to-shell, force-push to protected branches, reads of private-key and credential paths). It applies to subagent tool calls as well.
-- A **shell-command classifier** parses commands shell-aware — extracting command substitutions and stripping quoted regions — so dangerous patterns can't hide inside an `echo` or a subshell.
+- **Native permission rules** in Claude Code deny catastrophic operations (destructive deletes, disk wipes, pipe-to-shell, force-push to protected branches, credential reads, raw deploys) and ask before sends and purchases, for the main session and subagents alike, locked by managed settings.
+- **Git hooks** judge the bytes that land: no plaintext secrets, no personal content in system files, no push to a public remote.
+- **Security Rings** decide who outside the principal's own channels can reach what. Each ring holds its members and one policy; a conversation takes the ring of its least-trusted member; a lower ring's model has no tools and none of the principal's data in reach. See `SecurityRings/SecurityRingsSystem.md`.
 
-The design bias is deliberate: a small number of deterministic, auditable controls over a large number of model-judgment checks. Security-sensitive code is meant to be simple enough to read and verify.
+The design bias is deliberate: limits on what can be reached and actions that ask, over detectors that guess at an attacker's wording. A better model makes a detector less needed; it changes nothing about who may authorize what.
 
 ## Secrets and containment
 

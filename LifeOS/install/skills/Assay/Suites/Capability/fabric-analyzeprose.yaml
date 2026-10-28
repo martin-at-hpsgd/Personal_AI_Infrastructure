@@ -1,0 +1,128 @@
+# Fabric AnalyzeProse — a graded read of a piece of writing. Ratings mode (the
+# default, upstream analyze_prose): novelty, clarity and prose on fixed letter
+# scales, recommendations, overall rating as the lowest grade. Pinker mode
+# (upstream analyze_prose_pinker): styles, ten weighted qualities, pitfalls,
+# examples, spelling and grammar, rewrites and a 100-point score. The code
+# asserts pin what is literal (each mode's title and sections in order, the
+# grade labels, the Source and Answer lines, the scoring lines, a planted
+# misspelling named); the judged asserts carry what only judgment can: grades
+# the text earns, quoted and specific findings, arithmetic that adds up, and
+# rewrites that improve the passage.
+# Synthetic inline fixtures only: every writer, team, company and memo in the
+# pasted texts is fictional.
+name: fabric-analyzeprose
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AnalyzeProse.md"
+cases:
+  - id: default_ratings_pasted_post
+    prompt: |
+      analyze_prose on this blog post (fictional):
+
+      "In today's fast-paced world, communication is key. Remote teams face many challenges, and at the end of the day, trust is the foundation of any successful team. Leaders must empower their people and foster a culture of transparency. When we communicate openly, we unlock our full potential. It's not rocket science: happy employees are productive employees. By embracing these best practices, your organization can thrive in the new normal and take its performance to the next level."
+    # SYNTHETIC ADVERSARIAL FIXTURE: the title, the five sections in order and
+    # valid grade labels are all present, but the grades are inflated for a
+    # stack of clichés (Novel, Crystal), the reasons quote nothing, the
+    # recommendations are generic, and the overall rating (B) is above the
+    # lowest grade given (C).
+    adversarial_output: |
+      # Prose Analysis: a fictional blog post on remote teams
+
+      ## Novelty
+
+      **Rating:** A - Novel
+
+      The post offers a fresh framework for leading remote teams built on trust and transparency.
+
+      ## Clarity
+
+      **Rating:** A - Crystal
+
+      The argument is very clear and easy to follow from start to finish.
+
+      ## Prose
+
+      **Rating:** C - Standard
+
+      The writing is decent but could use a more distinctive voice.
+
+      ## Recommendations
+
+      - **Prose:** Vary your sentence length and use more vivid language.
+      - **Clarity:** Add more examples to support the main points.
+
+      ## Overall rating
+
+      B
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Prose Analysis: [^\n]+[\s\S]*\n## Novelty[ \t]*\n\s*\*\*Rating:\*\* [ABCDF] [-–—] (?:Novel|Fresh|Incremental|Derivative|Stale)[\s\S]*\n## Clarity[ \t]*\n\s*\*\*Rating:\*\* [ABCDF] [-–—] (?:Crystal|Clean|Kludgy|Confusing|Chaotic)[\s\S]*\n## Prose[ \t]*\n\s*\*\*Rating:\*\* [ABCDF] [-–—] (?:Inspired|Distinctive|Standard|Stale|Weak)[\s\S]*\n## Recommendations[ \t]*\n[\s\S]*\n## Overall rating[ \t]*\n\s*[ABCDF][ \t]*(?:\n|$)'
+      - type: not-regex
+        weight: 1
+        value: '## (?:Positive assessment|Style analysis|Scoring)'
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "Novelty is graded D - Derivative or F - Stale, because the post repeats well-worn management advice and proposes nothing new", "Prose is graded D - Stale or F - Weak, and its reason quotes at least one of the clichés from the post (for example \"at the end of the day\", \"not rocket science\", \"the new normal\", \"next level\")", "The Clarity reason quotes a passage of the post", "Each recommendation names a specific passage of the post and says what to do with it, rather than generic advice such as vary your sentence length", "The Overall rating is the single letter of the lowest of the three grades given" ]
+        reference: "analyze_prose on a fictional cliché-heavy blog post about remote teams"
+  - id: pinker_by_pattern_name_memo
+    prompt: |
+      analyze_prose_pinker on this memo (fictional):
+
+      "Pursuant to the implementation of the revised expense reimbursement framework, it has been determined that the utilization of the legacy submission portal will be discontinued effective the first of next month. All personnel are advised that facilitation of the transition process will be provided by the Finance Operations function. Employees who do not recieve confirmation of their account migration should initiate contact with the helpdesk at their earliest convenience. The department regrets any inconvenience and appreciates it's staff for their cooperation in this matter."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Sense of Style: [^\n]+[\s\S]*\n## Style analysis[ \t]*\n[\s\S]*\n## Positive assessment[ \t]*\n[\s\S]*\n## Critical assessment[ \t]*\n[\s\S]*\n## Examples[ \t]*\n[\s\S]*\n## Spelling and grammar[ \t]*\n[\s\S]*\n## Improvement recommendations[ \t]*\n[\s\S]*\n## Scoring[ \t]*\n[\s\S]*Starting score: 100[\s\S]*Final score: \d+'
+      - type: regex
+        weight: 1
+        value: '\*\*Weighted:\*\* \d+(?:\.\d)?/10'
+      - type: icontains
+        weight: 2
+        value: "recieve"
+      - type: not-regex
+        weight: 1
+        value: '## (?:Novelty|Overall rating)'
+      - type: llm-assert
+        weight: 3
+        value: [ "Style analysis says the memo is written in an officialese, legal or academic style and should be written in classic or practical style", "Spelling and grammar catches both the misspelling \"recieve\" (receive) and \"it's\" used where \"its\" is meant, each with its fix", "Critical assessment names nominalization or zombie nouns and passive voice, each with a quotation from the memo such as \"utilization of the legacy submission portal\" or \"it has been determined\"", "Each improvement recommendation quotes a passage of the memo and gives a plainer or shorter rewrite that keeps what the passage says", "No rewrite invents a fact the memo does not give (a specific date, email address or phone number) or leaves a bracketed placeholder; a missing fact is named as a gap in words", "The final score equals 100 minus the deductions listed" ]
+        reference: "analyze_prose_pinker on a fictional bureaucratic memo with two planted errors"
+  - id: pinker_by_wording_clean_paragraph
+    prompt: |
+      Give me a Sense of Style critique of this paragraph (fictional): "The bridge closed at noon on Tuesday. By two o'clock the river road was a parking lot, and by four the ferry had sold out its evening runs. Nobody had planned for the bridge to fail, so nobody had planned for the ferry to matter. It mattered."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Sense of Style: [^\n]+[\s\S]*\n## Style analysis[ \t]*\n[\s\S]*\n## Spelling and grammar[ \t]*\n[\s\S]*\n## Scoring[ \t]*\n'
+      - type: not-regex
+        weight: 1
+        value: '## Overall rating'
+      - type: llm-assert
+        weight: 3
+        value: [ "The critique recognizes the paragraph as strong classic-style prose (concrete, chronological, plain) and scores it high, rather than inventing weaknesses to fill sections", "Spelling and grammar reports no errors, because the paragraph has none", "Critical assessment lists at most a few minor pitfalls with mild scores and does not list pitfalls the paragraph plainly avoids, such as passive voice, hedging, jargon or nominalization" ]
+        reference: "Sense of Style critique of a fictional, well-written short paragraph"
+  - id: question_gets_answer_line
+    prompt: |
+      Is this intro too hedgy? (fictional draft) "It could perhaps be argued that, in some cases, smaller teams may tend to ship somewhat faster than larger ones, although of course this is not always necessarily true, and there may be other factors that might also play a role."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# (?:Prose Analysis|Sense of Style): [^\n]+\n\s*\n?\s*\*\*Answer:\*\* \S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The Answer line says plainly that yes, the intro is too hedged", "The analysis quotes specific hedges from the draft (for example \"perhaps\", \"may tend to\", \"somewhat\", \"not always necessarily\")", "At least one recommendation gives a rewrite of the sentence that states the claim directly" ]
+        reference: "Is this fictional, heavily hedged intro too hedgy?"
+  - id: bare_genre_is_composite
+    prompt: "analyze_prose corporate layoff announcements"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Prose Analysis: [^\n]+\n\s*\n?\s*\*\*Source:\*\* [^\n]*(?:[Cc]omposite|typical)'
+      - type: llm-assert
+        weight: 3
+        value: [ "The analysis grades the typical prose of corporate layoff announcements as a genre, not one specific company's announcement", "Example phrases are presented as typical of the genre and are not attributed to a named real company", "The Prose grade and its reason name the genre's characteristic euphemisms (for example restructuring, rightsizing, parting ways, difficult decision)" ]
+        reference: "analyze_prose on the genre of corporate layoff announcements"

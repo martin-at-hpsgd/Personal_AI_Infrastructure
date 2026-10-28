@@ -45,7 +45,7 @@ if (!existsSync(inputFile)) {
 }
 
 const outFile =
-  outputPath || inputFile.replace(/\.transcript\.json$/, ".edits.json").replace(/\.json$/, ".edits.json");
+  outputPath || inputFile.replace(/(\.transcript)?\.json$/, ".edits.json");
 
 console.log(`Analyzing: ${inputFile}`);
 console.log(`Mode: ${aggressive ? "aggressive" : "standard"}`);
@@ -154,7 +154,7 @@ Classify problematic sections. Return a JSON array of edits. Each edit has:
 
 **CUT_EDIT_MARKER**: Speaker says "edit" as a verbal cue to mark cut points. Cut the word "edit" and any surrounding pause. This is the HIGHEST PRIORITY — these are explicit instructions from the speaker to cut here.
 
-**CUT_REDO_TAKE**: Speaker delivers a complete idea, pauses (often 3+ seconds), then redelivers the SAME IDEA more clearly. Cut the earlier delivery; keep the cleaner second take. Look for: same key terms or phrases appearing twice in a row separated by a pause, with the second version more polished or complete. This is multi-sentence in scope, NOT a single-word stutter. Example: "as we move through the four through the four tiers... [pause]... You've got awareness, activation, alignment, and then actualization." → cut the first attempt; keep the clean enumeration. Be DECISIVE here — multi-take retakes are a strong signal the speaker wants the second take. High confidence (≥0.8) when the same proper-noun list or key phrase reappears within ~30 seconds.
+**CUT_REDO_TAKE**: Speaker delivers a complete idea, pauses (often 3+ seconds), then redelivers the SAME IDEA more clearly. Cut the earlier delivery; keep the cleaner second take. Look for: same key terms or phrases appearing twice in a row separated by a pause, with the second version more polished or complete. This is multi-sentence in scope, NOT a single-word stutter. Example: "as we go through the three through the three stages... [pause]... You've got planning, building, and then shipping." → cut the first attempt; keep the clean enumeration. Be DECISIVE here — multi-take retakes are a strong signal the speaker wants the second take. High confidence (≥0.8) when the same proper-noun list or key phrase reappears within ~30 seconds.
 
 **CUT_STUTTER**: Unintentional word repetition like "the the", "I I", "with, with". NOT emphatic repetition like "very very important" or "many many people".
 

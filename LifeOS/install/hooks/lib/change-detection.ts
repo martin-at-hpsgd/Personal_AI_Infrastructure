@@ -1,4 +1,5 @@
 /**
+ * @version 1.7.11
  * change-detection.ts - Utilities for detecting LifeOS system changes
  *
  * Parses transcripts for file modification tool_use blocks and categorizes
@@ -24,7 +25,7 @@ export interface FileChange {
 export type ChangeCategory =
   | 'skill'
   | 'hook'
-  | 'workflow'
+  | 'intent'
   | 'config'
   | 'core-system'
   | 'memory-system'
@@ -37,7 +38,8 @@ export type ChangeType =
   | 'structure_change'
   | 'doc_update'
   | 'hook_update'
-  | 'workflow_update'
+  | 'intent_update'
+  | 'workflow_update' // name before 2026-10-08; old records still carry it
   | 'config_update'
   | 'tool_update'
   | 'multi_area';
@@ -73,8 +75,8 @@ const EXCLUDED_PATHS = [
 
 // High-priority paths that always warrant documentation
 const HIGH_PRIORITY_PATHS = [
-  'PAI/',
-  'PAISYSTEMARCHITECTURE.md',
+  'LIFEOS/',
+  'LifeosSystemArchitecture.md',
   'SKILLSYSTEM.md',
   'MEMORYSYSTEM.md',
   'THEHOOKSYSTEM.md',
@@ -85,7 +87,7 @@ const HIGH_PRIORITY_PATHS = [
 
 // Philosophical/architectural patterns in paths
 const PHILOSOPHICAL_PATTERNS = [
-  /PAI\//i,
+  /LIFEOS\//i,
   /ARCHITECTURE/i,
   /PRINCIPLES/i,
   /FOUNDING/i,
@@ -95,7 +97,7 @@ const PHILOSOPHICAL_PATTERNS = [
 // Structural change patterns
 const STRUCTURAL_PATTERNS = [
   /\/SKILL\.md$/i,           // Skill definitions
-  /\/Workflows\//i,          // Workflow routing
+  /\/Intents\//i,         // Intent routing
   /settings\.json$/i,        // Configuration
   /frontmatter/i,            // Metadata changes
 ];
@@ -243,8 +245,8 @@ export function categorizeChange(path: string): ChangeCategory | null {
     // Exclude personal/private skills (prefixed with _ by convention)
     const skillMatch = path.match(/skills\/(_[^/]+)/);
     if (skillMatch) return null;
-    if (path.includes('/Workflows/')) return 'workflow';
-    if (path.match(/PAI\/(?:DOCUMENTATION\/)?(?:PAISYSTEM|THEHOOKSYSTEM|THEDELEGATION|MEMORYSYSTEM)/)) return 'core-system';
+    if (path.includes('/Intents/')) return 'intent';
+    if (path.match(/LIFEOS\/DOCUMENTATION\/(?:LifeosSystemArchitecture|Hooks\/HookSystem|Memory\/MemorySystem|Skills\/SkillSystem)/)) return 'core-system';
     return 'skill';
   }
 
@@ -271,7 +273,7 @@ function isPhilosophicalPath(path: string): boolean {
 }
 
 /**
- * Check if a path represents structural content (SKILL.md, workflows, config).
+ * Check if a path represents structural content (SKILL.md, intents, config).
  */
 function isStructuralPath(path: string): boolean {
   for (const pattern of STRUCTURAL_PATTERNS) {
@@ -305,7 +307,7 @@ export function isSignificantChange(changes: FileChange[]): boolean {
   }
 
   // Significant if any skill, hook, or core-system change
-  const importantCategories: ChangeCategory[] = ['skill', 'hook', 'core-system', 'workflow'];
+  const importantCategories: ChangeCategory[] = ['skill', 'hook', 'core-system', 'intent'];
   if (systemChanges.some(c => importantCategories.includes(c.category!))) {
     return true;
   }
@@ -329,8 +331,8 @@ export function shouldDocumentChanges(changes: FileChange[]): boolean {
     return true;
   }
 
-  // Document ANY skill, hook, workflow, core-system, or config change
-  const importantCategories: ChangeCategory[] = ['skill', 'hook', 'workflow', 'core-system', 'config'];
+  // Document ANY skill, hook, intent, core-system, or config change
+  const importantCategories: ChangeCategory[] = ['skill', 'hook', 'intent', 'core-system', 'config'];
   if (systemChanges.some(c => c.category && importantCategories.includes(c.category))) {
     return true;
   }
@@ -445,7 +447,7 @@ export function determineSignificance(changes: FileChange[]): SignificanceLabel 
     return 'critical';
   }
 
-  // Major: new skills/workflows, architectural decisions
+  // Major: new skills/intents, architectural decisions
   if (hasNewFiles && (hasStructural || hasPhilosophical)) {
     return 'major';
   }
@@ -495,7 +497,7 @@ export function inferChangeType(changes: FileChange[]): ChangeType {
     switch (cat) {
       case 'skill': return changes.some(c => c.isStructural) ? 'structure_change' : 'skill_update';
       case 'hook': return 'hook_update';
-      case 'workflow': return 'workflow_update';
+      case 'intent': return 'intent_update';
       case 'config': return 'config_update';
       case 'core-system': return 'structure_change';
       case 'documentation': return 'doc_update';
@@ -506,7 +508,7 @@ export function inferChangeType(changes: FileChange[]): ChangeType {
   // Two categories - pick the more significant one
   if (uniqueCategories.has('hook')) return 'hook_update';
   if (uniqueCategories.has('skill')) return 'skill_update';
-  if (uniqueCategories.has('workflow')) return 'workflow_update';
+  if (uniqueCategories.has('intent')) return 'intent_update';
   if (uniqueCategories.has('config')) return 'config_update';
 
   return 'multi_area';
@@ -527,11 +529,11 @@ export function generateDescriptiveTitle(changes: FileChange[]): string {
 
   // Detect file types
   const hasSkillMd = paths.some(p => p.endsWith('SKILL.md'));
-  const hasWorkflows = paths.some(p => p.includes('/Workflows/'));
+  const hasIntents = paths.some(p => p.includes('/Intents/'));
   const hasTools = paths.some(p => p.includes('/Tools/') && p.endsWith('.ts'));
   const hasHooks = paths.some(p => p.includes('hooks/'));
   const hasConfig = paths.some(p => p.endsWith('settings.json'));
-  const hasCoreSystem = paths.some(p => p.match(/PAI\/(?:DOCUMENTATION\/)?(?:PAISYSTEM|THEHOOKSYSTEM|THEDELEGATION|MEMORYSYSTEM)/));
+  const hasCoreSystem = paths.some(p => p.match(/LIFEOS\/DOCUMENTATION\/(?:LifeosSystemArchitecture|Hooks\/HookSystem|Memory\/MemorySystem|Skills\/SkillSystem)/));
   const hasCoreUser = paths.some(p => p.includes('LIFEOS/USER/'));
 
   let title = '';
@@ -541,14 +543,14 @@ export function generateDescriptiveTitle(changes: FileChange[]): string {
     const skill = [...skillNames][0];
     if (hasSkillMd) {
       title = `${skill} Skill Definition Update`;
-    } else if (hasWorkflows) {
-      const workflowNames = paths
-        .filter(p => p.includes('/Workflows/'))
+    } else if (hasIntents) {
+      const intentNames = paths
+        .filter(p => p.includes('/Intents/'))
         .map(p => basename(p, '.md'));
-      if (workflowNames.length === 1) {
-        title = `${skill} ${workflowNames[0]} Workflow Update`;
+      if (intentNames.length === 1) {
+        title = `${skill} ${intentNames[0]} Intent Update`;
       } else {
-        title = `${skill} Workflows Updated`;
+        title = `${skill} Intents Updated`;
       }
     } else if (hasTools) {
       const toolNames = paths
@@ -588,7 +590,7 @@ export function generateDescriptiveTitle(changes: FileChange[]): string {
   // Core system changes
   else if (hasCoreSystem) {
     const docNames = paths
-      .filter(p => p.match(/PAI\/(?:DOCUMENTATION\/)?(?:PAISYSTEM|THEHOOKSYSTEM|THEDELEGATION|MEMORYSYSTEM)/))
+      .filter(p => p.match(/LIFEOS\/DOCUMENTATION\/(?:LifeosSystemArchitecture|Hooks\/HookSystem|Memory\/MemorySystem|Skills\/SkillSystem)/))
       .map(p => basename(p, '.md'));
     if (docNames.length === 1) {
       title = `${docNames[0]} Documentation Updated`;

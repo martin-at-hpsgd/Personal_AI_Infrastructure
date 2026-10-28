@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Waypoints, Boxes, Share2, AlertTriangle, Clock, Database, Lightbulb, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiSend, invalidateApi, useApi } from "@/lib/api";
+import { Waypoints, Boxes, Share2, AlertTriangle, Clock, Database, Lightbulb, RefreshCw, Cpu } from "lucide-react";
 import {
   PageShell,
   PageHeader,
@@ -14,6 +16,8 @@ import {
   type TabSpec,
 } from "@/components/ui/chrome";
 import { AtlasGraph, type GNode, type GEdge } from "./AtlasGraph";
+import { ModelsTab } from "./ModelsTab";
+import { fmtDateTime } from "@/lib/time";
 
 /**
  * Atlas tab — the graph-based current-state asset management system.
@@ -23,18 +27,19 @@ import { AtlasGraph, type GNode, type GEdge } from "./AtlasGraph";
  *            system-operation / security / interconnection, regenerated on change.
  * BROWSE   — kind → asset table with per-source observations.
  * GAPS     — auth-curation gaps + stale assets + lifecycle events.
+ * MODELS   — every model in use, every consumer, current or behind, per-source coverage.
  *
  * Holds ZERO data: /api/atlas (snapshot) + /api/atlas/insights (metrics + narrative).
  */
 
-interface Asset extends GNode { first_observed_at: string; last_observed_at: string }
+interface Asset extends GNode { first_observed_at: string; last_observed_at: string; attrs?: string }
 interface Obs { asset_id: number; collector: string; fresh: number; last_seen: string }
 interface Payload {
   available: boolean;
   error?: string;
   snapshot_age_ms?: number;
   assets?: Asset[];
-  edges?: GEdge[];
+  edges?: Array<GEdge & { attrs?: string | null }>;
   observations?: Obs[];
   lifecycle?: Array<{ asset_id: number; event: string; at: string; detail: string }>;
   unregistered?: Array<{ canonical_key: string; display_name: string; served_by: string }>;
@@ -48,15 +53,16 @@ interface InsightsPayload {
   generating?: boolean;
 }
 
-type Tab = "graph" | "insights" | "browse" | "gaps";
+type Tab = "graph" | "insights" | "browse" | "gaps" | "models";
 const TABS: TabSpec<Tab>[] = [
   { id: "graph", label: "Graph", icon: Waypoints },
   { id: "insights", label: "Insights", icon: Lightbulb },
   { id: "browse", label: "Browse", icon: Boxes },
   { id: "gaps", label: "Gaps", icon: AlertTriangle },
+  { id: "models", label: "Models", icon: Cpu },
 ];
 
-const GRAPH_KINDS = ["project", "worker", "domain", "target", "system", "repo", "service", "dns_record"];
+const GRAPH_KINDS = ["project", "worker", "domain", "target", "system", "repo", "service", "dns_record", "model", "code", "tool"];
 
 // Minimal, dependency-free markdown → elements for the ## sections the narrative uses.
 function Narrative({ md }: { md: string }) {
@@ -79,36 +85,30 @@ function Narrative({ md }: { md: string }) {
 }
 
 export default function AtlasPage() {
-  const [data, setData] = useState<Payload | null>(null);
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("graph");
   const [kindFilter, setKindFilter] = useState<Set<string>>(new Set(["project", "worker", "domain", "target", "system"]));
   const [tableKind, setTableKind] = useState<string | null>(null);
   const [selected, setSelected] = useState<GNode | null>(null);
-  const [insights, setInsights] = useState<InsightsPayload | null>(null);
 
+  // `?tab=models` (any tab id) opens that tab, so a tab can be linked to directly.
   useEffect(() => {
-    let live = true;
-    const load = () =>
-      fetch("/api/atlas").then((r) => r.json()).then((d) => live && setData(d)).catch(() => live && setData({ available: false, error: "fetch failed" }));
-    load();
-    const t = setInterval(load, 60_000);
-    return () => { live = false; clearInterval(t); };
+    const want = new URLSearchParams(window.location.search).get("tab");
+    if (want && TABS.some((t) => t.id === want)) setTab(want as Tab);
   }, []);
 
-  const loadInsights = useCallback(() => {
-    fetch("/api/atlas/insights").then((r) => r.json()).then(setInsights).catch(() => {});
-  }, []);
+  const atlas = useApi<Payload>("/api/atlas", { refetchInterval: 60_000 });
+  const data: Payload | null = atlas.data ?? (atlas.isError ? { available: false, error: "fetch failed" } : null);
 
-  useEffect(() => {
-    if (tab !== "insights") return;
-    loadInsights();
-    const t = setInterval(loadInsights, 8000); // poll while a generation may be running
-    return () => clearInterval(t);
-  }, [tab, loadInsights]);
+  // Poll insights while the tab is open, since a generation may be running.
+  const insightsQ = useApi<InsightsPayload>(tab === "insights" ? "/api/atlas/insights" : null, { refetchInterval: 8000 });
+  const insights = insightsQ.data ?? null;
 
-  const regenerate = useCallback(() => {
-    fetch("/api/atlas/insights/regenerate", { method: "POST" }).then(() => setTimeout(loadInsights, 1500));
-  }, [loadInsights]);
+  const regenerate = () => {
+    apiSend("/api/atlas/insights/regenerate", "POST")
+      .catch(() => {})
+      .then(() => setTimeout(() => { invalidateApi(queryClient, "/api/atlas/insights"); }, 1500));
+  };
 
   const assets = data?.assets ?? [];
   const edges = data?.edges ?? [];
@@ -197,7 +197,7 @@ export default function AtlasPage() {
                 insights?.generating
                   ? "generating…"
                   : insights?.narrative_generated_at
-                    ? `generated ${new Date(insights.narrative_generated_at).toLocaleString()}${insights?.stale ? " · graph changed since" : ""}`
+                    ? `generated ${fmtDateTime(insights.narrative_generated_at)}${insights?.stale ? " · graph changed since" : ""}`
                     : "not generated yet"
               }
               actions={
@@ -271,6 +271,8 @@ export default function AtlasPage() {
           </div>
         </Panel>
       )}
+
+      {tab === "models" && <ModelsTab assets={assets} edges={edges} />}
 
       {tab === "gaps" && (
         <div className="flex flex-col gap-4">

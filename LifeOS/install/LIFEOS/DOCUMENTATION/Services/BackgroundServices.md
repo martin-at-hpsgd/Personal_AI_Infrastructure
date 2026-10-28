@@ -1,22 +1,22 @@
 ---
-last_updated: 2026-07-08T00:00:00Z
+last_updated: 2026-10-24
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 version: 1.0.0
 generator: LIFEOS/TOOLS/Services.ts (run `bun Services.ts doc` to regenerate the table)
 ---
 
 # LifeOS Background Services
 
-> **Every recurring Mac service LifeOS runs, in one place — what it is, how often it fires, and how to install it. One tool controls them all: `LIFEOS/TOOLS/Services.ts`.** Before this doc, the install story was scattered across a dozen `Install*.ts` scripts, Pulse `manage.sh` files, and hand-installed launchd jobs, with nothing that listed what was actually running. This is the fix.
+> **The legacy launchd services LifeOS runs on the Mac — what each is, how often it fires, and how to install it. `LIFEOS/TOOLS/Services.ts` controls them.** The one list of everything LifeOS runs on a clock is the Workflows inventory (`bun LIFEOS/WORKFLOWS/Workflows.ts summary`, Pulse `/workflows`), which reconciles declared, installed and ran. New timed work is a Workflow definition in `LIFEOS/USER/WORKFLOWS/`, never a new plist here; the services below are legacy runtimes being migrated. Before this doc, the install story was scattered across a dozen `Install*.ts` scripts, Pulse `manage.sh` files, and hand-installed launchd jobs, with nothing that listed what was actually running. This is the fix for the legacy set.
 
 ## The one-shot
 
 ```bash
 bun ~/.claude/LIFEOS/TOOLS/Services.ts status              # what's running vs installed vs available
 bun ~/.claude/LIFEOS/TOOLS/Services.ts install --all --yes # stand up every service (macOS)
-bun ~/.claude/LIFEOS/TOOLS/Services.ts install --only worksweep,amberroute --yes
-bun ~/.claude/LIFEOS/TOOLS/Services.ts uninstall --only amberroute
+bun ~/.claude/LIFEOS/TOOLS/Services.ts install --only conveyor-watcher,vigil --yes
+bun ~/.claude/LIFEOS/TOOLS/Services.ts uninstall --only conveyor-watcher
 bun ~/.claude/LIFEOS/TOOLS/Services.ts doc                 # regenerate the table below
 ```
 
@@ -29,10 +29,12 @@ bun ~/.claude/LIFEOS/TOOLS/Services.ts doc                 # regenerate the tabl
 ## Categories
 
 - **pulse** — the Life Dashboard and its rendering jobs (core, default-on).
-- **capture** — services that pull signal into LifeOS (Conduit sensory capture, the Synapse router, the bookmark watchdog).
-- **sync** — keep derived artifacts and external data current (derived-file sync, health).
-- **sweep** — periodic scans that create work/ideas (work sweep, commitments, blog discovery).
-- **maintenance** — housekeeping (synthesis, codex update, usage aggregation, backups).
+- **capture** — services that pull signal into LifeOS (the Conveyor watcher and runner, the Vigil tick).
+- **sweep** — periodic scans that create work/ideas (commitments, lifelog idea sweep).
+- **maintenance** — housekeeping (the interview due-check).
+
+The scheduled jobs that used to sit in these categories (Conduit capture, the iMessage reader, derived-file sync, health sync, work sweep, blog discovery, synthesis, model sync, codex update, usage aggregation, the Socrates and Achilles ticks and the rest) moved into Workflows on 2026-10-22; `bun LIFEOS/WORKFLOWS/Workflows.ts list` shows them.
+- **sidecar** — a second front door that runs beside LifeOS under its own label (the Hermes gateway, `ai.hermes.gateway`). Listed only while a Hermes home exists, so it has no row in the table below on an install that never mounted Hermes.
 
 ## The services (generated from live plists)
 
@@ -42,31 +44,19 @@ bun ~/.claude/LIFEOS/TOOLS/Services.ts doc                 # regenerate the tabl
 |---------|----------|---------|--------|---------|---------|
 | **Pulse (dashboard server)** `com.lifeos.pulse` | pulse | at load | core | The Life Dashboard HTTP server on :31337 — Pulse, the visible surface onto LifeOS. | `bash ~/.claude/LIFEOS/PULSE/manage.sh install` |
 | **Pulse menu-bar app** `com.lifeos.pulse-menubar` | pulse | at load | core | macOS menu-bar app for Pulse — quick status + open the dashboard. | `bash ~/.claude/LIFEOS/PULSE/MenuBar/install.sh` |
-| **Pulse deriver** `com.lifeos.deriver` | pulse | daily/scheduled | core | Regenerates Pulse's derived Data-Plane pages on a cadence. | `bash ~/.claude/LIFEOS/PULSE/manage-deriver.sh install` |
-| **Hermes sidecar (gateway)** `ai.hermes.gateway` | sidecar | at load | yes | The second front door — Hermes gateway mounting this LifeOS install, serving its message channels. Health probe: `bun LIFEOS/HERMES/Health.ts`. | `bun ~/.claude/LIFEOS/HERMES/Mount.ts` |
-| **Conduit (sensory capture)** `com.lifeos.conduit` | capture | every 2m | core | Local current-state capture — feeds memory + TELOS current state. | `bun ~/.claude/LIFEOS/PULSE/Conduit/InstallConduit.ts` |
-| **Conduit insight builder** `com.lifeos.conduit.insight` | capture | every 1h | core | Builds insights from Conduit's captured signal. | `bun ~/.claude/LIFEOS/PULSE/Conduit/InstallConduitInsight.ts` |
-| **Synthesis** `com.lifeos.synthesis` | maintenance | daily/scheduled | yes | Periodic synthesis pass over recent state/memory (weekly-style rollup). | installed with the Pulse/Conduit stack — see PULSE/ |
-| **Cortex distill (weekly digest)** `com.lifeos.distill` | maintenance | weekly (Sun 09:00) | yes | Weekly harvest of the Knowledge Archive into a routed digest — content ideas → work issues, improvements → Upgrades store, archive health report; stateful dedupe. | plist written by the Cortex skill's distill workflow — `bun ~/.claude/LIFEOS/TOOLS/KnowledgeDistill.ts run --headless` |
+| **Herdr web bridge** `com.lifeos.herdr-bridge` | pulse | — | yes | Phone-browser view and control of herdr agent panes, on loopback behind tailnet-only Tailscale serve, refusing any caller but the principal's Tailscale login. | `bun ~/.claude/LIFEOS/PULSE/HerdrBridge/manage.ts install` |
 | **Conveyor inbox watcher** `com.lifeos.conveyor-watcher` | capture | at load | yes | Watches ~/Recordings/Inbox and registers dropped recordings in the content-pipeline ledger (Conveyor P1). | `bun ~/.claude/LIFEOS/TOOLS/InstallConveyorWatcher.ts` |
 | **Conveyor stage engine** `com.lifeos.conveyor-runner` | capture | at load | yes | Advances claimable INBOX items to PREP via transcription, lease-guarded, one item per tick (Conveyor P2 stage 1). | `bun ~/.claude/LIFEOS/TOOLS/InstallConveyorRunner.ts` |
-| **Work sweep** `com.lifeos.worksweep` | sweep | every 1h | yes | Hourly UL work capture — untracked sessions, stale items, project checks, TELOS-goal derivation. | `bun ~/.claude/LIFEOS/TOOLS/InstallWorkSweep.ts` |
-| **Atlas asset-graph sync** `com.lifeos.atlas` | sync | every 15m | yes | Reconciles the Atlas asset graph — 15-min tick (hourly full sync) + event-hint targeted syncs via WatchPaths. | `manual plist — ~/Library/LaunchAgents/com.lifeos.atlas.plist (see LIFEOS/DOCUMENTATION/Atlas/AtlasSystem.md)` |
-| **Derived-file sync** `com.lifeos.derivedsync` | sync | on file-change | yes | Watches 31 USER source files; regenerates PRINCIPAL_TELOS, LIFEOS_STATE, Data-Plane on hand-edits. | `bun ~/.claude/LIFEOS/TOOLS/InstallDerivedSync.ts` |
-| **Health sync** `com.lifeos.healthsync` | sync | every 1h | yes | Syncs health data into CURRENT_STATE. | `bun ~/.claude/LIFEOS/TOOLS/InstallHealthSync.ts` |
-| **Codex update** `com.lifeos.codexupdate` | maintenance | daily/scheduled | yes | Keeps the Codex mirror / update state current. | `bun ~/.claude/LIFEOS/TOOLS/InstallCodexUpdate.ts` |
-| **Inbox sweep** `com.lifeos.inboxsweep` | sweep | every 5m | yes | Every 5 min: deterministic Gmail triage — archives marketing/notification (podcast pitches, cold outreach) via _INBOX sender taxonomy; keep-classes hard-guarded. | `bun ~/.claude/LIFEOS/TOOLS/InstallInboxSweep.ts` |
+| **Interview due-check** `com.lifeos.interviewdue` | maintenance | daily/scheduled | yes | Daily 07:10: rebuilds state-evidence, freshness, and interview-due caches feeding the statusline interview chip. Caches only — never claims files. | `bun ~/.claude/LIFEOS/TOOLS/InstallInterviewDue.ts` |
+| **Lifelog idea sweep** `com.lifeos.lifelogideasweep` | sweep | daily/scheduled | yes | Reads yesterday's wearable recordings for blog-worthy ideas — marked ones verbatim, unmarked ones as pointers — and emails them over. The unmarked pass sends the day's transcript, bystanders' speech included, to a model provider, so it is opt-in and off by default: "ideaSweepModelPass": true in USER/CONFIG/lifelog.json. | `bun ~/.claude/LIFEOS/TOOLS/InstallLifelogIdeaSweep.ts` |
 | **Commitment sweep** `com.lifeos.commitmentsweep` | sweep | daily/scheduled | yes | Sweeps commitments/reminders on a cadence. | `bun ~/.claude/LIFEOS/TOOLS/InstallCommitmentSweep.ts` |
-| **Blog discovery** `com.lifeos.blogdiscovery` | sweep | daily/scheduled | yes | Discovers blog-worthy signal on a cadence. | `bun ~/.claude/LIFEOS/TOOLS/InstallBlogDiscovery.ts` |
-| **Usage aggregator** `com.lifeos.usage-aggregator` | maintenance | daily/scheduled | yes | Aggregates usage/cost telemetry for Pulse. | `bun ~/.claude/LIFEOS/TOOLS/InstallUsageAggregator.ts` |
-| **Bunker app monitor** `com.lifeos.bunkermonitor` | sweep | every 5m | yes | Every 5 min: re-runs every Bunker app's ISA Test Strategy probes; emails on green→red / red→green transitions. | `bun ~/.claude/LIFEOS/TOOLS/InstallBunkerMonitor.ts` |
-| **Synapse router** `com.lifeos.amberroute` | capture | every 30m | yes | Every 30 min: TELOS-grade unrouted Synapse captures → KNOWLEDGE notes / UL issues. | per-install private infrastructure — defined in `LIFEOS/USER/CONFIG/services.json`, NOT in the public release payload |
-| **Bookmark pipeline watchdog** `com.lifeos.bookmark-watchdog` | capture | every 4h | yes | Watches the X bookmark → summarize/idea pipeline for stalls. | per-install private infrastructure — defined in `LIFEOS/USER/CONFIG/services.json`, NOT in the public release payload |
-| **Backups** `com.lifeos.backups` | maintenance | daily/scheduled | yes | Daily 03:00 PT repo backup (Git LFS). | per-install private infrastructure — defined in `LIFEOS/USER/CONFIG/services.json`, NOT in the public release payload |
+| **Vigil monitor tick** `com.lifeos.vigil` | capture | — | yes | Collects LifeOS monitoring events every five minutes and routes them under the Vigil interruption policy. (maintainer-side; not in the public release payload). | maintainer-side installer (not in the payload) |
+
+_Per-install private services are defined in `LIFEOS/USER/CONFIG/services.json` and are not listed here._
 
 ## Fresh install
 
-The LifeOS install skill (`skills/LifeOS/`, `DeployComponents.ts`) stands up the core set during Setup. `Services.ts install --all` is the complete-coverage path: point a fresh macOS install at it and every service comes up, opt-ins included. macOS-only — `launchd` services skip cleanly on Linux/Windows. **Integration status:** `DeployComponents.ts` currently covers ~9 components; wiring it to read `Services.ts`'s registry so a single Setup step covers all 16 is the tracked follow-up.
+The LifeOS install skill (`skills/LifeOS/`, `DeployComponents.ts`) stands up the core set during Setup. `Services.ts install --all` is the complete-coverage path: point a fresh macOS install at it and every service comes up, opt-ins included. `DeployComponents.ts` reads its service list from the `Services.ts` registry rather than keeping its own copy, and skips entries whose install is a `#` note (no runnable installer). On Linux, each `Install*.ts` script materializes a systemd --user unit instead of a launchd plist; launchd-only services (the menu-bar app, the deriver) report missing there.
 
 ## Examples
 
@@ -74,21 +64,21 @@ The LifeOS install skill (`skills/LifeOS/`, `DeployComponents.ts`) stands up the
 
 An operator wants to know what is actually running. `Services.ts status` merges the registry of known services with the plists on disk and `launchctl` run-state, then prints reality in three buckets:
 
-- **running** — installed and firing on its cadence (Pulse, Conduit).
+- **running** — installed and up (the Pulse server and its menu-bar app).
 - **installed, not running** — a plist exists but launchd shows it stopped.
-- **available, not installed** — a service LifeOS knows about but this machine has not stood up yet (an opt-in like `blogdiscovery`).
+- **available, not installed** — a service LifeOS knows about but this machine has not stood up yet (an opt-in like `commitmentsweep`).
 
-They spot the hourly work sweep sitting in "available." One command stands it up:
+They spot the commitment sweep sitting in "available." One command stands it up:
 
 ```bash
-bun ~/.claude/LIFEOS/TOOLS/Services.ts install --only worksweep --yes
+bun ~/.claude/LIFEOS/TOOLS/Services.ts install --only commitmentsweep --yes
 ```
 
-Because the next `status` reads the live plist again — not a hand-kept note — it shows the sweep running with its real cadence. There is no place for the list to drift from the truth.
+Because the next `status` reads the live plist again — not a hand-kept note — it shows the sweep running with its real cadence. Scheduled jobs that are not services (work sweep, Conduit capture, the Achilles tick) are Workflows: `bun LIFEOS/WORKFLOWS/Workflows.ts list` shows them. There is no place for the list to drift from the truth.
 
 ### When a preview is the point
 
-`install` and `uninstall` touch `launchctl`, so they are the privileged half of the tool. Running `install --all` *without* `--yes` installs nothing — it prints a dry preview of what would happen, which is the safe way to see the full opt-in set before committing. On a fresh Mac, `install --all --yes` is the opposite move: bring up every service, core and opt-in, in one pass. On Linux or Windows the launchd jobs skip cleanly rather than erroring.
+`install` and `uninstall` touch `launchctl`, so they are the privileged half of the tool. Running `install --all` *without* `--yes` installs nothing — it prints a dry preview of what would happen, which is the safe way to see the full opt-in set before committing. On a fresh Mac, `install --all --yes` is the opposite move: bring up every service, core and opt-in, in one pass. On Linux the installers write systemd --user units instead, and `status` reads those.
 
 ### How status stays honest
 
@@ -113,6 +103,6 @@ The registry supplies the human-meaningful metadata; the plists and `launchctl` 
 ## Cross-references
 
 - Control tool: `LIFEOS/TOOLS/Services.ts`
-- Install skill: `skills/LifeOS/` (`skills/LifeOS/Tools/DeployComponents.ts`, `skills/LifeOS/INSTALL.md`, `skills/LifeOS/Workflows/Setup.md`)
+- Install skill: `skills/LifeOS/` (`skills/LifeOS/Tools/DeployComponents.ts`, `skills/LifeOS/INSTALL.md`, `skills/LifeOS/Intents/Setup.md`)
 - Pulse: `LIFEOS/DOCUMENTATION/Pulse/PulseSystem.md`; Conduit: `LIFEOS/DOCUMENTATION/Conduit/ConduitSystem.md`
 - Synapse (input routing & capture): `LIFEOS/DOCUMENTATION/Synapse/SynapseSystem.md`

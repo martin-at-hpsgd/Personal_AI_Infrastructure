@@ -52,9 +52,11 @@ function today() {
 }
 
 /** Strip each risk down to a posture summary — no history, no notes. */
-function summarize(r: any) {
+export function summarize(r: any) {
   return {
     id: r.id,
+    telos_ref: r.telos_ref ?? null,
+    scope: r.scope ?? "personal",
     title: r.title,
     threat: r.threat,
     level: r.level,

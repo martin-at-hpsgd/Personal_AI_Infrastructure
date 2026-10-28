@@ -1,0 +1,4 @@
+{
+  "_docs": "Registry of local patches you keep on shipped LifeOS files, so an upgrade can check they survived. Read by LIFEOS/TOOLS/UpgradeVerify.ts (check 4, local-delta): when this file and LIFEOS/TOOLS/VerifyLocalPatches.ts both exist it runs the verifier and fails the upgrade check on any regression; when either is absent the check passes with 'no local-delta registry on this install'. Empty means you keep no patches. Most installs never need one.",
+  "patches": []
+}

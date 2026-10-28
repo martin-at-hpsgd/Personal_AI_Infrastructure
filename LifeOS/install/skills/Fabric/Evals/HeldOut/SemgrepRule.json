@@ -1,0 +1,23 @@
+{
+  "intent": "SemgrepRule",
+  "cases": [
+    {
+      "id": "flask_debug_sql_concat",
+      "pattern": "write_semgrep_rule",
+      "input": "We just had a pen test finding on one of our internal Flask services (the Orbital Freight dispatch API at dispatch.example.com). The tester got a full table dump through the carrier search endpoint. This is the code they pointed at:\n\n```python\n@app.route(\"/api/carriers/search\")\ndef search_carriers():\n    name = request.args.get(\"name\", \"\")\n    region = request.args.get(\"region\", \"\")\n    query = \"SELECT id, name, mc_number FROM carriers WHERE name LIKE '%\" + name + \"%'\"\n    if region:\n        query += \" AND region = '\" + region + \"'\"\n    cur = db.cursor()\n    cur.execute(query)\n    return jsonify(cur.fetchall())\n```\n\nThe fix is easy, but I want a Semgrep rule so we catch this same mistake everywhere else in the monorepo. Can you write one?",
+      "expects": "A single working Semgrep rule (YAML with id, message, severity, languages, and a pattern) that flags SQL built from request-derived input via string concatenation or formatting and passed to execute, written generally enough to catch f-strings, % and .format variants and other cursor or execute calls, not just this endpoint. Output is the rule itself, not a walkthrough."
+    },
+    {
+      "id": "named_job_unsafe_yaml_load",
+      "pattern": "write_semgrep_rule",
+      "input": "Write a semgrep rule for this. Our ingestion workers at example.com parse customer-supplied config bundles, and I found this in the ml-ingest repo:\n\n```python\nimport yaml\n\ndef load_bundle(path):\n    with open(path) as f:\n        return yaml.load(f.read())\n\ndef load_bundle_loader(path):\n    with open(path) as f:\n        return yaml.load(f, Loader=yaml.Loader)\n```\n\nyaml.load without a safe loader can construct arbitrary Python objects, so an uploaded bundle can run code. I want the rule to flag unsafe use but not yaml.safe_load or yaml.load with SafeLoader.",
+      "expects": "A working Semgrep rule for Python that flags yaml.load calls lacking a safe loader (covering both the missing Loader argument and an explicit yaml.Loader or UnsafeLoader) while leaving safe_load and SafeLoader uses unflagged. It is general, not tied to these function names, and the message states the code-execution risk plainly."
+    },
+    {
+      "id": "llm_tool_exec_thin_ambiguous",
+      "pattern": "write_semgrep_rule",
+      "input": "From a code review of our agent framework (fictional repo \"tool-runner\", JS and Python both), the reviewer left this comment and nothing else:\n\n\"agent output goes into exec somewhere, and some of the JS side does the same thing with Function. Please make it detectable.\"\n\nSnippets they pasted:\n\n```python\nreply = llm.chat(messages)\ncode = reply.choices[0].message.content\nexec(code)\n```\n\n```js\nconst out = await client.complete({ prompt });\nconst fn = new Function(out.text);\nfn();\n```\n\nNot sure which of these they think is the real problem or whether it is one rule or two. Also the Python file also has a harmless exec of a constant string at the top that we do not want flagged. Give me what we should run in CI.",
+      "expects": "Semgrep rule output that resolves the ambiguity sensibly, most likely a rule for each language (or a clearly valid multi-language approach) that flags model-generated output reaching exec, eval or new Function, ideally using taint tracking or equivalent, and does not flag exec of a constant string. It makes the call without padding with caveats and keeps the rules general rather than matching the pasted variable names."
+    }
+  ]
+}

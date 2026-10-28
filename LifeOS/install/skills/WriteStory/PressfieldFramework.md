@@ -1,6 +1,8 @@
 # Steven Pressfield's Storytelling Framework
 
-Extracted from *Nobody Wants to Read Your Sh*t*, *The Artist's Journey*, and Pressfield's public lectures on story craft. This document covers Pressfield's **philosophy** of storytelling — how to think about concept, structure, and purpose. For positional beat data (where events fall), see `PhasesAndEvents.md`.
+**Contents:** The Central Insight · The Concept · High Concept · The Hook · Theme as a Question · The Clothesline Method · The Villain and Opposition · The All Is Lost Moment · The Gift · Pressfield's Story Principles Summary · Application in WriteStory · The Foolscap Method (the one-page outline) · Resistance and the Development Process
+
+Summarizes, in our own words, ideas from *Nobody Wants to Read Your Sh*t*, *The Artist's Journey*, and Pressfield's public lectures on story craft. This document covers Pressfield's **philosophy** of storytelling — how to think about concept, structure, and purpose. For positional beat data (where events fall), see `PhasesAndEvents.md`.
 
 ## The Central Insight
 
@@ -180,15 +182,7 @@ What the hero brings back from the journey. Campbell called it "the elixir." Pre
 
 ## Application in WriteStory
 
-When building a Story Bible, establish the Pressfield elements FIRST:
-
-1. **Define the Concept** — one sentence, the clothesline
-2. **Test for High Concept** — use the pitch test
-3. **State the Theme-Question** — the inquiry the story investigates
-4. **Design the Villain as counter-argument** — what position opposes the theme?
-5. **Plan the Hook** — how does the opening promise the concept?
-6. **Plan the All Is Lost** — what shatters the hero's flawed model?
-7. **Define the Gift** — what wisdom does the hero bring back?
+A Story Bible establishes the Pressfield elements first: the Concept (one sentence, the clothesline), the High Concept pitch test, the Theme-Question (the inquiry the story investigates), the Villain as counter-argument (the position that opposes the theme), the Hook (how the opening promises the concept), the All Is Lost (what shatters the hero's flawed model), and the Gift (the wisdom the hero brings back).
 
 These feed directly into the seven-layer Story Bible: Concept → Meaning layer, Theme-Question → Meaning + Character layers, Villain → Plot + Character + Relationship layers, Hook → Plot + Mystery layers, All Is Lost → Character + Plot layers, Gift → Meaning + Character layers.
 

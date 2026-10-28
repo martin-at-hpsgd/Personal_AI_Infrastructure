@@ -2,7 +2,7 @@
 
 > **Provenance:** Matt Pocock's `writing-great-skills` skill + its glossary (github.com/mattpocock/skills, MIT License, Copyright (c) 2026 Matt Pocock). Imported 2026-07-16 as a live reference after adversarial evaluation (see the pocock-suite-reanalysis work session). Content preserved faithfully with a short adaptation note; on conflict with local doctrine, `skills/Prompting/Standards.md` and the CreateSkill skill win.
 >
-> **Adaptation note for this system:** skills here are predominantly model-invoked with `USE WHEN` trigger descriptions; the "user-invoked" axis below maps to slash-shortcut skills (`/ic`, `/rc`, …) and `disable-model-invocation` equivalents. The two-loads framing (context load vs cognitive load) applies unchanged. His "no-op test" is the same verdict as BitterPillEngineering Question 1 — use BPE as the enforcement surface, this file as the theory.
+> **Adaptation note for this system:** skills here are predominantly model-invoked with `USE WHEN` trigger descriptions; the "user-invoked" axis below maps to slash-shortcut skills (`/ic`, and private ones such as `/rc`, not shipped) and `disable-model-invocation` equivalents. The two-loads framing (context load vs cognitive load) applies unchanged. His "no-op test" is the same verdict as BitterLessonEngineering Question 1 — use BLE as the enforcement surface, this file as the theory.
 
 A skill exists to wrangle determinism out of a stochastic system. **Predictability** — the agent taking the same *process* every run, not producing the same output — is the root virtue; every lever below serves it.
 
@@ -16,7 +16,7 @@ A skill exists to wrangle determinism out of a stochastic system. **Predictabili
 
 A skill mixes two content types — **steps** (ordered actions, each ending on a completion criterion) and **reference** (definitions, rules, facts, consulted on demand) — ranked on a ladder by how immediately the agent needs each piece:
 
-1. **In-skill step** — the primary tier: what the agent does, in order.
+1. **In-skill step** — the primary tier: what the agent does, in order. *(LifeOS: the top rung is the Ideal State and Anti-criteria, what done looks like; ordered steps survive only as one of the four keep-classes, such as a tool contract or safety gate. See `../Standards.md` § Ideal-State Prompting.)*
 2. **In-skill reference** — consulted on demand. Often a legitimately flat peer-set (every rule of a review on one rung) — a fine arrangement, not a smell.
 3. **Disclosed/external reference** — pushed behind a **context pointer**, loaded only when the pointer fires.
 

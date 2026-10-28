@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.8 — the proposals section ends at the next H1/H2 heading, not at EOF.
  * ProposalGC — self-healing garbage collection for auto-appended memory proposals.
  *
  * The memory reviewer appends proposals to always-loaded files under a
@@ -26,9 +27,11 @@
  * It is NEVER auto-applied: it only FLAGS candidates for a human/Trim decision,
  * and the auto-heal path above keeps its provable-only invariant untouched.
  *
- * As of 2026-07-31 this leg is a BACKSTOP, not the primary defense: new proposals
- * are diverted to the Upgrades store before they can ever reach these files, so
- * `--route` exists for entries that predate that gate.
+ * This leg is a BACKSTOP, not the primary defense. Global-scope proposals still
+ * reach the queue, so `--route` flags the entries that belong in a hook, a skill
+ * or a project ISA instead. Nothing auto-applies since 2026-10-08 (every proposal
+ * kind maps to null in memory-review.json), so queued entries wait for the
+ * principal's yes before they land in these files.
  *
  * UNATTENDED (`--auto`): the scheduled entry point. Applied proposals otherwise
  * accreted in always-on context files until someone remembered to run `/trim`
@@ -47,8 +50,9 @@
  *   bun ProposalGC.ts --route        # advisory: flag hook-, skill-, or project-scoped entries
  *   bun ProposalGC.ts --json
  */
-import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { invariant } from "./Invariant.ts";
 import { classifyScope, loadScopeTables, type ProposalScope, type ScopeTables } from "./ProposalScope";
 
 const CLAUDE_DIR = join(dirname(new URL(import.meta.url).pathname), "..", "..");
@@ -57,7 +61,7 @@ const SECTION = "## Memory-System Proposals";
 
 // Always-loaded files that carry an auto-appended proposals section.
 const TARGETS = [
-  "LIFEOS/USER/CONFIG/OPERATIONAL_RULES.md",
+  "LIFEOS/USER/CONFIG/OPERATIONAL_PREFERENCES.md",
   "LIFEOS/USER/PROJECTS.md",
   "LIFEOS/USER/PRINCIPAL/PRINCIPAL_IDENTITY.md",
   "LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md",
@@ -85,20 +89,56 @@ function appliedTs(entry: string): string {
   return m ? m[1].trim() : "";
 }
 
-/** Substantive core of an entry (first ~60 normalized chars) for absorption test. */
-function core(entry: string): string {
-  return normalize(entry).slice(0, 60);
+/**
+ * Absorption test: the ENTIRE normalized entry must already appear in the
+ * canonical body. A prefix match is not proof of absorption — the reviewer
+ * routinely restates an existing rule in order to extend it, and a prefix
+ * test reads that restatement as redundancy and deletes the extension with
+ * it. The 30-char floor keeps a one-word fragment from matching anything.
+ * public PR #2197 (issue #2185), @Bowlerjim
+ */
+function absorbed(entry: string, bodyNorm: string): boolean {
+  const norm = normalize(entry);
+  return norm.length >= 30 && bodyNorm.includes(norm);
+}
+
+/**
+ * End of the proposals section: the start of the next H1/H2 heading after SECTION's own line, or EOF.
+ * Everything from there on is some other section (policy, rules) and is never a proposal.
+ * Headings inside fenced code blocks do not end the section either way, so a fence is walked, not grepped.
+ */
+export function sectionEnd(content: string, idx: number): number {
+  let pos = content.indexOf("\n", idx);
+  if (pos === -1) return content.length;
+  pos += 1;
+  let fence: string | null = null;
+  while (pos < content.length) {
+    let eol = content.indexOf("\n", pos);
+    if (eol === -1) eol = content.length;
+    const ln = content.slice(pos, eol);
+    const f = ln.match(/^\s*(`{3,}|~{3,})/);
+    if (f) { if (fence === null) fence = f[1]![0]!; else if (f[1]![0] === fence) fence = null; }
+    else if (fence === null && /^#{1,2}\s/.test(ln)) return pos;
+    pos = eol + 1;
+  }
+  return content.length;
 }
 
 function gcFile(relPath: string): { removals: Removal[]; nextContent: string | null } {
   const abs = join(CLAUDE_DIR, relPath);
   if (!existsSync(abs)) return { removals: [], nextContent: null };
-  const content = readFileSync(abs, "utf8");
+  return gcContent(relPath, readFileSync(abs, "utf8"));
+}
+
+/** Pure core of gcFile: removals and the cleaned text for one file's content. Only the proposals section is read or changed. */
+export function gcContent(relPath: string, content: string): { removals: Removal[]; nextContent: string | null } {
   const idx = content.indexOf(SECTION);
   if (idx === -1) return { removals: [], nextContent: null };
 
   const head = content.slice(0, idx); // canonical body (for absorption test)
-  const sectionBlock = content.slice(idx);
+  const end = sectionEnd(content, idx);
+  const tail = content.slice(end); // later sections: never inspected, never altered
+  const sectionBlock = content.slice(idx, end);
   const lines = sectionBlock.split("\n");
   const bodyNorm = normalize(head);
 
@@ -115,7 +155,7 @@ function gcFile(relPath: string): { removals: Removal[]; nextContent: string | n
     if (/\[SUPERSEDED/i.test(e.text)) {
       removals.push({ file: relPath, reason: "superseded", text: e.text.trim() });
       removeIdx.add(e.i);
-    } else if (core(e.text).length >= 30 && bodyNorm.includes(core(e.text))) {
+    } else if (absorbed(e.text, bodyNorm)) {
       removals.push({ file: relPath, reason: "absorbed", text: e.text.trim() });
       removeIdx.add(e.i);
     }
@@ -140,7 +180,10 @@ function gcFile(relPath: string): { removals: Removal[]; nextContent: string | n
 
   if (removeIdx.size === 0) return { removals, nextContent: null };
   const keptLines = lines.filter((_, i) => !removeIdx.has(i));
-  const nextContent = head + keptLines.join("\n");
+  const nextContent = head + keptLines.join("\n") + tail;
+  // Persistent-state writer: the text outside the proposals section must leave byte-identical.
+  invariant(nextContent.startsWith(head) && nextContent.endsWith(tail), "ProposalGC: content outside the proposals section changed");
+  invariant(!removals.some((r) => tail.includes(r.text) && !sectionBlock.includes(r.text)), "ProposalGC: a removal was selected from outside the proposals section");
   return { removals, nextContent };
 }
 
@@ -161,7 +204,7 @@ function routeFile(relPath: string, tables: ScopeTables): Route[] {
   const idx = content.indexOf(SECTION);
   if (idx === -1) return [];
   const routes: Route[] = [];
-  for (const line of content.slice(idx).split("\n")) {
+  for (const line of content.slice(idx, sectionEnd(content, idx)).split("\n")) {
     if (!/^\s*[-*]\s+/.test(line) || line.length <= 3) continue;
     const v = classifyScope(line, tables);
     if (v.scope === "global") continue;
@@ -219,7 +262,10 @@ function main() {
     if (all.length === 0 && skipped.length === 0) console.log("NO_ACTION");
   } else {
     console.log(`── ProposalGC ${apply ? "(APPLY)" : "(dry-run)"} ──`);
-    if (all.length === 0) console.log("  nothing to collect — all proposal sections clean ✅");
+    // Say what was actually checked: this pass detects verbatim-prefix duplicates
+    // and [SUPERSEDED] entries only. Reworded duplicates are invisible to string
+    // matching; /trim is the semantic pass. (public issue #1979, @bnkath2o)
+    if (all.length === 0) console.log("  nothing to collect — no verbatim-prefix duplicates or superseded entries found (reworded duplicates are not detected here; run /trim for the semantic pass)");
     const byFile = new Map<string, Removal[]>();
     for (const r of all) (byFile.get(r.file) ?? byFile.set(r.file, []).get(r.file)!).push(r);
     for (const [file, rs] of byFile) {
@@ -271,16 +317,20 @@ function countBy(rs: Removal[]): Record<string, number> {
 }
 function appendLog(obj: unknown) {
   const { appendFileSync } = require("node:fs");
+  // git cannot track an empty dir, so OBSERVABILITY is absent on a fresh clone (public PR #2030, @abseg)
+  mkdirSync(dirname(OBS_LOG), { recursive: true });
   appendFileSync(OBS_LOG, JSON.stringify(obj) + "\n", "utf8");
 }
 
 // Fail-silent under `--auto`: a scheduled heal that throws must not surface as a
 // job alarm — the worst case of skipping a GC pass is a slightly larger context
 // file, which the next tick collects. Interactive runs still fail loudly.
-try {
-  main();
-} catch (err) {
-  if (!process.argv.includes("--auto")) throw err;
-  console.error(`ProposalGC: auto pass failed — ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(0);
+if (import.meta.main) {
+  try {
+    main();
+  } catch (err) {
+    if (!process.argv.includes("--auto")) throw err;
+    console.error(`ProposalGC: auto pass failed — ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(0);
+  }
 }

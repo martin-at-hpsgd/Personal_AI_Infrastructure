@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.5
  * RecurrenceLedger.ts — derived failure-class ledger over the observability streams.
  *
  * PURPOSE:
@@ -17,7 +18,7 @@
  *   LEARNING/FAILURES/<month>/<capture>/sentiment.json   low-rating captures → capture:<pattern-slug>
  *
  * Patch history lives in MEMORY/LEARNING/PATCHES/registry.jsonl (appended by
- * PromoteFixture.ts when a healed class's fixture is promoted into the blocking
+ * the fixture promoter (maintainer-side) when a healed class's fixture is promoted into the blocking
  * corpus). A class with events after its patch timestamp is REOPENED — the fix
  * did not take. A patched class silent ≥90d is a TRIM candidate.
  *
@@ -32,10 +33,10 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { homedir } from "os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // ── Paths (LIFEOS_DIR override mirrors the hook/test convention) ────────────
-const LIFEOS_DIR = process.env.LIFEOS_DIR ?? path.join(homedir(), ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const MEMORY_DIR = path.join(LIFEOS_DIR, "MEMORY");
 const OBS_DIR = path.join(MEMORY_DIR, "OBSERVABILITY");
 const FAILURES_DIR = path.join(MEMORY_DIR, "LEARNING", "FAILURES");
@@ -145,7 +146,7 @@ const STREAMS: StreamDef[] = [
   {
     file: "writing-gate.jsonl",
     // The hook's `decision: "block"` is its RESPONSE to the harness; the row it
-    // appends carries the telemetry vocabulary (hooks/WritingGate.hook.ts writes
+    // appended carried the telemetry vocabulary:
     // block-strong-no-run / pass-run-verified / telemetry-weak / no-content /
     // skip-recovery / telemetry-no-detector). Matching the literal "block"
     // dropped every writing-gate block from this ledger. Prefix-match so new
@@ -222,7 +223,7 @@ export interface ObservabilityCluster {
 }
 
 /** Window-scoped clusters for the deriver's intake. Capture events excluded —
- *  those already flow to the deriver via ratings.jsonl. */
+ *  those already flow to the deriver via Errata (replacement since 2026-09-20). */
 export function collectObservabilityClusters(windowDays: number): ObservabilityCluster[] {
   const byClass = new Map<string, FailureEvent[]>();
   for (const e of collectFailureEvents(windowDays)) {

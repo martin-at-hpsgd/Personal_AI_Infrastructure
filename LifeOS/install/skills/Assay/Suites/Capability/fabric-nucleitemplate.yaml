@@ -1,0 +1,182 @@
+# Fabric NucleiTemplate — one working YAML Nuclei template that detects the
+# vulnerability in the input. The code asserts pin the literal shape (one yaml
+# fence, info fields, a protocol block, {{placeholder}} targets, no literal
+# host); the judged asserts carry what code cannot: matcher specificity against
+# false positives, placeholder correctness and fidelity to the input.
+# NucleiTemplateCheck.ts is the parser-backed check the intent runs before
+# delivery (shape + nuclei -validate).
+# Synthetic inline fixtures only: every product, CVE id, path and host is
+# invented (hosts from the documentation domain example.com and the
+# documentation range 198.51.100.0/24).
+name: fabric-nucleitemplate
+type: capability
+pass_threshold: 0.75
+trials: 3
+subject_timeout_ms: 180000
+system_prompt_file: "~/.claude/skills/Fabric/Intents/NucleiTemplate.md"
+cases:
+  - id: advisory_becomes_detection
+    prompt: |
+      write a nuclei template for this advisory:
+
+      CVE-2099-55501 (synthetic). Product: AcmePortal (a web admin console), affected versions < 4.2.1.
+      Severity: high. An unauthenticated attacker can read arbitrary files by requesting
+      GET /api/v1/download?file=../../../../etc/passwd — the file parameter is not sanitized and the
+      response returns the file contents with HTTP 200. Fixed in 4.2.1, which rejects path traversal.
+    # SYNTHETIC ADVERSARIAL FIXTURE: a template nuclei accepts, using a
+    # {{BaseURL}} placeholder and carrying the CVE id, so it passes every
+    # deterministic assert — but its only matcher is a lone status 200, so it
+    # reports any reachable host as vulnerable. Only the judge catches it.
+    adversarial_output: |
+      ```yaml
+      id: CVE-2099-55501
+
+      info:
+        name: AcmePortal Path Traversal
+        author: lifeos
+        severity: high
+        description: AcmePortal before 4.2.1 allows unauthenticated arbitrary file read via the download endpoint.
+        reference:
+          - https://example.com/advisories/CVE-2099-55501
+        classification:
+          cve-id: CVE-2099-55501
+        tags: lfi,acmeportal,cve
+
+      http:
+        - method: GET
+          path:
+            - "{{BaseURL}}/api/v1/download?file=../../../../etc/passwd"
+          matchers:
+            - type: status
+              status:
+                - 200
+      ```
+    assert:
+      - type: regex
+        value: '(?:^|\n)```ya?ml[ \t]*\n'
+        weight: 2
+      - type: regex
+        # id: then an info: block with name/author/severity
+        value: '(?:^|\n)id:[ \t]*\S+[\s\S]*?\ninfo:[\s\S]*?\n[ \t]+name:[\s\S]*?\n[ \t]+author:[\s\S]*?\n[ \t]+severity:[ \t]*(info|low|medium|high|critical)\b'
+        weight: 3
+      - type: regex
+        # a request target uses a Nuclei placeholder
+        value: '\{\{(BaseURL|RootURL|Hostname|Host)\}\}'
+        weight: 3
+      - type: regex
+        value: 'CVE-2099-55501'
+        weight: 1
+      - type: not-icontains
+        # the template must not hard-code a literal target host in a path
+        value: "https://portal.example.com"
+        weight: 2
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "Every request path targets the scanned host through a {{BaseURL}}, {{RootURL}}, {{Hostname}} or {{Host}} placeholder, and no real hostname, IP or scheme://domain is baked into any path, raw request or Host header", "The matchers confirm the file-read vulnerability specifically (for example a regex or word matcher for a /etc/passwd signature such as root:.*:0:0 in the body) combined with a status check, not a lone status 200 that would flag any reachable host", "The template reproduces the path-traversal request the advisory describes (the download endpoint and the file parameter) and names no path, parameter or version the advisory does not contain", "There is no prose, note or explanation outside the yaml code block" ]
+        reference: "a nuclei template detecting AcmePortal CVE-2099-55501 unauthenticated arbitrary file read via GET /api/v1/download?file=, matching a /etc/passwd signature, targeting any host via {{BaseURL}}"
+
+  - id: raw_request_poc
+    prompt: |
+      turn this proof of concept into a nuclei template:
+
+      A synthetic appliance "NimbusGate" has an SSTI bug in its search box. Sending
+      GET /search?q={{7*7}} returns a page containing "Results for 49" when the template engine
+      evaluates the expression. Unpatched builds reflect 49; patched builds echo the literal 7*7.
+    assert:
+      - type: regex
+        value: '(?:^|\n)```ya?ml[ \t]*\n'
+        weight: 2
+      - type: regex
+        value: '\n(http|requests):[ \t]*\n'
+        weight: 1
+      - type: regex
+        value: '\{\{(BaseURL|RootURL|Hostname|Host)\}\}'
+        weight: 3
+      - type: regex
+        value: '\n[ \t]+matchers:[ \t]*\n'
+        weight: 2
+      - type: llm-assert
+        weight: 4
+        value: [ "The template sends a request that triggers the SSTI (an expression like 7*7 or an equivalent arithmetic payload in the search/q parameter) rather than only requesting the path", "A matcher confirms the engine evaluated the expression by looking for the computed result (for example the string 49, or a payload-and-result pair) in the response body, not merely a 200 status", "The payload host is a {{BaseURL}}/{{Hostname}} placeholder and no literal target host appears anywhere", "There is no prose outside the yaml block" ]
+        reference: "a nuclei http template for reflected SSTI in a q= search parameter, sending an arithmetic payload and matching the evaluated result in the body"
+
+  - id: bare_topic_git_config
+    prompt: "nuclei template to detect an exposed .git/config file"
+    assert:
+      - type: regex
+        value: '(?:^|\n)```ya?ml[ \t]*\n'
+        weight: 2
+      - type: regex
+        value: '(?:^|\n)id:[ \t]*\S+'
+        weight: 1
+      - type: regex
+        value: '\{\{(BaseURL|RootURL|Hostname|Host)\}\}'
+        weight: 3
+      - type: regex
+        value: '\n[ \t]+matchers:[ \t]*\n'
+        weight: 2
+      - type: regex
+        value: '```\s*$'
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The template requests a .git/config path on the target via a {{BaseURL}} placeholder", "A content matcher keys on something unique to a git config file (for example the [core] section or repositoryformatversion), combined with a 200 status, so an arbitrary 200 page is not reported as a finding", "The info block has a plausible kebab-case id, a name, an author, a severity and a description", "There is no prose, note or explanation outside the yaml code block" ]
+        reference: "a nuclei http template detecting a publicly readable .git/config, matching [core]/repositoryformatversion with status 200, targeting {{BaseURL}}"
+
+  - id: oob_blind_ssrf
+    prompt: "nuclei template for a blind SSRF where a url parameter on /fetch makes the server send an outbound request"
+    assert:
+      - type: regex
+        value: '(?:^|\n)```ya?ml[ \t]*\n'
+        weight: 2
+      - type: regex
+        value: '\{\{(BaseURL|RootURL|Hostname|Host|interactsh-url)\}\}'
+        weight: 2
+      - type: llm-assert
+        weight: 4
+        value: [ "Because the SSRF is blind (no useful response body), the template uses an out-of-band check: it sends {{interactsh-url}} as the url parameter and matches on interactsh_protocol (for example dns or http) rather than guessing at a response string", "The target endpoint (/fetch with its url parameter) is reached through a placeholder host, with no literal target baked in", "There is no prose outside the yaml block" ]
+        reference: "a nuclei template for blind SSRF via a /fetch url= parameter using {{interactsh-url}} and an interactsh_protocol matcher"
+
+  - id: exposed_actuator_severity
+    # A plain exposed management endpoint. The regression the port lost on:
+    # the template came back as `high` and wrapped in tool-call markup and a
+    # validation note instead of a single clean YAML block. Severity for a
+    # status endpoint that merely answers is info/low/medium, never high.
+    prompt: "nuclei template to detect a publicly exposed Spring Boot actuator endpoint at /actuator that lists the available management endpoints"
+    assert:
+      - type: regex
+        value: '(?:^|\n)```ya?ml[ \t]*\n'
+        weight: 2
+      - type: regex
+        value: '(?:^|\n)id:[ \t]*\S+[\s\S]*?\ninfo:[\s\S]*?\n[ \t]+severity:[ \t]*(info|low|medium|high|critical)\b'
+        weight: 2
+      - type: regex
+        value: '\{\{(BaseURL|RootURL|Hostname|Host)\}\}'
+        weight: 3
+      - type: regex
+        value: '\n[ \t]+matchers:[ \t]*\n'
+        weight: 2
+      - type: not-icontains
+        # a plain exposed status endpoint is not a high/critical finding
+        value: "severity: high"
+        weight: 2
+      - type: not-icontains
+        value: "severity: critical"
+        weight: 1
+      - type: not-icontains
+        # the checker invocation must never leak into the delivered reply
+        value: "nuclei -validate"
+        weight: 1
+      - type: not-icontains
+        value: "bun skills/Fabric"
+        weight: 1
+      - type: not-icontains
+        value: "function_calls"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The severity reflects impact: a plain exposed actuator endpoint that only confirms the management surface is reachable is info, low or at most medium, and is not high or critical", "A content matcher keys on something specific to an actuator response (for example a JSON body with a _links object or an actuator endpoint name), combined with a 200 status, so an arbitrary 200 page is not reported", "The /actuator path is reached through a {{BaseURL}} or {{Hostname}} placeholder with no literal target host baked in", "The entire reply is one complete YAML template in a single fenced block: no tool-call or function-call markup, no shell command or command output, no exit code or validation note, and no second, partial or repeated copy of the template" ]
+        reference: "a nuclei http template detecting an exposed Spring Boot /actuator listing, matching an actuator-specific body signal with status 200, targeting {{BaseURL}}, severity low or medium, delivered as YAML only"

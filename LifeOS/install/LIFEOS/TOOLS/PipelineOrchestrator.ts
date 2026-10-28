@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.4.5
  * ============================================================================
  * LifeOS Pipeline Orchestrator - Run Pipelines with Monitoring
  * ============================================================================
@@ -14,12 +15,49 @@
  */
 
 import { readFile } from "fs/promises";
-import { join } from "path";
+import { realpathSync } from "fs";
+import { join, sep } from "path";
 import { parse as parseYaml } from "yaml";
 
 const ACTIONS_DIR = join(import.meta.dir, "..", "ACTIONS");
 const PIPELINES_DIR = join(import.meta.dir, "..", "PIPELINES");
 const MONITOR_URL = process.env.MONITOR_URL || "http://localhost:8765";
+
+/** A pipeline, action category or action name: one path segment of letters, digits, `_` and `-`. Never `.`, `/` or `\\`. */
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+export function assertName(kind: string, value: unknown): string {
+  if (typeof value !== "string" || !NAME_RE.test(value)) {
+    throw new Error(`invalid ${kind} name ${JSON.stringify(value)}: use letters, digits, '_' and '-' only`);
+  }
+  return value;
+}
+
+/** `root/rel`, proven to resolve inside `root` after symlinks are dereferenced. Throws if absent or if it escapes. */
+export function resolveUnder(root: string, rel: string[], what: string): string {
+  const candidate = join(root, ...rel);
+  let real: string;
+  let realRoot: string;
+  try {
+    real = realpathSync(candidate);
+    realRoot = realpathSync(root);
+  } catch {
+    throw new Error(`${what} not found`);
+  }
+  if (!real.startsWith(realRoot + sep)) throw new Error(`${what} resolves outside its directory`);
+  return real;
+}
+
+export function pipelinePath(name: string, root = PIPELINES_DIR): string {
+  return resolveUnder(root, [`${assertName("pipeline", name)}.pipeline.yaml`], `pipeline '${name}'`);
+}
+
+export function actionPath(actionName: string, root = ACTIONS_DIR): string {
+  const parts = typeof actionName === "string" ? actionName.split("/") : [];
+  if (parts.length !== 2) throw new Error(`invalid action ${JSON.stringify(actionName)}: expected 'category/name'`);
+  const [category, name] = [assertName("action category", parts[0]), assertName("action", parts[1])];
+  return resolveUnder(root, [category, `${name}.action.ts`], `action '${actionName}'`);
+}
 
 interface Step {
   id: string;
@@ -41,6 +79,7 @@ async function reportStart(agent: string, pipeline: string, steps: Step[]): Prom
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agent, pipeline, steps }),
+      signal: AbortSignal.timeout(5000),
     });
     const data = await res.json() as { id: string };
     return data.id;
@@ -55,6 +94,7 @@ async function reportUpdate(id: string, status: string, result?: unknown, error?
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status, result, error }),
+      signal: AbortSignal.timeout(5000),
     });
   } catch {
     // Monitor not running
@@ -67,6 +107,7 @@ async function reportStep(executionId: string, stepId: string, status: string, o
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ executionId, stepId, status, output, error }),
+      signal: AbortSignal.timeout(5000),
     });
   } catch {
     // Monitor not running
@@ -75,7 +116,7 @@ async function reportStep(executionId: string, stepId: string, status: string, o
 
 // Load pipeline YAML
 async function loadPipeline(name: string): Promise<Pipeline> {
-  const path = join(PIPELINES_DIR, `${name}.pipeline.yaml`);
+  const path = pipelinePath(name);
   const content = await readFile(path, "utf-8");
   return parseYaml(content) as Pipeline;
 }
@@ -118,11 +159,9 @@ function resolvePath(path: string, context: Record<string, unknown>): unknown {
 
 // Run an action
 async function runAction(actionName: string, input: unknown): Promise<{ success: boolean; output?: unknown; error?: string }> {
-  const [category, name] = actionName.split("/");
-  const actionPath = join(ACTIONS_DIR, category, `${name}.action.ts`);
-
   try {
-    const module = await import(actionPath);
+    const modulePath = actionPath(actionName);
+    const module = await import(modulePath);
     const action = module.default;
     const parsedInput = action.inputSchema.parse(input);
     const output = await action.execute(parsedInput, { mode: "local" });
@@ -355,7 +394,9 @@ EXAMPLES:
 `);
 }
 
-main().catch(err => {
-  console.error("Error:", err.message);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch(err => {
+    console.error("Error:", err.message);
+    process.exit(1);
+  });
+}

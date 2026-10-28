@@ -14,18 +14,20 @@
 //
 // Every default below is the value the pre-[modules] code actually produced for
 // a config with no such section, so an unchanged PULSE.toml resolves to exactly
-// the module set it loaded before. That is why `imessage`, `syslog` and `da`
-// are false: their old gates were truthy checks (`config.x?.enabled`) over a
+// the module set it loaded before. That is why `syslog` and `da` are false: their old gates were truthy checks (`config.x?.enabled`) over a
 // `{ enabled: false }` fallback, unlike everything else, whose gates were
 // `!== false`.
 export const MODULE_DEFAULTS: Record<string, boolean> = {
   telos: true, work: true, content: true, health: true, finances: true,
   business: true, growth: true, local: true, gear: true, atlas: true,
-  memory: true, synapse: true, books: true, conduit: true, projects: true,
+  memory: true, synapse: true, books: true, conduit: true, projects: true, prioritize: true, today: true, "ideal-state": true, review: true,
   ledger: true, upgrades: true, hypotheses: true, usage: true,
-  performance: true, bunker: true, algorithm: true, evals: true,
-  threatmodel: true, hermes: true, docs: true, voice: true,
-  imessage: false, syslog: false, da: false,
+  performance: true, bunker: true, algorithm: true, evals: true, gauntlet: true,
+  threatmodel: true, achilles: true, socrates: true, vigil: true, relay: true, vera: true, hermes: true, docs: true, voice: true, velocity: true, share: true,
+  syslog: false, da: false,
+  // Corpus and House read private skills (a corpus client and Worker; home-device bridges) that a release does
+  // not include, so both are opt-in: a fresh install never shows a tab whose setup files were pruned.
+  corpus: false, house: false,
 }
 
 // Legacy `[section].enabled` flags that predate the `[modules]` table, mapped to
@@ -38,7 +40,7 @@ export const LEGACY_SECTION_KEYS: Record<string, string> = {
   local_intelligence: "local", hypotheses: "hypotheses", upgrades: "upgrades",
   telos: "telos", work: "work", content: "content", bunker: "bunker",
   performance: "performance", syslog: "syslog", voice: "voice",
-  imessage: "imessage", da: "da",
+  da: "da",
 }
 
 // One config tier's worth of overrides: legacy `[section].enabled` flags first,

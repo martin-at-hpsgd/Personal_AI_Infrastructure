@@ -1,0 +1,140 @@
+# Fabric StoicLens — a history-of-ideas reading of a text: lineage named or
+# unnamed, tensions with its sources, questions a Stoic and other philosophers
+# would ask, connections, and threads to pull. The code asserts pin what is
+# literal (title, five sections in order, lineage and connection marks, a
+# Stoic-attributed question, the Source, Answer and nothing-to-trace lines, a
+# hint-narrowed subset); the judged asserts carry what only judgment can:
+# reading over summary, unnamed sources found, quotations faithful to the text,
+# accurate attributions, and no Stoicism forced onto a text that is not Stoic.
+# Synthetic inline fixtures only: every author, company and timetable is fictional.
+name: fabric-stoiclens
+type: capability
+pass_threshold: 0.75
+trials: 2
+subject_timeout_ms: 240000 # full readings of a long intent run past the 90 s default
+system_prompt_file: "~/.claude/skills/Fabric/Intents/StoicLens.md"
+cases:
+  - id: pasted_post_unnamed_stoic_lineage
+    prompt: |
+      lens_stoic on this post from a fictional founder:
+
+      "Most of what happens to a company is outside your control: the market, the timing, what competitors ship. The only thing you own is how you respond. So stop worrying about outcomes and obsess over your process. Do that, and you will win the market. Pain is information; the founder who feels it fastest learns fastest. I don't read philosophy, I read customer emails."
+    # SYNTHETIC ADVERSARIAL FIXTURE: title, sections, marks and a Stoic question
+    # are all in shape, but lineage is generic ("Western philosophy", "self-help"),
+    # Epictetus and the dichotomy of control are never named, a quotation is not
+    # in the post, the tensions section summarizes the post instead of naming a
+    # departure from a source, and it misses the break at "you will win the market".
+    adversarial_output: |
+      # Stoic Lens: A founder's post on control
+
+      ## Philosophical lineage
+
+      - **Western philosophy** (unnamed): "Control what you can and accept the rest" reflects a long tradition of thinking about control.
+      - **Self-help literature** (unnamed): "obsess over your process" fits the popular advice to focus on habits.
+
+      ## Key tensions and divergences
+
+      The author says most things are outside a founder's control, that the response is what matters, and that a good process leads to success. The post also says pain is information and that customer emails matter more than philosophy books.
+
+      ## Unasked questions
+
+      - **The Stoics:** What does it mean to be in control?
+      - **Existentialists:** Is the process meaningful?
+
+      ## Connections to other thinkers
+
+      - **Modern productivity writers** (converges): they also stress process over outcomes.
+
+      ## Synthesis seeds
+
+      - Founders could think more about control.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# Stoic Lens:[^\n]*\S[\s\S]*\n## Philosophical lineage[\s\S]*\n## Key tensions and divergences[\s\S]*\n## Unasked questions[\s\S]*\n## Connections to other thinkers[\s\S]*\n## Synthesis seeds'
+      - type: regex
+        weight: 2
+        value: '\n- \*\*.+?\*\* \((?:named|unnamed)\):'
+      - type: regex
+        weight: 2
+        value: '\n- \*\*[^\n]*?(?:Stoic|Epictetus|Seneca|Marcus Aurelius|Zeno|Chrysippus)[^\n]*?:\*\*[^\n]*\?'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 3
+        value: [ "The lineage names Epictetus or Stoic thought specifically, identifying 'The only thing you own is how you respond' (or the split between what is and is not in your control) as the Stoic dichotomy of control, and marks it as a source the post does not name", "A tension is identified at 'you will win the market': the Stoics treat outcomes such as market success as indifferent, so promising them as the reward departs from the Stoic source", "Every quotation presented as the post's words appears in the post word for word", "The tensions section names a source the post departs from rather than restating what the post says", "Every lineage entry and connection is specific to this post, not a generic tradition such as 'Western philosophy' or 'self-help'" ]
+        reference: "Post: most of what happens to a company is outside your control; the only thing you own is how you respond; stop worrying about outcomes and obsess over your process; do that and you will win the market; pain is information; I don't read philosophy, I read customer emails."
+  - id: bare_named_work_serenity_prayer
+    prompt: "stoic lens on the Serenity Prayer"
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\*\*Source:\*\* *\S'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)# Stoic Lens:[^\n]*\S[\s\S]*\n## Philosophical lineage[\s\S]*\n## Key tensions and divergences[\s\S]*\n## Unasked questions[\s\S]*\n## Connections to other thinkers[\s\S]*\n## Synthesis seeds'
+      - type: icontains
+        weight: 1
+        value: "Epictetus"
+      - type: llm-assert
+        weight: 3
+        value: [ "The lineage identifies the prayer's split between what can and cannot be changed as a parallel to Epictetus' dichotomy of control, a source the prayer does not name", "A tension is identified between the prayer asking God for serenity, courage and wisdom and the Stoic view that reason and one's own judgment supply them", "The prayer is attributed to Reinhold Niebuhr (or its authorship is described accurately), and no Stoic is credited with writing it", "Any wording quoted from the prayer matches its common published wording rather than an invented line in quotation marks" ]
+        reference: "The Serenity Prayer, usually attributed to Reinhold Niebuhr (1930s-40s), common wording: 'God, grant me the serenity to accept the things I cannot change, courage to change the things I can, and wisdom to know the difference.'"
+  - id: question_is_it_stoic_when_it_is_epicurean
+    prompt: |
+      lens_stoic — is this just repackaged Stoicism?
+
+      "The good life needs very little. Pleasure is the absence of pain in the body and of trouble in the soul. Do not add to your money; subtract from your desires. A few friends, plain bread and a quiet garden are enough, and whoever has learned this has nothing to fear from fortune."
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\*\*Answer:\*\* *\S'
+      - type: regex
+        weight: 2
+        value: '\n## Philosophical lineage[\s\S]*\n## Key tensions and divergences'
+      - type: icontains
+        weight: 1
+        value: "Epicur"
+      - type: llm-assert
+        weight: 3
+        value: [ "The Answer says the text is mainly Epicurean rather than Stoic, while it may note overlaps with Stoicism", "The reading identifies 'Pleasure is the absence of pain in the body and of trouble in the soul' as Epicurus' own definition of pleasure (from the Letter to Menoeceus, ataraxia and aponia)", "The reading notes that the Stoics held virtue, not pleasure, to be the only good, so making pleasure the goal departs from Stoicism", "The garden and the few friends are connected to Epicurus' Garden and his emphasis on friendship", "The reading does not label the text Stoic just because the lens carries the Stoic name" ]
+        reference: "Text: the good life needs very little; pleasure is the absence of pain in the body and trouble in the soul; do not add to your money, subtract from your desires; a few friends, plain bread and a quiet garden are enough; whoever learns this has nothing to fear from fortune."
+  - id: nothing_to_trace_timetable
+    prompt: |
+      lens_stoic on this:
+
+      "Weekday departures from the fictional Harlow Junction to Pinecrest: 06:10, 06:40, 07:15, 08:00, then every 30 minutes until 19:30. Platform 2. Bicycles allowed outside 07:00-09:00."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*Nothing to trace:\*\* *\S'
+      - type: not-contains
+        weight: 2
+        value: "## Philosophical lineage"
+      - type: llm-assert
+        weight: 2
+        value: [ "The output is one line saying the text is a train timetable with no idea or argument to trace, with no philosophical reading of it" ]
+        reference: "A fictional weekday train timetable from Harlow Junction to Pinecrest with departure times, a platform and a bicycle rule."
+  - id: hint_only_unasked_questions
+    prompt: |
+      lens_stoic, just the unasked questions:
+
+      "Your job is who you are. Love it, give it everything, and it will love you back. Rest is for people who have stopped caring."
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Unasked questions'
+      - type: not-contains
+        weight: 2
+        value: "## Philosophical lineage"
+      - type: not-contains
+        weight: 1
+        value: "## Synthesis seeds"
+      - type: regex
+        weight: 2
+        value: '\n- \*\*[^\n]*?(?:Stoic|Epictetus|Seneca|Marcus Aurelius|Zeno|Chrysippus)[^\n]*?:\*\*[^\n]*\?'
+      - type: llm-assert
+        weight: 3
+        value: [ "The output holds only the unasked questions (beside the title), not the other sections", "Each question names the tradition or thinker who would ask it", "The Stoic question engages this text specifically, for example a job as something outside one's control and so not the self, or Seneca on leisure and the shortness of life", "The questions are ones the text leaves unaddressed, phrased as questions rather than as criticisms or verdicts" ]
+        reference: "Text: your job is who you are; love it, give it everything, and it will love you back; rest is for people who have stopped caring."

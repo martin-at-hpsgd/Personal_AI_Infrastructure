@@ -1,0 +1,18 @@
+version: 1
+name: label-and-rate
+description: Extract a transcript then label and rate it using registered cloud actions.
+trigger:
+  type: event
+  name: content.received
+defaults:
+  timeout_ms: 120000
+  retries: 0
+steps:
+  extract:
+    uses: A_EXTRACT_TRANSCRIPT
+    with: { $ref: input }
+  rate:
+    uses: A_LABEL_AND_RATE
+    needs: [extract]
+    with: { $ref: steps.extract.output }
+output: { $ref: steps.rate.output }

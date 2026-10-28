@@ -1,6 +1,6 @@
 # Market Research Domain Template
 
-Domain-specific configuration for the Deep Investigation workflow applied to market analysis.
+Domain-specific configuration for the Deep Investigation intent applied to market analysis.
 
 ---
 

@@ -1,0 +1,1894 @@
+{
+  "version": 1,
+  "systems": {
+    "identity": {
+      "name": "Identity",
+      "summary": "Who you are and who your DA is: the files every session loads at startup.",
+      "setup": "required",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Identity.md",
+      "requires": [
+        "PRINCIPAL/PRINCIPAL_IDENTITY.md",
+        "DIGITAL_ASSISTANT/DA_IDENTITY.md"
+      ],
+      "probe": "bun LIFEOS/TOOLS/LifeosConfig.ts"
+    },
+    "telos": {
+      "name": "TELOS",
+      "summary": "Your goals, ideal state and current state; Pulse rings and prioritization read it.",
+      "setup": "required",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Telos.md",
+      "requires": [
+        "TELOS/TELOS.md"
+      ]
+    },
+    "config": {
+      "name": "Core config",
+      "summary": "Install config, your operational rules and settings overlay.",
+      "setup": "required",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/CoreConfig.md",
+      "requires": [
+        "CONFIG/LIFEOS_CONFIG.toml",
+        "CONFIG/OPERATIONAL_PREFERENCES.md"
+      ],
+      "probe": "bun LIFEOS/TOOLS/LifeosConfig.ts"
+    },
+    "voice": {
+      "name": "Voice",
+      "summary": "Spoken notifications on Fish Audio; with no key, voice is off and silent.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Voice.md",
+      "requires": [
+        "CONFIG/LIFEOS_CONFIG.toml"
+      ],
+      "probe": "bun LIFEOS/TOOLS/Doctor.ts"
+    },
+    "inference": {
+      "name": "Inference and routing",
+      "summary": "Which vendor and model unattended jobs, judges and effort routing use.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Inference.md",
+      "requires": [
+        "CONFIG/inference-vendor.json"
+      ],
+      "probe": "bun LIFEOS/ROUTER/Router.ts status"
+    },
+    "overage": {
+      "name": "Overage lane",
+      "summary": "Pay-per-token fallback when a subscription window caps, behind a monthly ceiling.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Overage.md",
+      "requires": [
+        "CONFIG/overage.json"
+      ],
+      "probe": "bun LIFEOS/TOOLS/Overage.ts status"
+    },
+    "glance": {
+      "name": "Glance",
+      "summary": "Typed judgment questions answered by Clef-omni on Cloudflare Workers AI; needs a Cloudflare account ID and API token.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Glance.md",
+      "requires": [
+        "CONFIG/assay-callers.json"
+      ],
+      "probe": "bun LIFEOS/ASSAY/Assay.ts status"
+    },
+    "workflows": {
+      "name": "Workflows",
+      "summary": "Scheduled and on-demand work: definitions, agent jobs and launchd services.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Workflows/WorkflowsSystem.md",
+      "probe": "bun LIFEOS/WORKFLOWS/Workflows.ts list"
+    },
+    "pulse": {
+      "name": "Pulse",
+      "summary": "The local Life Dashboard at localhost:31337.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Pulse/PulseSystem.md"
+    },
+    "memory": {
+      "name": "Cortex memory",
+      "summary": "Session memory, knowledge archive and the memory reviewer loop.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Memory/MemorySystem.md"
+    },
+    "security": {
+      "name": "Security guards",
+      "summary": "The hosts you own, the patterns that must never leave, and the permission rules and git hooks that enforce it.",
+      "setup": "required",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Security.md",
+      "requires": [
+        "SECURITY/owned-hosts.json",
+        "SECURITY/PublicScrubPatterns.txt"
+      ]
+    },
+    "achilles": {
+      "name": "Achilles",
+      "summary": "Vulnerability registry matched against the stack you declare.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Achilles.md",
+      "requires": [
+        "SECURITY/ACHILLES/stack.json"
+      ],
+      "probe": "bun LIFEOS/TOOLS/Achilles.ts list --json"
+    },
+    "relay": {
+      "name": "Tex / Relay",
+      "summary": "Text your DA over iMessage through the Relay bridge.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Relay.md",
+      "requires": [
+        "RELAY/state/bridge-config.json"
+      ],
+      "probe": "bun LIFEOS/RELAY/bridge/Install.ts --status",
+      "external": "The iMessage line runs through a hosted third-party service (Photon Spectrum) and needs a Mac and an iPhone; see the guide."
+    },
+    "hermes": {
+      "name": "Hermes sidecar",
+      "summary": "Optional second front door with its own heartbeat and domain allowlist.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Hermes.md",
+      "requires": [
+        "CONFIG/hermes-trusted-domains.json",
+        "CONFIG/heartbeat.json"
+      ],
+      "probe": "bun LIFEOS/HERMES/Mount.ts --check",
+      "external": "The Hermes agent itself is a separate install, not part of this release."
+    },
+    "people": {
+      "name": "People",
+      "summary": "One record per person, synced from Apple Contacts and mail, with an interaction ledger.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/People.md",
+      "requires": [
+        "CONTACTS/contacts.jsonl"
+      ],
+      "probe": "bun LIFEOS/PEOPLE/People.ts stats"
+    },
+    "location": {
+      "name": "Location",
+      "summary": "Where you are, from your phone via Overland and a Cloudflare Worker.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Location.md",
+      "requires": [
+        "LOCATION/config.json"
+      ],
+      "probe": "bun LIFEOS/LOCATION/Location.ts now",
+      "external": "Needs the Overland iPhone app and a Cloudflare Worker you deploy yourself; the shipped deploy script calls a skill that is not in this release."
+    },
+    "dictation": {
+      "name": "Dictation",
+      "summary": "Foot pedal and hotkey driven dictation into the terminal.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Dictation.md",
+      "requires": [
+        "CUSTOMIZATIONS/DICTATION/config.json"
+      ],
+      "probe": "bun LIFEOS/DICTATION/Dictation.ts check"
+    },
+    "socrates": {
+      "name": "Socrates",
+      "summary": "Standing questions answered on a schedule, with findings routed to action.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Socrates/SocratesSystem.md"
+    },
+    "errata": {
+      "name": "Errata",
+      "summary": "The complaint ledger that turns misses into checks.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Errata/ErrataSystem.md"
+    },
+    "vera": {
+      "name": "Vera",
+      "summary": "Versioned ideal-state profiles of people.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Vera/VeraSystem.md"
+    },
+    "finances": {
+      "name": "Finances",
+      "summary": "Accounts, spend, revenue and investments for Pulse /finances and money answers.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Finances.md",
+      "requires": [
+        "FINANCES/FINANCES.md"
+      ]
+    },
+    "health": {
+      "name": "Health",
+      "summary": "Apple Health and Oura imports for the health dimension.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Health.md",
+      "requires": [
+        "HEALTH/current.json"
+      ],
+      "probe": "bun LIFEOS/TOOLS/HealthSync.ts status"
+    },
+    "work": {
+      "name": "Work tracking",
+      "summary": "Your work repo, companies and labels for the work board.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Work.md",
+      "requires": [
+        "WORK/config.yaml",
+        "WORK/work_repo.json"
+      ]
+    },
+    "google": {
+      "name": "Google credentials",
+      "summary": "OAuth client for Gmail, Calendar and YouTube tools.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Google.md",
+      "requires": [
+        "CONFIG/CREDENTIALS/google/client_secret.json"
+      ],
+      "probe": "bun LIFEOS/TOOLS/GoogleCreds.ts"
+    },
+    "content": {
+      "name": "Content and publishing",
+      "summary": "Brand, themes, email template, YouTube and book settings used by content tools.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Content.md",
+      "requires": [
+        "CONFIG/email-brand.json",
+        "CONFIG/content-themes.json"
+      ]
+    },
+    "evals": {
+      "name": "Assay evals",
+      "summary": "Eval suites, judge calibration and taste labels.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Testing/TestingDoctrine.md"
+    },
+    "skills": {
+      "name": "Skill customizations",
+      "summary": "Per-skill preferences under CUSTOMIZATIONS/SKILLS that override shipped defaults.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Skills/SkillSystem.md"
+    },
+    "workers": {
+      "name": "Digital workers",
+      "summary": "Named digital employees beside your DA, with presets and a registry.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Workers.md",
+      "requires": [
+        "LIFEOS_WORKERS/_registry.yaml"
+      ]
+    },
+    "conduit": {
+      "name": "Conduit",
+      "summary": "Local capture of current state that feeds memory and TELOS.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Conduit/ConduitSystem.md"
+    },
+    "frontdoors": {
+      "name": "Codex front door",
+      "summary": "Open the same install from Codex CLI.",
+      "setup": "none",
+      "guide": "LIFEOS/DOCUMENTATION/Codex/CodexFrontDoor.md"
+    },
+    "statusline": {
+      "name": "Status line",
+      "summary": "Terminal status line, quotes and lane extras.",
+      "setup": "none"
+    },
+    "maintainer": {
+      "name": "Maintainer release tooling",
+      "summary": "Release and repo-sync inputs that only the LifeOS maintainer uses.",
+      "setup": "none"
+    },
+    "extractor": {
+      "name": "Extractor noise",
+      "summary": "Strings the path extractor matches that are not USER paths.",
+      "setup": "none"
+    },
+    "annualreports": {
+      "name": "AnnualReports",
+      "summary": "Catalog of several hundred cybersecurity annual reports from a public GitHub list, with list, fetch and cross-vendor analysis.",
+      "setup": "optional",
+      "guide": "skills/AnnualReports/Setup.md",
+      "requires": []
+    },
+    "datarefresh": {
+      "name": "DataRefresh",
+      "summary": "Registry-driven freshness engine that repulls, rebuilds, deploys and live-verifies data-backed sites.",
+      "setup": "optional",
+      "guide": "skills/DataRefresh/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/DataRefresh/Registry.json"
+      ],
+      "probe": "bun skills/DataRefresh/Tools/Refresh.ts status"
+    },
+    "gifts": {
+      "name": "Gifts",
+      "summary": "Researches uncommon, current gift ideas for recipients in a registry and keeps history so ideas never repeat.",
+      "setup": "optional",
+      "guide": "skills/Gifts/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Gifts/Recipients.md"
+      ]
+    },
+    "herdr": {
+      "name": "Herdr",
+      "summary": "Operates the herdr terminal workspace manager for coding agents and checks the install, config and agent instructions against upstream.",
+      "setup": "optional",
+      "guide": "skills/Herdr/Setup.md",
+      "requires": []
+    },
+    "helm": {
+      "name": "Helm",
+      "summary": "The reference terminal: kitty with the LifeOS config, the herdr config template, the shell layer and Hammerspoon hotkeys.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Helm.md",
+      "requires": [],
+      "probe": "! bash LIFEOS/DOCUMENTATION/Terminal/bin/helm doctor | grep -q \"✗\""
+    },
+    "securityupdates": {
+      "name": "SecurityUpdates",
+      "summary": "Ranked, deduplicated security-news digest from six public sources, with state so seen items are not shown again.",
+      "setup": "optional",
+      "guide": "skills/SecurityUpdates/Setup.md",
+      "requires": []
+    },
+    "spotify": {
+      "name": "Spotify",
+      "summary": "Search Spotify, manage playlists and library, and control playback from one CLI.",
+      "setup": "optional",
+      "guide": "skills/Spotify/Setup.md",
+      "requires": []
+    },
+    "unify": {
+      "name": "Unify",
+      "summary": "Harmony analysis across any set of systems, rules or documents, defaulting to all of LifeOS.",
+      "setup": "optional",
+      "guide": "skills/Unify/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Unify/Config.md"
+      ]
+    },
+    "brand": {
+      "name": "Brand",
+      "summary": "Sweeps and refreshes your public bios, profiles, READMEs and ideas page from one surface inventory, with per-surface approval.",
+      "setup": "optional",
+      "guide": "skills/Brand/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Brand/Surfaces.md"
+      ],
+      "probe": "bun skills/Brand/Tools/Check.ts"
+    },
+    "dotfiles": {
+      "name": "Dotfiles",
+      "summary": "Pushes, pulls, syncs, restores and backs up your shell and ~/.config files against a private GitHub repo with secret scanning before every push.",
+      "setup": "optional",
+      "guide": "skills/Dotfiles/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Dotfiles/Config.md"
+      ],
+      "probe": "bun skills/Dotfiles/Tools/Config.ts --check"
+    },
+    "headshot": {
+      "name": "Headshot",
+      "summary": "Generates professional AI headshots of you with Nano Banana Pro from your own approved reference photos and stages them for review.",
+      "setup": "optional",
+      "guide": "skills/Headshot/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Headshot/Config.md"
+      ],
+      "probe": "bun skills/Headshot/Tools/Headshot.ts check"
+    },
+    "order": {
+      "name": "Order",
+      "summary": "Orders food and goods through DoorDash's official CLI behind an itemized confirmation and a per-order spending ceiling.",
+      "setup": "optional",
+      "guide": "skills/Order/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Order/Config.md"
+      ]
+    },
+    "prioritize": {
+      "name": "Prioritize",
+      "summary": "Turns the work queue, graded captures, new notes, open upgrades and goals into ranked what-to-work-on recommendations on the Pulse prioritize page.",
+      "setup": "optional",
+      "guide": "skills/Prioritize/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Prioritize/Config.json"
+      ]
+    },
+    "writing": {
+      "name": "Writing",
+      "summary": "Writes and repairs prose in your own voice against a measured corpus model, assembles dictated notes, audits text for AI-writing patterns, and reports a Pangram detector score on your own drafts as a quality signal, never a target to beat or a way to pass AI text off as human.",
+      "setup": "optional",
+      "guide": "skills/Writing/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Writing/Config.md"
+      ],
+      "probe": "bun skills/Writing/Tools/WritingConfig.ts status"
+    },
+    "x": {
+      "name": "X",
+      "summary": "Posts, threads, media, Articles, search, bookmarks, profiles and reads on X through the X API v2, with one OAuth 2.0 token store (local file or Cloudflare KV) chosen in config.",
+      "setup": "optional",
+      "guide": "skills/X/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/X/Config.md"
+      ],
+      "probe": "bun skills/X/Tools/bookmarks.ts status"
+    },
+    "restaurants": {
+      "name": "Restaurants",
+      "summary": "Recommends where and what to eat from a household taste profile.",
+      "setup": "optional",
+      "guide": "skills/Restaurants/Setup.md",
+      "requires": [
+        "CUSTOMIZATIONS/SKILLS/Restaurants/Preferences.md"
+      ]
+    },
+    "statelog": {
+      "name": "StateLog",
+      "summary": "Logs shorthand mood and state entries to a durable journal.",
+      "setup": "optional",
+      "guide": "skills/StateLog/Setup.md",
+      "requires": []
+    },
+    "storyexplanation": {
+      "name": "StoryExplanation",
+      "summary": "Writes narrative and numbered story explanations in the user voice.",
+      "setup": "optional",
+      "guide": "skills/StoryExplanation/Setup.md",
+      "requires": []
+    },
+    "vigil": {
+      "name": "Vigil",
+      "summary": "The always-on monitoring layer: one event log, a five-minute tick that routes events by severity to a text, the digest or the dashboard, and a heartbeat.",
+      "setup": "optional",
+      "guide": "skills/Vigil/Setup.md",
+      "requires": [
+        "VIGIL/policy.json"
+      ],
+      "probe": "bun LIFEOS/VIGIL/Vigil.ts heartbeat"
+    },
+    "statvs": {
+      "name": "STATVS",
+      "summary": "The one append-only record of what happened across LifeOS and its apps: a local engine that works with no files, and an optional cloud record on your own Cloudflare account.",
+      "setup": "optional",
+      "guide": "LIFEOS/DOCUMENTATION/Setup/Statvs.md",
+      "requires": [
+        "STATVS/worker.json",
+        "STATVS/core-worker.json",
+        "STATVS/provenance.json"
+      ],
+      "probe": "bun LIFEOS/STATVS/Statvs.ts verify"
+    }
+  },
+  "paths": [
+    {
+      "path": "PRINCIPAL",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "PRINCIPAL/PRINCIPAL_IDENTITY.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "PRINCIPAL/PRINCIPAL_MEMORY.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "PRINCIPAL/PRINCIPAL_PRIVATE.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "PRINCIPAL/PRONUNCIATIONS.json",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "PRINCIPAL/RESUME.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "PRINCIPAL/WRITINGSTYLE.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "DIGITAL_ASSISTANT",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "DIGITAL_ASSISTANT/DA_IDENTITY.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "DIGITAL_ASSISTANT/DA_MEMORY.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "DIGITAL_ASSISTANT/_presets.yaml",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "DIGITAL_ASSISTANT/REFERENCE/WritingStyleBackstop.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "DIGITAL_ASSISTANT/diary.jsonl",
+      "system": "identity",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "DIGITAL_ASSISTANT/growth.jsonl",
+      "system": "identity",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "DIGITAL_ASSISTANT/opinions.yaml",
+      "system": "identity",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "DEFINITIONS.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "CANONICAL_CONTENT.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "CONTACTS.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "GEAR.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "BOOKS.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "MUSIC/MusicReference.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "AI_WRITING_PATTERNS.md",
+      "system": "identity",
+      "disposition": "template",
+      "note": "your own avoid list; Pulse user index labels it"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "system": "telos",
+      "disposition": "template",
+      "note": "Telos interview extraction writes here"
+    },
+    {
+      "path": "INTEGRATIONS",
+      "system": "skills",
+      "disposition": "template",
+      "note": "typed integration configs (documented interface)"
+    },
+    {
+      "path": "RELAY/ISA.md",
+      "system": "relay",
+      "disposition": "template",
+      "note": "the Tex ideal state"
+    },
+    {
+      "path": "PROJECTS.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "PROJECTS_RETIRED.md",
+      "system": "identity",
+      "disposition": "template"
+    },
+    {
+      "path": "TELOS",
+      "system": "telos",
+      "disposition": "template"
+    },
+    {
+      "path": "TELOS/TELOS.md",
+      "system": "telos",
+      "disposition": "template"
+    },
+    {
+      "path": "TELOS/GOALS.md",
+      "system": "telos",
+      "disposition": "runtime-created",
+      "note": "legacy split TELOS file, read only as a fallback on an older install; the 8.28.0 migration folds it into TELOS.md"
+    },
+    {
+      "path": "TELOS/MISSION.md",
+      "system": "telos",
+      "disposition": "runtime-created",
+      "note": "legacy split TELOS file, read only as a fallback on an older install; the 8.28.0 migration folds it into TELOS.md"
+    },
+    {
+      "path": "TELOS/BOOKS.md",
+      "system": "telos",
+      "disposition": "template"
+    },
+    {
+      "path": "TELOS/CURRENT_STATE",
+      "system": "telos",
+      "disposition": "template"
+    },
+    {
+      "path": "TELOS/IDEAL_STATE",
+      "system": "telos",
+      "disposition": "template"
+    },
+    {
+      "path": "TELOS/PRINCIPAL_TELOS.md",
+      "system": "telos",
+      "disposition": "runtime-created",
+      "note": "generated by GenerateTelosSummary.ts"
+    },
+    {
+      "path": "TELOS/LIFEOS_STATE.json",
+      "system": "telos",
+      "disposition": "runtime-created",
+      "note": "generated by UpdateLifeosState.ts"
+    },
+    {
+      "path": "TELOS/Backups",
+      "system": "telos",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "STATE",
+      "system": "telos",
+      "disposition": "template"
+    },
+    {
+      "path": "STATE/current.json",
+      "system": "telos",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "STATE/log.jsonl",
+      "system": "telos",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONFIG",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/LIFEOS_CONFIG.toml",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/OPERATIONAL_PREFERENCES.md",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/STANDING_FACTS.md",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/settings.user.json",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/README.md",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/notifications.json",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/LocalPatches.json",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/deploy-registration-gate.json",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/delivery-roots.json",
+      "system": "config",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/anthropic-accounts.json",
+      "system": "statusline",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/openai-accounts.json",
+      "system": "pulse",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/inference-vendor.json",
+      "system": "inference",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/vision-judge.json",
+      "system": "inference",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/router-effort.json",
+      "system": "inference",
+      "disposition": "runtime-created",
+      "note": "written by the effort router on first trip"
+    },
+    {
+      "path": "CONFIG/coach-review.json",
+      "system": "inference",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/overage.json",
+      "system": "overage",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/assay-callers.json",
+      "system": "glance",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/jev-callers.json",
+      "system": "glance",
+      "disposition": "runtime-created",
+      "note": "legacy name read only as a fallback"
+    },
+    {
+      "path": "WORKFLOWS",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/WORKFLOWS",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/WORKFLOWS/ACTIONS",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/WORKFLOWS/Workers",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/WORKFLOWS/Shared/infra-inventory.ts",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/WORKFLOWS/Shared/attack-surface.snapshot.json",
+      "system": "workflows",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/ARBOL/ACTIONS",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/ARBOL/PIPELINES",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/agent-jobs.json",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/services.json",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/workflows.json",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/workflows-baseline.json",
+      "system": "workflows",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONFIG/workflow-apps.json",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/workflow-app-icons",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/arbol-allowlist.json",
+      "system": "workflows",
+      "disposition": "template"
+    },
+    {
+      "path": "MEMORY/STATE/agent-jobs",
+      "system": "workflows",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "MEMORY/STATE/workflows/snapshots.json",
+      "system": "workflows",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONFIG/PULSE.user.toml",
+      "system": "pulse",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/pulse-private-tools.json",
+      "system": "pulse",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/velocity.json",
+      "system": "pulse",
+      "disposition": "template"
+    },
+    {
+      "path": "PULSE/Bunker",
+      "system": "pulse",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "MEMORY",
+      "system": "memory",
+      "disposition": "runtime-created",
+      "note": "built from RELEASE_TEMPLATES/MEMORY at cut"
+    },
+    {
+      "path": "MEMORY/WORK",
+      "system": "memory",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "MEMORY/LEARNING/INCIDENTS",
+      "system": "memory",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CACHE",
+      "system": "memory",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONFIG/memory-review.json",
+      "system": "memory",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/observability-budgets.json",
+      "system": "memory",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Cortex/DistillConfig.json",
+      "system": "memory",
+      "disposition": "template"
+    },
+    {
+      "path": "UPGRADES/RECENT.md",
+      "system": "memory",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "REVIEW",
+      "system": "memory",
+      "disposition": "runtime-created",
+      "note": "deploy review ledger"
+    },
+    {
+      "path": "GAUNTLET",
+      "system": "memory",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "SECURITY",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/owned-hosts.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/owned-email-domains.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/owned-github-owners.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/PublicScrubPatterns.txt",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/DENY_LIST.txt",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/SkillNamePatterns.txt",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/egress-rules.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/outbound-shapes.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/texting-locked-clis.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/injection-surfaces.ts",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/SecurityPosture.md",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/THREATMODEL",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/THREATMODEL/risk-register.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/DENY_HASHES.json",
+      "system": "security",
+      "disposition": "runtime-created",
+      "note": "derived by DeriveDenyHashes.ts"
+    },
+    {
+      "path": "CONFIG/denyhash-allowlist.txt",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/skill-hygiene-allowlist.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/banned-collocations.json",
+      "system": "security",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/Tools/SecurityHeadersSweep.ts",
+      "system": "security",
+      "disposition": "private-only"
+    },
+    {
+      "path": "SECURITY/ACHILLES/stack.json",
+      "system": "achilles",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/ACHILLES/fix-classes.json",
+      "system": "achilles",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/ACHILLES/risk-map.json",
+      "system": "achilles",
+      "disposition": "template"
+    },
+    {
+      "path": "SECURITY/ACHILLES/registry.json",
+      "system": "achilles",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "SECURITY/ACHILLES/kev.json",
+      "system": "achilles",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "SECURITY/ACHILLES/remediation.json",
+      "system": "achilles",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "RELAY/tool-map.json",
+      "system": "relay",
+      "disposition": "template"
+    },
+    {
+      "path": "RELAY/state",
+      "system": "relay",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "RELAY/state/bridge-config.json",
+      "system": "relay",
+      "disposition": "runtime-created",
+      "note": "written by the Relay installer"
+    },
+    {
+      "path": "RELAY/inbox",
+      "system": "relay",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONFIG/hermes-trusted-domains.json",
+      "system": "hermes",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/heartbeat.json",
+      "system": "hermes",
+      "disposition": "template"
+    },
+    {
+      "path": "CONTACTS",
+      "system": "people",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONTACTS/contacts.jsonl",
+      "system": "people",
+      "disposition": "runtime-created",
+      "note": "built by the People tick"
+    },
+    {
+      "path": "LOCATION",
+      "system": "location",
+      "disposition": "template"
+    },
+    {
+      "path": "LOCATION/config.json",
+      "system": "location",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/DICTATION/config.json",
+      "system": "dictation",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/DICTATION/App.ts",
+      "system": "dictation",
+      "disposition": "template"
+    },
+    {
+      "path": "SOCRATES",
+      "system": "socrates",
+      "disposition": "template"
+    },
+    {
+      "path": "SOCRATES/questions",
+      "system": "socrates",
+      "disposition": "template"
+    },
+    {
+      "path": "SOCRATES/findings.jsonl",
+      "system": "socrates",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONFIG/backups.json",
+      "system": "socrates",
+      "disposition": "template"
+    },
+    {
+      "path": "ERRATA",
+      "system": "errata",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONFIG/errata-systems.json",
+      "system": "errata",
+      "disposition": "template"
+    },
+    {
+      "path": "VERA",
+      "system": "vera",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "VERA/people",
+      "system": "vera",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "VERA/pulse-snapshot.json",
+      "system": "vera",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "FINANCES",
+      "system": "finances",
+      "disposition": "template"
+    },
+    {
+      "path": "FINANCES/vendors.yaml",
+      "system": "finances",
+      "disposition": "template"
+    },
+    {
+      "path": "FINANCES/expenses.json",
+      "system": "finances",
+      "disposition": "template"
+    },
+    {
+      "path": "FINANCES/cashflow.json",
+      "system": "finances",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "FINANCES/invoices-out.json",
+      "system": "finances",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "FINANCES/revenue-watch.json",
+      "system": "finances",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "FINANCES/stripe-mrr.json",
+      "system": "finances",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CONFIG/revenue-lines.json",
+      "system": "finances",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/sats.json",
+      "system": "finances",
+      "disposition": "template"
+    },
+    {
+      "path": "FINANCES/Tools",
+      "system": "finances",
+      "disposition": "private-only",
+      "note": "a personal statement analyzer; Pulse hides the panel when absent"
+    },
+    {
+      "path": "HEALTH",
+      "system": "health",
+      "disposition": "template"
+    },
+    {
+      "path": "HEALTH/APPLE_HEALTH.md",
+      "system": "health",
+      "disposition": "template"
+    },
+    {
+      "path": "HEALTH/SHORTCUT_SETUP.md",
+      "system": "health",
+      "disposition": "template"
+    },
+    {
+      "path": "HEALTH/current.json",
+      "system": "health",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "HEALTH/DATA",
+      "system": "health",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "WORK",
+      "system": "work",
+      "disposition": "template"
+    },
+    {
+      "path": "WORK/config.yaml",
+      "system": "work",
+      "disposition": "template"
+    },
+    {
+      "path": "WORK/work_repo.json",
+      "system": "work",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "WORK/YOUR_COMPANIES",
+      "system": "work",
+      "disposition": "template"
+    },
+    {
+      "path": "INBOX/senders.yaml",
+      "system": "work",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/CREDENTIALS/google",
+      "system": "google",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/CREDENTIALS/google/client_secret.json",
+      "system": "google",
+      "disposition": "runtime-created",
+      "note": "downloaded from Google Cloud by the user; never templated"
+    },
+    {
+      "path": "CONFIG/CREDENTIALS/google/credentials.json",
+      "system": "google",
+      "disposition": "runtime-created",
+      "note": "written by the OAuth consent flow"
+    },
+    {
+      "path": "CONFIG/email-brand.json",
+      "system": "content",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/content-themes.json",
+      "system": "content",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/youtube.json",
+      "system": "content",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/google-ads.json",
+      "system": "content",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/books-sync.json",
+      "system": "content",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/cosmos.json",
+      "system": "content",
+      "disposition": "template"
+    },
+    {
+      "path": "BUSINESS",
+      "system": "content",
+      "disposition": "template"
+    },
+    {
+      "path": "BUSINESS/YouTubeVideoTypes.md",
+      "system": "content",
+      "disposition": "template"
+    },
+    {
+      "path": "ASSAY",
+      "system": "evals",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Assay/config.json",
+      "system": "evals",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Assay/Calibration",
+      "system": "evals",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Assay/Proof",
+      "system": "evals",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Assay/Suites/_drafts",
+      "system": "evals",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/ArtDirection/labels.jsonl",
+      "system": "evals",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Calibrate",
+      "system": "evals",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Art/PREFERENCES.md",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Art/DiagramFonts.json",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Art/HeadshotExamples",
+      "system": "skills",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Interceptor/preferences.env",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Interceptor",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/_LOCALINTELLIGENCE",
+      "system": "skills",
+      "disposition": "private-only",
+      "note": "Pulse local-intelligence module reads a private skill's output folder and hides the panel when it is absent"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/_LOCALINTELLIGENCE/latest.json",
+      "system": "skills",
+      "disposition": "private-only",
+      "note": "freshness check reads the private skill's latest digest and reports it missing when absent"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/WriteStory/Corpus",
+      "system": "skills",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/WriteStory/Corpus/StoryProfile.json",
+      "system": "skills",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/StoryFilm",
+      "system": "skills",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/ComputerUse",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/ComputerUse/Config.md",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Presentation/RealThings.json",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/_CORPUS/Config.md",
+      "system": "skills",
+      "disposition": "private-only",
+      "note": "Pulse corpus panel reads a private skill's config and hides when absent"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/VideoEssay/Config.json",
+      "system": "skills",
+      "disposition": "private-only"
+    },
+    {
+      "path": "CUSTOMIZATIONS/TALK/config.json",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/TOOLS/Growth",
+      "system": "skills",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "LIFEOS_WORKERS/_registry.yaml",
+      "system": "workers",
+      "disposition": "template"
+    },
+    {
+      "path": "LIFEOS_WORKERS/_presets.yaml",
+      "system": "workers",
+      "disposition": "template"
+    },
+    {
+      "path": "DA",
+      "system": "workers",
+      "disposition": "runtime-created",
+      "note": "legacy worker root, read only as a fallback"
+    },
+    {
+      "path": "CONDUIT",
+      "system": "conduit",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CODEX",
+      "system": "frontdoors",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/StatusLineCyberLane.sh",
+      "system": "statusline",
+      "disposition": "private-only",
+      "note": "maintainer lane extra; the status line skips it when absent"
+    },
+    {
+      "path": "PRINCIPAL/Quotes.txt",
+      "system": "statusline",
+      "disposition": "template"
+    },
+    {
+      "path": "CONFIG/release-audit-strings.json",
+      "system": "maintainer",
+      "disposition": "private-only"
+    },
+    {
+      "path": "_TEMPLATES",
+      "system": "maintainer",
+      "disposition": "private-only"
+    },
+    {
+      "path": "MEMORY/LIFEOS_RELEASES",
+      "system": "maintainer",
+      "disposition": "private-only"
+    },
+    {
+      "path": "DATA/US-Common-Metrics",
+      "system": "skills",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "LOGNAME",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "environment variable list beside USER"
+    },
+    {
+      "path": "Config.md",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "example path in a doc string"
+    },
+    {
+      "path": "FILE.md",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "placeholder in a reference checker"
+    },
+    {
+      "path": "README.md",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "example in an empty-state guide"
+    },
+    {
+      "path": "NativeMessagingHosts",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "Chrome profile directory, not LifeOS USER"
+    },
+    {
+      "path": "MEMORY/node_modules",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "exclusion pattern"
+    },
+    {
+      "path": "OPINIONS.md",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "legacy name in an aggregator's skip list"
+    },
+    {
+      "path": "PRINCIPAL_IDENTITY.md",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "basename match in the installer"
+    },
+    {
+      "path": "Daemon",
+      "system": "skills",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "DAEMON",
+      "system": "skills",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/DataRefresh/Registry.json",
+      "system": "datarefresh",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Gifts/Recipients.md",
+      "system": "gifts",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Gifts/History",
+      "system": "gifts",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Herdr/freshness.json",
+      "system": "herdr",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Herdr/upstream-skill.md",
+      "system": "herdr",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/SecurityUpdates/PREFERENCES.md",
+      "system": "securityupdates",
+      "disposition": "template"
+    },
+    {
+      "path": "MEMORY/STATE/SecurityUpdates-last-check.json",
+      "system": "securityupdates",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Unify/Config.md",
+      "system": "unify",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Brand/Surfaces.md",
+      "system": "brand",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Dotfiles/Config.md",
+      "system": "dotfiles",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Headshot/Config.md",
+      "system": "headshot",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Headshot/generated-headshots",
+      "system": "headshot",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Order/Config.md",
+      "system": "order",
+      "disposition": "template"
+    },
+    {
+      "path": "MEMORY/OBSERVABILITY/order-watch.jsonl",
+      "system": "order",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Prioritize/Config.json",
+      "system": "prioritize",
+      "disposition": "template"
+    },
+    {
+      "path": "MEMORY/STATE/prioritize",
+      "system": "prioritize",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "MEMORY/STATE/work-attention.json",
+      "system": "prioritize",
+      "disposition": "not-a-path",
+      "note": "optional input written by the work-sweep job; read when present, skipped with a recorded error otherwise"
+    },
+    {
+      "path": "RELAY/state/texting-auth.json",
+      "system": "relay",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "RELAY/state/sessions.json",
+      "system": "relay",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "RELAY/state/bridge.log",
+      "system": "relay",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "RELAY/state/guard.log",
+      "system": "relay",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "RELAY/inbox/",
+      "system": "relay",
+      "disposition": "runtime-created"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Writing/Config.md",
+      "system": "writing",
+      "disposition": "template"
+    },
+    {
+      "path": "PRINCIPAL/VOICE/VoiceProfile.json",
+      "system": "writing",
+      "disposition": "runtime-created",
+      "note": "written by Tools/BuildVoiceProfile.ts --out; the directory is voice_dir from Config.md (template default PRINCIPAL/VOICE)"
+    },
+    {
+      "path": "PRINCIPAL/VOICE/Exemplars.md",
+      "system": "writing",
+      "disposition": "not-a-path",
+      "note": "user-authored, read by VoiceJudge.ts under voice_dir; the existing PRINCIPAL/VOICE release template ships README.md only by design (fresh-install state), so no template was made; outside this batch's files"
+    },
+    {
+      "path": "PRINCIPAL/VOICE/PostExemplars.md",
+      "system": "writing",
+      "disposition": "not-a-path",
+      "note": "user-authored, optional, read by VoiceJudge.ts --short under voice_dir; same README-only template dir; outside this batch's files"
+    },
+    {
+      "path": "PRINCIPAL/VOICE/Corpus.md",
+      "system": "writing",
+      "disposition": "not-a-path",
+      "note": "user-authored manifest; code reads it only when passed as --manifest; same README-only template dir"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/X/Config.md",
+      "system": "x",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Restaurants/Preferences.md",
+      "system": "restaurants",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/StateLog/Config.md",
+      "system": "statelog",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/StoryExplanation/Config.md",
+      "system": "storyexplanation",
+      "disposition": "template"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/StoryExplanation/Voice.md",
+      "system": "storyexplanation",
+      "disposition": "template"
+    },
+    {
+      "path": "MEDIA",
+      "system": "skills",
+      "disposition": "runtime-created",
+      "note": "MediaTaste (Tools/Media.ts) creates the folder on first add; skills/_MEDIATASTE/Setup.md covers seeding it."
+    },
+    {
+      "path": "MEDIA/media.jsonl",
+      "system": "skills",
+      "disposition": "runtime-created",
+      "note": "Written by MediaTaste on first add; IntegrityCheck only reads it when present."
+    },
+    {
+      "path": "LEADERBOARD",
+      "system": "skills",
+      "disposition": "runtime-created",
+      "note": "The leaderboard tool writes enrollment, key and config here on join (maintainer-side; not in the public release)."
+    },
+    {
+      "path": "Assets",
+      "system": "skills",
+      "disposition": "not-a-path",
+      "note": "Read only by skills/_VIDEO/Tools/TestConfig.ts inside a synthetic test config root. The real Assets/ is user-supplied media, named in Brand.json per skills/_VIDEO/Setup.md."
+    },
+    {
+      "path": "Assets/channel-mark.png",
+      "system": "skills",
+      "disposition": "not-a-path",
+      "note": "Synthetic fixture written and read by skills/_VIDEO/Tools/TestConfig.ts; see the Assets entry."
+    },
+    {
+      "path": "Accept",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "HTTP Accept header key that follows a USER_AGENT constant in skills/Harvest/Tools/harvest.ts; the path extractor reads USER_AGENT, \"Accept\" as join(USER, \"Accept\")"
+    },
+    {
+      "path": "ArtConfig.json",
+      "system": "extractor",
+      "disposition": "not-a-path",
+      "note": "skills/Art/Tools/Generate.ts resolves it under ART_USER_DIR, whose name the extractor reads as a USER root; the real file is CUSTOMIZATIONS/SKILLS/Art/ArtConfig.json, listed below"
+    },
+    {
+      "path": "CUSTOMIZATIONS/SKILLS/Art/ArtConfig.json",
+      "system": "skills",
+      "disposition": "template"
+    },
+    {
+      "path": "ASSETS",
+      "system": "config",
+      "disposition": "runtime-created",
+      "note": "optional folder you create for public assets that have no repo of their own; the deploy registration gate scans its bunker.config.ts files only when Bunker is installed, and skips the folder when absent"
+    },
+    {
+      "path": "GLANCE",
+      "system": "evals",
+      "disposition": "not-a-path",
+      "note": "retired name of USER/ASSAY, named only as the source side of a one-time rename done long ago; no code reads or writes it"
+    },
+    {
+      "path": "RELAY/context",
+      "system": "relay",
+      "disposition": "runtime-created",
+      "note": "Relay's context folder (the one-pager and heads-up state), written by the context tools on first use and kept private (dir 0700, files 0600)"
+    },
+    {
+      "path": "RELAY/context/onepager.md",
+      "system": "relay",
+      "disposition": "runtime-created",
+      "note": "written by LIFEOS/RELAY/context/OnePager.ts; the heads-up draft reads it when present and runs without it"
+    },
+    {
+      "path": "RELAY/thread",
+      "system": "relay",
+      "disposition": "runtime-created",
+      "note": "Relay's per-conversation thread store, created by LIFEOS/RELAY/bridge/thread.ts when the first message arrives"
+    },
+    {
+      "path": "VIGIL",
+      "system": "vigil",
+      "disposition": "template"
+    },
+    {
+      "path": "VIGIL/policy.json",
+      "system": "vigil",
+      "disposition": "template"
+    },
+    {
+      "path": "VIGIL/worker.json",
+      "system": "vigil",
+      "disposition": "template"
+    },
+    {
+      "path": "VIGIL/editor-profile.md",
+      "system": "vigil",
+      "disposition": "template"
+    },
+    {
+      "path": "VIGIL/adapters",
+      "system": "vigil",
+      "disposition": "runtime-created",
+      "note": "your own adapter modules; the engine's registry reads every file here that exports read, and finds none on a new install"
+    },
+    {
+      "path": "STATVS/worker.json",
+      "system": "statvs",
+      "disposition": "template"
+    },
+    {
+      "path": "STATVS/core-worker.json",
+      "system": "statvs",
+      "disposition": "template"
+    },
+    {
+      "path": "STATVS/provenance.json",
+      "system": "statvs",
+      "disposition": "template"
+    },
+    {
+      "path": "STATVS/cutover.json",
+      "system": "statvs",
+      "disposition": "template"
+    },
+    {
+      "path": "STATVS/core-secrets.json.age",
+      "system": "statvs",
+      "disposition": "runtime-created",
+      "note": "sealed JSON of the core Worker's URL, tokens and mask key, written by you at core setup with the Secrets sealing function; never a template"
+    },
+    {
+      "path": "STATVS/core-verifier.txt",
+      "system": "statvs",
+      "disposition": "runtime-created",
+      "note": "the core Worker's checkpoint verifier key (public), saved from its GET /key at core setup"
+    },
+    {
+      "path": "STATVS/witness/checkpoints.jsonl",
+      "system": "statvs",
+      "disposition": "runtime-created",
+      "note": "appended by LIFEOS/STATVS/core/tools/witness.ts each time it verifies a checkpoint"
+    },
+    {
+      "path": "STATVS/adapters",
+      "system": "statvs",
+      "disposition": "runtime-created",
+      "note": "your own adapter modules, searched before USER/VIGIL/adapters; none on a new install"
+    },
+    {
+      "path": "PULSE/pages",
+      "system": "pulse",
+      "disposition": "runtime-created",
+      "note": "optional personal pages the user drops in as .html; Pulse lists none until one exists"
+    },
+    {
+      "path": "RELAY/call-passphrase.json",
+      "system": "relay",
+      "disposition": "runtime-created",
+      "note": "written by `LIFEOS/RELAY/worker/deploy.ts passphrase` (salted hash only, mode 0600)"
+    },
+    {
+      "path": "RELAY/tex-worker.json",
+      "system": "relay",
+      "disposition": "template",
+      "note": "the optional phone-line Worker URL; the user fills it in after deploying the Worker (Setup/Relay.md)"
+    }
+  ]
+}

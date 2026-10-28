@@ -1,0 +1,21 @@
+{
+  "name": "storyfilm-tools",
+  "private": true,
+  "type": "module",
+  "description": "StoryFilm pipeline tools. The film renders through LIFEOS/TOOLS/HyperFrames; the runtime dependencies are the image model client Paint.ts uses and the default caption serif (Source Serif 4, SIL Open Font License). node_modules is gitignored.",
+  "scripts": {
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/source-serif-4": "5.3.0",
+    "@google/genai": "^1.40.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.6",
+    "typescript": "^5.9.0"
+  },
+  "trustedDependencies": [
+    "@google/genai",
+    "protobufjs"
+  ]
+}

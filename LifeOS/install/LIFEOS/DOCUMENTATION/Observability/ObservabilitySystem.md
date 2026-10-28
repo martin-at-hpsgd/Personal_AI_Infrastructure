@@ -1,5 +1,5 @@
 ---
-version: 1.8.4
+version: 1.8.10
 ---
 
 # The Observability System
@@ -24,7 +24,7 @@ JSONL Sources (local disk)
    localhost:31337
    └─→ /api/events/recent  (read-on-demand from JSONL)
    └─→ /api/agents
-   └─→ /api/observability/{tool-failures,voice-events,subagent-events,config-changes}
+   └─→ /api/observability/{tool-failures,voice-events}
 ```
 
 ## Data Flow
@@ -35,24 +35,26 @@ JSONL Sources (local disk)
 
 ## Event Sources
 
+Everything `EventLogger.hook.ts` writes is redacted before it is truncated (secret-shaped values replaced first, so a cut can never leave an unmatched token tail), every file it appends is kept at mode 0600, and its ConfigChange settings snapshot stores env values as sha256 hashes, never the values (`hooks/lib/event-capture.ts`; GHSA-8qfr-7fpx-68x9).
+
 | Source | JSONL Path | Per-Source Count | Hook |
 |--------|-----------|-----------------|------|
 | Tool activity | `MEMORY/OBSERVABILITY/tool-activity.jsonl` | 100 | `EventLogger.hook.ts` (PostToolUse, catch-all) |
 | Tool failures | `MEMORY/OBSERVABILITY/tool-failures.jsonl` | 50 | `EventLogger.hook.ts` (PostToolUseFailure) |
-| Voice events | `MEMORY/VOICE/voice-events.jsonl` | 50 | Voice notification server |
+| Voice events | `MEMORY/VOICE/voice-events.jsonl` | 50 | `hooks/handlers/VoiceNotification.ts` and `hooks/lib/notification-channel.ts` (the Pulse voice server does not write it) |
 | Subagent events | `MEMORY/OBSERVABILITY/subagent-events.jsonl` | 50 | `AgentInvocation.hook.ts` (PreToolUse:Agent / PostToolUse:Agent) |
-| Agent watchdog | stdout (Monitor notifications) | — | `Tools/AgentWatchdog.ts` via Monitor tool. Reads tool-activity.jsonl + subagent-starts.json; alerts on 90s silence with active agents. Auto-triggered by Pulse agent-guard hook on background agent spawn. |
+| Agent watchdog | stdout (Monitor notifications) | — | `LIFEOS/TOOLS/AgentWatchdog.ts` via Monitor tool. Reads tool-activity.jsonl + subagent-starts.json; alerts on 90s silence with active agents. Run by hand; the Pulse agent-guard trigger was retired 2026-10-01. |
 | Effort routing _(retired 2026-07-11)_ | `MEMORY/OBSERVABILITY/effort-router.jsonl` | — | `TheRouter.hook.ts` (retired/merged 2026-07-11) — mode/tier classification abolished, no successor writes this stream. The `MemoryReviewTrigger` MINIMAL-skip gate that read its tail is also gone. |
 | ISA rework | `MEMORY/OBSERVABILITY/isa-rework.jsonl` | — | `ISASync.hook.ts` Resume-After-Complete path (Algorithm v6.9.0, 2026-05-22). One row per auto-rewind: ts, session_id, slug, prev_phase, new_phase, prev_iteration, new_iteration, body_delta_bytes. |
-| Frame drift | `MEMORY/OBSERVABILITY/frame-drift.jsonl` | — | Algorithm VERIFY-phase emitter (v6.8.0). T1/T2/T3 boolean tests per ISA at VERIFY entry. |
-| Reviewer runs | `MEMORY/OBSERVABILITY/reviewer-runs.jsonl` | — | `MemoryReviewer.ts` (autonomic memory). One row per reviewer execution: runId, transcript path, exchanges read, inference_duration_ms, parse_ok, dispatch_summary { total, by_type, succeeded, failed, failures }. |
+| Frame drift _(retired)_ | `MEMORY/OBSERVABILITY/frame-drift.jsonl` | — | No writer in the current Algorithm or in code, and no file on disk. Only the v6.x Algorithm snapshots describe it. |
+| Reviewer runs | `MEMORY/OBSERVABILITY/reviewer-runs.jsonl` | — | `MemoryReviewer.ts` (autonomic memory). One row per reviewer execution: runId, transcript path, exchanges read, inference_duration_ms, parse_ok, dispatch_summary { total, by_type, succeeded, failed, failures, proposals_auto_applied, proposals_auto_apply_failed, and (7.40.4+) skipped_guard, skips }. `CortexHealth` accepts the pre-7.40.4 summary (missing skip pair = zero guard refusals) so an upgrade does not mark a successful last run CRITICAL. <!-- public PR #1933, @jbmml --> |
 | Reviewer fires | `MEMORY/OBSERVABILITY/reviewer-fires.jsonl` | — | `MemoryReviewFire.hook.ts` (Stop). Audit of when reviewer would fire if subprocess were unavailable. |
-| Memory writes (Tier A) | `MEMORY/OBSERVABILITY/memory-writes.jsonl` | — | `MemoryWriter.ts`. One row per set-overwrite to `_MEMORY.md` hot-layer files. Tracks evictions. |
+| Memory writes (Tier A) _(frozen 2026-08-14)_ | `MEMORY/OBSERVABILITY/memory-writes.jsonl` | — | History from before the Cortex Ledger; nothing appends now. Live hot-layer writes (`PRINCIPAL_MEMORY.md`, `DA_MEMORY.md`) are events in `MEMORY/LEDGER/cortex-events.jsonl`, written by `MemoryWriter.ts`. |
 | Tier-B writes | `MEMORY/OBSERVABILITY/tier-b-writes.jsonl` | — | `MemorySystem.add()` routing. Audit row per logged-append to PROJECTS / CONTACTS / KNOWLEDGE / IDEAS (timestamp, type, bytes, path). |
 | Pending proposals (Tier C queue) | `MEMORY/OBSERVABILITY/pending-proposals.jsonl` | — | `MemorySystem.add()` for `type:proposal`. Status lifecycle: pending → sent → accepted/rejected/edited/applied-elsewhere (or auto-applied without surfacing); `TERMINAL_STATUSES` in `LIFEOS/PULSE/lib/memory-proposals.ts` is the one authority on which of those count as resolved. Surfaced by that same lib on the Pulse dashboard and the inline 🧠 MEMORY line; decided via `bun LIFEOS/TOOLS/ProposalDecide.ts`. |
 | Identity proposals (archive) | `MEMORY/OBSERVABILITY/identity-proposals.jsonl` | — | `LIFEOS/PULSE/lib/memory-proposals.ts` surfacer. Archive of sent/accepted/rejected/edited proposals. |
 | Proposal replies | `MEMORY/OBSERVABILITY/proposal-replies.jsonl` | — | Pulse dashboard reply handler. Records accept/reject/edit interactions. |
-| Memory retrievals | `MEMORY/OBSERVABILITY/memory-retrievals.jsonl` | — | `MemoryRetriever.getRelevantContext()` (ISC-107..112; not yet populated as of 2026-05-23; infrastructure ready). Per-turn BM25 audit. |
+| Memory retrievals | `MEMORY/OBSERVABILITY/memory-retrievals.jsonl` | — | `MemoryRetriever.getRelevantContext()` (ISC-107..112). Per-turn BM25 audit: one row per retrieval with a query hash, returned count and duration. `CortexHealth` reads it for retrieval freshness. |
 
 Per-source counts are configured inline in `Pulse/Observability/observability.ts`.
 
@@ -72,14 +74,14 @@ The JSON report includes the effective `thresholds`, measured `evidence`, and no
 | Reviewer timeout | Newer run directory without terminal row | 10-minute grace | CRITICAL |
 | Retrieval | Latest `memory-retrievals.jsonl` row | 24 hours | missing, malformed, future, or stale WARN |
 | Proposals | Count rows with `status:"pending"` in `pending-proposals.jsonl` | greater than 10 | WARN; malformed evidence also WARN |
-| Observability retention | Recursive `.jsonl`/`.log` bytes and oldest mtime under `MEMORY/OBSERVABILITY/` | 256 MiB or 30 days | WARN |
+| Observability growth / liveness | Each stream's bytes written in the last 24h, found by binary search on row timestamps (`LIFEOS/TOOLS/lib/JsonlGrowth.ts`), and the NEWEST mtime under `MEMORY/OBSERVABILITY/` (age of the last write, not the oldest file — old files are retention, a quiet pipeline is the failure) | per-stream daily budget in `USER/CONFIG/observability-budgets.json` (default 10 MiB/day), or 30 days without a write | `observability-over-budget:<stream>` / `observability-stale` WARN. The folder-total alarm was retired 2026-10-07: it fired late and named no stream. A nightly `observability-prune` workflow keeps 30 days (7 for `bunker-runs`). <!-- public PR #1920, @mcardinali-data; issue #1915 --> |
 | Optional derived index | `lifeos-cortex-index/v1` manifest and measured hashes | 7-day freshness | stale WARN; invalid manifest or hash mismatch CRITICAL |
 
 The latest reviewer evidence wins over any number of earlier successes. Any malformed reviewer JSONL line is surfaced as parse failure rather than skipped. A nominal success must include `ok:true`, `parse_ok:true`, a run ID, and a valid timestamp; future timestamps cannot prove freshness.
 
 Index health distinguishes states that must not be conflated. The shipped `LIFEOS/CORTEX_INDEX_POLICY.json` is the affirmative `lifeos-cortex-index-policy/v1` marker for the healthy `no-index-v1` lexical baseline when no manifest exists. If both policy and manifest are missing, state is ambiguous and health warns `index-evidence-missing`; a malformed policy is CRITICAL. If a manifest exists, it supersedes the marker and health verifies its canonical SHA-256, derived-index SHA-256, contained relative index path, and `indexed_at`; canonical drift or index tampering is CRITICAL. No vector index currently exists.
 
-Threshold overrides must be finite and positive or health emits critical `cortex-threshold-invalid`; `NaN` cannot disable a check. Operational overrides are `CORTEX_RETRIEVAL_STALE_MS`, `CORTEX_PROPOSAL_BACKLOG`, `CORTEX_OBSERVABILITY_MAX_BYTES`, and `CORTEX_OBSERVABILITY_MAX_AGE_MS`. The report preserves the actual threshold and source-path evidence used for each finding.
+Threshold overrides must be finite and positive or health emits critical `cortex-threshold-invalid`; `NaN` cannot disable a check. Operational overrides are `CORTEX_RETRIEVAL_STALE_MS`, `CORTEX_PROPOSAL_BACKLOG`, and `CORTEX_OBSERVABILITY_MAX_AGE_MS` (per-stream growth budgets live in `USER/CONFIG/observability-budgets.json`). The report preserves the actual threshold and source-path evidence used for each finding.
 
 A read-only live check reports an overall verdict with per-check counts (critical/warn/ok) across reviewer freshness, index state, retrieval evidence, pending-proposal backlog against its threshold, and observability log age and size against their caps. Each run's report is point-in-time operational evidence, not a standing green claim.
 
@@ -115,7 +117,7 @@ Pulse reads on demand. The Observatory dashboard polls `/api/events/recent` ever
 
 | Destination | URL | Data Source |
 |-------------|-----|-------------|
-| LifeOS Observatory | `localhost:31337/` → Actions tab | Local JSONL via Pulse `Observability/observability.ts` |
+| LifeOS Observatory | `localhost:31337/agents` → Activity tab | Local JSONL via Pulse `Observability/observability.ts` |
 
 ## Observatory Dashboard
 
@@ -135,8 +137,10 @@ The LifeOS Observatory is the local observability UI -- a Next.js 15.5 static ex
 
 | Page | URL | Purpose |
 |------|-----|---------|
-| Agents | `/agents` (default) | Work dashboard -- iterations, optimize, ideate, loops |
+| Today | `/` (default) | The daily front door |
+| Agents | `/agents` | Two tabs: Work (tracked runs as climbs) and Activity (the live event feed from `/api/events/recent`) |
 | Knowledge | `/knowledge` | Knowledge archive browser |
+| More pages | `/telos`, `/health`, `/finances`, `/usage`, `/vigil`, `/workflows` and others | One folder per page under `Observability/src/app/` |
 | Security | `/security` | Security system management -- patterns, rules, events, hooks. **Private install only — containment-zoned, not in the public payload.** |
 
 ### Security Page (`/security`)
@@ -167,10 +171,7 @@ All endpoints served by the Pulse daemon's observability module (`Observability/
 | Endpoint | Method | Purpose | Source |
 |----------|--------|---------|--------|
 | `/health` | GET | Pulse daemon health check | `pulse.ts` |
-| `/api/observability/state` | GET | Current session state (ISA, phase, progress) | observability |
-| `/api/observability/state` | POST | Push session state from hooks | observability |
-| `/api/observability/events` | GET | Raw event data | observability |
-| `/api/observability/events` | POST | Push events from hooks | observability |
+| `/api/capabilities` | GET | Capability telemetry for the agents page strip (`?window=` 60, 360 or 1440 minutes) | observability |
 | `/api/events/recent` | GET | Merged recent events across all sources | observability |
 | `/api/observability/voice-events` | GET | Voice event log | observability |
 | `/api/observability/tool-failures` | GET | Tool failure log | observability |
@@ -180,6 +181,7 @@ All endpoints served by the Pulse daemon's observability module (`Observability/
 | Endpoint | Method | Purpose | Source |
 |----------|--------|---------|--------|
 | `/api/algorithm` | GET | Work sessions — ISA metadata, ISC progress, phase history | observability |
+| `/api/algorithm/stream` | GET | Server-sent events for realtime phase changes | observability |
 | `/api/agents` | GET | Subagent events — start/stop/duration from JSONL | observability |
 | `/api/novelty` | GET | Ideate-run telemetry (UI removed 2026-07-08, archived as future work) | observability |
 | `/api/ladder` | GET | Improvement pipeline data (UI removed 2026-07-08, archived as future work) | observability |
@@ -228,16 +230,19 @@ All endpoints served by the Pulse daemon's observability module (`Observability/
 
 | Endpoint | Method | Purpose | Source |
 |----------|--------|---------|--------|
-| `/notify` | POST | Send TTS notification via ElevenLabs | `pulse.ts` |
-| `/notify/personality` | POST | Personality-aware notification | `pulse.ts` |
-| `/voice` | GET | Voice status | `pulse.ts` |
+| `/notify` | POST | Send TTS notification via Fish Audio | `VoiceServer/voice.ts` (routed by `pulse.ts`) |
+| `/notify/personality` | POST | Personality-aware notification | `VoiceServer/voice.ts` |
+| `/voice` | POST | LifeOS assistant notification, spoken | `VoiceServer/voice.ts` |
+| `/voice/health` | GET | Voice subsystem health, including `muted` | `VoiceServer/voice.ts` |
+| `/voice/mute` | GET, POST | Read or set the global voice mute | `VoiceServer/voice.ts` |
+| `/voice/stop` | POST | Stop speaking now and drop the queue | `VoiceServer/voice.ts` |
 
 **Hook Validation**
 
 | Endpoint | Method | Purpose | Source |
 |----------|--------|---------|--------|
 | `/hooks/skill-guard` | POST | Validate Skill tool calls (PreToolUse HTTP hook) | `modules/hooks.ts` |
-| `/hooks/agent-guard` | POST | Validate Agent tool calls (PreToolUse HTTP hook) | `modules/hooks.ts` |
+| `/hooks/agent-guard` | POST | Validate Agent tool calls (route kept; no longer registered as a hook since 2026-10-01) | `modules/hooks.ts` |
 
 **Removed stubs** — the `/api/loops*` stub routes were deleted 2026-07-14 with the agents-dashboard redesign (Loop mode retired 2026-07-11; the stubs only ever returned `[]` / `not_available`).
 
@@ -266,15 +271,13 @@ Readers (both use identical mapping)
 └─ external admin daemon        localhost:4000  → server/src/algorithm-watcher.ts
 ```
 
-**Display lanes:**
-- Mode `starting` → Algorithm tab, phase strip (states derived from the one table in `LIFEOS/TOOLS/ascent.ts`).
-- Mode `native` → Native tab, no phase strip.
+**Display:** since the 2026-07-14 agents-dashboard redesign, `/agents` has two tabs, Work and Activity; the per-mode Algorithm and Native tabs are gone. Phase states still derive from the one table in `LIFEOS/TOOLS/ascent.ts`, and rows with phase `native` or `starting` differ only in their stale window.
 
 **Classifier (historical — `SessionAnalysis.hook.ts` is retired and no longer ships):** its action regex (the `ALGO_ACTION_RE` symbol was deleted 2026-07-11 with the mode/tier system) — narrow 8-verb regex (`implement|build|create|architect|design|migrate|deploy|refactor`). Everything else that passes the trivia filter (`POSITIVE_PRAISE_WORDS`, `SYSTEM_TEXT_PATTERNS`, `MIN_PROMPT_LENGTH=3`) is native. Do not broaden — see `feedback_state_monitoring_requires_starting_gate.md`.
 
-**Staleness thresholds:** 5 min native, 10 min algorithm. Matched in both readers.
+**Staleness thresholds:** a tool call in the last 5 minutes marks a run live; a tracked (algorithm) run parks after 10 quiet minutes and an untracked `native` or `starting` row after 4 hours. The numbers are `RUN_ACTIVITY` in `LIFEOS/TOOLS/ascent.ts`, the one table every reader uses.
 
-**Loud-fail:** `algorithm-watcher.ts` emits `console.error` on missing work.json at startup; `/api/algorithm` returns HTTP 503 with the resolved path. `EventLogger.hook.ts` logs exceptions via `console.error` so a silently-broken tracker shows up in session logs.
+**Loud-fail:** `algorithm-watcher.ts` emits `console.error` on missing work.json at startup; `/api/algorithm` answers a missing work.json with an empty payload (`algorithms: []`, `active: false`) rather than an error, and `/api/algorithm/stream` returns HTTP 503 only when SSE is disabled with `LIFEOS_NO_SSE=1`. `EventLogger.hook.ts` logs exceptions via `console.error` so a silently-broken tracker shows up in session logs.
 
 **Self-healing:** Both readers use `Math.max(updatedAt, lastToolActivity)` for the activity signal, so a fresh user prompt revives a stale session even if the tool-activity tracker is down.
 

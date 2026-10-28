@@ -1,4 +1,5 @@
 /**
+ * @version 1.5.7
  * notifications.ts — Session timing + ntfy push notifications
  *
  * Session timing is used by LoadContext.hook.ts to record session start.
@@ -8,15 +9,16 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from "node:os";
+import { lifeosPath } from "./paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const PULSE_TOML_PATH = join(HOME, '.claude/LIFEOS/PULSE/PULSE.toml');
+const PULSE_TOML_PATH = lifeosPath('PULSE', 'PULSE.toml');
 
 // ============================================================================
 // Session Timing
 // ============================================================================
 
-const SESSION_START_FILE = '/tmp/pai-session-start.txt';
+const SESSION_START_FILE = '/tmp/lifeos-session-start.txt';
 
 export function recordSessionStart(): void {
   try { writeFileSync(SESSION_START_FILE, Date.now().toString()); } catch {}

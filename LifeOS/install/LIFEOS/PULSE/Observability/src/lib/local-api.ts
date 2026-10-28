@@ -1,20 +1,9 @@
 // API client — relative paths so it works on any host (observatory server at :31337)
 
-async function apiCall<T = unknown>(
-  path: string,
-  options?: RequestInit
-): Promise<T> {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers as Record<string, string>),
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
-  return response.json() as Promise<T>;
+import { apiFetch } from "./api";
+
+function apiCall<T = unknown>(path: string, options?: RequestInit): Promise<T> {
+  return apiFetch<T>(path, options);
 }
 
 // Exports — keep names for compatibility with existing hooks

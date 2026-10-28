@@ -8,6 +8,7 @@
  * remote channel import it from here.
  */
 
+import { principalTimezone } from "../../TOOLS/lib/Timezone"
 import { join } from "path"
 import { readFile } from "fs/promises"
 import { loadLifeosConfig } from "../../TOOLS/LifeosConfig"
@@ -161,8 +162,9 @@ export async function buildLifeosContextBlock(query?: string): Promise<string> {
     }
   })
 
+  const tz = principalTimezone()
   const today = new Date().toLocaleString("en-US", {
-    timeZone: "America/Los_Angeles",
+    timeZone: tz,
     weekday: "long", year: "numeric", month: "long", day: "numeric",
     hour: "numeric", minute: "2-digit",
   })
@@ -189,7 +191,7 @@ export async function buildLifeosContextBlock(query?: string): Promise<string> {
   let block = [
     "## LifeOS CONTEXT (refreshed every turn, do not narrate this header)",
     "",
-    `**Today:** ${today} (America/Los_Angeles)`,
+    `**Today:** ${today} (${tz})`,
     "",
     `### About you (${DA_NAME})`,
     daIdentity,

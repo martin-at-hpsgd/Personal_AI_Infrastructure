@@ -1,0 +1,49 @@
+{
+  "_docs": "Scheduled headless agent jobs. Read by LIFEOS/TOOLS/AgentJob.ts loadJobs() — jobs[] must be a NON-EMPTY array; each job needs a kebab-case id, a unique id, and EXACTLY ONE of `command` (argv array, run as a script) or `prompt` (run as a headless DA session). `preScript` is only allowed with `prompt` (its last stdout line `{\"wakeAgent\": false}` skips the agent run). `schedule` is `every <N>m` or a 5-field cron limited to `M H * * DOW` (InstallAgentJobs.ts refuses anything else). Install with `bun LIFEOS/TOOLS/InstallAgentJobs.ts`; jobs with enabled:false are skipped there and by `AgentJob.ts run` unless --force. The example jobs below are disabled — edit them or replace them with your own. Optional keys: `allowedTools` (headless tool allowlist string), `effort` (low|medium|high|xhigh), `timeoutMs`, `env` (string values; the tokens STATE and HOME wrapped in double curly braces expand to the job state dir and your home), and `deliver` ({kind:\"imessage\", to:\"+E.164 number\", sendCommand:[argv]} — the recipient and the result text are appended to sendCommand; omit it and let the job send through the communication skill instead). Quiet hours come from heartbeat.json.",
+  "jobs": [
+    {
+      "id": "example-script-job",
+      "title": "Example script job",
+      "purpose": "Runs a deterministic script on a schedule (no agent, no model call)",
+      "schedule": "every 60m",
+      "enabled": false,
+      "command": [
+        "bun",
+        "-e",
+        "console.log('example script job ran')"
+      ],
+      "timeoutMs": 60000,
+      "env": {}
+    },
+    {
+      "id": "example-agent-job",
+      "title": "Example agent job",
+      "purpose": "Runs a headless DA prompt every weekday morning, gated by a pre-script wake check",
+      "schedule": "30 7 * * 1-5",
+      "enabled": false,
+      "prompt": "Summarize anything actionable from the pre-script findings included above. If nothing is actionable, output exactly [SILENT].",
+      "preScript": [
+        "bun",
+        "-e",
+        "console.log(JSON.stringify({wakeAgent: false}))"
+      ],
+      "allowedTools": "Read,Grep,Glob,Skill",
+      "effort": "medium",
+      "timeoutMs": 600000,
+      "env": {}
+    },
+    {
+      "id": "achilles-remediate",
+      "title": "Achilles nightly fix-preparer",
+      "purpose": "Prepares fixes for up to 3 open agent-class Achilles entries (LIFEOS/TOOLS/AchillesRemediate.ts); enable once Achilles has entries",
+      "schedule": "30 2 * * *",
+      "enabled": false,
+      "command": [
+        "{{BUN}}",
+        "{{LIFEOS_ROOT}}/TOOLS/AchillesRemediate.ts"
+      ],
+      "timeoutMs": 1800000,
+      "env": {}
+    }
+  ]
+}

@@ -1,0 +1,227 @@
+# Fabric SummarizeDebate — a debate mapped as Summary, Primary disagreement,
+# each side's arguments, what would change each side's mind (each item tagged
+# stated or inferred), Common ground (concessions and conditional
+# compromises), Argument strength
+# with a winner, Prediction, Follow-up. The regex asserts pin the literal shape
+# (sections, side headings, rating and Winner lines, the not-a-debate line);
+# the judged asserts carry what code cannot: each argument under the side that
+# made it, the real crux, mind-changing evidence aimed against each side's
+# reasons, concessions kept, no outside figures invented for a pasted
+# exchange, ratings kept apart from who is right, and the inferred read for topics,
+# questions, panels and non-debates. Synthetic inline fixtures only.
+name: fabric-summarizedebate
+type: capability
+pass_threshold: 0.75
+trials: 3
+# A full debate map on a broad topic can run past the 90 s default answer timeout.
+subject_timeout_ms: 180000
+system_prompt_file: "~/.claude/skills/Fabric/Intents/SummarizeDebate.md"
+cases:
+  - id: pasted_transcript_two_named_sides
+    prompt: &school_board |
+      summarize_debate on this transcript from a fictional school board meeting:
+
+      Moderator: Tonight's question is whether Lakeview High should ban phones during the school day.
+      Marisol Grant: I'm for the ban. At our pilot school, Brookfield Middle, teachers logged forty percent fewer class interruptions in the first semester. Kids talked to each other at lunch again. And lockers with pouches cost us about eleven dollars a student, which is cheap.
+      Owen Pike: I'm against it. Parents need to reach their kids in an emergency, and after the lockdown drill last spring every parent I know wanted their child reachable. A ban also takes away a tool some students use for assignments and translation. And teachers already have the power to confiscate a phone that's being misused.
+      Marisol Grant: Emergency contact runs through the front office, which is how it worked for decades. If anyone showed me a case where that system actually failed a family, I'd reconsider.
+      Owen Pike: Fewer interruptions isn't learning. If the district's own data showed grades or attendance rose at Brookfield after the ban, I'd back it. Right now it's a feeling about lunch tables.
+      Marisol Grant: Interruptions are the thing teachers say costs them the most time.
+      Moderator: We'll vote next month.
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section and line shape is right, but
+    # Owen's confiscation point sits under Marisol, a statistic is invented, the
+    # mind-changing evidence is generic and ignores what each said, Common
+    # ground invents a concession Owen never made, and the winner is picked by outside research rather than by how each argued here.
+    adversarial_output: |
+      ## Summary
+
+      Marisol Grant and Owen Pike debate banning phones during the school day at a Lakeview High board meeting.
+
+      ## Primary disagreement
+
+      Whether phones are bad for teenagers.
+
+      ## Marisol Grant's arguments
+
+      - The pilot school logged forty percent fewer class interruptions.
+      - Teachers can already confiscate phones that are being misused.
+      - Test scores at Brookfield rose twelve percent after the ban.
+
+      ## Owen Pike's arguments
+
+      - Parents need to reach their children during emergencies.
+      - Phones help some students with assignments and translation.
+
+      ## What would change Marisol Grant's mind
+
+      - A convincing argument from the other side (stated)
+      - Better research on phones in schools (inferred)
+
+      ## What would change Owen Pike's mind
+
+      - More data about phone use (inferred)
+      - Expert opinion supporting the ban (inferred)
+
+      ## Common ground
+
+      - Owen Pike agrees that phones harm learning and will back the ban.
+
+      ## Argument strength
+
+      - Marisol Grant: 9/10. Research overwhelmingly shows phones harm learning.
+      - Owen Pike: 3/10. He ignores the scientific consensus on screens.
+      - Winner: Marisol Grant. The science is on her side.
+
+      ## Prediction
+
+      Marisol Grant is right, because phones are harmful to children.
+
+      ## Follow-up
+
+      The ban will probably pass.
+
+      - Watch the vote next month.
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Summary[ \t]*\n[\s\S]*\n## Primary disagreement[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '\n## Marisol Grant[''’]s? arguments[ \t]*\n[\s\S]*\n## Owen Pike[''’]s? arguments[ \t]*\n[\s\S]*\n## What would change Marisol Grant[''’]s? mind[ \t]*\n[\s\S]*\n## What would change Owen Pike[''’]s? mind[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '\n## Argument strength[ \t]*\n\s*- Marisol Grant: (?:10|[1-9])/10\.[^\n]+\n- Owen Pike: (?:10|[1-9])/10\.[^\n]+\n- Winner: (?:Marisol Grant|Owen Pike|Draw)[.,][^\n]+'
+      - type: icontains
+        value: "(stated)"
+        weight: 1
+      - type: regex
+        weight: 1
+        value: '\n## What would change Owen Pike[''’]s? mind[ \t]*\n(?:\s*- [^\n]+\((?:stated|inferred)\)[ \t]*\n)+\s*## Common ground[ \t]*\n'
+      - type: not-regex
+        value: '\*\*'
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value:
+          - "Each argument bullet restates a point its own speaker made in the transcript, possibly paraphrased; no argument is filed under the speaker who did not make it"
+          - "Every inferred mind-changing item is marked (inferred), would cut against a reason that side gave rather than support its position, and is written as a hypothetical finding, not as something either speaker agreed to"
+          - "The point that teachers can already confiscate misused phones appears under Owen Pike and not under Marisol Grant"
+          - "The Summary, Primary disagreement, arguments and mind-changing sections attribute to the speakers no statistic or result the transcript does not contain, such as a test-score or grade change at Brookfield; outside knowledge in the Prediction is allowed"
+          - "The primary disagreement names the real crux, such as whether fewer interruptions show a learning benefit worth the lost contact and tool use, not a vague question like whether phones are bad"
+          - "Owen Pike's mind-changing evidence includes grade or attendance gains at Brookfield after the ban, marked (stated); Marisol Grant's includes a real case of front-office emergency contact failing a family, marked (stated)"
+          - "Mind-changing evidence is concrete and tied to each side's own reasons, never generic items like more data, better research or a convincing argument"
+          - "The strength ratings judge how well each side argued in this transcript, and the winner's reason refers to the arguments made here rather than to outside research on phones"
+        reference: *school_board
+  - id: bare_topic_maps_public_debate
+    prompt: "summarize_debate nuclear power"
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Summary[ \t]*\n[\s\S]*\n## Primary disagreement[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '\n## [^\n]+[''’]s? arguments[ \t]*\n[\s\S]*\n## [^\n]+[''’]s? arguments[ \t]*\n[\s\S]*\n## What would change [^\n]+[''’]s? mind[ \t]*\n[\s\S]*\n## Argument strength[ \t]*\n[\s\S]*\n- Winner: [^\n]+\n[\s\S]*\n## Prediction[ \t]*\n[\s\S]*\n## Follow-up[ \t]*\n'
+      - type: not-regex
+        value: '(?:^|\n)\s*\d+[.)]\s'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The Summary says this maps the public debate on nuclear power rather than describing a specific exchange or transcript"
+          - "The sides are the leading real positions in the nuclear power debate (for example expanding nuclear versus relying on renewables without it), named by position or by well-known proponents"
+          - "The arguments are ones advocates actually make, such as low-carbon firm power and a strong safety record per unit of energy on one side and cost overruns, long build times and waste on the other"
+          - "Mind-changing evidence is concrete and specific to each side, such as new reactors delivered on time and budget, or firm low-carbon grids run on renewables and storage at lower cost"
+          - "The Prediction takes a position on which side is more likely right, states a confidence, and draws on what is known about the subject"
+        reference: "summarize_debate nuclear power"
+  - id: question_prediction_answers_it
+    prompt: "summarize the debate: should cities ban right turn on red?"
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Summary[ \t]*\n[\s\S]*\n## Primary disagreement[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '\n## Argument strength[ \t]*\n(?:\s*- [^\n]+: (?:10|[1-9])/10\.[^\n]+\n){2,4}\s*- Winner: [^\n]+'
+      - type: regex
+        weight: 1
+        value: '\n## Follow-up[ \t]*\n\s*[^-\s][^\n]+\n\s*\n?- [^\n]+'
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The Prediction answers whether cities should ban right turn on red, naming the side more likely right and why"
+          - "The primary disagreement is the real crux, such as whether pedestrian and cyclist safety gains outweigh lost traffic flow and the cost of enforcement"
+          - "Each Follow-up bullet is a specific observable development, such as crash data from cities that adopted a ban, and says which side it would favor"
+        reference: "summarize the debate: should cities ban right turn on red?"
+  - id: panel_groups_speakers_into_sides
+    prompt: &panel |
+      summarize_debate on this fictional podcast panel:
+
+      Host: Should our town build a new downtown parking garage?
+      Ana Ruiz: No. The current lots are never more than seventy percent full, even on Saturdays, so a garage solves a problem we don't have.
+      Ben Cho: I agree with Ana. The eight million dollars would pay for the bus route extension we've been promised for years.
+      Carla Diaz: I disagree with both of you. Shop owners on Main Street tell me customers leave when they can't park near the store, and the old lots are a long walk. If the lot counts showed spaces near Main were open at peak hours, I'd drop it.
+      Ana Ruiz: Those near spaces are the full ones, I'll grant that, but people walk two blocks at the mall without complaint.
+      Ben Cho: If ridership on the existing bus line were tiny, I'd admit the extension isn't worth it.
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Summary[ \t]*\n[\s\S]*\n## Primary disagreement[ \t]*\n'
+      - type: not-regex
+        weight: 3
+        value: '## [^\n]+[''’]s? arguments[\s\S]*## [^\n]+[''’]s? arguments[\s\S]*## [^\n]+[''’]s? arguments'
+      - type: regex
+        weight: 1
+        value: '\n## [^\n]*Carla Diaz[^\n]*[''’]s? arguments'
+      - type: llm-assert
+        weight: 3
+        value:
+          - "Ana Ruiz and Ben Cho, who argue the same position, are one side named by both, and Carla Diaz is the other side"
+          - "Every argument appears under the side that made it, and the concession that spaces near Main Street are full is not presented as Carla's claim alone being disputed"
+          - "Carla Diaz's mind-changing evidence includes lot counts showing open spaces near Main Street at peak hours, marked (stated), and the Ana Ruiz and Ben Cho side includes low ridership on the existing bus line, marked (stated)"
+          - "Common ground credits Ana Ruiz with granting that the spaces near Main Street are the full ones, without turning that into agreement that a garage is needed"
+        reference: *panel
+  - id: thin_thread_keeps_concessions_and_uncertainty
+    prompt: &garden |
+      summarize_debate on this group chat from a fictional community garden:
+
+      Dee: honestly I think we should switch the garden to drip irrigation, the hand-watering rota keeps falling apart in august
+      Sam: falling apart how? we missed like two days?
+      Dee: three that I know of, and the tomatoes on the north beds wilted
+      Sam: kit costs money we don't have. and half the people come for the watering, it's the social bit
+      Dee: ok fair, the social part matters, I'm not saying nobody waters
+      Sam: if someone gets a quote under the dues we've got left I'd look at it. but only for the north beds
+      Dee: deal-ish. I still think the rota is the real problem
+      Sam: maybe. let's ask at the meeting
+    assert:
+      - type: regex
+        weight: 2
+        value: '\n## Common ground[ \t]*\n\s*- [^\n]+\n[\s\S]*\n## Argument strength[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '\((?:stated)\)[\s\S]*\n## Common ground'
+      - type: llm-assert
+        weight: 4
+        value:
+          - "Common ground records Dee's concession that the social side of hand-watering matters, credited to Dee"
+          - "Sam's offer appears in its conditional form: he would consider drip irrigation for the north beds only if a quote comes in under the remaining dues; it is never presented as an agreement to install drip"
+          - "Dee's count of missed watering days keeps its hedge (three that she knows of) and is not stated as an established total"
+          - "No figure, price, dues amount, member count, meeting date or schedule appears anywhere in the output, Prediction and Follow-up included, unless the chat contains it"
+          - "Inferred mind-changing items are marked (inferred) and would each cut against a reason that side gave, and there are no more than three per side"
+          - "The Argument strength and Prediction treat the thin exchange as unsettled: the winner is a draw or a narrow call saying what it rests on, and the Prediction names the open question, such as the quote or whether missed days recur, with low or moderate confidence"
+        reference: *garden
+  - id: non_debate_gets_one_line
+    negative: true
+    prompt: |
+      summarize_debate on this: "Lentil soup. Sweat one onion and two carrots in olive oil for eight minutes. Add a cup of rinsed red lentils, a teaspoon of cumin and five cups of stock. Simmer twenty-five minutes, blend half, and finish with lemon juice and salt."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*Not a debate:\s+\S[^\n]*\s*$'
+      - type: not-icontains
+        value: "## Summary"
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value:
+          - "The response is a single line saying the input is a recipe (for lentil soup) rather than a debate, with no invented sides or arguments"
+        reference: "summarize_debate on a lentil soup recipe"

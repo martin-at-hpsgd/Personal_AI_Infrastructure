@@ -1,3 +1,6 @@
+/**
+ * @version 1.0.1
+ */
 import { EXIT, SCHEMA, runCortex, type CortexRunResult, type CortexRuntime } from "./Cortex";
 
 export type CortexAdapterName = "claude" | "hermes" | "codex" | "subagent";

@@ -1,13 +1,14 @@
 "use client";
 
 import { Suspense } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useApi } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 import { Webhook, ArrowLeft, FileCode, Globe } from "lucide-react";
 import Link from "next/link";
 import EmptyStateGuide from "@/components/EmptyStateGuide";
 import { PageShell, PageHeader, Panel, StatTile, Pill } from "@/components/ui/chrome";
 import SystemHealthPanel from "@/components/SystemHealthPanel";
+import { fmtDateParts } from "@/lib/time";
 
 interface HookEntry {
   event: string;
@@ -157,7 +158,7 @@ function HookDetailView({ hook }: { hook: HookDetail }) {
           <h1 className="text-ink-1">{hook.name}</h1>
           <p className="mt-0.5 text-[13px] text-ink-2">
             {(hook.size / 1024).toFixed(1)} KB ·{" "}
-            {new Date(hook.lastModified).toLocaleDateString("en-US", {
+            {fmtDateParts(hook.lastModified, {
               month: "short",
               day: "numeric",
               year: "numeric",
@@ -180,26 +181,14 @@ function HooksPageInner() {
   const hookName = searchParams.get("name");
   const isViewing = !!hookName;
 
-  const { data: listData } = useQuery<{ hooks: HookEntry[]; total: number; events: string[] }>({
-    queryKey: ["hooks-list"],
-    queryFn: async () => {
-      const res = await fetch("/api/wiki/hooks");
-      if (!res.ok) throw new Error("Failed to fetch hooks");
-      return res.json();
-    },
-    staleTime: 30_000,
-    enabled: !isViewing,
-  });
+  const { data: listData } = useApi<{ hooks: HookEntry[]; total: number; events: string[] }>(
+    isViewing ? null : "/api/wiki/hooks",
+    { staleTime: 30_000 },
+  );
 
-  const { data: detailData } = useQuery<HookDetail>({
-    queryKey: ["hook-detail", hookName],
-    queryFn: async () => {
-      const res = await fetch(`/api/wiki/hooks/${encodeURIComponent(hookName!)}`);
-      if (!res.ok) throw new Error("Failed to fetch hook");
-      return res.json();
-    },
-    enabled: isViewing,
-  });
+  const { data: detailData } = useApi<HookDetail>(
+    isViewing ? `/api/wiki/hooks/${encodeURIComponent(hookName!)}` : null,
+  );
 
   if (isViewing && detailData) {
     return <HookDetailView hook={detailData} />;

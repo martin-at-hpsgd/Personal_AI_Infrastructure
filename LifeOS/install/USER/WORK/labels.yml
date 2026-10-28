@@ -1,0 +1,60 @@
+# WORK/labels.yml — the label taxonomy for your work repo
+#
+# Read by your work-tracking skill's label bootstrap (a minimal parser: exactly this
+# shape — a top-level "labels:" list of name / color / description). Such a tool is
+# additive: it creates or updates these on the repo bound in work_repo.json and
+# never deletes a label.
+#
+# The set below is what shipped code reads and writes (hooks/lib/work-config.ts,
+# LIFEOS/TOOLS/WorkSweep.ts, the Pulse work module). The Agent label must match
+# WORK.AGENT_LABEL in WORK/config.yaml; the default there is Agent:principal.
+
+labels:
+  - name: "Type:feature"
+    color: "1D76DB"
+    description: "Feature or build work"
+  - name: "Type:research"
+    color: "5319E7"
+    description: "Research or investigation"
+  - name: "Type:queue"
+    color: "C5DEF5"
+    description: "Captured for later triage"
+  - name: "Status:queued"
+    color: "EDEDED"
+    description: "Not started"
+  - name: "Status:ready"
+    color: "BFD4F2"
+    description: "Ready to pick up"
+  - name: "Status:in-progress"
+    color: "0E8A16"
+    description: "Being worked"
+  - name: "Status:in-review"
+    color: "FEF2C0"
+    description: "Awaiting review"
+  - name: "Status:blocked"
+    color: "B60205"
+    description: "Blocked on something external"
+  - name: "Status:done"
+    color: "6F42C1"
+    description: "Complete"
+  - name: "Priority:P0"
+    color: "B60205"
+    description: "Drop everything"
+  - name: "Priority:P1"
+    color: "D93F0B"
+    description: "This week"
+  - name: "Priority:P2"
+    color: "FBCA04"
+    description: "Soon"
+  - name: "Priority:P3"
+    color: "C2E0C6"
+    description: "Whenever"
+  - name: "Property:internal"
+    color: "D4C5F9"
+    description: "Internal work, no external property"
+  - name: "Agent:principal"
+    color: "006B75"
+    description: "Assigned to the principal (rename to match WORK.AGENT_LABEL)"
+  - name: "pai-sync"
+    color: "BFDADC"
+    description: "Issue created or updated by the LifeOS work sync"

@@ -28,4 +28,5 @@ directly. Matching is literal, so add each inflection you really say
 
 | Acronym | Pronunciation | Notes |
 |---------|---------------|-------|
-| LifeOS | LIFE-ohess | product name |
+| LifeOS | Life O S | product name; the letters run together, no pause |
+| OS | O S | as in operating system |

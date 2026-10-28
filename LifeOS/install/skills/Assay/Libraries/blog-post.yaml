@@ -1,0 +1,83 @@
+# Shared check library: blog-post.
+# Checks every long-form post needs before it is published. An ISA pulls them in with
+# `output: blog-post` and binds `artifact:` to the post's markdown source. Format: ISAFormat
+# § `## Evals` stages; `{{artifact}}` is replaced by the bound path. Switch one off with
+# `disable: blog-post.<check> because <reason>`.
+#
+# Origin: Proof's text profile (non-empty), the content-site render gates (no raw markdown, no hash
+# links) and the authored-content rules (no formulaic writing tells). The voice check is a typed glance
+# question; it starts in shadow under the library's own question id, so labels from every post
+# accumulate on one question and it can earn.
+library: blog-post
+version: 1
+bindings:
+  artifact: the post's markdown source file, relative to where the ISA's checks run
+match:
+  extensions: [md, mdx]
+checks:
+  - id: substantive
+    title: a real post, not a stub
+    reason: >-
+      A post under 150 words is a stub or a failed draft write; publishing one reads as an accident.
+    stages:
+      - code: |-
+          test -s {{artifact}} && test "$(wc -w < {{artifact}})" -ge 150
+
+  - id: has-title
+    title: frontmatter carries a title
+    reason: >-
+      Without a title the site falls back to the filename in the page head, the share card and the
+      feed entry.
+    stages:
+      - code: |-
+          rg -q '^title:\s*\S' {{artifact}}
+
+  - id: fences-closed
+    title: every code fence closes
+    reason: >-
+      One unclosed fence turns the rest of the post into a code block, the raw-markdown failure the
+      content-site render gate exists for.
+    stages:
+      - code: |-
+          test -s {{artifact}} && n=$(rg -c '^\s*(```|~~~)' {{artifact}} || true) && test $(( ${n:-0} % 2 )) -eq 0
+
+  - id: no-hash-links
+    title: no section-anchor hash links
+    reason: >-
+      Clean path URLs are the rule on every site; a `#` link breaks deep-link loads and the
+      deterministic hash gate fails the build on it.
+    stages:
+      - code: |-
+          test -s {{artifact}} && ! rg -q '\]\(/?#|href="/?#' {{artifact}}
+
+  - id: spelling
+    title: no common misspellings
+    reason: >-
+      A misspelling in a published post is permanent in feeds and caches. codespell flags only known
+      common misspellings, so names and jargon do not trip it.
+    stages:
+      - code: |-
+          test -s {{artifact}} && codespell {{artifact}}
+
+  - id: voice
+    title: free of formulaic filler
+    reason: >-
+      Formulaic constructions (paragraph-ending beats, suspense hooks, contrastive "not X, it's Y",
+      narrator's asides, stacked short declaratives) put rhythm ahead of the point and make a post
+      harder to follow. A typed question over the text catches the common ones; the full Writing audit
+      runs on top for publication. The check grades the prose, not who or what drafted it.
+    stages:
+      - code: |-
+          test -s {{artifact}}
+      - glance:
+          - id: no-ai-tells
+            kind: noul
+            instructions: >-
+              Read the post. Does it avoid the common AI-writing tells: a paragraph ending on a
+              rhythmic beat instead of a fact, a suspense hook that withholds the point, the
+              contrastive "not X, it's Y" construction, a narrator's aside about people in general,
+              and stacked short declaratives for rhythm? Answer true when the post is free of them.
+            criteria:
+              true: no AI-writing tells, or one isolated instance that carries a fact
+              false: two or more AI-writing tells, or one that shapes a whole paragraph
+            producer: cat {{artifact}}

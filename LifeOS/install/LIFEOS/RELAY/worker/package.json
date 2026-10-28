@@ -1,0 +1,16 @@
+{
+  "name": "lifeos-tex",
+  "version": "0.15.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cf dev",
+    "deploy": "bun ../../TOOLS/CfEnv.ts deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^2.0.0-beta.sha-ad79608dd",
+    "@cloudflare/workers-types": "4.20260702.1",
+    "cf": "^1.0.0-beta.9",
+    "vite": "^8.3.1"
+  }
+}

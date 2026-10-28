@@ -1,0 +1,107 @@
+{
+  "_comment": "Generic Socrates starter pack. A fresh install copies this into LIFEOS/USER/SOCRATES/questions/ via `socrates seed`, then edits it into their real questions. No personal data here — this file ships publicly.",
+  "questions": [
+    {
+      "id": "SOC-0001",
+      "entity": "principal",
+      "domain": "security",
+      "text": "Do I have anything on the internet that is vulnerable?",
+      "ideal": "Zero open critical or high findings across the deployed surface.",
+      "status": "active",
+      "verifier": "deterministic",
+      "closer_mode": "read",
+      "answerer": {
+        "adapter": "workflows-scanner",
+        "ref": "open-crit-high"
+      },
+      "cadence": "hourly",
+      "severity": "critical",
+      "provenance": "seed",
+      "node_type": "protect"
+    },
+    {
+      "id": "SOC-0002",
+      "entity": "principal",
+      "domain": "security",
+      "text": "Do I have any keys or secrets exposed publicly?",
+      "ideal": "No exposed-secret or sensitive-file findings on any public surface.",
+      "status": "active",
+      "verifier": "deterministic",
+      "closer_mode": "read",
+      "answerer": {
+        "adapter": "workflows-scanner",
+        "ref": "client-secrets"
+      },
+      "cadence": "hourly",
+      "severity": "critical",
+      "provenance": "seed",
+      "node_type": "protect"
+    },
+    {
+      "id": "SOC-0003",
+      "entity": "principal",
+      "domain": "infra",
+      "text": "Do I have anything deployed that is not registered in the harness?",
+      "ideal": "Every serving domain has a curated security-plane target.",
+      "status": "active",
+      "verifier": "deterministic",
+      "closer_mode": "read",
+      "answerer": {
+        "adapter": "atlas",
+        "ref": "unregistered"
+      },
+      "cadence": "daily",
+      "severity": "high",
+      "provenance": "seed",
+      "node_type": "protect"
+    },
+    {
+      "id": "SOC-0004",
+      "entity": "principal",
+      "domain": "financial",
+      "text": "What is my monthly burn, and is it where I expect?",
+      "ideal": "Burn is known, current, and under the stated ceiling.",
+      "status": "unanswerable",
+      "verifier": "deterministic",
+      "closer_mode": "read",
+      "cadence": "daily",
+      "severity": "high",
+      "provenance": "seed",
+      "ruled_out": [
+        "the finance adapter's burn answerer reads an expenses ledger CLI that is not part of the public release; activate with an answerer once an expenses tool is installed"
+      ]
+    },
+    {
+      "id": "SOC-0005",
+      "entity": "principal",
+      "domain": "ownership",
+      "text": "Is any domain I own about to lapse?",
+      "ideal": "Every owned registration is more than 45 days from expiry.",
+      "status": "active",
+      "verifier": "deterministic",
+      "closer_mode": "read",
+      "answerer": {
+        "adapter": "ownership",
+        "ref": "registration"
+      },
+      "cadence": "daily",
+      "severity": "critical",
+      "provenance": "seed",
+      "node_type": "protect"
+    },
+    {
+      "id": "SOC-0006",
+      "entity": "principal",
+      "domain": "prediction",
+      "text": "What developments in the next six months would blindside me?",
+      "ideal": "Standing horizon scan exists with a named answerer.",
+      "status": "unanswerable",
+      "verifier": "judged",
+      "closer_mode": "read",
+      "cadence": "monthly",
+      "severity": "medium",
+      "provenance": "seed",
+      "ruled_out": []
+    }
+  ]
+}

@@ -131,6 +131,72 @@ function ensureApprovals(yaml: string): { yaml: string; changed: boolean } {
   return { yaml: `${yaml.replace(/\n*$/, "")}\n\n${MANAGED_BEGIN}\n${block}\n${MANAGED_END}\n`, changed: true };
 }
 
+/**
+ * Hermes scans every context file with `scan_for_threats(scope="context")` and,
+ * on ANY match, silently replaces the whole soul with a [BLOCKED: …]
+ * placeholder — per session, with nothing visibly wrong. Doctrine that QUOTES
+ * an attack shape ("…ignore previous instructions…") is enough: that exact
+ * sentence once cost an install its constitution in most sessions for weeks. So the mount refuses to write a soul the engine
+ * would reject, running Hermes' OWN scanner (never a lookalike regex). When the
+ * engine tree or python3 is absent the gate skips — there is no scanner to
+ * satisfy, and a mount on such an install has nothing to gate.
+ */
+function assertSoulPassesHermesScanner(soul: string): void {
+  const engine = join(HERMES_HOME, "hermes-agent");
+  if (!existsSync(join(engine, "tools", "threat_patterns.py"))) return;
+  let out: ReturnType<typeof Bun.spawnSync>;
+  try {
+    out = Bun.spawnSync(
+      [
+        "python3",
+        "-c",
+        'import sys\nsys.path.insert(0, sys.argv[1])\nfrom tools.threat_patterns import scan_for_threats\nf = scan_for_threats(sys.stdin.read(), scope="context")\nprint(",".join(f))\nsys.exit(1 if f else 0)',
+        engine,
+      ],
+      { stdin: Buffer.from(soul, "utf8") },
+    );
+  } catch {
+    return; // python3 unavailable — nothing to gate against
+  }
+  if (out.exitCode === 1) {
+    const findings = out.stdout?.toString().trim() ?? "unknown";
+    throw new Error(
+      `rendered soul matches Hermes' threat scanner (${findings}) — Hermes would BLOCK the entire ` +
+        `constitution at every session start. Fix the matching sentence in the soul SOURCE ` +
+        `(see HermesSidecar.md § Known behaviour), never by weakening the scanner.`,
+    );
+  }
+}
+
+/**
+ * Approval-allowlist keys this install runs unattended work on — ENSURE-PRESENT
+ * only: Hermes appends its own entries when the operator answers "always", so
+ * the list is merged, never replaced, and operator entries are never removed.
+ * "script execution via heredoc" is the capability twin of the already-approved
+ * "-e/-c flag" key: cron jobs write their state files via `python3 - <<'PY'`
+ * heredocs, and under `cron_mode: deny` every one died unattended. The
+ * guard's deny globs and the write sandbox still bound what a script touches.
+ */
+const COMMAND_ALLOWLIST_ENSURE: readonly string[] = ["script execution via heredoc"];
+
+function ensureCommandAllowlist(yaml: string): { yaml: string; changed: boolean } {
+  const lines = yaml.split("\n");
+  const start = lines.findIndex((l) => /^command_allowlist:\s*$/.test(l));
+  if (start === -1) {
+    const block = ["command_allowlist:", ...COMMAND_ALLOWLIST_ENSURE.map((k) => `  - ${k}`)].join("\n");
+    return { yaml: `${yaml.replace(/\n*$/, "")}\n${block}\n`, changed: true };
+  }
+  let end = start + 1;
+  while (end < lines.length && (lines[end]!.trim() === "" || /^\s/.test(lines[end]!))) end++;
+  const existing = lines
+    .slice(start + 1, end)
+    .map((l) => l.replace(/^\s*-\s*/, "").replace(/^["']|["']$/g, "").trim());
+  const missing = COMMAND_ALLOWLIST_ENSURE.filter((k) => !existing.includes(k));
+  if (missing.length === 0) return { yaml, changed: false };
+  const next = [...lines.slice(0, end), ...missing.map((k) => `  - ${k}`), ...lines.slice(end)].join("\n");
+  return { yaml: next, changed: true };
+}
+
 function installPlugin(): Change[] {
   const changes: Change[] = [];
   mkdirSync(PLUGIN_DEST, { recursive: true });
@@ -226,6 +292,20 @@ function main(): void {
   const soulCurrent = existsSync(soulPath) ? readFileSync(soulPath, "utf8") : "";
   const soulDrifted = soulCurrent !== soul;
   const digest = createHash("sha256").update(soul).digest("hex").slice(0, 12);
+  // A SOUL.md this mount did not render (no LifeOS header line) belongs to a
+  // Hermes agent that already lives in this HERMES_HOME. Never overwrite it
+  // silently: point at a standalone home, or --force to take the profile
+  // over. (public issue #1962, @theNetworkChuck)
+  const soulMarker = soul.split("\n", 1)[0];
+  const soulForeign = soulCurrent.length > 0 && !soulCurrent.startsWith(soulMarker);
+  if (soulForeign && !check && !args.has("--force")) {
+    throw new Error(
+      `${scrubPaths(soulPath)} exists and was not written by LifeOS — another Hermes agent owns this profile. ` +
+        `Run with HERMES_HOME=<standalone dir> to mount beside it, or --force to overwrite its SOUL.md.`,
+    );
+  }
+
+  assertSoulPassesHermesScanner(soul);
 
   if (soul.length > CONTEXT_FILE_MAX_CHARS) {
     throw new Error(
@@ -241,12 +321,13 @@ function main(): void {
   ({ yaml } = setTopLevelKey(yaml, "context_file_max_chars", String(CONTEXT_FILE_MAX_CHARS)));
   ({ yaml } = setSkillsExternalDirs(yaml, [join(INSTALL_ROOT, "skills")]));
   ({ yaml } = ensureApprovals(yaml));
+  ({ yaml } = ensureCommandAllowlist(yaml));
   ({ yaml } = ensurePluginEnabled(yaml));
   const configDrifted = yaml !== yamlBefore;
 
   if (check) {
     console.log(`soul       ${soul.length} chars, digest ${digest}`);
-    console.log(`           ${soulDrifted ? "STALE — re-run Mount.ts" : "current"}`);
+    console.log(`           ${soulForeign ? "FOREIGN — another agent's SOUL.md; set HERMES_HOME or use --force" : soulDrifted ? "STALE — re-run Mount.ts" : "current"}`);
     console.log(`config     ${configDrifted ? "STALE — re-run Mount.ts" : "current"}`);
     process.exit(soulDrifted || configDrifted ? 1 : 0);
   }

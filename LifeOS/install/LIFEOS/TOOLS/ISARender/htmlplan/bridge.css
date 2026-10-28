@@ -1,0 +1,29 @@
+/* bridge.css — fits the html-plan runtime into the ISA page (LifeOS Technical, dark).
+ * Loaded after template.css. `:root:not(#_)` outranks every :root rule in htmlplan.css,
+ * its dark-mode media query included, so the runtime always draws in LifeOS tokens. */
+:root:not(#_) {
+  color-scheme: dark;
+  --paper: var(--lifeos-bg-base); --card: var(--lifeos-bg-soft); --sunk: var(--lifeos-bg-sunken);
+  --ink: var(--lifeos-text-primary); --ink-2: var(--lifeos-text-secondary); --ink-3: var(--lifeos-text-tertiary);
+  --line: var(--lifeos-border-base); --line-2: var(--lifeos-border-soft);
+  --accent: var(--lifeos-accent-primary); --accent-soft: var(--lifeos-accent-glow);
+  --green: var(--lifeos-state-success); --green-soft: rgba(158, 206, 106, 0.12);
+  --amber: var(--lifeos-state-warning); --amber-soft: rgba(224, 175, 104, 0.12);
+  --red: var(--lifeos-state-danger); --red-soft: rgba(247, 118, 142, 0.12);
+  --blue: var(--lifeos-accent-secondary); --blue-soft: rgba(125, 207, 255, 0.12);
+  --purple: var(--lifeos-accent-purple); --purple-soft: rgba(187, 154, 247, 0.12);
+  --sans: var(--mono); --serif: var(--mono);
+  --float: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* The ISA template owns the contents list and section numbers. */
+.nw-toc.rail, h2 .sec-n { display: none !important; }
+@media (min-width: 1180px) { body.has-toc { padding-left: 0; } }
+
+/* Exhibits sit in the section column and above the page's grid texture. */
+.isa-main doc-calls, .isa-main doc-machine, .isa-main doc-schema, .isa-main doc-code,
+.isa-main doc-flow, .isa-main doc-tree, .isa-main doc-seq, .isa-main doc-draft,
+.isa-main doc-mock, .isa-main doc-ask { display: block; position: relative; z-index: 1; margin: 14px 0 20px; }
+
+/* The Respond bar and its sheet float above the template's fixed plate frame. */
+.nw-bar, .nw-sheet-bg, .nw-toast { z-index: 50; }

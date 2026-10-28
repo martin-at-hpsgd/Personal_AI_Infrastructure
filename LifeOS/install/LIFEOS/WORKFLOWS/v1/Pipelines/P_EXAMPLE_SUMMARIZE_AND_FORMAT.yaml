@@ -1,0 +1,18 @@
+version: 1
+name: P_EXAMPLE_SUMMARIZE_AND_FORMAT
+description: >
+  Example pipeline that summarizes text content and formats it as structured markdown.
+  Demonstrates the pipe model: A_EXAMPLE_SUMMARIZE produces a summary,
+  which flows into A_EXAMPLE_FORMAT for structured formatting.
+
+trigger:
+  type: manual
+steps:
+  summarize:
+    uses: A_EXAMPLE_SUMMARIZE
+    with: { $ref: input }
+  format:
+    uses: A_EXAMPLE_FORMAT
+    needs: [summarize]
+    with: { $ref: steps.summarize.output }
+output: { $ref: steps.format.output }

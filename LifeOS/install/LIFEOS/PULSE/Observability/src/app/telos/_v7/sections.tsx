@@ -8,7 +8,7 @@ import type { CSSProperties, ReactNode, MouseEvent as ReactMouseEvent, KeyboardE
 import type { Goal, Telos } from "./data";
 import { Icons } from "./icons";
 
-const CARD_BG: CSSProperties = { background: "#0F1A33", color: "#E8EFFF" };
+const CARD_BG: CSSProperties = { background: "var(--surface-1)", color: "#E8EFFF" };
 
 interface RBtnProps {
   className?: string;
@@ -115,6 +115,8 @@ export function MissionGoals({ telos, missionId, onMission, onTrace, onOpenGoal,
   const metricMap: Record<string, Telos["metrics"][number]> = Object.fromEntries(
     telos.metrics.map((m) => [m.id, m]),
   );
+  // A fresh install has no missions; the page's empty-state guide covers it, so this band draws nothing.
+  if (!active) return null;
   return (
     <section className="mission-goals" id="sec-mission">
       <header className="band-head">
@@ -139,7 +141,7 @@ export function MissionGoals({ telos, missionId, onMission, onTrace, onOpenGoal,
       <RBtn
         className="telos-card mission-card"
         onClick={() => openFile ? openFile("TELOS.md") : onTrace(active.id)}
-        style={{ background: "linear-gradient(90deg, rgba(154,203,255,0.08), #0F1A33)" }}
+        style={{ background: "linear-gradient(90deg, rgba(154,203,255,0.08), var(--surface-1))" }}
       >
         <div className="mission-eyebrow">Mission · {active.horizon}</div>
         <h3 className="mission-title">
@@ -420,7 +422,7 @@ export function ChallengeStrategy({ telos, onTrace, showIds, openFile }: Challen
           </div>
         </div>
       ) : (
-        <div className="cs-graph" style={{ background: "#0F1A33", border: "1px solid #1A2A4D", borderRadius: 12, padding: 16 }}>
+        <div className="cs-graph" style={{ background: "var(--surface-1)", border: "1px solid var(--line-1)", borderRadius: 12, padding: 16 }}>
           <svg viewBox="0 0 1000 520" className="force-svg" preserveAspectRatio="xMidYMid meet">
             {telos.challenges.map((c, i) => {
               const y = 60 + i * (420 / Math.max(1, telos.challenges.length - 1));
@@ -433,7 +435,7 @@ export function ChallengeStrategy({ telos, onTrace, showIds, openFile }: Challen
                   onMouseLeave={() => setHover(null)}
                   style={{ cursor: "pointer" }}
                 >
-                  <rect x="40" y={y - 16} width="300" height="32" rx="4" fill="#12203D" stroke="#9ACBFF" strokeOpacity="0.4" />
+                  <rect x="40" y={y - 16} width="300" height="32" rx="4" fill="var(--surface-1)" stroke="#9ACBFF" strokeOpacity="0.4" />
                   <text x="55" y={y + 4} fill="#E8EFFF" fontSize="12">{c.title}</text>
                 </g>
               );
@@ -449,7 +451,7 @@ export function ChallengeStrategy({ telos, onTrace, showIds, openFile }: Challen
                   onMouseLeave={() => setHover(null)}
                   style={{ cursor: "pointer" }}
                 >
-                  <rect x="660" y={y - 16} width="300" height="32" rx="4" fill="#12203D" stroke="#3B82F6" strokeOpacity="0.45" />
+                  <rect x="660" y={y - 16} width="300" height="32" rx="4" fill="var(--surface-1)" stroke="#3B82F6" strokeOpacity="0.45" />
                   <text x="675" y={y + 4} fill="#E8EFFF" fontSize="12">{s.title.split("—")[0].trim()}</text>
                 </g>
               );

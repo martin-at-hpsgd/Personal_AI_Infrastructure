@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { BookOpen, Star } from "lucide-react";
+import { useApi } from "@/lib/api";
 import { PageShell, PageHeader, Panel, PanelHeader, Pill, EmptyState } from "@/components/ui/chrome";
 
 /**
- * Books tab — {{PRINCIPAL_NAME}}'s favorite books. Zero data in this component; it fetches
+ * Books tab — the principal's favorite books. Zero data in this component; it fetches
  * /api/books (which reads USER/BOOKS.md) and renders it. Data/code separated.
  */
 
@@ -21,15 +21,9 @@ interface Group { category: string; books: Book[] }
 interface BooksData { count: number; lastUpdated: string | null; groups: Group[] }
 
 export default function BooksPage() {
-  const [data, setData] = useState<BooksData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/books")
-      .then((r) => r.json())
-      .then(setData)
-      .catch((e) => setError(String(e)));
-  }, []);
+  const books = useApi<BooksData>("/api/books");
+  const data = books.data ?? null;
+  const error = books.error ? String(books.error) : null;
 
   const subtitle =
     "Favorite books — the ones worth re-reading." +

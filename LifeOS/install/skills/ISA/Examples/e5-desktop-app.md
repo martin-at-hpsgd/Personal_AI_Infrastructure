@@ -1,3 +1,4 @@
+<!-- isa-example claims=50 probes=11 era=legacy -->
 <!-- Fictitious example. "WattWatch" is a teaching project name; any resemblance to real products or organizations is coincidental. The wattwatch.example.org domain is RFC 2606 reserved. -->
 
 ---
@@ -13,13 +14,36 @@ started: 2026-01-15T17:00:00Z
 updated: 2026-04-27T22:30:00Z
 ---
 
+## Ideal State
+
+### L3 · One sentence
+
+WattWatch is a local-first desktop app that shows a homeowner one live picture of whole-house energy across Shelly, Emporia, Sense, and home batteries, with nothing leaving the home network unless they opt in.
+
+### L2 · Summary
+
+WattWatch is the finished middle ground between five vendor apps and a hand-written Home Assistant install.
+
+- It aggregates Shelly, Emporia Vue, Sense, and home-battery gateway data into one local SQLite store.
+- It shows real-time whole-house power flow with per-circuit and per-device attribution.
+- It keeps a six-month historical archive on the homeowner's own disk.
+- It works fully offline by default, with optional end-to-end-encrypted cloud sync.
+
+### L1 · Full articulation
+
+People with rooftop solar, home batteries, and instrumented circuits have real-time energy data, but it lives in five vendor walled gardens that do not talk to each other and need a cloud round trip even for questions a sensor on the homeowner's own LAN could answer. WattWatch is the finished product between those apps and a hobbyist Home Assistant install: a Tauri-based desktop application, macOS first, Linux next, Windows last, distributed as signed installers (a `.dmg` on macOS) from `wattwatch.example.org`.
+
+The homeowner points it at their LAN and within ten minutes is watching live whole-house power flow with per-circuit attribution, per-device drill-down, and a six-month historical archive. It aggregates Shelly, Emporia Vue, Sense, and home-battery gateway sensor data into a unified local SQLite store on the homeowner's own disk. It operates fully offline by default, and optional end-to-end-encrypted cloud sync is the only path for data to leave the house.
+
+The moment it is right: on a hot afternoon the user opens the app, sees the heat pump pull 4.2kW while the solar array produces 6.8kW, and watches the home battery charge on the surplus in real time, without a single packet leaving the home network. They send a screenshot to a friend, and the friend installs the app the same night.
+
 ## Problem
 
-People with rooftop solar, home batteries, and smart-plug-instrumented circuits have access to real-time energy data, but the data lives in five vendor walled gardens. Shelly's app shows Shelly devices. Emporia shows Emporia. Sense shows Sense. Tesla's app shows Powerwall. None of them speak to each other; none of them produce a coherent house-level picture; all of them require a vendor cloud round-trip even for "is the heat pump on right now" questions answered by a sensor sitting on the homeowner's own LAN. Anyone who actually wants to optimize home electricity ends up running a Home Assistant install, hand-writing YAML for each integration, and accepting that the result is a hobbyist toolkit rather than a finished product. The middle ground — a polished desktop application that aggregates the major US residential energy sensors into one local-first picture — does not exist in 2026.
+People with rooftop solar, home batteries, and smart-plug-instrumented circuits have access to real-time energy data, but the data lives in five vendor walled gardens. Shelly's app shows Shelly devices. Emporia shows Emporia. Sense shows Sense. The battery vendor's app shows the battery. None of them speak to each other; none of them produce a coherent house-level picture; all of them require a vendor cloud round-trip even for "is the heat pump on right now" questions answered by a sensor sitting on the homeowner's own LAN. Anyone who actually wants to optimize home electricity ends up running a Home Assistant install, hand-writing YAML for each integration, and accepting that the result is a hobbyist toolkit rather than a finished product. The middle ground — a polished desktop application that aggregates the major US residential energy sensors into one local-first picture — does not exist in 2026.
 
 ## Vision
 
-A native desktop application (macOS-first, Linux next, Windows last) that the homeowner installs from a signed `.dmg`, points at their LAN, and within ten minutes is watching live whole-house power flow with per-circuit attribution, per-device drill-down, and a six-month historical archive — all stored locally on the homeowner's own disk. Euphoric surprise: the user opens the app on a hot afternoon, sees the heat pump pull 4.2kW while the solar array produces 6.8kW, and watches the Powerwall charge with the surplus in real time — without a single packet leaving the home network. They send a screenshot to a friend. The friend installs the app the same night.
+A native desktop application (macOS-first, Linux next, Windows last) that the homeowner installs from a signed `.dmg`, points at their LAN, and within ten minutes is watching live whole-house power flow with per-circuit attribution, per-device drill-down, and a six-month historical archive — all stored locally on the homeowner's own disk. Euphoric surprise: the user opens the app on a hot afternoon, sees the heat pump pull 4.2kW while the solar array produces 6.8kW, and watches the home battery charge with the surplus in real time — without a single packet leaving the home network. They send a screenshot to a friend. The friend installs the app the same night.
 
 ## Out of Scope
 
@@ -49,10 +73,6 @@ A native desktop application (macOS-first, Linux next, Windows last) that the ho
 - Sensor poll cadence is configurable but bounded: minimum 1 second, maximum 5 minutes, default 5 seconds for whole-house and 30 seconds for per-device.
 - The UI must remain responsive (60fps scroll, ≤ 100ms interaction latency p95) on a 2019 MacBook Air with 8GB RAM and 90 days of accumulated data.
 
-## Goal
-
-Ship a Tauri-based desktop application — code-named WattWatch and distributed via signed installers from `wattwatch.example.org` — that aggregates Shelly, Emporia Vue, Sense, and Tesla Powerwall sensor data into a unified local SQLite store, presents a real-time whole-house energy view with per-device attribution and a six-month historical archive, and operates fully offline by default with optional end-to-end-encrypted cloud sync.
-
 ## Criteria
 
 ### Build & Distribution
@@ -65,10 +85,10 @@ Ship a Tauri-based desktop application — code-named WattWatch and distributed 
 
 ### First-Run & Onboarding
 
-- [x] ISC-6: First-launch wizard completes in ≤ 10 minutes for a user with one Shelly device and one Powerwall.
+- [x] ISC-6: First-launch wizard completes in ≤ 10 minutes for a user with one Shelly device and one home battery.
 - [x] ISC-7: LAN scan auto-detects Shelly devices via mDNS (`_shelly._tcp.local`) within 30 seconds.
 - [x] ISC-8: Emporia Vue setup accepts the homeowner's local credentials and verifies UDP port 65432 is reachable.
-- [x] ISC-9: Tesla Powerwall setup accepts the gateway IP and the customer-set password (no Tesla cloud account required).
+- [x] ISC-9: Home-battery setup accepts the gateway IP and the customer-set password (no vendor cloud account required).
 - [x] ISC-10: Sense integration is gated behind a "experimental — cloud-only" disclaimer that the user must dismiss before enabling.
 - [ ] ISC-11: Onboarding stores zero credentials in plaintext on disk; all secrets land in OS keychain (Keychain on macOS, libsecret on Linux, Credential Manager on Windows).
 
@@ -76,7 +96,7 @@ Ship a Tauri-based desktop application — code-named WattWatch and distributed 
 
 - [x] ISC-12: Shelly driver polls Gen1 and Gen2 devices via local HTTP API (`/status` and `/rpc/Shelly.GetStatus`).
 - [x] ISC-13: Emporia Vue driver decodes the local UDP broadcast and maps the 16 circuit channels to user-named labels.
-- [x] ISC-14: Tesla Powerwall driver authenticates against `/api/login/Basic` and polls `/api/meters/aggregates` and `/api/system_status/soe` every 5 seconds.
+- [x] ISC-14: Home-battery driver authenticates against `/api/login/Basic` and polls `/api/meters/aggregates` and `/api/system_status/soe` every 5 seconds.
 - [ ] ISC-15: Sense driver (experimental) authenticates against the documented WebSocket and warns the user that this path requires a Sense cloud round-trip.
 - [x] ISC-16: A driver that fails three consecutive polls is marked `degraded` in the UI; ten consecutive failures marks it `offline` and pauses polling for 60 seconds.
 - [x] ISC-17: Driver poll latency p95 ≤ 200ms on LAN sensors; cloud sensors (Sense) p95 ≤ 2000ms.
@@ -140,73 +160,20 @@ Ship a Tauri-based desktop application — code-named WattWatch and distributed 
 
 ## Test Strategy
 
-```yaml
-- isc: ISC-2
-  type: notarization
-  check: macOS Gatekeeper accepts the signed .dmg
-  threshold: spctl reports "accepted (source=Notarized Developer ID)"
-  tool: spctl --assess --verbose dist/WattWatch.dmg
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-2 | bash | macOS Gatekeeper accepts the signed .dmg | spctl reports "accepted (source=Notarized Developer ID)" | spctl --assess --verbose dist/WattWatch.dmg |  |
+| ISC-3 | bash | artifact size after compression | ≤ 25MB | for f in dist/WattWatch.dmg dist/WattWatch.AppImage dist/WattWatch.msi; do test "$(du -m "$f" \| cut -f1)" -le 25 \|\| exit 1; done |  |
+| ISC-7 | bash | mDNS scan returns Shelly devices in test rig | ≥ 1 device discovered in ≤ 30s | bun run scripts/mdns-probe.ts |  |
+| ISC-14 | bash | home-battery driver reads /api/meters/aggregates with valid auth | returns site/load/solar/battery values | bun run scripts/battery-probe.ts --gateway 192.168.x.x |  |
+| ISC-21 | bash | PRAGMA integrity_check on existing db | returns "ok" | sqlite3 ${APP_DATA}/wattwatch/db.sqlite "PRAGMA integrity_check" \| grep -qx ok |  |
+| ISC-27 | manual | 60fps scroll with 90 days loaded | median frame time ≤ 16.6ms | tauri devtools performance recorder |  |
+| ISC-28 | bash | click → first paint p95 | ≤ 100ms | bun run scripts/ui-latency.ts --runs 200 |  |
+| ISC-39 | bash | synced payload is AES-256-GCM ciphertext, not plaintext | payload entropy ≥ 7.9 bits/byte | bun run scripts/sync-payload-entropy.ts |  |
+| ISC-46 | manual | outbound packets on first launch before consent | 0 packets to non-LAN destinations | tcpdump -i en0 'not net 192.168.0.0/16 and not net 10.0.0.0/8 and not net 172.16.0.0/12' for 60s |  |
+| ISC-49 | bash | no Electron in dependency tree | empty match | ! bun pm ls \| rg -qi electron |  |
+| ISC-50 | bash | no third-party telemetry SDK strings in source | 0 matches | `! rg -q "google-analytics\|sentry\|mixpanel\|posthog\|fullstory" src/` |  |
 
-- isc: ISC-3
-  type: bundle-size
-  check: artifact size after compression
-  threshold: ≤ 25MB
-  tool: du -m dist/WattWatch.dmg dist/WattWatch.AppImage dist/WattWatch.msi
-
-- isc: ISC-7
-  type: lan-discovery
-  check: mDNS scan returns Shelly devices in test rig
-  threshold: ≥ 1 device discovered in ≤ 30s
-  tool: bun run scripts/mdns-probe.ts
-
-- isc: ISC-14
-  type: driver-integration
-  check: Powerwall driver reads /api/meters/aggregates with valid auth
-  threshold: returns site/load/solar/battery values
-  tool: bun run scripts/powerwall-probe.ts --gateway 192.168.x.x
-
-- isc: ISC-21
-  type: db-integrity
-  check: PRAGMA integrity_check on existing db
-  threshold: returns "ok"
-  tool: sqlite3 ${APP_DATA}/wattwatch/db.sqlite "PRAGMA integrity_check"
-
-- isc: ISC-27
-  type: performance
-  check: 60fps scroll with 90 days loaded
-  threshold: median frame time ≤ 16.6ms
-  tool: tauri devtools performance recorder
-
-- isc: ISC-28
-  type: interaction-latency
-  check: click → first paint p95
-  threshold: ≤ 100ms
-  tool: bun run scripts/ui-latency.ts --runs 200
-
-- isc: ISC-39
-  type: crypto
-  check: synced payload is AES-256-GCM ciphertext, not plaintext
-  threshold: payload entropy ≥ 7.9 bits/byte
-  tool: bun run scripts/sync-payload-entropy.ts
-
-- isc: ISC-46
-  type: anti-probe
-  check: outbound packets on first launch before consent
-  threshold: 0 packets to non-LAN destinations
-  tool: tcpdump -i en0 'not net 192.168.0.0/16 and not net 10.0.0.0/8 and not net 172.16.0.0/12' for 60s
-
-- isc: ISC-49
-  type: anti-dep
-  check: no Electron in dependency tree
-  threshold: empty match
-  tool: bun pm ls | rg -i electron
-
-- isc: ISC-50
-  type: anti-telemetry
-  check: no third-party telemetry SDK strings in source
-  threshold: 0 matches
-  tool: rg "google-analytics|sentry|mixpanel|posthog|fullstory" src/
-```
 
 ## Features
 
@@ -223,8 +190,8 @@ Ship a Tauri-based desktop application — code-named WattWatch and distributed 
   depends_on: []
   parallelizable: true
 
-- name: SensorDriverPowerwall
-  description: Local Tesla Gateway auth + meter/battery polling
+- name: SensorDriverHomeBattery
+  description: Local the battery vendor Gateway auth + meter/battery polling
   satisfies: [ISC-9, ISC-14, ISC-16, ISC-17]
   depends_on: []
   parallelizable: true
@@ -250,7 +217,7 @@ Ship a Tauri-based desktop application — code-named WattWatch and distributed 
 - name: LiveDashboard
   description: Real-time whole-house view + Sankey + per-circuit panel
   satisfies: [ISC-23, ISC-24, ISC-25, ISC-26, ISC-27, ISC-28]
-  depends_on: [SensorDriverShelly, SensorDriverEmporia, SensorDriverPowerwall, LocalStorage]
+  depends_on: [SensorDriverShelly, SensorDriverEmporia, SensorDriverHomeBattery, LocalStorage]
   parallelizable: false
 
 - name: Alerts
@@ -323,7 +290,7 @@ Ship a Tauri-based desktop application — code-named WattWatch and distributed 
 - ISC-2: `spctl --assess --verbose dist/WattWatch.dmg` — `dist/WattWatch.dmg: accepted (source=Notarized Developer ID)`
 - ISC-3: `du -m dist/WattWatch.dmg` — `22M`; `du -m dist/WattWatch.AppImage` — `19M`; `du -m dist/WattWatch.msi` — `24M`
 - ISC-7: mdns-probe.ts run on test LAN with 3 Shelly Gen2 devices — discovered all 3 in 4.1s
-- ISC-14: powerwall-probe.ts against test gateway — `{site_now: -1240, load_now: 3120, solar_now: 4360, battery_now: 0, percentage_charged: 87.4}`
+- ISC-14: battery-probe.ts against test gateway — `{site_now: -1240, load_now: 3120, solar_now: 4360, battery_now: 0, percentage_charged: 87.4}`
 - ISC-21: `sqlite3 db.sqlite "PRAGMA integrity_check"` — `ok`
 - ISC-27: Tauri devtools recorder, 90-day dataset on 2019 MacBook Air — median frame time 14.2ms during scroll
 - ISC-28: ui-latency.ts 200 runs on tier-1 hardware — p95 click-to-paint 78ms

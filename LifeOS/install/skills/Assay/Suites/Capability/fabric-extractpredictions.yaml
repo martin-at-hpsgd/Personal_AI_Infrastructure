@@ -1,0 +1,153 @@
+# Fabric ExtractPredictions — every prediction a source makes, as short bullets
+# and a Prediction / Confidence / Date / How to Verify table. The code asserts
+# pin the literal shape (title, the exact table header, plain Markdown, the
+# no-predictions line, stated figures carried through); the judged asserts
+# carry what code cannot: what counts as a prediction, confidence and dates
+# kept as given and never invented, attribution, and specific verifications.
+# Synthetic inline fixtures only; every organization and person is fictional,
+# except the one public on-record case.
+name: fabric-extractpredictions
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExtractPredictions.md"
+cases:
+  - id: pasted_memo_mixed_statements
+    prompt: |
+      extract_predictions
+
+      Fictional Harlow Advisory, market memo, March 2026.
+      Office vacancy in the downtown core is 18% today. We expect the Harlow Central Bank to cut its policy rate below 4% by December 2027; we put the odds at 70%. Our team will open a Lisbon office next spring. If mortgage rates stay above 7%, regional home prices will fall at least 5% within two years, and I'd call that almost certain. We hope the housing market cools. Electric vehicles will eventually make up most new car sales in the region.
+    # SYNTHETIC ADVERSARIAL FIXTURE: title, exact header, plain Markdown and the
+    # 70% figure are all in place, so every code assert passes. But it lists the
+    # present vacancy fact and the Lisbon plan as predictions, invents a 60%
+    # confidence and a 2030 deadline for the EV claim, drops the condition from
+    # the home-price prediction, and gives generic verifications.
+    adversarial_output: |
+      # Predictions: Harlow Advisory March 2026 Memo
+
+      - Office vacancy in the downtown core will be 18%.
+      - The central bank cuts its policy rate below 4% by December 2027.
+      - Harlow Advisory opens a Lisbon office next spring.
+      - Regional home prices fall at least 5% within two years.
+      - Electric vehicles make up most new regional car sales by 2030.
+
+      | Prediction | Confidence | Date | How to Verify |
+      |---|---|---|---|
+      | Office vacancy in the downtown core will be 18%. | Not stated | No date given | Check the vacancy numbers later on |
+      | The central bank cuts its policy rate below 4% by December 2027. | 70% | By December 2027 | See whether the bank cuts rates |
+      | Harlow Advisory opens a Lisbon office next spring. | Not stated | Spring 2027 | See whether the office opens |
+      | Regional home prices fall at least 5% within two years. | 'almost certain' | Within two years | Watch the housing news for drops |
+      | Electric vehicles make up most new regional car sales by 2030. | 60% | By 2030 | Check car sales when the time comes |
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#\s+Predictions:\s+\S'
+      - type: regex
+        weight: 3
+        value: '\|\s*Prediction\s*\|\s*Confidence\s*\|\s*Date\s*\|\s*How to Verify\s*\|'
+      - type: contains
+        value: "70%"
+        weight: 1
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 5
+        value: [ "The predictions listed are the rate cut below 4% by December 2027, the conditional home-price fall, and the electric-vehicle claim; the present office-vacancy fact, the Lisbon office plan and the hope that the market cools are not listed as predictions", "The home-price prediction keeps its condition (mortgage rates staying above 7%)", "Confidence is kept as the memo gave it (70% for the rate cut, 'almost certain' for home prices) and the electric-vehicle claim's confidence is Not stated, never an invented number", "The electric-vehicle claim's date is No date given or 'eventually', never an invented year; the home-price date is within two years, resolved to about March 2028 or kept as said", "Each How to Verify names a specific measure, where it would be published or seen, and the threshold, not a generic 'see if it happens'" ]
+        reference: |
+          extract_predictions on a fictional March 2026 memo: present fact (vacancy 18% today), a 70% forecast of a rate cut below 4% by December 2027, a firm's own office plan, a conditional 'almost certain' forecast that home prices fall 5% within two years if mortgage rates stay above 7%, a hope, and an undated, unquantified forecast that EVs will eventually be most new car sales.
+  - id: multi_speaker_relative_date
+    prompt: |
+      extract predictions from this podcast transcript (recorded 10 May 2026, fictional show "Grid Talk"):
+
+      Rivera (host): Welcome back. Last year home batteries were the big story.
+      Okafor (guest): And they still are. I think within two years at least one grid operator, say Northline, will run a full day on batteries and renewables alone. Maybe fifty-fifty.
+      Rivera: I'm more bullish on rooftop solar. I'd bet heavily that home solar installs in the state double by 2030.
+      Okafor: Possible. Prices certainly dropped a lot last year.
+    assert:
+      - type: regex
+        weight: 3
+        value: '\|\s*Prediction\s*\|\s*Confidence\s*\|\s*Date\s*\|\s*How to Verify\s*\|'
+      - type: icontains
+        value: "Okafor"
+        weight: 1
+      - type: icontains
+        value: "Rivera"
+        weight: 1
+      - type: contains
+        value: "2030"
+        weight: 1
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 5
+        value: [ "Exactly two predictions are listed: Okafor's grid operator running a full day on batteries and renewables, and Rivera's home solar installs doubling by 2030; the remarks about last year are not predictions", "Each prediction is attributed to the speaker who made it", "Okafor's confidence is kept as given (fifty-fifty, 50%) and Rivera's as given (bet heavily), not replaced with the extractor's own numbers", "Okafor's 'within two years' is resolved against the May 2026 recording date to about May 2028, or kept as said with that date", "Each How to Verify names what to measure and where, for example a grid operator's published generation mix for a full day, or state installation counts against a stated baseline" ]
+        reference: |
+          extract predictions from a podcast recorded 10 May 2026: guest Okafor, 'maybe fifty-fifty', says within two years a grid operator such as Northline runs a full day on batteries and renewables alone; host Rivera, 'I'd bet heavily', says home solar installs in the state double by 2030.
+  - id: no_predictions_in_source
+    prompt: |
+      extract_predictions
+
+      The fictional Carrow Valley Museum opened in 1962 in a converted grain mill. Its first exhibit showed farm tools from the 1800s, and in 1988 it added a wing for textiles. Today it holds about 4,000 objects and is open Tuesday to Sunday.
+    assert:
+      - type: contains
+        value: "No predictions found in"
+        weight: 3
+      - type: not-contains
+        value: "| Prediction"
+        weight: 2
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)#\s+Predictions:\s+\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The output says there are no predictions in the museum text and invents none", "The output is only the title and the single no-predictions line, with no commentary or explanation" ]
+        reference: |
+          extract_predictions on a fictional museum's history paragraph that states only past and present facts.
+  - id: bare_question_on_record
+    prompt: "extract_predictions: what did Ray Kurzweil predict for 2029?"
+    assert:
+      - type: regex
+        weight: 3
+        value: '\|\s*Prediction\s*\|\s*Confidence\s*\|\s*Date\s*\|\s*How to Verify\s*\|'
+      - type: contains
+        value: "2029"
+        weight: 1
+      - type: icontains
+        value: "Kurzweil"
+        weight: 1
+      - type: not-icontains
+        value: "which source"
+        weight: 1
+      - type: llm-assert
+        weight: 5
+        value: [ "The output answers the question directly rather than asking which source or document to use", "It includes Kurzweil's on-record prediction that by 2029 an AI will pass a valid Turing test or reach human-level intelligence, attributed to him with when he made it (for example his 1999 or 2005 books)", "Every prediction listed is one Kurzweil is known to have made for 2029; none is invented or attributed to him without basis", "Confidence is Kurzweil's own stated confidence or Not stated, never the extractor's estimate" ]
+        reference: "extract_predictions: what did Ray Kurzweil predict for 2029? (On record: by 2029 computers pass a valid Turing test / reach human-level AI, stated in The Age of Spiritual Machines, 1999, and The Singularity Is Near, 2005.)"
+  - id: hint_keeps_only_housing
+    prompt: |
+      extract predictions, only the ones about housing:
+
+      Fictional city newsletter, January 2026. Councillor Abiodun expects the new zoning rules to add 3,000 homes by 2028. The Riverside Comets will win the regional league this season, according to coach Delacroix, who says he is sure of it. Abiodun also predicts average rents downtown will stop rising by mid-2027, though she admits it is a guess.
+    assert:
+      - type: regex
+        weight: 3
+        value: '\|\s*Prediction\s*\|\s*Confidence\s*\|\s*Date\s*\|\s*How to Verify\s*\|'
+      - type: contains
+        value: "3,000"
+        weight: 1
+      - type: not-icontains
+        value: "Comets"
+        weight: 2
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "Only the two housing predictions are listed (3,000 homes by 2028 and downtown rents stopping their rise by mid-2027); the sports prediction is left out", "The rent prediction's confidence reflects that she called it a guess, and the homes prediction's confidence is Not stated", "Each How to Verify names a specific count or index and where it would be published, such as city permit or completion records, or a downtown rent index" ]
+        reference: |
+          extract predictions, only housing, from a fictional January 2026 newsletter: a councillor expects zoning to add 3,000 homes by 2028 (no confidence) and rents downtown to stop rising by mid-2027 ('a guess'); a coach is sure a sports team wins the league this season.

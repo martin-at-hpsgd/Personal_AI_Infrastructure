@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.6.29
  * IntegrityMaintenance.ts - Background script for system integrity and update documentation
  *
  * Receives change data from SystemIntegrity.ts handler via stdin JSON.
@@ -19,12 +20,12 @@
  */
 
 import { spawn } from 'child_process';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, unlinkSync } from 'fs';
 import { join, basename, dirname } from 'path';
 import { inference } from './Inference';
 import { getIdentity } from '../../hooks/lib/identity';
 import { PULSE_BASE } from '../PULSE/endpoint';
-import { homedir } from "node:os";
+import { getLifeosDir, lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // ============================================================================
 // Types
@@ -36,7 +37,8 @@ type ChangeType =
   | 'structure_change'
   | 'doc_update'
   | 'hook_update'
-  | 'workflow_update'
+  | 'intent_update'
+  | 'workflow_update' // name before 2026-10-08; old records still carry it
   | 'config_update'
   | 'tool_update'
   | 'multi_area';
@@ -110,9 +112,9 @@ interface UpdateData {
 // Constants
 // ============================================================================
 
-const LIFEOS_DIR = homedir() + '/.claude/LIFEOS';
+const LIFEOS_DIR = getLifeosDir();
 // NOT under LIFEOS_DIR — skills/ lives at the ~/.claude root, not under LIFEOS/.
-const CREATE_UPDATE_SCRIPT = join(homedir(), '.claude/LIFEOS/TOOLS/CreateUpdate.ts');
+const CREATE_UPDATE_SCRIPT = lifeosPath('TOOLS', 'CreateUpdate.ts');
 
 // Words that indicate generic/bad titles - reject these
 const GENERIC_TITLE_PATTERNS = [
@@ -234,11 +236,11 @@ function generateDescriptiveTitle(changes: FileChange[]): string {
 
   // Extract file types
   const hasSkillMd = paths.some(p => p.endsWith('SKILL.md'));
-  const hasWorkflows = paths.some(p => p.includes('/Workflows/'));
+  const hasIntents = paths.some(p => p.includes('/Intents/'));
   const hasTools = paths.some(p => p.includes('/Tools/') && p.endsWith('.ts'));
   const hasHooks = paths.some(p => p.includes('hooks/'));
   const hasConfig = paths.some(p => p.endsWith('settings.json'));
-  const hasLifeosSystem = paths.some(p => p.includes('/PAI/'));
+  const hasLifeosSystem = paths.some(p => p.includes('/LIFEOS/'));
   const hasLifeosUser = paths.some(p => p.includes('LIFEOS/USER/'));
 
   // Extract common patterns from filenames
@@ -253,14 +255,14 @@ function generateDescriptiveTitle(changes: FileChange[]): string {
     const skill = [...skillNames][0];
     if (hasSkillMd) {
       title = `${skill} Skill Definition Update`;
-    } else if (hasWorkflows) {
-      const workflowNames = paths
-        .filter(p => p.includes('/Workflows/'))
+    } else if (hasIntents) {
+      const intentNames = paths
+        .filter(p => p.includes('/Intents/'))
         .map(p => basename(p, '.md'));
-      if (workflowNames.length === 1) {
-        title = `${skill} ${workflowNames[0]} Workflow Update`;
+      if (intentNames.length === 1) {
+        title = `${skill} ${intentNames[0]} Intent Update`;
       } else {
-        title = `${skill} Workflows Updated`;
+        title = `${skill} Intents Updated`;
       }
     } else if (hasTools) {
       const toolNames = paths
@@ -300,7 +302,7 @@ function generateDescriptiveTitle(changes: FileChange[]): string {
   // LifeOS system changes
   else if (hasLifeosSystem) {
     const docNames = paths
-      .filter(p => p.includes('/PAI/'))
+      .filter(p => p.includes('/LIFEOS/'))
       .map(p => basename(p, '.md'));
     if (docNames.length === 1) {
       title = `${docNames[0]} Documentation Updated`;
@@ -401,7 +403,7 @@ function determineSignificance(changes: FileChange[]): SignificanceLabel {
     return 'critical';
   }
 
-  // Major: new skills/workflows, architectural decisions
+  // Major: new skills/intents, architectural decisions
   if (hasNewFiles && (hasStructural || hasPhilosophical)) {
     return 'major';
   }
@@ -455,7 +457,7 @@ function inferChangeType(changes: FileChange[]): ChangeType {
     switch (cat) {
       case 'skill': return changes.some(c => c.isStructural) ? 'structure_change' : 'skill_update';
       case 'hook': return 'hook_update';
-      case 'workflow': return 'workflow_update';
+      case 'intent': return 'intent_update';
       case 'config': return 'config_update';
       case 'core-system': return 'structure_change';
       case 'documentation': return 'doc_update';
@@ -466,7 +468,7 @@ function inferChangeType(changes: FileChange[]): ChangeType {
   // Two categories - pick the more significant one
   if (uniqueCategories.has('hook')) return 'hook_update';
   if (uniqueCategories.has('skill')) return 'skill_update';
-  if (uniqueCategories.has('workflow')) return 'workflow_update';
+  if (uniqueCategories.has('intent')) return 'intent_update';
   if (uniqueCategories.has('config')) return 'config_update';
 
   return 'multi_area';
@@ -503,8 +505,9 @@ function generatePurpose(changes: FileChange[], title: string): string {
       return `Improve documentation clarity and accuracy ${skillContext}`;
     case 'hook_update':
       return 'Enhance lifecycle event handling and automation';
+    case 'intent_update':
     case 'workflow_update':
-      return `Update workflow routing and processes ${skillContext}`;
+      return `Update intent routing and processes ${skillContext}`;
     case 'config_update':
       return 'Adjust system configuration settings';
     case 'tool_update':
@@ -539,8 +542,9 @@ function generateExpectedImprovement(changes: FileChange[]): string {
     case 'hook_update':
       improvements.push('More reliable automation');
       break;
+    case 'intent_update':
     case 'workflow_update':
-      improvements.push('Smoother workflow execution');
+      improvements.push('Smoother intent execution');
       break;
     case 'config_update':
       improvements.push('Better system behavior');
@@ -798,6 +802,7 @@ async function sendVoiceNotification(message: string): Promise<void> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, play: true }),
+        signal: AbortSignal.timeout(5000),
       });
       return;
     }
@@ -824,6 +829,7 @@ async function sendVoiceNotification(message: string): Promise<void> {
           playfulness: personality.playfulness,
         },
       }),
+      signal: AbortSignal.timeout(5000),
     });
   } catch {
     // Voice server might not be running - silent fail
@@ -879,14 +885,30 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** The change list from `--input <file>` (deleted once read), else stdin. The SessionEnd hook passes a file
+ *  because it exits before a stdin pipe can flush (2026-10-10). */
+export async function readMaintenanceInput(argv: string[]): Promise<string> {
+  const i = argv.indexOf('--input');
+  if (i >= 0 && argv[i + 1]) {
+    const path = argv[i + 1];
+    try {
+      const data = readFileSync(path, 'utf8');
+      try { unlinkSync(path); } catch {}
+      return data;
+    } catch (e) {
+      console.error(`[IntegrityMaintenance] Could not read input file ${path}:`, e);
+      return '';
+    }
+  }
+  let data = '';
+  for await (const chunk of Bun.stdin.stream()) data += new TextDecoder().decode(chunk);
+  return data;
+}
+
 async function main(): Promise<void> {
   console.error('[IntegrityMaintenance] Starting background integrity check...');
 
-  // Read input from stdin
-  let inputData = '';
-  for await (const chunk of Bun.stdin.stream()) {
-    inputData += new TextDecoder().decode(chunk);
-  }
+  const inputData = await readMaintenanceInput(process.argv.slice(2));
 
   if (!inputData.trim()) {
     console.error('[IntegrityMaintenance] No input received, exiting');
@@ -978,7 +1000,7 @@ async function main(): Promise<void> {
   console.error('[IntegrityMaintenance] Complete');
 }
 
-main().catch(err => {
+if (import.meta.main) main().catch(err => {
   console.error('[IntegrityMaintenance] Error:', err);
   process.exit(1);
 });

@@ -1,0 +1,2515 @@
+{
+  "metadata": {
+    "source": "https://raw.githubusercontent.com/jacobdjwilson/awesome-annual-security-reports/main",
+    "lastUpdated": "2026-10-14",
+    "totalReports": 492
+  },
+  "categories": {
+    "analysis": {
+      "global_threat_intelligence": [
+        {
+          "vendor": "Abnormal",
+          "name": "Attack Landscape Report",
+          "url": "https://abnormal.ai/resources/attack-landscape-report-2026"
+        },
+        {
+          "vendor": "APWG",
+          "name": "Phishing Activity Trends Report",
+          "url": "https://apwg.org/trendsreports/"
+        },
+        {
+          "vendor": "Artic Wolf Labs",
+          "name": "Cybersecurity Predictions",
+          "url": "https://arcticwolf.com/arctic-wolf-labs-2025-cybersecurity-predictions/"
+        },
+        {
+          "vendor": "Artic Wolf Labs",
+          "name": "Threat Report",
+          "url": "https://github.com/jacobdjwilson/awesome-annual-security-reports"
+        },
+        {
+          "vendor": "Astra",
+          "name": "Cybersecurity Statistics Report",
+          "url": "https://www.getastra.com/blog/security-audit/cyber-security-statistics/"
+        },
+        {
+          "vendor": "Axur",
+          "name": "Threat Landscape",
+          "url": "https://www.axur.com/en-us/threat-landscape-report"
+        },
+        {
+          "vendor": "BeazleySecurity",
+          "name": "Quarterly Threat Report Q1",
+          "url": "https://beazley.security/insights/quarterly-threat-report-first-quarter-2026"
+        },
+        {
+          "vendor": "Biocatch",
+          "name": "Digital Banking Fraud Trends In The United States",
+          "url": "https://www.biocatch.com/press-release/u.s.-financial-institutions-report-168-spike-in-detected-money-laundering-accounts"
+        },
+        {
+          "vendor": "Bitdefender",
+          "name": "IoT Security Report",
+          "url": "https://itwire.com/guest-articles/guest-research/new-bitdefender-and-netgear-report-reveals-rising-threats-across-the-connected-home-landscape.html"
+        },
+        {
+          "vendor": "Bitsight",
+          "name": "State of the Underground",
+          "url": "https://www.bitsight.com/resources/state-of-the-underground-2026"
+        },
+        {
+          "vendor": "Bridewell",
+          "name": "Cyber Threat Intelligence Report",
+          "url": "https://www.bridewell.com/insights/white-papers/detail/cyber-threat-intelligence-report-2025"
+        },
+        {
+          "vendor": "Cato Networks",
+          "name": "Threat Report",
+          "url": "https://www.catonetworks.com/resources/2025-cato-ctrl-threat-report-rise-of-zero-knowledge-threat-actor/"
+        },
+        {
+          "vendor": "Chainalysis",
+          "name": "Crypto Crime Report",
+          "url": "https://www.chainalysis.com/reports/crypto-crime-2026/"
+        },
+        {
+          "vendor": "Check Point",
+          "name": "Cybersecurity Report",
+          "url": "https://blog.checkpoint.com/executive-insights/the-2026-tech-tsunami-ai-quantum-and-web-4-0-collide/"
+        },
+        {
+          "vendor": "Cisco",
+          "name": "Cyber Threats Trends Report",
+          "url": "https://umbrella.cisco.com/info/cyber-threat-trends-report"
+        },
+        {
+          "vendor": "Cisco",
+          "name": "Talos Year In Review",
+          "url": "https://newsroom.cisco.com/c/r/newsroom/en/us/a/y2026/m03/2025-talos-year-in-review-speed-scale-and-staying-power.html"
+        },
+        {
+          "vendor": "Cloudflare",
+          "name": "Threat Report",
+          "url": "https://blog.cloudflare.com/2026-threat-report/"
+        },
+        {
+          "vendor": "Cloudflare",
+          "name": "Security Signals Report",
+          "url": "https://www.cloudflare.com/resource/2026-cloudflare-security-signals-report/"
+        },
+        {
+          "vendor": "Coalition",
+          "name": "Cyber Claims Report",
+          "url": "https://web.coalitioninc.com/webinar-2026-Cyber-Claims-Report-2026-03-05.html"
+        },
+        {
+          "vendor": "Cofense",
+          "name": "The New Era of Phishing",
+          "url": "https://cofense.com/annual-report/"
+        },
+        {
+          "vendor": "Crowd Strike",
+          "name": "Global Threat Report",
+          "url": "https://ir.crowdstrike.com/news-releases/news-release-details/2026-crowdstrike-global-threat-report-ai-accelerates-adversaries"
+        },
+        {
+          "vendor": "Crowd Strike",
+          "name": "Threat Hunting Report",
+          "url": "https://www.crowdstrike.com/en-us/blog/crowdstrike-2026-threat-hunting-report/"
+        },
+        {
+          "vendor": "Cyber Proof",
+          "name": "Mid Year Cyber Threat Landscape",
+          "url": "https://www.cyberproof.com/cyber-threat-intelligence/cyberproof-2025-mid-year-cyber-threat-landscape-report/"
+        },
+        {
+          "vendor": "CyberProof",
+          "name": "Global Threat Intelligence Report",
+          "url": "https://www.cyberproof.com/blog/cyberproof-2026-global-threat-intelligence-report/"
+        },
+        {
+          "vendor": "Cyble",
+          "name": "Global Threat Landscape",
+          "url": "https://cyble.com/resources/research-reports/global-threat-landscape-report-h1-2025/"
+        },
+        {
+          "vendor": "Darktrace",
+          "name": "Annual Threat Report",
+          "url": "https://www.darktrace.com/resources/annual-threat-report-2026"
+        },
+        {
+          "vendor": "Dataminr",
+          "name": "Cyber Threat Landscape Report",
+          "url": "https://resources.dataminr.com/dataminr-for-cyber-defense/dataminr-2026-cyber-threat-landscape-report"
+        },
+        {
+          "vendor": "Deep Instinct",
+          "name": "Threat Landscape Report",
+          "url": "https://info.deepinstinct.com/2025_cyber_threat_landscape_report"
+        },
+        {
+          "vendor": "Deloitte",
+          "name": "Global Cyber Threat Intelligence Report",
+          "url": "https://www.deloitte.com/us/en/services/consulting/articles/cybersecurity-report-2025.html"
+        },
+        {
+          "vendor": "Department of Homeland Security",
+          "name": "Threat Assessment",
+          "url": "https://www.dhs.gov/publication/homeland-threat-assessment"
+        },
+        {
+          "vendor": "DigiCert",
+          "name": "Ultraddos Biannual Report",
+          "url": "https://www.digicert.com/campaigns/digicert-ultraddos-2025-biannual-report"
+        },
+        {
+          "vendor": "DNS Filter",
+          "name": "Annual Security Report",
+          "url": "https://explore.dnsfilter.com/2025-annual-security-report"
+        },
+        {
+          "vendor": "Eset",
+          "name": "Threat Report",
+          "url": "https://www.eset.com/us/business/resource-center/reports/eset-mdr-threat-report-q1-2026"
+        },
+        {
+          "vendor": "Europool",
+          "name": "Internet Organized Crime Threat Assessment",
+          "url": "https://www.europol.europa.eu/publications-events/main-reports/iocta-report"
+        },
+        {
+          "vendor": "Expel",
+          "name": "Annual Threat Report",
+          "url": "https://expel.com/annual-threat-report/"
+        },
+        {
+          "vendor": "F5",
+          "name": "Advanced Persistent Bots Report",
+          "url": "https://www.f5.com/labs/articles/2025-advanced-persistent-bots-report"
+        },
+        {
+          "vendor": "FBI",
+          "name": "IC3 Report",
+          "url": "https://www.fbi.gov/contact-us/field-offices/columbia/news/south-carolinians-lose-264-million-to-cybercrime-according-to-newly-released-2025-annual-ic3-report"
+        },
+        {
+          "vendor": "Flashpoint",
+          "name": "Global Threat Intelligence Report",
+          "url": "https://flashpoint.io/resources/report/flashpoint-global-threat-intelligence-report-2026/"
+        },
+        {
+          "vendor": "Forescout",
+          "name": "Threat Review",
+          "url": "https://www.forescout.com/press-releases/forescout-2025h1-threat-review-highlights-surge-in-zero-day-exploits-nation-backed-hacktivism-and-healthcare-vulnerabilities/"
+        },
+        {
+          "vendor": "Fortinet",
+          "name": "Global Threat Report",
+          "url": "https://www.fortinet.com/blog/threat-research/key-takeaways-from-the-2025-global-threat-landscape-report"
+        },
+        {
+          "vendor": "Fortra",
+          "name": "BEC Global Insights Report",
+          "url": "https://www.fortra.com/resources/reports/bec-global-insights-2026"
+        },
+        {
+          "vendor": "Guardz",
+          "name": "SMB Threat Report",
+          "url": "https://guardz.com/blog/small-business-cyberattacks-rise-in-2025-guardz-mid-year-findings/"
+        },
+        {
+          "vendor": "Guardz",
+          "name": "State of MSP Threat Report",
+          "url": "https://digitalisationworld.com/news/22262-guardz-2026-state-of-msp-threat-report-ai-and-cybersecurity-landscape"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Proven ways to block CLI spoofing scams",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "Honeywell",
+          "name": "Cyber Threat Report",
+          "url": "https://www.honeywell.com/us/en/reports/2025/honeywell-cyber-threat-report"
+        },
+        {
+          "vendor": "Huntress",
+          "name": "Cyber Threat Report",
+          "url": "https://www.huntress.com/cyber-threat-report"
+        },
+        {
+          "vendor": "IBM",
+          "name": "X Force Threat Intelligence Index",
+          "url": "https://www.ibm.com/reports/threat-intelligence"
+        },
+        {
+          "vendor": "Infoblox",
+          "name": "DNS Threat Landscape Report",
+          "url": "https://financialpost.com/globe-newswire/infoblox-unveils-2025-dns-threat-landscape-report-revealing-surge-in-ai-driven-threats-and-malicious-adtech"
+        },
+        {
+          "vendor": "Intel471",
+          "name": "Cyber Threat Trends and Outlook Report",
+          "url": "https://www.intel471.com/resources/whitepapers/2026-cyber-threat-trends-and-outlook"
+        },
+        {
+          "vendor": "K7 Security",
+          "name": "Cyber Threat Monitor Report",
+          "url": "https://www.k7computing.com/us/threat-reports"
+        },
+        {
+          "vendor": "Kaspersky",
+          "name": "Security Services Global Report",
+          "url": "https://securelist.com/global-report-security-services-2026/119233/"
+        },
+        {
+          "vendor": "KnowBe4",
+          "name": "Phishing Threat Trends Report",
+          "url": "https://www.knowbe4.com/resources/reports/2026-phishing-threat-trends-vol-7"
+        },
+        {
+          "vendor": "Kroll",
+          "name": "Threat Landscape Report",
+          "url": "https://www.kroll.com/en/reports/cyber/threat-intelligence-reports/threat-landscape-report-lens-on-crypto"
+        },
+        {
+          "vendor": "Mandiant",
+          "name": "M Trends",
+          "url": "https://blog.google/innovation-and-ai/infrastructure-and-cloud/google-cloud/m-trends-2026-report-cybersecurity/"
+        },
+        {
+          "vendor": "Microsoft",
+          "name": "Digital Defense Report",
+          "url": "https://www.microsoft.com/en-us/corporate-responsibility/topics/cybersecurity/reports/microsoft-digital-defense-report/"
+        },
+        {
+          "vendor": "Mile2",
+          "name": "Global Cyberthreat Report",
+          "url": "https://mile2.com/2026-global-cyberthreat-report/"
+        },
+        {
+          "vendor": "Mimecast",
+          "name": "Global Threat Intelligence Report",
+          "url": "https://www.mimecast.com/resources/ebooks/threat-intelligence-january-june-2025/"
+        },
+        {
+          "vendor": "NC Tech",
+          "name": "State Of Cybersecurity",
+          "url": "https://www.nctech.org/_files/_pdf/talent/NC%20Tech%20State%20of%20the%20Technology%20Industry%20Report%202025.pdf"
+        },
+        {
+          "vendor": "NCSC",
+          "name": "Annual Review",
+          "url": "https://www.ncsc.gov.uk/collection/ncsc-annual-review-2025"
+        },
+        {
+          "vendor": "Netscout",
+          "name": "DDoS Threat Intelligence Report",
+          "url": "https://www.netscout.com/threatreport/"
+        },
+        {
+          "vendor": "Nexusguard",
+          "name": "DDoS Threat Analysis and Industry Perspectives",
+          "url": "https://www.plataformamedia.com/en/2026/05/18/nexusguard-releases-2025-ddos-threat-analysis-and-industry-perspectives-report/"
+        },
+        {
+          "vendor": "Okta",
+          "name": "Secure Identity Commitment",
+          "url": "https://www.okta.com/reports/businesses-at-work-archive/"
+        },
+        {
+          "vendor": "Orange Cyber Defense",
+          "name": "Security Navigator",
+          "url": "https://www.orangecyberdefense.com/global/security-navigator"
+        },
+        {
+          "vendor": "Palo Alto",
+          "name": "Global Incident Response Report",
+          "url": "https://www.paloaltonetworks.com/blog/2026/02/unit-42-global-ir-report/"
+        },
+        {
+          "vendor": "PDI",
+          "name": "Cyber Threat Landscape Report Q1",
+          "url": "https://pditechnologies.com/resources/report/cyber-threat-landscape-report-q1-2026/"
+        },
+        {
+          "vendor": "Picus",
+          "name": "Red Report",
+          "url": "https://www.picussecurity.com/red-report"
+        },
+        {
+          "vendor": "Plume",
+          "name": "Residential Proxy Malware",
+          "url": "https://www.plume.com/newsroom/plume-security-labs-exposes-hidden-proxy-network-inside-superbox-devices"
+        },
+        {
+          "vendor": "Point Wild",
+          "name": "Malware Trend Analysis Report",
+          "url": "https://pointwild.com/research/malware-trend-q2-2026/"
+        },
+        {
+          "vendor": "Rapid7",
+          "name": "Initial Access Brokers Report",
+          "url": "https://www.rapid7.com/lp/initial-access-brokers-report/"
+        },
+        {
+          "vendor": "Recorded Future",
+          "name": "State of Security",
+          "url": "https://www.recordedfuture.com/research/state-of-security"
+        },
+        {
+          "vendor": "Recorded Future",
+          "name": "Payment Fraud Intelligence Report",
+          "url": "https://www.recordedfuture.com/resources/guides/annual-payment-fraud-intelligence-report-2025"
+        },
+        {
+          "vendor": "Red Canary",
+          "name": "Threat Detection Report",
+          "url": "https://redcanary.com/threat-detection-report"
+        },
+        {
+          "vendor": "Relia Quest",
+          "name": "Annual Threat Report",
+          "url": "https://www.reliaquest.com/resources/research-reports/annual-threat-report-2025/"
+        },
+        {
+          "vendor": "Resilience",
+          "name": "Cyber Risk Report",
+          "url": "https://unlock.cyberresilience.com/2025midyear_risk_report"
+        },
+        {
+          "vendor": "Securtas",
+          "name": "Annual Intelligence Estimate Report",
+          "url": "https://www.securitas.uk.com/news-insights/reports/risk-intelligence-center-annual-intelligence-estimate-2026-report/"
+        },
+        {
+          "vendor": "Shieldworkz",
+          "name": "Global OT And IoT Threat Landscape Report",
+          "url": "https://shieldworkz.com/2025-ot-ics-iot-cybersecurity-threat-landscape-report"
+        },
+        {
+          "vendor": "SilentPush",
+          "name": "Threat Actor Study",
+          "url": "https://www.silentpush.com/white-papers-and-reports/threat-actor-study/"
+        },
+        {
+          "vendor": "SonicWall",
+          "name": "Cyber Threat Report",
+          "url": "https://www.sonicwall.com/threat-report/"
+        },
+        {
+          "vendor": "SonicWall",
+          "name": "Cyber Protect Report",
+          "url": "https://www.sonicwall.com/es-mx/resources/white-papers/sonicwall-2026-cyber-protect-report"
+        },
+        {
+          "vendor": "Sophos",
+          "name": "Threat Report",
+          "url": "https://www.sophos.com/en-us/blog/the-sophos-annual-threat-report-cybercrime-on-main-street-2025"
+        },
+        {
+          "vendor": "Sophos",
+          "name": "Active Adversary Report",
+          "url": "https://www.sophos.com/en-us/press/press-releases/sophos-active-adversary-report-2026-identity-attacks-dominate-as-threat-groups-proliferate"
+        },
+        {
+          "vendor": "Sopra Steria",
+          "name": "State of Security",
+          "url": "https://www.soprasteria.com/services/servicescybersecurity/report-the-state-of-cybersecurity-2025"
+        },
+        {
+          "vendor": "Spycloud",
+          "name": "The Identity Security Reckoning",
+          "url": "https://spycloud.com/resource/report/2025-lessons-2026-predictions/"
+        },
+        {
+          "vendor": "StationX",
+          "name": "Phishing Statistics",
+          "url": "https://app.stationx.net/articles/phishing-statistics"
+        },
+        {
+          "vendor": "Switzerland",
+          "name": "Cybersecurity Report",
+          "url": "https://www.ncsc.gov.uk/section/keep-up-to-date/reports-advisories"
+        },
+        {
+          "vendor": "Thales",
+          "name": "Data-Threat-Report",
+          "url": "https://cpl.thalesgroup.com/data-threat-report"
+        },
+        {
+          "vendor": "Thinkst",
+          "name": "Scapes Q1",
+          "url": "https://thinkst.com/thinkstscapes"
+        },
+        {
+          "vendor": "Threatdown",
+          "name": "State of Malware",
+          "url": "https://www.threatdown.com/state-of-malware-2026/"
+        },
+        {
+          "vendor": "Trend Micro",
+          "name": "Annual Cybersecurity Threat Report",
+          "url": "https://www.trendmicro.com/vinfo/us/security/news/threat-landscape/trend-2025-cyber-risk-report"
+        },
+        {
+          "vendor": "Truesec",
+          "name": "Threat Intelligence Report",
+          "url": "https://www.truesec.com/threat-intelligence-report-2026"
+        },
+        {
+          "vendor": "WatchGuard",
+          "name": "Global Threat Report Edition",
+          "url": "https://www.watchguard.com/wgrd-resource-center/threat-report"
+        },
+        {
+          "vendor": "Whitehouse",
+          "name": "Cybersecurity Posture of the United States",
+          "url": "https://www.whitehouse.gov/oncd/"
+        },
+        {
+          "vendor": "With Secure",
+          "name": "Supply Chain Threat Report",
+          "url": "https://www.withsecure.com/en/expertise/research-and-innovation/research/monthly-threat-highlights-report/february-2025"
+        },
+        {
+          "vendor": "ZScaler",
+          "name": "Securing Digital India Against AI Cyber Threats",
+          "url": "https://www.zscaler.com/press/zscaler-together-bharti-airtel-announce-launch-ai-cyber-threat-research-center-advance-cyber"
+        }
+      ],
+      "regional_assessments": [
+        {
+          "vendor": "Australian Signals Directorate",
+          "name": "Cyber Threat Report",
+          "url": "https://www.asd.gov.au/news/2025-10-14-australian-signals-directorate-releases-annual-cyber-threat-report-2024-25"
+        },
+        {
+          "vendor": "Canada",
+          "name": "National Cyber Threat Assessment",
+          "url": "https://www.cyber.gc.ca/en/guidance/national-cyber-threat-assessment-2025-2026"
+        },
+        {
+          "vendor": "DSCI & Seqrite",
+          "name": "India Cyber Threat Report",
+          "url": "https://www.dsci.in/resource/content/india-cyber-threat-report-2025"
+        },
+        {
+          "vendor": "Durin",
+          "name": "Home Access Report",
+          "url": "https://durin.ai/blogs/press-releases/durin-releases-2025-holiday-travel-home-security-report-revealing-78-of-travelers-will-share-access-codes-this-season-most-will-never-change-them"
+        },
+        {
+          "vendor": "Ensign",
+          "name": "Cyber Threat Landscape Report",
+          "url": "https://www.ensigninfosecurity.com/resources/threat-insights/cyber-threat-landscape-report-2025"
+        },
+        {
+          "vendor": "Intel471",
+          "name": "UK Threat Landscape Report",
+          "url": "https://www.intel471.com/resources/whitepapers/uk-2025-threat-landscape-report"
+        },
+        {
+          "vendor": "Interpol",
+          "name": "African Cyberthreat Assessment Report",
+          "url": "https://www.interpol.int/News-and-Events/News/2024/INTERPOL-report-highlights-key-cyberthreats-in-Africa"
+        },
+        {
+          "vendor": "Lastpass",
+          "name": "APAC Regional Report",
+          "url": "https://blog.lastpass.com/posts/cyber-threats-in-apac"
+        },
+        {
+          "vendor": "National Cyber Security Centre",
+          "name": "Cyber Threat Report",
+          "url": "https://www.ncsc.govt.nz/insights-and-research/cyber-threat-reports/cyber-threat-report-2025/"
+        },
+        {
+          "vendor": "New Zealand",
+          "name": "Cyber Security Action Plan 2026pdf",
+          "url": "https://www.dpmc.govt.nz/publications/new-zealands-cyber-security-strategy-2026-2030"
+        },
+        {
+          "vendor": "Norwegian Police",
+          "name": "Threat Assessment",
+          "url": "https://www.pst.no/wp-content/uploads/2026/02/National-Threat-Assessment-2026.pdf"
+        },
+        {
+          "vendor": "Office of the Director of National Intelligence",
+          "name": "Annual Threat Assessment",
+          "url": "https://www.dni.gov/index.php/newsroom/reports-publications/reports-publications-2026/4141-2026-annual-threat-assessment"
+        },
+        {
+          "vendor": "Security Scorecard",
+          "name": "State of South Koreas Cybersecurity",
+          "url": "https://securityscorecard.com/resources/research-reports/"
+        },
+        {
+          "vendor": "Seqrite",
+          "name": "India Cyber Threat Report",
+          "url": "https://www.seqrite.com/india-cyber-threat-report-2026/"
+        },
+        {
+          "vendor": "Sweden",
+          "name": "National Strategy for Cybersecurity",
+          "url": "https://www.government.se/information-material/2026/02/a-new-era-of-cybersecurity---national-strategy-for-cybersecurity-2025-2029/"
+        },
+        {
+          "vendor": "United States Department of Defense",
+          "name": "State of DevSecOps",
+          "url": "https://public.cyber.mil/devsecops/"
+        }
+      ],
+      "sector_specific_intelligence": [
+        {
+          "vendor": "Anthropic",
+          "name": "The State of AI",
+          "url": "https://menlovc.com/perspective/2025-the-state-of-generative-ai-in-the-enterprise/"
+        },
+        {
+          "vendor": "Bio Catch",
+          "name": "Global Scams Report",
+          "url": "https://www.biocatch.com/press-release/banking-scams-up-65-globally-in-last-year"
+        },
+        {
+          "vendor": "BioCatch",
+          "name": "Digital Banking Fraud Trends in Latin America",
+          "url": "https://www.biocatch.com/white-paper-digital-banking-fraud-trends-latam-2024-en"
+        },
+        {
+          "vendor": "Cyber Int",
+          "name": "Travel Threat Landscape Report",
+          "url": "https://cyberint.com/resource/travel-threat-landscape-2025/"
+        },
+        {
+          "vendor": "Digi Americas",
+          "name": "Financial Sector Threat Landscape",
+          "url": "https://digiamericas.org/report/latam-financial-sector-threat-landscape-2025/"
+        },
+        {
+          "vendor": "European Payments Council",
+          "name": "Payments Threats and Fraud Trends Report",
+          "url": "https://www.europeanpaymentscouncil.eu/search?qry=&kb%5B0%5D=ctype%3Akb_document"
+        },
+        {
+          "vendor": "FDIC",
+          "name": "Cybersecurity and Resilience Report",
+          "url": "https://www.federalreserve.gov/publications.htm"
+        },
+        {
+          "vendor": "FinCEN",
+          "name": "Alert on Digital Asset Investment Scam Centers",
+          "url": "https://www.fincen.gov/news/news-releases/fincen-alert-scam-centers-2026"
+        },
+        {
+          "vendor": "Futuriom",
+          "name": "Top Cloud and AI Infrastructure Trends",
+          "url": "https://www.futuriom.com/articles/news/the-futuriom-2026-is-here/2026/02"
+        },
+        {
+          "vendor": "Gatepoint Research",
+          "name": "The State Of Network Security In Transportation And Logistics",
+          "url": "https://www.aryaka.com/reports-and-guides/state-of-network-security-transportation-logistics/"
+        },
+        {
+          "vendor": "GSMA",
+          "name": "Security Landscape",
+          "url": "https://www.gsma.com/solutions-and-impact/technologies/security/gsma-mobile-telecommunications-security-landscape-2026/"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Telco Strategies for Consumer Security",
+          "url": "https://www.hardenstance.com/events-where-hardenstance-is-speaking-or-attending/"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Briefing on Enea Voice Firewall",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Briefing Allot Doubles Down on DDoS Defence",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Briefing MWC25 Taking Stock of Telco Security",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "Health ISAC",
+          "name": "Annual Threat Report",
+          "url": "https://www.newswire.com/news/health-isac-releases-annual-report-on-current-and-emerging-cyber-21986323"
+        },
+        {
+          "vendor": "Intuition Lab",
+          "name": "AI Medical Device Cybersecurity Regulations and Risks",
+          "url": "https://intuitionlabs.ai/articles/cybersecurity-requirements-ai-medical-devices"
+        },
+        {
+          "vendor": "Nokia",
+          "name": "Threat Intelligence Report",
+          "url": "https://www.telecomtv.com/content/security/nokia-report-reveals-alarming-extent-of-telco-cybersecurity-threats-53994/"
+        },
+        {
+          "vendor": "Six Map",
+          "name": "Research Energy Sector Exposure Assessment",
+          "url": "https://www.sixmap.io/blog/lightbulb-moment-an-exposure-assessment-of-the-u-s-energy-sector/"
+        },
+        {
+          "vendor": "TableMedia",
+          "name": "European Deep Tech Report",
+          "url": "https://deeptechnation.ch/dtn-news/2026-european-deep-tech-report-eth-zurich-and-epfl-lead-the-world-in-deep-tech-founder-and-spinout-creation/"
+        },
+        {
+          "vendor": "TRM Labs",
+          "name": "Crypto Crime Report",
+          "url": "https://www.trmlabs.com/resources/blog/2026-crypto-crime-report-key-insights-trm-identifies-record-usd-158-billion-in-illicit-crypto-flows-in-2025-reversing-a-multi-year-decline"
+        },
+        {
+          "vendor": "TRM Labs",
+          "name": "Global Crypto Policy Review Outlook",
+          "url": "https://www.trmlabs.com/reports-and-whitepapers/global-crypto-policy-review-outlook-2025-26"
+        },
+        {
+          "vendor": "Trustwave",
+          "name": "Energy Utilities Risk Radar",
+          "url": "https://www.trustwave.com/en-us/company/newsroom/news/trustwave-unveils-2025-cybersecurity-threat-report-for-energy-and-utilities-sector-highlights-surge-in-ransomware-attacks/"
+        },
+        {
+          "vendor": "Trustwave",
+          "name": "Healthcare Risk Radar",
+          "url": "https://www.trustwave.com/en-us/resources/blogs/trustwave-blog/2025-healthcare-cybersecurity-threats-insights-from-the-trustwave-risk-radar-report/"
+        },
+        {
+          "vendor": "Trustwave",
+          "name": "Hospitality Risk Radar",
+          "url": "https://www.trustwave.com/en-us/resources/blogs/trustwave-blog/get-ready-for-the-2025-trustwave-risk-radar-report-hospitality-sector/"
+        },
+        {
+          "vendor": "Trustwave",
+          "name": "Manufacturing Risk Radar Report",
+          "url": "https://www.trustwave.com/en-us/resources/library/documents/2025-trustwave-spiderlabs-research-navigating-cybersecurity-threats-in-manufacturing-complimentary-reports"
+        },
+        {
+          "vendor": "Upstream",
+          "name": "Global Automotive Cybersecurity Report",
+          "url": "https://upstream.auto/reports/global-automotive-cybersecurity-report/"
+        },
+        {
+          "vendor": "Veriti",
+          "name": "The State of Healthcare Cybersecurity",
+          "url": "https://www.checkpoint.com/products/threat-exposure-management/veriti/"
+        },
+        {
+          "vendor": "Visa",
+          "name": "Spring Biannual Threats Report",
+          "url": "https://www.visa.com/en-jm/newsroom/press-releases/visa-detects-scams-consumer-fraud-latin-america"
+        }
+      ],
+      "application_security": [
+        {
+          "vendor": "Akamai",
+          "name": "State of Apps and API Security",
+          "url": "https://www.akamai.com/blog/security/year-review-2025-ai-apis-audacity"
+        },
+        {
+          "vendor": "Armis",
+          "name": "Early Warning Insights for Software Supply Chain Attacks",
+          "url": "https://www.armis.com/research/early-warning-insights-for-software-supply-chain-attacks/"
+        },
+        {
+          "vendor": "Black Duck",
+          "name": "Open Source Risk Analysis Report",
+          "url": "https://www.blackduck.com/resources/analyst-reports/open-source-security-risk-analysis.html"
+        },
+        {
+          "vendor": "Contrast Security",
+          "name": "Software Under Siege",
+          "url": "https://www.contrastsecurity.com/software-under-siege-2025-report"
+        },
+        {
+          "vendor": "Contrast Security",
+          "name": "AppSec Overflow",
+          "url": "https://www.contrastsecurity.com/knowledge-hub/appsec-overflow-2026"
+        },
+        {
+          "vendor": "Data Dog",
+          "name": "State Of DevSecOps",
+          "url": "https://www.datadoghq.com/state-of-devsecops/"
+        },
+        {
+          "vendor": "Digital AI",
+          "name": "Application Security Threat Report",
+          "url": "https://digital.ai/resource-center/whitepapers/2025-application-security-threat-report/"
+        },
+        {
+          "vendor": "F5",
+          "name": "Office of the CTO Report Continuous API Sprawl",
+          "url": "https://www.f5.com/company/news/press-releases/api-sprawl-threat-business-economy"
+        },
+        {
+          "vendor": "Fluid Attacks",
+          "name": "State Of Attacks",
+          "url": "https://fluidattacks.com/reports"
+        },
+        {
+          "vendor": "Fortinet",
+          "name": "Web Application Security Report",
+          "url": "https://www.fortinet.com/resources/reports/application-security-report"
+        },
+        {
+          "vendor": "Git Guardian",
+          "name": "State of Secrets Sprawl",
+          "url": "https://www.gitguardian.com/state-of-secrets-sprawl-report-2026"
+        },
+        {
+          "vendor": "Grip",
+          "name": "SaaS Security Risks Report",
+          "url": "https://www.grip.security/saas-ai-governance-report-2026"
+        },
+        {
+          "vendor": "Kodem",
+          "name": "State of AppSec Workflow",
+          "url": "https://www.kodemsecurity.com/lp/report/appsec/workflows"
+        },
+        {
+          "vendor": "Legit Security",
+          "name": "State of Application Risk Report",
+          "url": "https://www.legitsecurity.com/blog/announcing-2025-state-of-application-risk-report"
+        },
+        {
+          "vendor": "Orca",
+          "name": "State of AppSec Report",
+          "url": "https://orca.security/lp/2026-state-of-application-security-report/"
+        },
+        {
+          "vendor": "Robotti",
+          "name": "AppSec Report",
+          "url": "https://medium.com/@robotti-io/q1-check-in-our-2026-robotti-appsec-report-is-tracking-in-the-right-direction-e68e362e64d7"
+        },
+        {
+          "vendor": "Salt",
+          "name": "State Of API Security",
+          "url": "https://content.salt.security/state-api-report.html"
+        },
+        {
+          "vendor": "Salt",
+          "name": "State of AI and API Security",
+          "url": "https://salt.security/press-releases/1h-2026-state-of-ai-and-api-security-report"
+        },
+        {
+          "vendor": "Seraphic Security",
+          "name": "Zero Trust Browser Security",
+          "url": "https://www.soprasteria.com/insights/details/rethinking-zero-trust-for-operational-technology"
+        },
+        {
+          "vendor": "Sonatype",
+          "name": "State of The Software Supplychain",
+          "url": "https://www.sonatype.com/state-of-the-software-supply-chain/introduction"
+        },
+        {
+          "vendor": "Thales",
+          "name": "Bad Bot Report",
+          "url": "https://cpl.thalesgroup.com/bad-bot-report"
+        },
+        {
+          "vendor": "Veracode",
+          "name": "State Of Software Security Report",
+          "url": "https://www.veracode.com/resources/analyst-reports/state-of-software-security-2026/"
+        },
+        {
+          "vendor": "Wallarm",
+          "name": "API Threat Stats Report",
+          "url": "https://siliconangle.com/2026/02/17/wallarm-warns-apis-fueling-ai-era-breaches-machine-speed/"
+        },
+        {
+          "vendor": "Wiz",
+          "name": "State of Code Security",
+          "url": "https://www.wiz.io/reports/state-of-code-security-2025"
+        }
+      ],
+      "cloud_security": [
+        {
+          "vendor": "Bellsoft",
+          "name": "State-of-Container-Security",
+          "url": "https://bell-sw.com/state-of-container-security-2025/"
+        },
+        {
+          "vendor": "Censys",
+          "name": "State Of The Internet",
+          "url": "https://censys.com/reports/2025-sotir"
+        },
+        {
+          "vendor": "Check Point",
+          "name": "Cloud Security Report",
+          "url": "https://www.checkpoint.com/resources/items/report-cloud-security-report-2026"
+        },
+        {
+          "vendor": "Data Dog",
+          "name": "State Of Cloud Security",
+          "url": "https://www.datadoghq.com/state-of-cloud-security/"
+        },
+        {
+          "vendor": "Fidelis",
+          "name": "AWS Security",
+          "url": "https://fidelissecurity.com/cybersecurity-101/best-practices/aws-cloud-security/"
+        },
+        {
+          "vendor": "Fortinet",
+          "name": "360 Protection AWS",
+          "url": "https://www.fortinet.com/solutions/cloud-service-providers/aws"
+        },
+        {
+          "vendor": "Google",
+          "name": "Threat Horizons Report",
+          "url": "https://inthecloud.withgoogle.com/security-threat-intel/subscribe.html"
+        },
+        {
+          "vendor": "HPE",
+          "name": "VPN Exposure Report",
+          "url": "https://www.hpe.com/psnow/doc/a00148333enw"
+        },
+        {
+          "vendor": "HPE",
+          "name": "SSE Report",
+          "url": "https://www.hpe.com/psnow/doc/a00148333enw"
+        },
+        {
+          "vendor": "Netskope",
+          "name": "Cloud and Threat Report",
+          "url": "https://www.netskope.com/netskope-threat-labs/cloud-threat-report"
+        },
+        {
+          "vendor": "Orca",
+          "name": "Estimating Return on Investment for the Cloud",
+          "url": "https://orca.security/lp/tag-cloud-security-roi-report/"
+        },
+        {
+          "vendor": "Orca",
+          "name": "State of Cloud Security Report",
+          "url": "https://orca.security/lp/2025-state-of-cloud-security-report/"
+        },
+        {
+          "vendor": "Recorded Future",
+          "name": "Cloud Threat Hunting And Defense Landscape",
+          "url": "https://www.recordedfuture.com/research/cloud-threat-hunting-defense-landscape"
+        },
+        {
+          "vendor": "Sysdig",
+          "name": "Cloud Native Security and Usage Report",
+          "url": "https://www.sysdig.com/press-releases/2026-usage-report"
+        },
+        {
+          "vendor": "Toc Consulting",
+          "name": "The State of AWS Security",
+          "url": "https://hostingjournalist.com/knowledgebase/the-state-of-aws-security-2026-from-iam-to-agentic-ai"
+        },
+        {
+          "vendor": "TrendMicro",
+          "name": "Cloud Report",
+          "url": "https://www.trendmicro.com/vinfo/us/security/news/threat-landscape/trend-2025-cyber-risk-report"
+        },
+        {
+          "vendor": "Unosecure",
+          "name": "Cloud Compliance Pulse",
+          "url": "https://www.unosecur.com/resources/reports/cloud-compliance-pulse-2025"
+        },
+        {
+          "vendor": "Varonis",
+          "name": "State Of Data Security Report",
+          "url": "https://info.varonis.com/en/state-of-data-security-report-2025"
+        },
+        {
+          "vendor": "WithSecure",
+          "name": "Salesforce Threat Landscape Report",
+          "url": "https://cloudprotection.com/page/2026-salesforce-threat-report/"
+        },
+        {
+          "vendor": "Wiz",
+          "name": "Cloud Data Security Snapshot",
+          "url": "https://www.wiz.io/reports/cloud-data-security-report-2025"
+        },
+        {
+          "vendor": "Wiz",
+          "name": "State of AI in the Cloud",
+          "url": "https://www.wiz.io/state-of-ai-in-the-cloud"
+        },
+        {
+          "vendor": "Zscaler",
+          "name": "VPN Risk Report",
+          "url": "https://www.zscaler.com/blogs/security-research/threatlabz-2025-vpn-report-why-81-organizations-plan-adopt-zero-trust-2026"
+        }
+      ],
+      "vulnerabilities": [
+        {
+          "vendor": "Beyond Trust",
+          "name": "Microsoft Vulnerability Report",
+          "url": "https://www.beyondtrust.com/resources/whitepapers/microsoft-vulnerability-report"
+        },
+        {
+          "vendor": "Chainguard",
+          "name": "The Cost of CVEs",
+          "url": "https://get.chainguard.dev/cost-of-cves-2025-report"
+        },
+        {
+          "vendor": "Cloud Security Alliance",
+          "name": "The Exploit-Before-Patch Gap",
+          "url": "https://cloudsecurityalliance.org/research/artifacts/exploit-before-patch-gap/"
+        },
+        {
+          "vendor": "Deepstrike",
+          "name": "Vulnerabilities Statistics",
+          "url": "https://deepstrike.io/blog/vulnerability-statistics-2025"
+        },
+        {
+          "vendor": "Edgescan",
+          "name": "Vulnerability Statistics Report",
+          "url": "https://www.edgescan.com/stats-report/"
+        },
+        {
+          "vendor": "Flexera",
+          "name": "Annual Vulnerability Review",
+          "url": "https://info.flexera.com/SVM-REPORT-Annual-Vulnerability-Review?lead_source=Organic%20Search"
+        },
+        {
+          "vendor": "Greyn Noise",
+          "name": "Early Warning Signals Attacker Behavior Precedes New Vulnerabilities Report",
+          "url": "https://www.greynoise.io/blog/greynoise-uncovers-early-warning-signals-emerging-vulnerabilities"
+        },
+        {
+          "vendor": "GreyNoise",
+          "name": "State of the Edge Report",
+          "url": "https://www.greynoise.io/resources/2026-state-of-the-edge-report"
+        },
+        {
+          "vendor": "GreyNoise",
+          "name": "Mass Internet Exploitation Report",
+          "url": "https://www.greynoise.io/resources/2025-mass-internet-exploitation-report"
+        },
+        {
+          "vendor": "Hornet",
+          "name": "Cybersecurity Report",
+          "url": "https://www.hornetsecurity.com/en/cyber-security-report/"
+        },
+        {
+          "vendor": "Imperva",
+          "name": "Bad Bot Report",
+          "url": "https://www.imperva.com/resources/resource-library/reports/2025-bad-bot-report/"
+        },
+        {
+          "vendor": "Intruder",
+          "name": "Exposure Management Index",
+          "url": "https://www.intruder.io/downloads/exposure-management-index"
+        },
+        {
+          "vendor": "Intruder",
+          "name": "Attack Surface Management Index",
+          "url": "https://www.intruder.io/blog/attack-surface-exposures"
+        },
+        {
+          "vendor": "Rapid7",
+          "name": "Threat Landscape Report",
+          "url": "https://www.rapid7.com/research/report/global-threat-landscape-report-2026/"
+        },
+        {
+          "vendor": "Recorded Future",
+          "name": "Malware And Vulnerability Trends",
+          "url": "https://www.recordedfuture.com/research/h1-2025-malware-and-vulnerability-trends"
+        },
+        {
+          "vendor": "Telefonicatech",
+          "name": "Security Status Report",
+          "url": "https://telefonicatech.com/en/blog/linux-and-the-vulnerability-paradox-more-reports-more-security"
+        },
+        {
+          "vendor": "Torq",
+          "name": "AI SOC Leadership Report",
+          "url": "https://torq.io/resources/ai-soc-leadership-report-2026/"
+        },
+        {
+          "vendor": "Vuln Check",
+          "name": "State Of Exploitation",
+          "url": "https://www.vulncheck.com/blog/state-of-exploitation-2026"
+        },
+        {
+          "vendor": "VulnCheck",
+          "name": "Exploit Intelligence Report",
+          "url": "https://wwv.vulncheck.com/2026-vulncheck-exploit-intelligence-report"
+        }
+      ],
+      "ransomware": [
+        {
+          "vendor": "Abnormal",
+          "name": "Read Replied Compromised Employee Engagement Trends",
+          "url": "https://abnormal.ai/about/news/employee-engagement-vendor-email-compromise-threat-report"
+        },
+        {
+          "vendor": "Akamai",
+          "name": "Ransomware Report",
+          "url": "https://www.akamai.com/lp/soti/ransomware-trends-2025"
+        },
+        {
+          "vendor": "BitsFromBytes",
+          "name": "Ransomware Statistics",
+          "url": "https://bitsfrombytes.com/research/ransomware-statistics-2026"
+        },
+        {
+          "vendor": "Cipher Security",
+          "name": "True Cost of a Ransomware Attack",
+          "url": "https://cipher.com/resources/true-cost-ransomware-2026/"
+        },
+        {
+          "vendor": "Cyfirma",
+          "name": "Tracking Ransomware",
+          "url": "https://www.cyfirma.com/research/tracking-ransomware-jan-2026/"
+        },
+        {
+          "vendor": "Cyfirma",
+          "name": "Tracking Ransomware August",
+          "url": "https://www.cyfirma.com/research/tracking-ransomware-aug-2026/"
+        },
+        {
+          "vendor": "Gen Digital",
+          "name": "Threat Report",
+          "url": "https://www.gendigital.com/blog/insights/reports/threat-report-h1-2026"
+        },
+        {
+          "vendor": "Howden",
+          "name": "Cyber Report Rebooting Growth",
+          "url": "https://www.howdengroupholdings.com/sites/default/files/2025-09/howden-2025-cyber-report-rebooting-growth.pdf"
+        },
+        {
+          "vendor": "Rapid7",
+          "name": "Threat Landscape Report Q3",
+          "url": "https://www.instagram.com/p/DRRAGoAkmLw/"
+        },
+        {
+          "vendor": "Searchlight Cyber",
+          "name": "The True Cost of Ransomware",
+          "url": "https://slcyber.io/reports/cost-of-a-ransomware-attack-2026/"
+        },
+        {
+          "vendor": "Symantec",
+          "name": "Ransomware Threat Landscape",
+          "url": "https://www.security.com/threat-intelligence/ransomware-threat-landscape-2024"
+        },
+        {
+          "vendor": "Veeam",
+          "name": "Ransomware Trends",
+          "url": "https://www.veeam.com/blog/ransomware-trends.html"
+        },
+        {
+          "vendor": "Vipre",
+          "name": "Email Threat Report",
+          "url": "https://vipre.com/resources/q2-2025-email-threat-report/"
+        },
+        {
+          "vendor": "With Secure",
+          "name": "Ransomware Threat Report",
+          "url": "https://www.withsecure.com/en/expertise/research-and-innovation/research/monthly-threat-highlights-report"
+        },
+        {
+          "vendor": "ZScaler",
+          "name": "Threatlabz Ransomware Analysis",
+          "url": "https://www.zscaler.com/threatlabz/ransomware-report"
+        }
+      ],
+      "data_breaches": [
+        {
+          "vendor": "Allianz",
+          "name": "Commercial Directors and Officers Insurance Insights",
+          "url": "https://commercial.allianz.com/news-and-insights/news/directors-and-officers-insurance-insights-2026.html"
+        },
+        {
+          "vendor": "Cyentia",
+          "name": "Information Risk Insights Study",
+          "url": "https://www.cyentia.com/iris2025/"
+        },
+        {
+          "vendor": "Deepstrike",
+          "name": "Cybersecurity Statistics",
+          "url": "https://deepstrike.io/blog/cybersecurity-statistics-2025-threats-trends-challenges"
+        },
+        {
+          "vendor": "IBM",
+          "name": "Cost Of A Data Breach Report",
+          "url": "https://www.ibm.com/reports/data-breach"
+        },
+        {
+          "vendor": "Identity Theft Resource Center",
+          "name": "Annual Data Breach Report",
+          "url": "https://www.idtheftcenter.org/wp-content/uploads/2025/07/ITRC-H1-2025-Data-Breach-Analysis.pdf"
+        },
+        {
+          "vendor": "Identity Theft Resource Center",
+          "name": "H1 Data Breach Report",
+          "url": "https://www.idtheftcenter.org/post/2026-h1-data-breach-report/"
+        },
+        {
+          "vendor": "ORDR",
+          "name": "Cybersecurity Statistics Report",
+          "url": "https://ordr.net/cybersecurity-statistics"
+        },
+        {
+          "vendor": "Riskrecon",
+          "name": "Ripples Across The Risk Surface",
+          "url": "https://www.riskrecon.com/ripples-across-the-risk-surface"
+        },
+        {
+          "vendor": "RPC",
+          "name": "Annual Insurance Review",
+          "url": "https://www.rpclegal.com/thinking/insurance-reviews/annual-insurance-review-2026/"
+        },
+        {
+          "vendor": "Security Score Card",
+          "name": "Third Party Breach Report",
+          "url": "https://securityscorecard.com/resource/global-third-party-breach-report/"
+        },
+        {
+          "vendor": "Verizon",
+          "name": "Data Breach Investigations Report",
+          "url": "https://www.verizon.com/business/resources/reports/dbir/"
+        }
+      ],
+      "physical_security": [
+        {
+          "vendor": "Australia",
+          "name": "Securing Space Cyber Security for Low Earth Orbit Satellite Communications",
+          "url": "https://www.cyber.gov.au/business-government/secure-design/securing-space"
+        },
+        {
+          "vendor": "CitizenLab",
+          "name": "Bad Connection",
+          "url": "https://citizenlab.ca/research/uncovering-global-telecom-exploitation-by-covert-surveillance-actors/bad-connection/"
+        },
+        {
+          "vendor": "Dragos",
+          "name": "OT Cybersecurity Report A Year in Review",
+          "url": "https://www.dragos.com/ot-cybersecurity-year-in-review"
+        },
+        {
+          "vendor": "Genetec",
+          "name": "State of Physical Security",
+          "url": "https://www.genetec.com/a/physical-security-report"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Securing a Utilitys Private Wireless Network",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "NMFTA",
+          "name": "Transportation Industry Cybersecurity Trends Report",
+          "url": "https://nmfta.org/newsroom-articles/nmfta-releases-2026-transportation-industry-cybersecurity-trends-report/"
+        },
+        {
+          "vendor": "Nozomi",
+          "name": "Networks OT IoT Security Report",
+          "url": "https://www.nozominetworks.com/ot-iot-cybersecurity-trends-insights-february-2026"
+        },
+        {
+          "vendor": "Security Industry Association",
+          "name": "Security Megatrends",
+          "url": "https://www.securitysystemsnews.com/article/sia-announces-the-2025-security-megatrends"
+        },
+        {
+          "vendor": "United States Air Force",
+          "name": "Science and Technology Vision",
+          "url": "https://defenseinnovationmarketplace.dtic.mil/wp-content/uploads/2018/12/Cyber-Vision-2025-USAF-Cyberspace-Science-and-Technology-Vision-2012-2025.pdf"
+        },
+        {
+          "vendor": "Waterfall",
+          "name": "OT Cyber Threat Report",
+          "url": "https://waterfall-security.com/ot-insights-center/ot-cybersecurity-insights-center/2025-threat-report-ot-cyberattacks-with-physical-consequences/"
+        },
+        {
+          "vendor": "Waterfall Security",
+          "name": "OT Cyber Threat Report",
+          "url": "https://waterfall-security.com/ot-insights-center/ot-cybersecurity-insights-center/webinar-2026-ot-cyber-threat-report/"
+        }
+      ],
+      "ai_and_emerging_technologies": [
+        {
+          "vendor": "Akamai",
+          "name": "Fraud and Abuse Report",
+          "url": "https://www.akamai.com/lp/soti/app-api-ai-security-report-2025"
+        },
+        {
+          "vendor": "Anthropic",
+          "name": "Threat Intelligence Report",
+          "url": "https://www.anthropic.com/news/detecting-countering-misuse-aug-2025"
+        },
+        {
+          "vendor": "Anthropic",
+          "name": "Detecting and Countering Misuse of AI",
+          "url": "https://www.anthropic.com/news/detecting-countering-misuse-sept-2026"
+        },
+        {
+          "vendor": "BitDefender",
+          "name": "Global Scam Intelligence Report",
+          "url": "https://www.bitdefender.com/en-us/news/bitdefender-releases-2026-global-scam-intelligence-report"
+        },
+        {
+          "vendor": "Cloud Security Alliance",
+          "name": "Shadow AI Asset Blindness",
+          "url": "https://labs.cloudsecurityalliance.org/research/csa-whitepaper-shadow-ai-asset-blindness-systemic-risk-20260/"
+        },
+        {
+          "vendor": "Crown",
+          "name": "International AI Safety Report",
+          "url": "https://internationalaisafetyreport.org/publication/international-ai-safety-report-2025"
+        },
+        {
+          "vendor": "Elpaccto2",
+          "name": "Weaponizing AI",
+          "url": "https://cristosvelasco.de/2025/10/el-pacctos-report-weaponizing-artificial-intelligence-how-ai-reshapes-the-world-of-organized-crime-officially-presented-in-rio-de-janeiro/"
+        },
+        {
+          "vendor": "EuropeanTelcoISAC",
+          "name": "Security Landscape",
+          "url": "https://connecteurope.org/insights/reports/telco-security-landscape-2025"
+        },
+        {
+          "vendor": "Google",
+          "name": "Advances In Threat Actor Usage Of AI Tools",
+          "url": "https://cloud.google.com/blog/topics/threat-intelligence/threat-actor-usage-of-ai-tools/"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Briefing MWC26 Taking Stock of Telco Security",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Briefing AI Highlights from RSAC",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "HiddenLayer",
+          "name": "Quarterly AI Threat Landscape Update July",
+          "url": "https://www.hiddenlayer.com/report-and-guide/ai-threat-landscape-report-april-june-quarterly-update"
+        },
+        {
+          "vendor": "HumanSecurity",
+          "name": "The State of AI Traffic and Cyberthreat Benchmark Report",
+          "url": "https://www.humansecurity.com/learn/resources/2026-state-of-ai-traffic-cyberthreat-benchmarks/"
+        },
+        {
+          "vendor": "Imperva",
+          "name": "API Security Threat Report",
+          "url": "https://www.imperva.com/resources/resource-library/reports/2026-bad-bot-report/"
+        },
+        {
+          "vendor": "Intezer",
+          "name": "AI SOC Report",
+          "url": "https://intezer.com/2026-ai-soc-report-for-cisos/"
+        },
+        {
+          "vendor": "Kela",
+          "name": "AI Threat Report",
+          "url": "https://www.kelacyber.com/resources/research/2025-ai-threat-report/"
+        },
+        {
+          "vendor": "Latio",
+          "name": "AI Security Report",
+          "url": "https://www.latio.com/reports"
+        },
+        {
+          "vendor": "Microsoft",
+          "name": "National Security in the Age of AI and Quantum",
+          "url": "https://www.microsoft.com/en-us/research/publications/"
+        },
+        {
+          "vendor": "MNP",
+          "name": "Risk Trends",
+          "url": "https://www.mnp.ca/en/insights/directory/risk-trends-in-2026-and-beyond"
+        },
+        {
+          "vendor": "Opswat",
+          "name": "State Of File Security Report",
+          "url": "https://www.opswat.com/resources/reports/ponemon-state-of-file-security"
+        },
+        {
+          "vendor": "Orca Security",
+          "name": "State of AI Security Report",
+          "url": "https://orca.security/resources/reports/state-of-ai-security-2026/"
+        },
+        {
+          "vendor": "OrcaRouter",
+          "name": "The AI Threat Report",
+          "url": "https://www.lokmattimes.com/business/orcarouter-releases-ai-threat-report-2026-and-makes-its-security-controls-free-amid-rise-in-prompt-injection-attacks"
+        },
+        {
+          "vendor": "Pindrop",
+          "name": "Voice Intelligence And Security Report Report",
+          "url": "https://www.pindrop.com/research/report/voice-intelligence-security-report/"
+        },
+        {
+          "vendor": "Proofpoint",
+          "name": "AI and Human Risk Landscape",
+          "url": "https://www.proofpoint.com/us/resources/threat-reports/ai-human-risk-landscape"
+        },
+        {
+          "vendor": "Reco",
+          "name": "State Of Shadow AI Report",
+          "url": "https://www.reco.ai/state-of-shadow-ai-report-form"
+        },
+        {
+          "vendor": "Reco",
+          "name": "The State of Agent Security",
+          "url": "https://www.reco.ai/resources/state-of-agent-security-2026"
+        },
+        {
+          "vendor": "Sophos",
+          "name": "AI Security Report",
+          "url": "https://www.sophos.com/en-us/content/sophos-ai-security-2026-report"
+        },
+        {
+          "vendor": "Straiker",
+          "name": "STAR Labs AI Threat Report Vol 1",
+          "url": "https://www.straiker.ai/report/threat-research-vol-1"
+        },
+        {
+          "vendor": "Takepoint",
+          "name": "State of AI in OT",
+          "url": "https://takepoint.com/research/state-of-ai-in-ot-2026/"
+        },
+        {
+          "vendor": "Trend Micro",
+          "name": "Security Predictions",
+          "url": "https://www.trendmicro.com/vinfo/us/security/research-and-analysis/predictions/the-ai-fication-of-cyberthreats-trend-micro-security-predictions-for-2026"
+        },
+        {
+          "vendor": "Zscaler",
+          "name": "AI Security Report",
+          "url": "https://www.zscaler.com/press/zscaler-2026-ai-threat-report-83-year-over-year-surge-ai-activity-creates-growing-oversight"
+        }
+      ]
+    },
+    "survey": {
+      "industry_trends": [
+        {
+          "vendor": "Accenture",
+          "name": "State of Cybersecurity Resilience",
+          "url": "https://www.accenture.com/us-en/insights/security/state-cybersecurity-2025"
+        },
+        {
+          "vendor": "Allianz",
+          "name": "Risk Barometer",
+          "url": "https://commercial.allianz.com/content/dam/onemarketing/commercial/commercial/reports/allianz-risk-barometer-2026.pdf"
+        },
+        {
+          "vendor": "Allianz",
+          "name": "Commercial Cyber Security Trends",
+          "url": "https://commercial.allianz.com/content/dam/onemarketing/commercial/commercial/reports/Allianz-Commercial-Cyber-Security-Trends-2023.pdf"
+        },
+        {
+          "vendor": "Anthropic",
+          "name": "Agentic Coding Trends Report",
+          "url": "https://resources.anthropic.com/2026-agentic-coding-trends-report"
+        },
+        {
+          "vendor": "Aon",
+          "name": "Global Cyber Risk Report",
+          "url": "https://www.aon.com/cyber-risk-report//"
+        },
+        {
+          "vendor": "Armis",
+          "name": "State of Cyberwarfare",
+          "url": "https://www.armis.com/cyberwarfare/"
+        },
+        {
+          "vendor": "Artic Wolf Labs",
+          "name": "The State Of Cybersecurity",
+          "url": "https://cybersecurity.arcticwolf.com/2025-Trends-Report.html"
+        },
+        {
+          "vendor": "At Bay",
+          "name": "Insursec Report",
+          "url": "https://www.at-bay.com/2026-insursec-report/"
+        },
+        {
+          "vendor": "ATIS",
+          "name": "Enhanced 5G And Zero Trust Cloud",
+          "url": "https://atis.org/resources/enhanced-5g-and-zero-trust-cloud-and-operational-security-aspects/"
+        },
+        {
+          "vendor": "Axis",
+          "name": "Perspectives",
+          "url": "https://www.axis.com/explore/future-of-video-surveillance"
+        },
+        {
+          "vendor": "Balbix",
+          "name": "State of Security Posture Report",
+          "url": "https://www.gartner.com/reviews/product/balbix-663913907"
+        },
+        {
+          "vendor": "Big ID",
+          "name": "Data Discovery And Classification Top 5",
+          "url": "https://bigid.com/discovery-foundation/"
+        },
+        {
+          "vendor": "Binalyze",
+          "name": "The State Of Cybersecurity Investigations",
+          "url": "https://www.binalyze.com/cybersecurity-investigations-report-2026"
+        },
+        {
+          "vendor": "Bitdefender",
+          "name": "Cybersecurity Assessment Report",
+          "url": "https://www.bitdefender.com/business/resources/cybersecurity-assessment-2026.html"
+        },
+        {
+          "vendor": "Bitsight",
+          "name": "Security Digitization And The Global Supply Chain",
+          "url": "https://www.bitsight.com/blog/uncovering-cyber-risks-global-supply-chain"
+        },
+        {
+          "vendor": "Black Duck",
+          "name": "State Of Embedded Software Quality And Safety",
+          "url": "https://www.blackduck.com/resources/analyst-reports/state-of-embedded-software-quality-and-safety.html"
+        },
+        {
+          "vendor": "Black Duck",
+          "name": "Balancing AI Usage And Risk",
+          "url": "https://www.blackduck.com/blog/ai-in-devsecops-balancing-innovation-and-security.html"
+        },
+        {
+          "vendor": "Bridewell",
+          "name": "Cybersecurity in Critical National Infrastructure",
+          "url": "https://www.bridewell.com/us/insights/white-papers/detail/operational-technology-cybersecurity-services"
+        },
+        {
+          "vendor": "Canada",
+          "name": "The State of Cybersecurity in Canada",
+          "url": "https://www.secureworld.io/industry-news/state-of-cybersecurity-canada-2025"
+        },
+        {
+          "vendor": "Capgemini",
+          "name": "B2B Pulse Report",
+          "url": "https://www.capgemini.com/insights/research-library/b2b-in-telco/"
+        },
+        {
+          "vendor": "Chainguard",
+          "name": "Engineering Reality Report",
+          "url": "https://www.chainguard.dev/2026-engineering-reality-report"
+        },
+        {
+          "vendor": "Chainguard",
+          "name": "State Of Trusted Open Source",
+          "url": "https://www.chainguard.dev/unchained/the-state-of-trusted-open-source-december-2025"
+        },
+        {
+          "vendor": "Cisco",
+          "name": "State of Wireless Report",
+          "url": "https://www.cisco.com/site/us/en/products/networking/wireless/state-of-wireless-report/index.html"
+        },
+        {
+          "vendor": "Comcast",
+          "name": "Business Cybersecurity Threat Report",
+          "url": "https://business.comcast.com/about-us/press-releases/2025/cb-releases-2025-cybersecurity-threat-report"
+        },
+        {
+          "vendor": "ConnectEU",
+          "name": "State of Digital Communications",
+          "url": "https://connecteurope.org/insights/reports/state-digital-communications-2025"
+        },
+        {
+          "vendor": "Connectwise",
+          "name": "MSP Threat Report",
+          "url": "https://vmblog.com/news/connectwise-2026-msp-threat-report-spotlights-how-identity-abuse-is-redefining-msp-risk/"
+        },
+        {
+          "vendor": "Cyberedge",
+          "name": "Cyber Threat Defense Report",
+          "url": "https://www.businesswire.com/news/home/20260428367752/en/Four-in-Five-IT-Security-Pros-Believe-AI-May-Cost-Them-Their-Jobs-Finds-CyberEdge-Groups-2026-Cyberthreat-Defense-Report"
+        },
+        {
+          "vendor": "Darktrace",
+          "name": "The State Of Cybersecurity In The Finance Sector",
+          "url": "https://www.darktrace.com/resources"
+        },
+        {
+          "vendor": "Deloitte",
+          "name": "NASCIO Cybersecurity Study",
+          "url": "https://www.deloitte.com/us/en/insights/industry/public-sector/2024-deloitte-nascio-cybersecurity-study.html"
+        },
+        {
+          "vendor": "Deloitte",
+          "name": "Future of Cyber Survey",
+          "url": "https://www.deloitte.com/ce/en/services/consulting-risk/research/global-future-of-cyber.html"
+        },
+        {
+          "vendor": "Duha",
+          "name": "State of Security Vendors RSAC",
+          "url": "https://www.duha.co/reports/state-of-security-vendors-rsac-2026/"
+        },
+        {
+          "vendor": "Elastic",
+          "name": "Global Threat Report",
+          "url": "https://www.elastic.co/resources/security/report/global-threat-report"
+        },
+        {
+          "vendor": "Elastic",
+          "name": "State Of Detection Engineering",
+          "url": "https://www.elastic.co/security-labs/state-of-detection-engineering-at-elastic-2025"
+        },
+        {
+          "vendor": "ENISA",
+          "name": "Threat Landscape Report",
+          "url": "https://www.enisa.europa.eu/publications/enisa-threat-landscape-2026"
+        },
+        {
+          "vendor": "FAIR Institute",
+          "name": "State Of Cyber Risk Management Report",
+          "url": "https://www.fairinstitute.org/state-of-crm-2025"
+        },
+        {
+          "vendor": "FERMA",
+          "name": "Demystifying Cyber Insurance",
+          "url": "https://ferma.eu/wp-content/uploads/2025/10/Demystifying-Cyber-Insurance-todays-trends-tomorrows-challenges.pdf"
+        },
+        {
+          "vendor": "FINOS",
+          "name": "State of Open Source in_Financial Services",
+          "url": "https://www.finos.org/state-of-open-source-in-financial-services"
+        },
+        {
+          "vendor": "Forescout",
+          "name": "Riskiest Devices",
+          "url": "https://www.forescout.com/research-labs/the-riskiest-devices-of-2026/"
+        },
+        {
+          "vendor": "Forrester",
+          "name": "Iot Security Solutions Report",
+          "url": "https://www.forrester.com/report/the-forrester-wave-tm-iot-security-solutions-q3-2025/RES185467"
+        },
+        {
+          "vendor": "Fortinet",
+          "name": "Threat Predictions",
+          "url": "https://www.fortinet.com/blog/industry-trends/inside-industrialization-of-cybercrime-what-to-expect-in-2026"
+        },
+        {
+          "vendor": "Fortinet",
+          "name": "Insider Risk Report",
+          "url": "https://www.fortinet.com/resources/reports/insider-risk-report"
+        },
+        {
+          "vendor": "Google",
+          "name": "Cloud ROI Of AI",
+          "url": "https://cloud.google.com/resources/content/roi-of-ai-2025"
+        },
+        {
+          "vendor": "Google",
+          "name": "Cybersecurity Forecast",
+          "url": "https://services.google.com/fh/files/misc/cybersecurity-forecast-2026-en.pdf"
+        },
+        {
+          "vendor": "GRCEngineer",
+          "name": "The State of GRC",
+          "url": "https://grcengineer.com/p/state-of-grc-2026-report-spreadsheets-are-still-1"
+        },
+        {
+          "vendor": "GRF",
+          "name": "Top Risks Report",
+          "url": "https://www.grfcpa.com/resource/2026-top-risks-report/"
+        },
+        {
+          "vendor": "GSMA",
+          "name": "Post Quantum Cryptography For 5g Roaming",
+          "url": "https://www.gsma.com/solutions-and-impact/technologies/security/gsma_resources/pq-05-post-quantum-cryptography-for-5g-roaming-use-case/"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Briefing Anti Scam Learnings from GASS London",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "HealthISAC",
+          "name": "Annual Threat Report",
+          "url": "https://health-isac.org/annual-threat-report-health-sector-2026/"
+        },
+        {
+          "vendor": "Hiscox",
+          "name": "Cyber Readiness Report",
+          "url": "https://www.hiscoxgroup.com/hiscox-cyber-readiness-report-2026"
+        },
+        {
+          "vendor": "ISACA",
+          "name": "State Of Cybersecurity",
+          "url": "https://www.isaca.org/resources/state-of-cybersecurity"
+        },
+        {
+          "vendor": "Kiteworks",
+          "name": "Data Security Compliance Risk Annual Survey",
+          "url": "https://www.kiteworks.com/data-security-compliance-risk-annual-report/"
+        },
+        {
+          "vendor": "Kong",
+          "name": "API Security Perspectives",
+          "url": "https://konghq.com/resources/reports/api-security-ai-threats-it-leader-insights-2025"
+        },
+        {
+          "vendor": "Mix Mode",
+          "name": "State Of AI In Cybersecurity Report",
+          "url": "https://mixmode.ai/state-of-ai-in-cyber-2025"
+        },
+        {
+          "vendor": "Mobile World Live",
+          "name": "Industry Survey Report",
+          "url": "https://www.mobileworldlive.com/industry-survey-report-2026/"
+        },
+        {
+          "vendor": "Momentum",
+          "name": "Cybersecurity Almanac",
+          "url": "https://strategyofsecurity.com/themes-from-momentum-cybers-2022-cybersecurity-almanac"
+        },
+        {
+          "vendor": "Nametag",
+          "name": "Workforce Impersonation Report",
+          "url": "https://www.go.nametag.co/2026-workforce-impersonation-report"
+        },
+        {
+          "vendor": "NCC Group",
+          "name": "Cyber Threat Intelligence Report",
+          "url": "https://www.nccgroup.com/resource-hub/cyber-threat-intelligence-reports/"
+        },
+        {
+          "vendor": "Net Diligence",
+          "name": "Cyber Claims Study",
+          "url": "https://netdiligence.com/cyber-claims-study-2026-report/"
+        },
+        {
+          "vendor": "Netscout",
+          "name": "DDoS Threat Intelligence Report",
+          "url": "https://www.netscout.com/threatreport/"
+        },
+        {
+          "vendor": "Netskope",
+          "name": "Unified Data Security",
+          "url": "https://www.netskope.com/lp-cybersecurity-insiders-2026-unified-data-security-report"
+        },
+        {
+          "vendor": "Norton",
+          "name": "Cyber Safety Insights Report",
+          "url": "https://newsroom.gendigital.com/norton-cyber-safety-report-2025"
+        },
+        {
+          "vendor": "Picus",
+          "name": "Blue Report",
+          "url": "https://www.picussecurity.com/blue-report"
+        },
+        {
+          "vendor": "Pillar",
+          "name": "State Of Attacks On Genai",
+          "url": "https://www.pillar.security/resources/the-state-of-attacks-on-genai"
+        },
+        {
+          "vendor": "Process Unity",
+          "name": "State of Third Party Risk Assessments",
+          "url": "https://info.processunity.com/resources-reports-state-of-third-party-risk-assessments-2026.html"
+        },
+        {
+          "vendor": "Proofpoint",
+          "name": "Cyber Insecurity Healthcare",
+          "url": "https://www.proofpoint.com/us/blog/corporate-news/cyber-insecurity-healthcare-2025-why-cyber-safety-now-patient-safety"
+        },
+        {
+          "vendor": "Prophet",
+          "name": "State Of AI In Secops",
+          "url": "https://resources.prophetsecurity.ai/state-of-ai-in-security-operations"
+        },
+        {
+          "vendor": "PWC",
+          "name": "Global Digital Trust Insights Report",
+          "url": "https://industrialcyber.co/reports/pwcs-2026-global-digital-trust-insights-report-flags-ot-iiot-and-talent-gaps-as-top-cybersecurity-challenges/"
+        },
+        {
+          "vendor": "SANS",
+          "name": "Cyber Threat Hunting Survey",
+          "url": "https://www.sans.org/white-papers/sans-2025-threat-hunting-survey-advancements-threat-hunting-amid-ai-cloud-challenges"
+        },
+        {
+          "vendor": "SANS",
+          "name": "SOC Survey",
+          "url": "https://www.sans.org/soc"
+        },
+        {
+          "vendor": "SANS",
+          "name": "Detection and Response Survey",
+          "url": "https://www.sans.org/webcasts/sans-2025-detection-and-response-survey-webcast-forum"
+        },
+        {
+          "vendor": "SANS",
+          "name": "State Of ICS Security",
+          "url": "https://www.sans.org/blog/sans-2025-state-ics-security-report-progress-pressure-path-resilience"
+        },
+        {
+          "vendor": "SANS",
+          "name": "Cyber Threat Intelligence Survey Insights",
+          "url": "https://www.sans.org/white-papers/2026-cyber-threat-intelligence-survey/"
+        },
+        {
+          "vendor": "SecurityScorecard",
+          "name": "Supply Chain Cybersecurity Trends Report",
+          "url": "https://securityscorecard.com/resources/research/2026-supply-chain-cybersecurity-trends-report/"
+        },
+        {
+          "vendor": "SISA Sappers",
+          "name": "Report",
+          "url": "https://www.sisainfosec.com/resources/infosec-reports/"
+        },
+        {
+          "vendor": "Sophos",
+          "name": "State Of Ransomware In Healthcare",
+          "url": "https://www.sophos.com/en-us/resources/white-papers/state-of-ransomware-in-healthcare"
+        },
+        {
+          "vendor": "Splunk",
+          "name": "State Of Security",
+          "url": "https://www.splunk.com/en_us/campaigns/state-of-security.html"
+        },
+        {
+          "vendor": "Tailscale",
+          "name": "State of Zero Trust",
+          "url": "https://tailscale.com/resources/report/zero-trust-report-2025"
+        },
+        {
+          "vendor": "Trelllix",
+          "name": "Advanced Threat Research Report",
+          "url": "https://www.trellix.com/platform/threat-intelligence/"
+        },
+        {
+          "vendor": "Vanta",
+          "name": "State Of Trust Report",
+          "url": "https://www.vanta.com/state-of-trust/global"
+        },
+        {
+          "vendor": "Verizon",
+          "name": "Mobile Security Index",
+          "url": "https://www.verizon.com/business/resources/reports/mobile-security-index/"
+        },
+        {
+          "vendor": "Viking Cloud",
+          "name": "Cyber Threat Landscape",
+          "url": "https://www.vikingcloud.com/resources/the-2025-cyber-threat-landscape-report-cyber-risks-opportunities-resilience"
+        },
+        {
+          "vendor": "Wipro",
+          "name": "State Of Cybersecurity Report",
+          "url": "https://www.wipro.com/cybersecurity/reports/state-of-cybersecurity-report-2025/"
+        },
+        {
+          "vendor": "World Economic Forum",
+          "name": "Global Risks Report",
+          "url": "https://www.weforum.org/publications/global-risks-report-2026/"
+        },
+        {
+          "vendor": "World Economic Forum",
+          "name": "Global Cybersecurity Outlook",
+          "url": "https://www.weforum.org/publications/global-cybersecurity-outlook-2026/"
+        },
+        {
+          "vendor": "Yubico",
+          "name": "Global State Of Authentication Report",
+          "url": "https://www.yubico.com/resource/global-state-of-authentication-survey-2025-perception-vs-reality/"
+        },
+        {
+          "vendor": "Zscaler",
+          "name": "Threatlabz VPN Risk Report",
+          "url": "https://www.zscaler.com/blogs/security-research/threatlabz-2025-vpn-report-why-81-organizations-plan-adopt-zero-trust-2026"
+        }
+      ],
+      "executive_perspectives": [
+        {
+          "vendor": "AICD",
+          "name": "A Director's Guide to AI Governance",
+          "url": "https://www.aicd.com.au/risk-governance/ai-governance-guide.html"
+        },
+        {
+          "vendor": "Arkose Labs",
+          "name": "The Agentic AI Security Report",
+          "url": "https://www.arkoselabs.com/resource/2026-agentic-ai-security-report/"
+        },
+        {
+          "vendor": "BioCatch",
+          "name": "Digital Banking Fraud Trends in Thailand",
+          "url": "https://www.biocatch.com/resources"
+        },
+        {
+          "vendor": "Cogility",
+          "name": "Insider Risk Decay",
+          "url": "https://cogility.com/insider-risk-management/"
+        },
+        {
+          "vendor": "CSC",
+          "name": "The Chief Information Security Officer Outlook",
+          "url": "https://www.cscdbs.com/en/resources-news/2025-ciso-cybersecurity-outlook-report/"
+        },
+        {
+          "vendor": "Cyentia",
+          "name": "CISO Engagement Study",
+          "url": "https://www.cyentia.com/press/"
+        },
+        {
+          "vendor": "F5",
+          "name": "Insider AI Threat Report",
+          "url": "https://www.f5.com/go/report/insider-ai-threat-report"
+        },
+        {
+          "vendor": "Filigran",
+          "name": "State of Threat Management",
+          "url": "https://filigran.io/resources/state-of-threat-management-2026/"
+        },
+        {
+          "vendor": "Hitch Partners",
+          "name": "Global CISO Leadership Report",
+          "url": "https://www.hitchpartners.com/ciso-survey-results-26"
+        },
+        {
+          "vendor": "HPE",
+          "name": "Zero Trust Security Report",
+          "url": "https://paths.ext.hpe.com/c/v100006820enw?x=sja6hd"
+        },
+        {
+          "vendor": "Interisle",
+          "name": "Malicious Registrations in the Domain Name Market",
+          "url": "https://interisle.net/insights/cybercriminaldomaindemand"
+        },
+        {
+          "vendor": "Kibu",
+          "name": "Quarterly Threat Report Q1",
+          "url": "https://www.trustkibu.com/news/quarterly-threat-report-q1-2026"
+        },
+        {
+          "vendor": "Kroll",
+          "name": "State of Cyber Resiliency Report",
+          "url": "https://www.kroll.com/en/publications/cyber/state-of-cyber-resilience-2026"
+        },
+        {
+          "vendor": "Pindrop",
+          "name": "The Deepfake Readiness Index",
+          "url": "https://www.pindrop.com/research/deepfake-readiness-index-2026/"
+        },
+        {
+          "vendor": "Proofpoint",
+          "name": "Voice of the CISO Report",
+          "url": "https://www.proofpoint.com/us/resources/white-papers/voice-of-the-ciso-report"
+        },
+        {
+          "vendor": "Salt",
+          "name": "CISO and CIO Investment Priorities",
+          "url": "https://content.salt.security/OstermanReport_LP.html"
+        },
+        {
+          "vendor": "Splunk",
+          "name": "CISO Report",
+          "url": "https://investor.cisco.com/news/news-details/2026/Splunk-Report-Agentic-AI-Takes-Center-Stage-in-CISOs-Path-to-Digital-Resilience/default.aspx"
+        },
+        {
+          "vendor": "Team8",
+          "name": "CISO Survey",
+          "url": "https://team8.vc/rethink/enterprise/ciso-survey-2025/"
+        },
+        {
+          "vendor": "Wiz",
+          "name": "CISO Budget Survey Report",
+          "url": "https://www.wiz.io/reports/ciso-security-budget-benchmark-2026"
+        },
+        {
+          "vendor": "Zscaler",
+          "name": "Threatlabz AI Security ANZ Executive Perspective",
+          "url": "https://www.zscaler.com/campaign/threatlabz-ai-security-report"
+        }
+      ],
+      "workforce_and_culture": [
+        {
+          "vendor": "Accenture",
+          "name": "Reinventing the Cyber Workforce",
+          "url": "https://www.accenture.com/us-en/insights/security/cyber-workforce-reinvention"
+        },
+        {
+          "vendor": "CompTIA",
+          "name": "State of Cybersecurity",
+          "url": "https://www.comptia.org/content/research/cybersecurity-trends-research"
+        },
+        {
+          "vendor": "CompTIA",
+          "name": "State of the Tech Workforce",
+          "url": "https://www.comptia.org/en-us/resources/research/state-of-the-tech-workforce-2026/"
+        },
+        {
+          "vendor": "Cyentia",
+          "name": "State of HRM Insight Report",
+          "url": "https://www.cyentia.com/publication/risky-business/"
+        },
+        {
+          "vendor": "Fortinet",
+          "name": "Cybersecurity Skills Gap Report",
+          "url": "https://investor.fortinet.com/news-releases/news-release-details/fortinet-report-reveals-cybersecurity-hiring-stalls-nearly-half"
+        },
+        {
+          "vendor": "Gurucul",
+          "name": "Insider Risk Report",
+          "url": "https://gurucul.com/2026-insider-risk-report/"
+        },
+        {
+          "vendor": "ISACA",
+          "name": "State of Privacy",
+          "url": "https://www.isaca.org/resources/reports/state-of-privacy-2025"
+        },
+        {
+          "vendor": "ISC2",
+          "name": "Cybersecurity Workforce Study",
+          "url": "https://www.isc2.org/Insights/2025/12/2025-ISC2-Cybersecurity-Workforce-Study"
+        },
+        {
+          "vendor": "Mimecast",
+          "name": "The State Of Human Risk",
+          "url": "https://www.mimecast.com/blog/the-state-of-human-risk-in-2026/"
+        },
+        {
+          "vendor": "MITRE",
+          "name": "Threat Informed Defense Report",
+          "url": "https://ctid.mitre.org/resources/2025-impact-report/"
+        },
+        {
+          "vendor": "N2K",
+          "name": "Wicys Cyber Talent Study",
+          "url": "https://www.n2k.com/wicys"
+        },
+        {
+          "vendor": "SANS",
+          "name": "Cybersecurity Workforce Research Report",
+          "url": "https://www.sans.org/white-papers/2026-cybersecurity-workforce-research/"
+        }
+      ],
+      "market_and_investment_research": [
+        {
+          "vendor": "Altitude",
+          "name": "Cyber Cybersecurity Market Review",
+          "url": "https://www.altitudecyber.com/resources/altitude-cyber-market-reviews"
+        },
+        {
+          "vendor": "Aon",
+          "name": "Reinsurance Market Dynamics",
+          "url": "https://www.aon.com/en/insights/reports/reinsurance-market-dynamics"
+        },
+        {
+          "vendor": "Baird",
+          "name": "Disruptors",
+          "url": "https://www.rwbaird.com/corporations-and-institutions/investment-banking/insights/2026/02/privately-held-software-companies-to-watch/"
+        },
+        {
+          "vendor": "Clairfield International",
+          "name": "Cybersecurity Sector Report",
+          "url": "https://www.grandviewresearch.com/industry-analysis/cyber-security-market"
+        },
+        {
+          "vendor": "Cybersecurityventures",
+          "name": "Cybersecurity Market Report",
+          "url": "https://cybersecurityventures.com/official-2026-cybersecurity-market-report-predictions-and-statistics/"
+        },
+        {
+          "vendor": "Gallagher",
+          "name": "Cyber Insurance Market Outlook",
+          "url": "https://www.ajg.com/news-and-insights/"
+        },
+        {
+          "vendor": "Guy Carpenter",
+          "name": "US Cyber Industry Exposure Database",
+          "url": "https://www.guidewire.com/resources/blog/technology/2025-cyber-market-unveiled-cyence-and-guy-carpenter-deliver-industry-exposure-database-insights"
+        },
+        {
+          "vendor": "Houlihanlokey",
+          "name": "How AI Is Reshaping Digital Engineering",
+          "url": "https://hl.com/insights/"
+        },
+        {
+          "vendor": "IT Harvest",
+          "name": "State Of Cyber",
+          "url": "https://it-harvest.com/research/"
+        },
+        {
+          "vendor": "MomentumCyber",
+          "name": "Cybersecurity Services Market Review",
+          "url": "https://momentumcyber.com/resources/"
+        },
+        {
+          "vendor": "NAIC",
+          "name": "Cybersecurity Insurance Report",
+          "url": "https://content.naic.org/newsroom"
+        },
+        {
+          "vendor": "Recorded Future",
+          "name": "State Of Threat Intelligence",
+          "url": "https://www.recordedfuture.com/blog/introducing-the-2025-state-of-threat-intelligence-report"
+        },
+        {
+          "vendor": "UK DSIT",
+          "name": "UK Cyber Security Sectoral Analysis",
+          "url": "https://www.gov.uk/government/publications/cyber-security-sectoral-analysis-2026"
+        },
+        {
+          "vendor": "UKCyber",
+          "name": "Security Sectoral Analysis Report",
+          "url": "https://cyberexchange.uk.net/news/cyber-security-sectoral-analysis-report-2025"
+        }
+      ],
+      "application_security": [
+        {
+          "vendor": "Akamai",
+          "name": "APAC API Security",
+          "url": "https://www.akamai.com/newsroom/press-release/2025-api-security-impact-study"
+        },
+        {
+          "vendor": "AppOmni",
+          "name": "State Of Saas Security Report",
+          "url": "https://appomni.com/reports/state-of-saas-security/"
+        },
+        {
+          "vendor": "BlackDuck",
+          "name": "BSIMM16",
+          "url": "https://news.blackduck.com/2026-02-04-Black-Duck-Releases-BSIMM16-Revealing-AI-and-Regulatory-Compliance-Reshaping-Application-Security-Processes"
+        },
+        {
+          "vendor": "Checkmarx",
+          "name": "Future Of Application Security",
+          "url": "https://checkmarx.com/report-future-of-appsec-2025/"
+        },
+        {
+          "vendor": "Cycode",
+          "name": "State of Application Security Posture Management",
+          "url": "https://cycode.com/state-of-aspm-2025/"
+        },
+        {
+          "vendor": "Cypress Data Defense",
+          "name": "State of Application Security",
+          "url": "https://cypressdatadefense.com/reports/2025-state-of-application-security"
+        },
+        {
+          "vendor": "Traceable",
+          "name": "Global State of API Security",
+          "url": "https://www.traceable.ai/2025-state-of-api-security"
+        }
+      ],
+      "cloud_security": [
+        {
+          "vendor": "Checkpoint",
+          "name": "Cloud Security Report",
+          "url": "https://www.checkpoint.com/resources/items/report-cloud-security-report-2025"
+        },
+        {
+          "vendor": "Crowd Strike",
+          "name": "SaaS Security Posture Management",
+          "url": "https://www.crowdstrike.com/en-us/resources/reports/frost-sullivan-recognizes-adaptive-shield-saas-security-innovation/"
+        },
+        {
+          "vendor": "Darktrace",
+          "name": "Remote Workforce Security Report",
+          "url": "https://www.darktrace.com/blog/cve-2026-1731-how-darktrace-sees-the-beyondtrust-exploitation-wave-unfolding"
+        },
+        {
+          "vendor": "Fortinet",
+          "name": "Cloud Security Report",
+          "url": "https://www.fortinet.com/blog/threat-research"
+        },
+        {
+          "vendor": "HardenStance",
+          "name": "Home Security at Scale",
+          "url": "https://www.hardenstance.com/reports/"
+        },
+        {
+          "vendor": "Hughes",
+          "name": "Secure Network Access Report",
+          "url": "https://www.hughes.com/resources/press-releases/hughes-honored-best-managed-services-provider-2025-tech-ascension-awards"
+        },
+        {
+          "vendor": "MixMode",
+          "name": "Cloud Security Report",
+          "url": "https://www.mixmode.ai/resources/blogs"
+        },
+        {
+          "vendor": "Prowler",
+          "name": "State of Cloud Security Report",
+          "url": "https://prowler.com/state-of-cloud-security-2026"
+        },
+        {
+          "vendor": "RedHat",
+          "name": "State of Cloud Native Security",
+          "url": "https://www.redhat.com/en/blog/state-cloud-native-security-2026-maturity-gaps-and-automation-mandate"
+        },
+        {
+          "vendor": "Snyk",
+          "name": "Cloud Native Application Security Report",
+          "url": "https://snyk.io/lp/state-of-cloud-native-application-security/"
+        }
+      ],
+      "identity_security": [
+        {
+          "vendor": "Cerbos",
+          "name": "Authorization Maturity Model CISO Benchmark",
+          "url": "https://solutions.cerbos.dev/authorization-maturity-model-a-cisos-benchmark"
+        },
+        {
+          "vendor": "Cogility",
+          "name": "Insider Risk Report",
+          "url": "https://cogility.com/resources/insider-risk-report/"
+        },
+        {
+          "vendor": "CyberArk",
+          "name": "State of Machine Identity Security Report",
+          "url": "https://www.cyberark.com/state-of-machine-identity-security-report/"
+        },
+        {
+          "vendor": "CyberArk",
+          "name": "Identity Security Threat Landscape Report",
+          "url": "https://www.cyberark.com/resources/ebooks/2025-identity-security-landscape"
+        },
+        {
+          "vendor": "Dashlane",
+          "name": "State of Credential Security Report",
+          "url": "https://go.dashlane.com/q1-state-of-credential-security.html"
+        },
+        {
+          "vendor": "Descope",
+          "name": "State of Customer Identity Report",
+          "url": "https://www.descope.com/press-release/2025-state-of-customer-identity"
+        },
+        {
+          "vendor": "Duo",
+          "name": "State Of Identity Security Report",
+          "url": "https://duo.com/blog/research-insights-4-trends-reshaping-identity-security-in-2025"
+        },
+        {
+          "vendor": "Hypr",
+          "name": "State of Passwordless Identity Assurance",
+          "url": "https://www.hypr.com/resources/report-state-of-passwordless"
+        },
+        {
+          "vendor": "HYPR",
+          "name": "The State of HR Identity Fraud Detection",
+          "url": "https://www.hypr.com/resources/hr-identity-fraud-detection-2026"
+        },
+        {
+          "vendor": "KuppingerCole",
+          "name": "Privileged Access Management (PAM)",
+          "url": "https://www.kuppingercole.com/research/lc2026-pam/"
+        },
+        {
+          "vendor": "ManageEngine",
+          "name": "Identity Security Outlook",
+          "url": "https://www.manageengine.com/news/manageengine-enterprise-identity-security-2026-study.html"
+        },
+        {
+          "vendor": "Netskope",
+          "name": "VPNs Under Siege Report",
+          "url": "https://www.netskope.com/solutions/replace-virtual-private-networks"
+        },
+        {
+          "vendor": "Okta",
+          "name": "Secure Sign In Trends Report",
+          "url": "https://www.okta.com/reports/the-secure-sign-in-trends-report/"
+        },
+        {
+          "vendor": "Okta",
+          "name": "Businesses at Work",
+          "url": "https://www.okta.com/businesses-at-work/"
+        },
+        {
+          "vendor": "Omada",
+          "name": "State Of Identity Governance",
+          "url": "https://omadaidentity.com/resources/analyst-reports/state-of-iga/"
+        },
+        {
+          "vendor": "OpenSystems",
+          "name": "SASE Report",
+          "url": "https://go.open-systems.com/managed-sase-and-zero-trust-report.html"
+        },
+        {
+          "vendor": "Sail Point",
+          "name": "Horizons Of Identity Security",
+          "url": "https://www.sailpoint.com/horizons"
+        },
+        {
+          "vendor": "Spy Cloud",
+          "name": "Identity Threat Report",
+          "url": "https://spycloud.com/resource/report/identity-threat-report-2026/"
+        }
+      ],
+      "penetration_testing": [
+        {
+          "vendor": "Cobalt",
+          "name": "State of Pentesting",
+          "url": "https://resource.cobalt.io/state-of-pentesting-2026"
+        },
+        {
+          "vendor": "HackerOne",
+          "name": "Hacker Powered Security Report",
+          "url": "https://www.hackerone.com/resources/reporting/8th-hacker-powered-security-report"
+        }
+      ],
+      "privacy_and_data_protection": [
+        {
+          "vendor": "Bridewell",
+          "name": "Global Regulatory Landscape Guide",
+          "url": "https://www.bridewell.com/insights/white-papers/detail/cyber-threat-intelligence-report-2024"
+        },
+        {
+          "vendor": "Cisco",
+          "name": "Privacy Benchmark Study",
+          "url": "https://www.cisco.com/c/en/us/about/trust-center/data-privacy-benchmark-study.html"
+        },
+        {
+          "vendor": "Drata",
+          "name": "State of GRC",
+          "url": "https://drata.com/resources/reports/grc-trends"
+        },
+        {
+          "vendor": "Episki",
+          "name": "State of GRC Trends Budgets and Benchmarks",
+          "url": "https://episki.com/now/state-of-grc-2026"
+        },
+        {
+          "vendor": "Fortinet",
+          "name": "Data Security Report",
+          "url": "https://www.fortinet.com/blog/industry-trends/fortinet-report-reveals-continued-rise-in-data-loss-despite-smarter-data-security-practices-and-record-spending"
+        },
+        {
+          "vendor": "Hyperproof",
+          "name": "IT Risk and Compliance Benchmark Report",
+          "url": "https://www.prnewswire.com/news-releases/hyperproof-releases-2026-benchmark-report-revealing-how-ai-is-reshaping-grc-302686406.html"
+        },
+        {
+          "vendor": "Immuta",
+          "name": "State of Data Security Report",
+          "url": "https://www.immuta.com/resources/2025-state-of-data-security-report/"
+        },
+        {
+          "vendor": "Kiteworks",
+          "name": "Data Security Compliance Risk Forecast",
+          "url": "https://cyberdefensewire.com/new-2026-kiteworks-research-reveals-most-organizations-cant-prove-where-their-data-lives-warning-of-enterprise-data-proof-gaps/"
+        },
+        {
+          "vendor": "Kiteworks",
+          "name": "Data Sovereignty Report",
+          "url": "https://www.kiteworks.com/company/press-releases/kiteworks-2026-data-sovereignty-report-compliance-incidents/"
+        },
+        {
+          "vendor": "Proofpoint",
+          "name": "Data Security Landscape Report",
+          "url": "https://www.proofpoint.com/us/resources/threat-reports/data-security-landscape-report"
+        }
+      ],
+      "ransomware": [
+        {
+          "vendor": "Delinea",
+          "name": "State Of Ransomware Report",
+          "url": "https://delinea.com/resources/2025-ransomware-survey-report"
+        },
+        {
+          "vendor": "Semperis",
+          "name": "Ransomware Risk Report",
+          "url": "https://www.semperis.com/ransomware-risk-report/"
+        },
+        {
+          "vendor": "Sophos",
+          "name": "State of Ransomware Report",
+          "url": "https://www.sophos.com/en-us/content/state-of-ransomware"
+        },
+        {
+          "vendor": "Sophos",
+          "name": "State Of Ransomware In Manufacturing",
+          "url": "https://www.sophos.com/en-us/resources/white-papers/state-of-ransomware-in-manufacturing-and-production"
+        },
+        {
+          "vendor": "Veeam",
+          "name": "Data Trust and Resilience Report",
+          "url": "https://go.veeam.com/data-trust-resilience-report"
+        }
+      ],
+      "ai_and_emerging_technologies": [
+        {
+          "vendor": "Akto",
+          "name": "State of Agentic AI Security Report",
+          "url": "https://www.akto.io/state-of-agentic-ai-security-2025"
+        },
+        {
+          "vendor": "Apono",
+          "name": "State of Agentic AI Cyber Risk Report",
+          "url": "https://www.prnewswire.com/news-releases/new-apono-report-reveals-98-of-cybersecurity-leaders-are-slowing-agentic-ai-adoption-due-to-insufficient-security-controls-302696914.html"
+        },
+        {
+          "vendor": "Appdome",
+          "name": "Mobile App Consumer Survey",
+          "url": "https://www.appdome.com/mobile-consumer-cyber-security-survey/"
+        },
+        {
+          "vendor": "Australian Institute of Company Directors",
+          "name": "Directors Introduction to AI",
+          "url": "https://www.aicd.com.au/innovative-technology/digital-business/artificial-intelligence/governance-of-ai.html"
+        },
+        {
+          "vendor": "Big ID",
+          "name": "AI Risk And Readiness In The Enterprise",
+          "url": "https://home.bigid.com/download-ai-risk-report"
+        },
+        {
+          "vendor": "Calypso AI",
+          "name": "Insider Threat Report",
+          "url": "https://calypsoai.com/content-download-pages/the-insider-ai-threat-report/"
+        },
+        {
+          "vendor": "Cisco",
+          "name": "State of AI Security",
+          "url": "https://blogs.cisco.com/ai/cisco-state-of-ai-security-2026-report"
+        },
+        {
+          "vendor": "Cisco",
+          "name": "State of Industrial AI Report",
+          "url": "https://www.cisco.com/site/us/en/solutions/networking/industrial-iot/industrial-networking-report/index.html"
+        },
+        {
+          "vendor": "Clutch Security",
+          "name": "MCP A View From The Trenches",
+          "url": "https://www.clutch.security/blog/mcp-servers-what-we-found-when-we-actually-looked"
+        },
+        {
+          "vendor": "Cycode",
+          "name": "State Of Product Security",
+          "url": "https://cycode.com/state-of-product-security-ai-era-2026/"
+        },
+        {
+          "vendor": "Cyera",
+          "name": "State of AI Data Security Reportw.",
+          "url": "https://www.cyera.com/research/2025-state-of-ai-data-security-report"
+        },
+        {
+          "vendor": "Darktrace",
+          "name": "State Of AI Cybersecurity",
+          "url": "https://www.darktrace.com/the-state-of-ai-cybersecurity-2025"
+        },
+        {
+          "vendor": "DeepInstinct",
+          "name": "Voice of SecOps",
+          "url": "https://www.deepinstinct.com/voice-of-secops-reports"
+        },
+        {
+          "vendor": "Delinea",
+          "name": "AI In Identity Security Report",
+          "url": "https://delinea.com/resources/2025-ai-in-identity-security"
+        },
+        {
+          "vendor": "Deloitte",
+          "name": "Tech Trends",
+          "url": "https://mkto.deloitte.com/rs/712-CNF-326/images/DI_Tech-trends-2026.pdf"
+        },
+        {
+          "vendor": "Gravitee",
+          "name": "The AI Governance Gap",
+          "url": "https://www.softwareseni.com/shadow-ai-and-the-governance-gap-enterprises-are-not-measuring/"
+        },
+        {
+          "vendor": "Gurucul",
+          "name": "Pulse AI SOC Report",
+          "url": "https://gurucul.com/ai-soc-report/"
+        },
+        {
+          "vendor": "Hidden Layer",
+          "name": "AI Threat Landscape Report",
+          "url": "https://www.hiddenlayer.com/report-and-guide/threatreport2026"
+        },
+        {
+          "vendor": "Hiya",
+          "name": "State of the Call",
+          "url": "https://www.hiya.com/state-of-the-call"
+        },
+        {
+          "vendor": "Iconiq",
+          "name": "State of AI Bi Annual Snapshot",
+          "url": "https://www.iconiq.com/growth/reports/2026-state-of-ai-bi-annual-snapshot"
+        },
+        {
+          "vendor": "KPMG",
+          "name": "Cybersecurity Considerations",
+          "url": "https://kpmg.com/ee/en/insights/2026/01/kpmg-global-tech-report-2026.html"
+        },
+        {
+          "vendor": "LastPass",
+          "name": "State of AI and SaaS Security Report",
+          "url": "https://blog.lastpass.com/posts/state-of-ai-and-saas-security-2026"
+        },
+        {
+          "vendor": "McKinsey",
+          "name": "State of AI Trust",
+          "url": "https://www.mckinsey.com/capabilities/tech-and-ai/our-insights/tech-forward/state-of-ai-trust-in-2026-shifting-to-the-agentic-era"
+        },
+        {
+          "vendor": "Memcyco",
+          "name": "AI-Driven-Fraud",
+          "url": "https://www.memcyco.com/library/state-of-digital-impersonation-fraud-resilience-report/"
+        },
+        {
+          "vendor": "Netskope",
+          "name": "AI Security Report",
+          "url": "https://www.netskope.com/resources/cloud-and-threat-reports/cloud-and-threat-report-2026"
+        },
+        {
+          "vendor": "Okta",
+          "name": "AI at Work",
+          "url": "https://spaces.okta.com/story/ai-at-work/page/1"
+        },
+        {
+          "vendor": "OpenAI",
+          "name": "Agent Security Enterprise",
+          "url": "https://openai.com/business/learn/agent-security-enterprise/"
+        },
+        {
+          "vendor": "Pentera",
+          "name": "AI Security Exposure Benchmark",
+          "url": "https://pentera.io/resources/reports/ai-security-exposure-survey-2026/"
+        },
+        {
+          "vendor": "RedHelix",
+          "name": "Cyber Security Trends Report",
+          "url": "https://www.redhelix.com/media/cyber-threats-2026-ai-identity-and-resilience-in-an-accelerated-threat-landscape/"
+        },
+        {
+          "vendor": "SailPoint",
+          "name": "The Year of The AI Agent",
+          "url": "https://www.sailpoint.com/identity-library/agentic-fabric-60-seconds"
+        },
+        {
+          "vendor": "Salt",
+          "name": "Future of Agentic AI Report",
+          "url": "https://salt.security/press-releases/new-report-warns-of-looming-security-crisis-as-ai-agents-proliferate"
+        },
+        {
+          "vendor": "SANS",
+          "name": "AI Survey",
+          "url": "https://www.sans.org/white-papers/sans-2025-ai-survey-measuring-ai-impact-security-three-years-later"
+        },
+        {
+          "vendor": "Saviynt",
+          "name": "AI Identity Risk Report",
+          "url": "https://saviynt.com/ciso-ai-risk-report-2026"
+        },
+        {
+          "vendor": "Strike48",
+          "name": "State of Agentic Security Report",
+          "url": "https://strike48.com/research/state-of-agentic-security-2026"
+        },
+        {
+          "vendor": "Synack",
+          "name": "State of Agentic AI in Pentesting",
+          "url": "https://www.synack.com/resource-hub/"
+        },
+        {
+          "vendor": "Wiz",
+          "name": "AI Security Readiness",
+          "url": "https://www.wiz.io/reports/ai-security-readiness"
+        }
+      ]
+    }
+  }
+}

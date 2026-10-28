@@ -1,0 +1,21 @@
+{
+  "targets": [],
+  "_example": {
+    "name": "example-site",
+    "repo": "~/Projects/example-site",
+    "fetch": [["bun", "scripts/fetch-data.ts"]],
+    "build": ["bun", "run", "build"],
+    "deploy": ["bun", "run", "ship"],
+    "dataDir": "data",
+    "timestampConvention": "meta-json",
+    "cadenceDays": 30,
+    "verifyUrl": "https://example.com/data/latest.json",
+    "verifyField": "_meta.fetched_at",
+    "dataset": {
+      "update": ["bun", "Data/update.ts"],
+      "cwd": "~/Projects/example-dataset",
+      "summary": "Data/SUMMARY.md"
+    },
+    "notes": "Move this object into the targets array and replace every value. The repo path must exist on disk or the tool refuses to load the registry."
+  }
+}

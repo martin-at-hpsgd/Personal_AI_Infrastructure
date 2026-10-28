@@ -1,0 +1,21 @@
+{
+  "name": "@lifeos/arbol",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test Workflows",
+    "typecheck": "tsc --noEmit",
+    "workflow": "bun Workflows/cli.ts"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "yaml": "^2.8.3",
+    "cron-parser": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "@types/json-schema": "^7.0.15",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 2.0.0
  * Cost Aggregator — scans Claude Code session JSONLs for token usage data
  * and computes per-session costs.
  *
@@ -13,6 +14,7 @@
 import { join, basename, dirname } from "path"
 import { existsSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, mkdirSync } from "fs"
 import { homedir } from "node:os";
+import { pricingFor, currentModel, type Pricing } from "../../TOOLS/models"
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir()
 const LIFEOS_DIR = join(HOME, ".claude", "LIFEOS")
@@ -20,40 +22,20 @@ const PROJECTS_DIR = join(HOME, ".claude", "projects")
 const OUTPUT_FILE = join(LIFEOS_DIR, "MEMORY", "OBSERVABILITY", "session-costs.jsonl")
 const STATE_FILE = join(LIFEOS_DIR, "PULSE", "Performance", "aggregator-state.json")
 
-// Model pricing per million tokens (verified 2026-07-06 against the claude-api
-// reference). Current models first; historical IDs retained so older transcripts
-// still price correctly. cacheWrite = 1.25x input, cacheRead = 0.1x input.
-const MODEL_PRICING: Record<string, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
-  // Fable 5 (current max tier)
-  "claude-fable-5": { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 1.00 },
-  "claude-mythos-5": { input: 10, output: 50, cacheWrite: 12.50, cacheRead: 1.00 },
-  // Opus 4.8 / 4.7 (current) — $5/$25, NOT the old Opus-4 $15/$75
-  "claude-opus-4-8": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.50 },
-  "claude-opus-4-7": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.50 },
-  // Sonnet 5 (current)
-  "claude-sonnet-5": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30 },
-  // Haiku 4.5 (current) — $1/$5
-  "claude-haiku-4-5": { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.10 },
-  "claude-haiku-4-5-20251001": { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.10 },
-  // Historical (retained for older transcripts)
-  "claude-opus-4-20250514": { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.50 },
-  "claude-opus-4-6": { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.50 },
-  "claude-sonnet-4-20250514": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30 },
-  "claude-sonnet-4-6": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30 },
-  "claude-sonnet-4-5-20250514": { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.30 },
-}
-
-function getPricing(model: string): { input: number; output: number; cacheWrite: number; cacheRead: number } {
-  // Exact match
-  if (MODEL_PRICING[model]) return MODEL_PRICING[model]
-  // Fuzzy match falls back to the CURRENT model in each family
-  const lower = model.toLowerCase()
-  if (lower.includes("fable") || lower.includes("mythos")) return MODEL_PRICING["claude-fable-5"]
-  if (lower.includes("opus")) return MODEL_PRICING["claude-opus-4-8"]
-  if (lower.includes("haiku")) return MODEL_PRICING["claude-haiku-4-5"]
-  if (lower.includes("sonnet")) return MODEL_PRICING["claude-sonnet-5"]
-  // Default to Sonnet pricing for unknown models
-  return MODEL_PRICING["claude-sonnet-5"]
+// Prices come from LIFEOS/TOOLS/model-pricing.json, generated daily by ModelSync
+// from Anthropic's public pricing page — no table lives here. pricingFor() resolves
+// exact id → same family+version (dated ids) → the tier's current row. Cache
+// writes are priced by TTL: transcripts carry usage.cache_creation with separate
+// ephemeral_5m / ephemeral_1h counts, and the 1h rate is 1.6× the 5m rate.
+const unpriced = new Set<string>()
+function getPricing(model: string): Pricing {
+  const hit = pricingFor(model)
+  if (hit) return hit.pricing
+  if (!unpriced.has(model)) {
+    unpriced.add(model)
+    console.error(`[cost-aggregator] no price row for '${model}' — falling back to CURRENT.sonnet; run ModelSync --sync`)
+  }
+  return pricingFor(currentModel("sonnet"))?.pricing ?? { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0 }
 }
 
 interface SessionCost {
@@ -146,6 +128,10 @@ function processSessionFile(filePath: string, projectSlug: string): SessionCost 
       const outTok = usage.output_tokens ?? 0
       const cwTok = usage.cache_creation_input_tokens ?? 0
       const crTok = usage.cache_read_input_tokens ?? 0
+      // TTL split: when the breakdown is present, price 1h writes at the 1h rate;
+      // otherwise (older transcripts) treat all writes as 5m.
+      const cw1h = usage.cache_creation?.ephemeral_1h_input_tokens ?? 0
+      const cw5m = usage.cache_creation ? (usage.cache_creation.ephemeral_5m_input_tokens ?? 0) : cwTok
 
       inputTokens += inTok
       outputTokens += outTok
@@ -156,7 +142,7 @@ function processSessionFile(filePath: string, projectSlug: string): SessionCost 
 
       costInput += (inTok * pricing.input) / 1_000_000
       costOutput += (outTok * pricing.output) / 1_000_000
-      costCacheWrite += (cwTok * pricing.cacheWrite) / 1_000_000
+      costCacheWrite += (cw5m * pricing.cacheWrite5m + cw1h * pricing.cacheWrite1h) / 1_000_000
       costCacheRead += (crTok * pricing.cacheRead) / 1_000_000
 
       const ts = d.timestamp

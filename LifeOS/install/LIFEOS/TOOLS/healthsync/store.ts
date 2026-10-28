@@ -1,5 +1,8 @@
+import { principalTimezone } from "../lib/Timezone";
 import { createHash } from "node:crypto";
-import { appendFileSync, chmodSync, mkdirSync, renameSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { invariant } from "../Invariant";
+import { safeFetch, type SafeFetchOptions } from "../lib/SafeFetch";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import type {
@@ -9,21 +12,29 @@ import type {
   SyncState,
   TokenStore,
 } from "./types";
+import { getClaudeDir, lifeosPath } from "../Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { parseEnv as parseEnvFromFile } from "../Env"; // public issue #2100, @bowlax: unified parser
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const ENV_PATH = join(HOME, ".claude", ".env");
-const STATE_DIR = join(HOME, ".claude", "LIFEOS", "MEMORY", "STATE");
-const DATA_DIR = join(HOME, ".claude", "LIFEOS", "USER", "HEALTH", "DATA");
-const OBS_DIR = join(HOME, ".claude", "LIFEOS", "MEMORY", "OBSERVABILITY");
+const ENV_PATH = join(getClaudeDir(), ".env");
+const STATE_DIR = lifeosPath("MEMORY", "STATE");
+const DATA_DIR = lifeosPath("USER", "HEALTH", "DATA");
+const OBS_DIR = lifeosPath("MEMORY", "OBSERVABILITY");
 const TOKENS_PATH = join(STATE_DIR, "healthsync-tokens.json");
 const STATE_PATH = join(STATE_DIR, "healthsync-state.json");
 
+// Everything this module writes is private (tokens, health records, state,
+// logs): directories are created 0700 and files 0600 AT CREATION, never
+// chmod'd after the write.
+const PRIVATE_DIR_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
+
 function ensureParent(path: string): void {
-  mkdirSync(dirname(path), { recursive: true });
+  mkdirSync(dirname(path), { recursive: true, mode: PRIVATE_DIR_MODE });
 }
 
 function ensureDir(path: string): void {
-  mkdirSync(path, { recursive: true });
+  mkdirSync(path, { recursive: true, mode: PRIVATE_DIR_MODE });
 }
 
 function stripQuotes(value: string): string {
@@ -36,8 +47,6 @@ function stripQuotes(value: string): string {
   }
   return trimmed;
 }
-
-const FALLBACK_TZ = "America/Los_Angeles";
 
 function isValidTimeZone(tz: string): boolean {
   try {
@@ -53,21 +62,19 @@ function isValidTimeZone(tz: string): boolean {
  *
  * Sleep and activity days are wall-clock local, so a hardcoded zone silently
  * misfiled every record for anyone outside Pacific time — and shifted the
- * boundary for the principal too while travelling. Resolution order is explicit
- * override, then process TZ, then the host zone, then the historical default.
+ * boundary for the principal too while traveling. Resolution order is explicit
+ * override, then principalTimezone() (location fix, config, machine zone).
  * public issue #1762, @jacobo-ortiz
+ *
+ * The host zone no longer comes before the location: launchd runs the hourly
+ * pull with the Mac's system zone, which stays at home while the principal
+ * travels, so "today" lagged by the zone gap and the statusline showed
+ * yesterday's readiness all morning while the principal was away from home.
  */
 export function resolveTimeZone(): string {
-  const candidates = [
-    process.env.LIFEOS_HEALTH_TZ,
-    process.env.TZ,
-    Intl.DateTimeFormat().resolvedOptions().timeZone,
-  ];
-  for (const candidate of candidates) {
-    const tz = candidate?.trim();
-    if (tz && isValidTimeZone(tz)) return tz;
-  }
-  return FALLBACK_TZ;
+  const override = process.env.LIFEOS_HEALTH_TZ?.trim();
+  if (override && isValidTimeZone(override)) return override;
+  return principalTimezone();
 }
 
 export function dayKey(epochMs: number, timeZone: string = resolveTimeZone()): string {
@@ -144,29 +151,9 @@ export function isoNow(d: Date, timeZone: string = resolveTimeZone()): string {
 export const dayKeyLA = dayKey;
 export const isoNowLA = isoNow;
 
-export function parseEnv(text: string): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line === "" || line.startsWith("#")) {
-      continue;
-    }
-
-    const cleaned = line.startsWith("export ") ? line.slice("export ".length).trim() : line;
-    const equalsAt = cleaned.indexOf("=");
-    if (equalsAt <= 0) {
-      continue;
-    }
-
-    const key = cleaned.slice(0, equalsAt).trim();
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      continue;
-    }
-
-    env[key] = stripQuotes(cleaned.slice(equalsAt + 1));
-  }
-  return env;
-}
+// Re-export the unified parseEnv from Env.ts (public issue #2100, @bowlax).
+// Removed duplicate parser; the consolidated version in Env.ts handles CRLF + export prefix.
+export const parseEnv = parseEnvFromFile;
 
 export async function readEnvFile(path: string): Promise<Record<string, string>> {
   try {
@@ -199,14 +186,22 @@ export async function readJsonSafe<T>(path: string, fallback: T): Promise<T> {
 export async function writeJson(path: string, obj: unknown): Promise<void> {
   ensureParent(path);
   // Atomic: write-temp + rename so a crash mid-write never corrupts tokens/state.
+  // The temp file is created 0600 (exclusive, so a pre-planted file or symlink
+  // at the temp path is never followed) and the rename keeps that inode, so
+  // the final file is never readable by anyone else, even for an instant.
+  invariant(path.length > 0, "writeJson: empty path");
   const tmp = `${path}.tmp-${process.pid}`;
-  await Bun.write(tmp, `${JSON.stringify(obj, null, 2)}\n`);
+  rmSync(tmp, { force: true });
+  writeFileSync(tmp, `${JSON.stringify(obj, null, 2)}\n`, {
+    mode: PRIVATE_FILE_MODE,
+    flag: "wx",
+  });
   renameSync(tmp, path);
 }
 
+/** Kept for existing callers; writeJson is now always private. */
 export async function writeJson0600(path: string, obj: unknown): Promise<void> {
   await writeJson(path, obj);
-  chmodSync(path, 0o600);
 }
 
 export async function loadState(ctx: Ctx): Promise<SyncState> {
@@ -242,7 +237,14 @@ export async function writeDayFile(
 
 export async function appendJsonl(path: string, obj: unknown): Promise<void> {
   ensureParent(path);
-  appendFileSync(path, `${JSON.stringify(obj)}\n`);
+  // appendFileSync applies its mode only when it creates the file. A log written by an earlier version may be
+  // broader than 0600, so it is tightened (never loosened) before this line goes in.
+  try {
+    if ((statSync(path).mode & 0o077) !== 0) chmodSync(path, PRIVATE_FILE_MODE);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+  appendFileSync(path, `${JSON.stringify(obj)}\n`, { mode: PRIVATE_FILE_MODE });
 }
 
 export async function buildCtx(): Promise<Ctx> {
@@ -306,20 +308,45 @@ export async function withTimeout<T>(p: Promise<T>, ms: number, label: string): 
   }
 }
 
+/**
+ * Test seam for timedFetch: a resolver, extra trust roots, a non-public class to allow, or SafeFetch's own
+ * transport seam. Production never sets it, so every healthsync request is public-only. Tests that run a local
+ * server opt into loopback here and restore it afterwards.
+ */
+export const timedFetchSeam: Pick<SafeFetchOptions, "resolve" | "allow" | "tls" | "transport"> = {};
+
+/**
+ * Every healthsync request goes through SafeFetch (S122, ISA 20261015-security-p1-batch2): the host is resolved
+ * once, every address must be public, the connection is pinned to the checked address, and each redirect hop is
+ * checked again. `ms` is SafeFetch's deadline for the whole call, headers and body, so a body that stalls after
+ * the headers is aborted at the same deadline.
+ *
+ * Round 2: SafeFetch awaits the host's DNS answer before it looks at its deadline (SafeFetch.ts checkDestination),
+ * so a resolver that never answers held the call open past `ms`. timedFetch owns its deadline: the same signal goes
+ * to SafeFetch as the caller's signal (so headers, body and every hop stop on it) and the whole call is raced
+ * against it, so timedFetch settles by `ms` whatever SafeFetch is still awaiting. A call it abandons cannot send
+ * afterwards: SafeFetch checks the (now aborted) signal before it opens any connection.
+ */
 export async function timedFetch(
   url: string,
   init: RequestInit | undefined,
   ms: number,
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-
+  const deadline = AbortSignal.timeout(ms);
+  const signal = init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline;
+  const call = safeFetch(url, { ...(init ?? {}), signal }, { ...timedFetchSeam, timeoutMs: ms });
+  if (signal.aborted) { call.catch(() => {}); throw signal.reason; }
+  let onAbort = () => {};
+  const expired = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason ?? new Error(`timedFetch: ${url} did not answer within ${ms} ms`));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
   try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
+    return await Promise.race([call, expired]);
   } finally {
-    clearTimeout(timer);
+    signal.removeEventListener("abort", onAbort);
+    // The losing side settles later or never; neither may surface as an unhandled rejection.
+    call.catch(() => {});
+    expired.catch(() => {});
   }
 }

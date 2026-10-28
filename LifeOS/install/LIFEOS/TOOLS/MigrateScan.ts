@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.4.11
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -15,7 +18,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  *
  * V1 scope: markdown / plain text files. Chunks by markdown heading (##/###)
  * or paragraph group. Classifies each chunk by keyword matching + heuristics.
- * Emits a proposal queue JSON that MigrateApprove.ts commits after {{PRINCIPAL_NAME}}'s
+ * Emits a proposal queue JSON that MigrateApprove.ts commits after the principal's
  * approval.
  *
  * Usage:
@@ -31,6 +34,7 @@ import { join, basename, dirname, extname } from "path";
 import { randomUUID } from "crypto";
 import { homedir } from "node:os";
 import { getDAName, getPrincipalName } from "../../hooks/lib/identity";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -40,7 +44,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const QUEUE_FILE = join(LIFEOS_DIR, "MEMORY", "MIGRATION", "migration-proposals.jsonl");
 
 type Target =

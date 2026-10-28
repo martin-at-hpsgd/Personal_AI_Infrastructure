@@ -1,6 +1,6 @@
 # GateRepair
 
-Repairs hard noise-gate truncation artifacts ("ticking") in recorded speech: 6ms raised-cosine ramps at every gate edge, hard-zeroed gate-chatter blips, V-notch safety sweep for residual boundary steps. Minimal-touch — audio outside repair windows passes through untouched. Video stream is bit-copied in `--finalize` mode.
+Repairs hard noise-gate truncation artifacts ("ticking") in recorded speech: 6ms raised-cosine ramps at every gate edge, hard-zeroed gate-chatter blips, V-notch safety sweep for residual boundary steps. Minimal-touch — audio outside repair windows passes through untouched. A video stream, when the input has one, is bit-copied in `--finalize` mode; audio-only input encodes to an audio-only file (use `.m4a`).
 
 ## Usage
 
@@ -18,4 +18,4 @@ bun ${LIFEOS_SKILL_DIR}/Tools/GateRepair.ts <in-media> <out.mp4> --finalize [--a
 
 ## Provenance
 
-Built 2026-07-13 from the launch-video ticking incident (774 gate edges in a 13-min recording, amplified ~14dB by leveling, shipped to two public videos). Method details and false-positive gotchas: AudioEditor SKILL.md § Gotchas.
+Built 2026-07-13 from a ticking incident: a capture-chain noise gate left hundreds of hard edges in one recording, leveling amplified them into audible ticks, and they reached published audio. Method details and false-positive gotchas: AudioEditor SKILL.md § Gotchas.

@@ -1,70 +1,42 @@
 # URL Verification Protocol
 
-**MANDATORY for all research workflows in this skill.**
-
-## Critical Warning
-
-```
----------------------------------------------------------------
-  EVERY URL MUST BE VERIFIED BEFORE INCLUDING IN RESULTS
-  Research agents HALLUCINATE URLs - NEVER trust them blindly
-  A single broken link is a CATASTROPHIC FAILURE
----------------------------------------------------------------
-```
+Applies to every research intent in this skill: every URL is verified before it goes into results, because one broken link costs the whole report its credibility. This file is the one verifier; Standard, Extensive and Deep point here.
 
 ## Why This Matters
 
-Research agents (Perplexity, Gemini, Claude) frequently HALLUCINATE URLs that look plausible but don't exist. This includes:
+Research agents (Perplexity, Gemini, Claude) often hallucinate URLs that look plausible but don't exist:
 - URLs with correct domain but wrong path
 - URLs with plausible article titles that were never published
 - URLs combining real domains with fabricated paths
 - URLs to articles that were deleted or moved
 
-## Verification Workflow
+A status code alone proves only that something answered: a login wall, a soft 404 or an unrelated page also returns 200. And WebFetch returns a small model's summary of the page, never the page, so it cannot confirm that a citation is supported.
 
-Before including ANY URL in research results:
+## Verification Intent
 
-1. **Verify with WebFetch** - Actually fetch the URL and confirm it returns content (not 404, 403, or error)
-2. **Confirm content matches claim** - The fetched content must actually support what you're citing it for
-3. **Use curl as backup** - `curl -s -o /dev/null -w "%{http_code}" -L URL` to check HTTP status
-4. **NEVER include unverified URLs** - If you can't verify it, DON'T include it
+A URL goes into research results only when its page supports the claim it is cited for:
 
-```bash
-# Step 1: Check HTTP status
-curl -s -o /dev/null -w "%{http_code}" -L "https://example.com/article"
-
-# Step 2: If 200, verify content with WebFetch
-WebFetch(url, "Confirm this article exists and summarize its main point")
-
-# Step 3: Only include if BOTH checks pass
-```
-
-## Acceptable vs Unacceptable
-
-| Acceptable | Unacceptable |
-|------------|--------------|
-| URL verified via WebFetch returns actual content | URL from research agent without verification |
-| URL returns 200 AND content matches citation | URL returns 403/404/500 |
-| URL content actually supports the claim | URL exists but content doesn't match |
-
-**Broken links destroy credibility. Verify EVERY URL.**
-
-## Parallel Verification (for multi-agent modes)
-
-When verifying many URLs (Extensive mode can produce 10-20+), use parallel batch curl instead of sequential:
+1. Pair each URL with the key phrase its citation rests on (a name, number or quote the claim needs).
+2. Run the pairs through the verifier, in parallel:
 
 ```bash
-# Parallel batch verification — all URLs checked simultaneously
-urls=("url1" "url2" "url3" ...)
-for url in "${urls[@]}"; do
-  curl -s -o /dev/null -w "%{http_code} $url\n" -L "$url" &
-done
-wait
-# Parse results: any non-200 → remove from output
+# pairs.txt: one "url|key phrase" per line
+bun skills/Research/Tools/VerifyUrls.ts pairs.txt
+# a delivered answer: every URL in it, plus a check that it does not use the retired nine-field template
+bun skills/Research/Tools/VerifyUrls.ts --answer answer.md
 ```
 
-**Fallback:** If parallel verification fails (e.g., too many concurrent connections), fall back to sequential.
+3. Act on each verdict:
+   - **SUPPORTED** (the phrase is in the visible text of the page at the final URL, not only in a script, style or comment) stays.
+   - **UNSUPPORTED** is not yet verified: read the page itself (raw fetch, or Interceptor for a page that renders with JavaScript) and keep the URL only if the page supports the claim.
+   - **DEAD** (a non-2xx status, a login or "not found" page, or a redirect to the homepage) is removed. A not-found page is recognized by its title, its top headings, or the whole text of a near-empty page, never by article prose that merely discusses a 404 error.
+
+A URL that cannot be verified is left out. If the finding was `[HIGH]` on the strength of that URL, it drops to `[MED]` (`Intents/Verify.md` § Output format).
+
+**Fallback:** if the parallel run fails (too many concurrent connections), split the pairs file and run the parts one after another.
 
 ## Agent Self-Verification
 
-As of v5.1, all researcher agents include a Self-Verification section that requires URL verification before returning results. This means most URLs should already be verified when the orchestrator receives them. The orchestrator's batch check is a safety net, not the primary verification layer.
+Each researcher agent has a Self-Verification section that drops URLs it cannot reach before returning. That check is a pre-filter only. An agent's "it resolves" (a status code from curl, or a WebFetch summary) does not verify a citation under this protocol, for the reasons in § Why This Matters, so an agent-reported URL is never treated as already verified.
+
+The orchestrator runs every URL that reaches the answer through `Tools/VerifyUrls.ts` before delivery, whatever the agent reported. An agent that wants its own URLs to arrive verified runs the same tool on its own pairs file; that is the only self-check this protocol accepts.

@@ -1,0 +1,16 @@
+# INTEGRATIONS/homebridge.yaml — Homebridge Config UI connection (template, non-secret)
+#
+# Read by the home-security skill's Ring monitor with a YAML parser:
+#   your home-security reader (Ring monitor)      loadConfig()  — HOST (or IP), PORT, USERNAME, PASSWORD
+# Only the HOMEBRIDGE: block is read. A missing file makes the tool print
+# "not configured" and exit 2; a present block whose password does not resolve throws.
+#
+# Secrets NEVER go in this file. PASSWORD stays as the env reference below and the
+# value lives in ~/.claude/.env:
+#   HOMEBRIDGE_PASSWORD   the Homebridge UI admin password
+
+HOMEBRIDGE:
+  HOST: "192.0.2.1"
+  PORT: 8581
+  USERNAME: "admin"
+  PASSWORD: "${HOMEBRIDGE_PASSWORD}"

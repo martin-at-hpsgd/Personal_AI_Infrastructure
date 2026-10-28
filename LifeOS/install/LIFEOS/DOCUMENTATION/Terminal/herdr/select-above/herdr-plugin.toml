@@ -1,0 +1,11 @@
+id = "lifeos.select-above"
+name = "Select Above"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "When the focused session closes, focus the session above it instead of the one below"
+platforms = ["macos", "linux"]
+
+[[events]]
+on = "workspace.closed"
+# Resolved on the herdr server's PATH, which it inherits from the shell that started it.
+command = ["bun", "select-above.ts"]

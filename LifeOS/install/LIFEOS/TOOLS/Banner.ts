@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.7.23
  * LifeOS Banner - Responsive Neofetch-style launch banner (Navy theme)
  * Routes by terminal width: full (85+) → medium (70+) → compact (55+) →
  * minimal (45+) → ultra-compact (<45). Force a variant with --design=<name>,
@@ -12,19 +13,33 @@ import { join } from "path";
 import { spawnSync } from "child_process";
 import { parse as parseYaml } from "yaml";
 import { homedir } from "node:os";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { resolveUpstreamRepo } from "./UpstreamRepo";
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const CLAUDE_DIR = join(HOME, ".claude");
+const CLAUDE_DIR = getClaudeDir();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Terminal Width Detection
 // ═══════════════════════════════════════════════════════════════════════════
 
+// The pane's own tty wins. KITTY_WINDOW_ID leaks into multiplexer panes
+// (herdr, tmux, zellij), where kitty reports the whole window's width and the
+// banner wraps, so kitty is asked only when no multiplexer sits in between.
+function insideMultiplexer(): boolean {
+  const e = process.env;
+  return Boolean(e.HERDR_ENV || e.HERDR_PANE_ID || e.TMUX || e.ZELLIJ || e.STY);
+}
+
 function getTerminalWidth(): number {
   let width: number | null = null;
 
+  if (process.stdout.isTTY && process.stdout.columns > 0) {
+    return process.stdout.columns;
+  }
+
   const kittyWindowId = process.env.KITTY_WINDOW_ID;
-  if (kittyWindowId) {
+  if (kittyWindowId && !insideMultiplexer()) {
     try {
       const result = spawnSync("kitten", ["@", "ls"], { encoding: "utf-8" });
       if (result.stdout) {
@@ -143,16 +158,25 @@ interface SystemStats {
   repoUrl: string;
   skills: number;
   hooks: number;
-  paiVersion: string;
+  lifeosVersion: string;
   algorithmVersion: string;
 }
 
+// The upstream repo resolver lives in UpstreamRepo.ts, shared with Credits.ts. Banner prints on import, so
+// nothing imports from this file; the resolver is not re-exported here.
+
 function getStats(): SystemStats {
   let name = "LifeOS";
-  let paiVersion = "3.0";
+  let lifeosVersion = "3.0";
   let algorithmVersion = "0.2";
   let catchphrase = "{name} here, ready to go";
-  let repoUrl = "github.com/danielmiessler/LifeOS";
+  // The upstream project's public home: LIFEOS_REPO, else the repo the release stamped into the installer,
+  // else this install's USER/CONFIG/lifeos-repo.json. Nothing resolved shows the project name alone; a
+  // configured but unusable value also shows the name alone, and says which file and key on stderr.
+  const resolved = resolveUpstreamRepo(CLAUDE_DIR);
+  if (!resolved.ok) console.error(`Banner: upstream repo not shown: ${resolved.error}`);
+  const repo = resolved.ok ? resolved.repo : null;
+  let repoUrl = repo ? `github.com/${repo}` : "LifeOS";
   try {
     // Identity from DA_IDENTITY.md frontmatter (canonical source)
     const daPath = join(CLAUDE_DIR, "LIFEOS", "USER", "DIGITAL_ASSISTANT", "DA_IDENTITY.md");
@@ -172,7 +196,7 @@ function getStats(): SystemStats {
     // LifeOS version: ~/.claude/LIFEOS/VERSION (single source of truth)
     const versionPath = join(CLAUDE_DIR, "LIFEOS", "VERSION");
     if (existsSync(versionPath)) {
-      paiVersion = readFileSync(versionPath, "utf-8").trim() || paiVersion;
+      lifeosVersion = readFileSync(versionPath, "utf-8").trim() || lifeosVersion;
     }
     // Algorithm version: ~/.claude/LIFEOS/ALGORITHM/LATEST
     const latestPath = join(CLAUDE_DIR, "LIFEOS", "ALGORITHM", "LATEST");
@@ -187,7 +211,7 @@ function getStats(): SystemStats {
   // Read counts LIVE — no cache. Single source of truth: TOOLS/GetCounts.ts.
   // Only `skills` and `hooks` are rendered by any banner design, so we use
   // `--single` mode (~20ms each) instead of the full multi-key walk which
-  // recursed into LIFEOS/USER/ (123k files) for keys nothing displays.
+  // recursed into the whole LIFEOS/USER/ tree for keys nothing displays.
   let skills = 0, hooks = 0;
   const getCountsPath = join(CLAUDE_DIR, "LIFEOS", "TOOLS", "GetCounts.ts");
   try {
@@ -205,7 +229,7 @@ function getStats(): SystemStats {
     repoUrl,
     skills,
     hooks,
-    paiVersion,
+    lifeosVersion,
     algorithmVersion,
   };
 }
@@ -263,7 +287,7 @@ function createNavyBanner(stats: SystemStats, width: number): string {
   const infoLines = [
     `${C.slate}"${RESET}${C.lightBlue}${stats.catchphrase}${RESET}${C.slate}..."${RESET}`,
     `${C.steel}${BOX.h.repeat(24)}${RESET}`,
-    `${C.navy}\u2B22${RESET}  ${C.slate}LifeOS${RESET}    ${C.silver}${stats.paiVersion}${RESET}`,                            // ⬢ hexagon (tech/AI)
+    `${C.navy}\u2B22${RESET}  ${C.slate}LifeOS${RESET}    ${C.silver}${stats.lifeosVersion}${RESET}`,                            // ⬢ hexagon (tech/AI)
     `${C.navy}\u2699${RESET}  ${C.slate}Algo${RESET}      ${C.silver}${stats.algorithmVersion}${RESET}`,                      // ⚙ gear (algorithm)
     `${C.lightBlue}\u2726${RESET}  ${C.slate}SKILLS${RESET}    ${C.silver}${stats.skills}${RESET}`,             // ✦ four-pointed star (skills)
     `${C.royalBlue}\u21AA${RESET}  ${C.slate}HOOKS${RESET}     ${C.periwinkle}${stats.hooks}${RESET}`,         // ↪ hook arrow
@@ -385,7 +409,7 @@ function createNavyMediumBanner(stats: SystemStats, width: number): string {
   const infoLines = [
     `${C.slate}"${RESET}${C.lightBlue}${stats.catchphrase}${RESET}${C.slate}..."${RESET}`,
     `${C.steel}${BOX.h.repeat(24)}${RESET}`,
-    `${C.navy}\u2B22${RESET}  ${C.slate}LifeOS${RESET}    ${C.silver}${stats.paiVersion}${RESET}`,
+    `${C.navy}\u2B22${RESET}  ${C.slate}LifeOS${RESET}    ${C.silver}${stats.lifeosVersion}${RESET}`,
     `${C.navy}\u2699${RESET}  ${C.slate}Algo${RESET}      ${C.silver}${stats.algorithmVersion}${RESET}`,
     `${C.lightBlue}\u2726${RESET}  ${C.slate}SK${RESET}        ${C.silver}${stats.skills}${RESET}`,
     `${C.royalBlue}\u21AA${RESET}  ${C.slate}HOOKS${RESET}     ${C.periwinkle}${stats.hooks}${RESET}`,
@@ -448,7 +472,7 @@ function createNavyCompactBanner(stats: SystemStats, width: number): string {
   const infoLines = [
     `${C.slate}"${RESET}${C.lightBlue}${shortCatchphrase}${RESET}${C.slate}"${RESET}`,
     `${C.steel}${BOX.h.repeat(18)}${RESET}`,
-    `${C.navy}\u2B22${RESET} ${C.slate}LifeOS${RESET} ${C.silver}${stats.paiVersion}${RESET} ${C.navy}\u2699${RESET} ${C.silver}${stats.algorithmVersion}${RESET}`,
+    `${C.navy}\u2B22${RESET} ${C.slate}LifeOS${RESET} ${C.silver}${stats.lifeosVersion}${RESET} ${C.navy}\u2699${RESET} ${C.silver}${stats.algorithmVersion}${RESET}`,
     `${C.lightBlue}\u2726${RESET} ${C.slate}SKILLS${RESET} ${C.silver}${stats.skills}${RESET}  ${C.royalBlue}\u21AA${RESET} ${C.slate}HOOKS${RESET} ${C.periwinkle}${stats.hooks}${RESET}`,
     `${C.steel}${BOX.h.repeat(18)}${RESET}`,
   ];
@@ -489,7 +513,7 @@ function createNavyMinimalBanner(stats: SystemStats, width: number): string {
   // Minimal info beside logo
   const infoLines = [
     `${C.lightBlue}${stats.name}${RESET}${C.slate}@lifeos${RESET}`,
-    `${C.slate}${stats.paiVersion}${RESET} ${C.navy}\u2699${RESET}${C.silver}${stats.algorithmVersion}${RESET}`,
+    `${C.slate}${stats.lifeosVersion}${RESET} ${C.navy}\u2699${RESET}${C.silver}${stats.algorithmVersion}${RESET}`,
     `${C.steel}${BOX.h.repeat(14)}${RESET}`,
     `${C.lightBlue}\u2726${RESET}${C.silver}${stats.skills}${RESET} ${C.royalBlue}\u21AA${RESET}${C.periwinkle}${stats.hooks}${RESET}`,
     ``,
@@ -518,7 +542,7 @@ function createNavyUltraCompactBanner(stats: SystemStats, width: number): string
 
   const lines: string[] = [""];
   lines.push(center(lifeosColored, width));
-  lines.push(center(`${C.lightBlue}${stats.name}${RESET}${C.slate}@lifeos ${stats.paiVersion}${RESET} ${C.navy}\u2699${RESET}${C.silver}${stats.algorithmVersion}${RESET}`, width));
+  lines.push(center(`${C.lightBlue}${stats.name}${RESET}${C.slate}@lifeos ${stats.lifeosVersion}${RESET} ${C.navy}\u2699${RESET}${C.silver}${stats.algorithmVersion}${RESET}`, width));
   lines.push(center(`${C.steel}${BOX.h.repeat(Math.min(20, width - 4))}${RESET}`, width));
   lines.push(center(`${C.lightBlue}\u2726${RESET}${C.silver}${stats.skills}${RESET} ${C.royalBlue}\u21AA${RESET}${C.periwinkle}${stats.hooks}${RESET}`, width));
   lines.push("");

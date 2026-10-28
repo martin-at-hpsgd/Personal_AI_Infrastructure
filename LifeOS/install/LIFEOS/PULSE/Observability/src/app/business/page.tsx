@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { ApiError, useApi } from "@/lib/api";
 import {
   BarChart,
   Bar,
@@ -182,14 +182,10 @@ function SectionGrid({
 }
 
 export default function BusinessPage() {
-  const [data, setData] = useState<BusinessData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    fetch("/api/life/business")
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setData)
-      .catch((e) => setError(String(e)));
-  }, []);
+  const business = useApi<BusinessData>("/api/life/business");
+  const data = business.data ?? null;
+  // A non-2xx answer left the page on "Loading" before; only a network failure showed the error panel.
+  const error = business.error && !(business.error instanceof ApiError) ? String(business.error) : null;
   if (error) {
     return (
       <PageShell>

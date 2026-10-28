@@ -22,6 +22,7 @@ const SECTION_TABS: readonly SectionTab[] = [
   { id: "sec-projects",   label: "Projects" },
   { id: "sec-team",       label: "Team" },
   { id: "sec-budget",     label: "Budget" },
+  { id: "sec-risks",      label: "Risks" },
 ];
 
 export function SectionNav() {
@@ -55,7 +56,7 @@ export function SectionNav() {
     return () => obs.disconnect();
   }, [tabs]);
 
-  if (tabs.length < 2) return null;
+  if (tabs.length === 0) return null;
 
   const go = (id: string) => {
     const el = document.getElementById(id);

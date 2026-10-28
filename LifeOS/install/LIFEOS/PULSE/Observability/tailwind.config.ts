@@ -97,12 +97,12 @@ const config: Config = {
   		},
   		fontFamily: {
   			sans: [
-  				'var(--font-geist-sans)',
+                'concourse-t3',
   				'system-ui',
   				'sans-serif'
   			],
   			mono: [
-  				'var(--font-geist-mono)',
+                'triplicate-a-code',
   				'monospace'
   			]
   		},

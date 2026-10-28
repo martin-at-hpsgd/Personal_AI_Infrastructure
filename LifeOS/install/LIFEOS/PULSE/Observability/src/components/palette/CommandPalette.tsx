@@ -26,6 +26,7 @@ import { useEnabledModules } from "@/lib/use-enabled-modules";
 import { fuzzyScore } from "@/lib/palette/fuzzy";
 import { recordSelection, frecencyBoost, topRecents, loadStore } from "@/lib/palette/frecency";
 import { PALETTE_OPEN_EVENT, type PaletteScope } from "@/lib/palette/events";
+import { apiFetch } from "@/lib/api";
 
 interface WikiResult {
   slug: string;
@@ -136,13 +137,10 @@ export default function CommandPalette() {
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/wiki/search?q=${encodeURIComponent(query)}&limit=8`, {
+        const data = await apiFetch<{ results?: WikiResult[] }>(`/api/wiki/search?q=${encodeURIComponent(query)}&limit=8`, {
           signal: controller.signal,
         });
-        if (res.ok) {
-          const data = await res.json();
-          setWikiResults(data.results ?? []);
-        }
+        setWikiResults(data.results ?? []);
         setWikiLoading(false);
       } catch {
         // aborted (query moved on) or network hiccup — local lane still works
@@ -302,7 +300,7 @@ export default function CommandPalette() {
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-xl bg-[rgba(15,26,51,0.97)] backdrop-blur-xl border border-line-2 rounded-xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-xl glass-raised rounded-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Input row */}

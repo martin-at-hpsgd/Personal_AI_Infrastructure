@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.19
  * MemoryHealthCheck.ts — Autonomic memory subsystem health check.
  *
  * Detects regressions that would silently kill the autonomic memory loop:
@@ -22,11 +23,14 @@
  */
 
 import { existsSync, readFileSync, appendFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { invariant } from "./Invariant";
 import { parseMemoryContent, read as memoryRead, BEGIN_MARKER, END_MARKER } from "./MemoryWriter";
 import { assessCortexEvidence, collectCortexEvidence } from "./CortexHealth";
 import { atomicWriteJSON } from "../PULSE/lib/atomic-write";
+import { hookCommandScript } from "./LifeosUpgrade";
 import { homedir } from "node:os";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // CLI script, not a library: the checks below run at module top level and end in
 // process.exit. Spawn it (MemoryHealthGate does); never import it.
@@ -35,7 +39,7 @@ if (!import.meta.main) {
 }
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const CLAUDE = process.env.CORTEX_HEALTH_ROOT || join(HOME, ".claude");
+const CLAUDE = process.env.CORTEX_HEALTH_ROOT || getClaudeDir();
 const HOOKS_DIR = join(CLAUDE, "hooks");
 const TOOLS_DIR = join(CLAUDE, "LIFEOS/TOOLS");
 const OBS_DIR = join(CLAUDE, "LIFEOS/MEMORY/OBSERVABILITY");
@@ -44,9 +48,18 @@ const SETTINGS_LIVE = join(CLAUDE, "settings.json");
 const SETTINGS_SYSTEM = join(CLAUDE, "settings.system.json");
 const REVIEW_STATE = join(OBS_DIR, "review-state.json");
 const HEALTH_LOG = join(OBS_DIR, "memory-health.jsonl");
-const REVIEWER_RUNS = join(OBS_DIR, "reviewer-runs");
+// Two artifacts, two names (public issue #1983, @spazbg): the reviewer writes one
+// summary row per run to reviewer-runs.jsonl and a per-run debug DIRECTORY at
+// reviewer-runs/. One constant served both, so CHECK 9 readFileSync'd the
+// directory, hit EISDIR, and its empty catch turned every reviewer-streak
+// finding (failing, EAT_CAP, all-skips, healthy) into silence.
+const REVIEWER_RUNS_DIR = join(OBS_DIR, "reviewer-runs");
+const REVIEWER_RUNS_LOG = join(OBS_DIR, "reviewer-runs.jsonl");
+// Refused writes are `memory/rejected` events in the Cortex ledger (MemoryWriter.logRejectedWrite); the old
+// OBSERVABILITY/memory-writes.jsonl log is retired.
+const MEMORY_WRITES_LOG = join(CLAUDE, "LIFEOS/MEMORY/LEDGER/cortex-events.jsonl");
 
-// Post-BPE layout (2026-07-11): MemoryTurnStart is the ONE registered
+// Post-BLE layout (2026-07-11): MemoryTurnStart is the ONE registered
 // UserPromptSubmit memory hook; it imports LoadMemory + MemoryDeltaSurface,
 // so those must exist on disk but are no longer registered themselves.
 // MemoryReviewFire (Stop) owns the whole review cadence — MemoryReviewTrigger
@@ -131,11 +144,44 @@ for (const t of REQUIRED_TOOLS) {
 //     2026-06-06 MemoryDeltaSurface regression this check exists to catch).
 //   - not intended AND absent from live -> WARN: this install does not run the
 //     autonomic memory loop (expected on a public skill install), never CRITICAL.
+// Registration is read from the PARSED hooks block, never by searching the raw text: a hook name that appears in a
+// deny rule, a tip or an env value must not count. A hook is registered when a command entry under one of its
+// expected events runs a script whose file name is exactly the hook's.
+const REGISTRATION_EVENTS: Record<string, string[]> = {
+  "MemoryTurnStart.hook.ts": ["UserPromptSubmit", "SessionStart"],
+  "MemoryReviewFire.hook.ts": ["Stop", "SessionEnd"],
+  "MemoryHealthGate.hook.ts": ["Stop", "SessionEnd"],
+};
+/**
+ * The script a hook command actually executes, or null when the command is not a plain invocation: the one
+ * hook-command parser in LifeosUpgrade.ts. Shell control syntax makes a command opaque,
+ * and so does any bun flag that does not run the script (`--help`, `--version`, `-e`, `--print`), so a command
+ * that only prints usage is never attested as an active hook (S092). Re-exported for existing importers.
+ */
+export { hookCommandScript };
+function commandRuns(command: unknown, file: string): boolean {
+  const script = hookCommandScript(command);
+  return script !== null && (script === file || script.endsWith("/" + file));
+}
 function readHookRegistrations(filePath: string): Set<string> | null {
   if (!existsSync(filePath)) return null;
   try {
-    const raw = readFileSync(filePath, "utf-8");
-    return new Set(REQUIRED_REGISTRATIONS.filter((h) => raw.includes(h)));
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+    const hooks = parsed && typeof parsed === "object" ? (parsed as { hooks?: unknown }).hooks : undefined;
+    if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) return new Set();
+    const found = new Set<string>();
+    for (const h of REQUIRED_REGISTRATIONS) {
+      for (const event of REGISTRATION_EVENTS[h] ?? []) {
+        const groups = (hooks as Record<string, unknown>)[event];
+        if (!Array.isArray(groups)) continue;
+        for (const g of groups) {
+          const entries = g && typeof g === "object" ? (g as { hooks?: unknown }).hooks : undefined;
+          if (!Array.isArray(entries)) continue;
+          if (entries.some((e) => e && typeof e === "object" && (e as { type?: unknown }).type === "command" && commandRuns((e as { command?: unknown }).command, h))) found.add(h);
+        }
+      }
+    }
+    return found;
   } catch {
     return null;
   }
@@ -174,7 +220,7 @@ for (const h of REQUIRED_REGISTRATIONS) {
 // memory write is >24h newer than the heartbeat, the surface isn't running.
 {
   const HEARTBEAT_FILE = join(CLAUDE, "LIFEOS/MEMORY/STATE/delta-surface-heartbeat");
-  const WRITES_FILE = join(OBS_DIR, "memory-writes.jsonl");
+  const WRITES_FILE = join(CLAUDE, "LIFEOS/MEMORY/LEDGER/cortex-events.jsonl");
   try {
     let lastWriteTs = 0;
     if (existsSync(WRITES_FILE)) {
@@ -182,7 +228,8 @@ for (const h of REQUIRED_REGISTRATIONS) {
       for (const l of tail) {
         try {
           const r = JSON.parse(l);
-          if (r.updated_by === "MemorySystem.add" && r.ts) lastWriteTs = Math.max(lastWriteTs, Date.parse(r.ts));
+          const isWriteRow = r.kind === undefined || r.kind === "memory/set";
+          if (isWriteRow && r.updated_by === "MemorySystem.add" && r.ts) lastWriteTs = Math.max(lastWriteTs, Date.parse(r.ts));
         } catch { /* skip bad row */ }
       }
     }
@@ -197,9 +244,57 @@ for (const h of REQUIRED_REGISTRATIONS) {
       } else {
         add("delta-surface-alive", "ok", "Delta surface heartbeat is current relative to memory writes.");
       }
+    } else {
+      add("delta-surface-no-data", "warn", "No MemorySystem.add rows in the ledger tail; delta-surface liveness cannot be judged (fresh install, rotated log, or curation never ran).");
+    }
+    // Absolute arm: surface and writer can die together, freezing both clocks
+    // minutes apart so the relative arm passes forever (public issue #2180, @selinium).
+    const hbAbs = existsSync(HEARTBEAT_FILE) ? Date.parse(readFileSync(HEARTBEAT_FILE, "utf-8").trim()) : 0;
+    if (hbAbs && Date.now() - hbAbs > 72 * 60 * 60 * 1000) {
+      add("delta-surface-stale", "warn", `MemoryDeltaSurface heartbeat is ${Math.round((Date.now() - hbAbs) / 3_600_000)}h old.`, { heartbeat: new Date(hbAbs).toISOString() });
     }
   } catch (err) {
     add("delta-surface-check-error", "warn", `Liveness check failed: ${(err as Error).message}`);
+  }
+}
+
+// CHECK 3c: ledger fold drift (curated ⟺ folded). Committed edits and edits
+// that drop nothing are adopted at the next memory write (or by CommitOwn), so
+// drift that survives here is an uncommitted edit that dropped entries, or a
+// broken chain. Entries-region drift or a broken hash chain is CRITICAL; byte-only drift (out-of-band frontmatter,
+// e.g. the release version bumper) is a warn that self-heals at the next
+// curation write. Absent ledger = pre-adoption install, not a failure.
+{
+  try {
+    const { verifyAll, FOLD_OWNED } = await import("./CortexLedger");
+    const report = verifyAll();
+    if (report.status === "unverified") {
+      // No ledger events means nothing was checked. That is fine on a true pre-genesis install (no fold-owned
+      // memory file exists yet), but when the fold-owned files are already there an empty ledger leaves them
+      // unanchored, so the invariant is silently off: warn, never "ok".
+      const ledgerRoot = process.env.CORTEX_LEDGER_ROOT || getClaudeDir();
+      const present = FOLD_OWNED.filter((rel: string) => existsSync(join(ledgerRoot, rel)));
+      if (present.length === 0) {
+        add("ledger-not-initialized", "ok", "Cortex ledger has no events yet (pre-genesis install) — fold invariant not yet armed.");
+      } else {
+        add("ledger-unverified", "warn",
+            `Cortex ledger has no events but ${present.length} fold-owned file(s) exist (${present.join(", ")}) — curated ⟺ folded is unverified. Anchor them with bun LIFEOS/TOOLS/CortexLedger.ts genesis.`,
+            { rows: report.rows, files: present });
+      }
+    } else if (report.status === "critical") {
+      const bad = report.files.filter((f) => f.status !== "ok" && f.status !== "byte-drift");
+      add("ledger-fold-drift", "critical",
+          `curated ⟺ folded violated: ${bad.map((f) => `${f.file}: ${f.status}${f.detail ? ` (${f.detail})` : ""}`).join("; ")} — record the edit with bun LIFEOS/TOOLS/CortexLedger.ts adopt (commit it first, or add --force to accept dropped entries)`,
+          { rows: report.rows });
+    } else if (report.status === "warn") {
+      add("ledger-byte-drift", "warn",
+          "fold matches entries but not bytes (out-of-band frontmatter/body edit) — folds in at the next curation write.",
+          { rows: report.rows });
+    } else {
+      add("ledger-fold-verified", "ok", `curated ⟺ folded holds (${report.rows} events).`);
+    }
+  } catch (err) {
+    add("ledger-verify-error", "critical", `Ledger verification failed: ${(err as Error).message}`);
   }
 }
 
@@ -235,15 +330,18 @@ if (lastReviewAt) {
 }
 
 // CHECK 6: at least one historical reviewer run exists
-if (existsSync(REVIEWER_RUNS)) {
+if (existsSync(REVIEWER_RUNS_DIR)) {
   try {
-    const runs = readdirSync(REVIEWER_RUNS).filter(r => statSync(join(REVIEWER_RUNS, r)).isDirectory());
+    const runs = readdirSync(REVIEWER_RUNS_DIR).filter(r => statSync(join(REVIEWER_RUNS_DIR, r)).isDirectory());
     if (runs.length === 0) {
       add("no-historical-runs", "warn", "reviewer-runs/ directory exists but is empty — reviewer has never run successfully.");
     } else {
       add("historical-runs-present", "ok", `${runs.length} historical reviewer run(s) captured.`, { count: runs.length });
     }
-  } catch {}
+  } catch (err) {
+    // A check that cannot read its own evidence says so instead of going quiet (public issue #1983, @spazbg).
+    add("reviewer-runs-unreadable", "warn", `CHECK 6 could not read its evidence: ${REVIEWER_RUNS_DIR}`, { path: REVIEWER_RUNS_DIR, error: err instanceof Error ? err.message : String(err) });
+  }
 } else {
   add("no-runs-dir", "warn", "reviewer-runs/ directory does not exist yet.");
 }
@@ -327,10 +425,14 @@ for (const [label, path] of [["principal", PRINCIPAL_MEM], ["da", DA_MEM]] as co
 
 // CHECK 9: reviewer failures — recent runs that errored or hit EAT_CAP. An
 // EAT_CAP in a dispatch is the cap-jam actively dropping a real fact on the floor.
-if (existsSync(REVIEWER_RUNS)) {
+if (existsSync(REVIEWER_RUNS_LOG)) {
   try {
-    const recent = readFileSync(REVIEWER_RUNS, "utf-8").trim().split("\n").slice(-5)
-      .map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const tail = readFileSync(REVIEWER_RUNS_LOG, "utf-8").trim().split("\n").filter((l) => l.trim()).slice(-5);
+    const parsedRows = tail.map((l) => { try { const r = JSON.parse(l); return r && typeof r === "object" && !Array.isArray(r) ? r : null; } catch { return null; } });
+    const recent = parsedRows.filter(Boolean);
+    const malformedRows = parsedRows.length - recent.length;
+    // A malformed row is missing evidence, never a healthy run.
+    if (malformedRows > 0) add("reviewer-log-malformed", "warn", `${malformedRows} of the last ${tail.length} reviewer-run rows are malformed — reviewer health cannot be established from them.`, { path: REVIEWER_RUNS_LOG, malformed: malformedRows });
     const skips = recent.filter((r: any) => r.skipped === true);
     const failed = recent.filter((r: any) => (r.ok === false || r.parse_ok === false) && r.skipped !== true);
     // Skips are healthy no-ops individually, but an unbroken streak means the
@@ -341,8 +443,67 @@ if (existsSync(REVIEWER_RUNS)) {
       r.dispatch_summary.failures.some((f: any) => String(f?.error || "").includes("EAT_CAP")));
     if (capDrops.length > 0) add("reviewer-eat-cap", "critical", `${capDrops.length} of last 5 reviewer runs dropped a fact on EAT_CAP — cap-jam actively losing memory.`, { runs: capDrops.length });
     if (failed.length >= 3) add("reviewer-failing", "warn", `${failed.length} of last 5 reviewer runs failed (error/parse) — curation may be stalling.`, { failed: failed.length });
-    else if (failed.length === 0 && capDrops.length === 0) add("reviewer-healthy", "ok", "Recent reviewer runs completed cleanly.");
-  } catch { /* non-fatal */ }
+    else if (failed.length === 0 && capDrops.length === 0 && malformedRows === 0 && recent.length > 0) add("reviewer-healthy", "ok", "Recent reviewer runs completed cleanly.");
+  } catch (err) {
+    // Silence here is exactly how #1983 hid for weeks: say the evidence is unreadable (public issue #1983, @spazbg).
+    add("reviewer-log-unreadable", "warn", `CHECK 9 could not read its evidence: ${REVIEWER_RUNS_LOG}`, { path: REVIEWER_RUNS_LOG, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+// CHECK 9.5: the index-policy marker is self-healing (public issue #2025, @MatiasBarboza).
+// LIFEOS/CORTEX_INDEX_POLICY.json is the affirmative "no-index-v1 lexical baseline"
+// marker CortexHealth wants when no index manifest exists. Its only producer was
+// the installer's payload copy, so an update that lost it left `index-evidence-
+// missing` warning forever with no operator remedy. "No manifest and no marker"
+// is the stock default state, not a decision, so write the constant marker here
+// (the one maintenance consumer) and name the file. Skipped when live writes are
+// disabled or when the manifest path is present (an indexed install is not the
+// default state, so leave its evidence alone).
+const INDEX_POLICY = join(CLAUDE, "LIFEOS", "CORTEX_INDEX_POLICY.json");
+const INDEX_MANIFEST = process.env.CORTEX_INDEX_MANIFEST || join(CLAUDE, "LIFEOS/MEMORY/INDEX/index-manifest.json");
+if (process.env.CORTEX_HEALTH_NO_WRITE !== "1" && existsSync(dirname(INDEX_POLICY)) && !existsSync(INDEX_MANIFEST) && !existsSync(INDEX_POLICY)) {
+  const marker = { schema: "lifeos-cortex-index-policy/v1", policy: "no-index-v1" };
+  invariant(!existsSync(INDEX_POLICY) && !existsSync(INDEX_MANIFEST), "index-policy self-heal must only write when neither manifest nor marker exists");
+  try {
+    atomicWriteJSON(INDEX_POLICY, marker);
+    add("policy-marker-written", "warn", `Wrote the default index-policy marker ${INDEX_POLICY} (no manifest and no marker were present; no-index-v1 lexical baseline). Nothing further to do.`, { path: INDEX_POLICY, ...marker });
+  } catch (err) {
+    add("policy-marker-write-failed", "warn", `Could not write the default index-policy marker ${INDEX_POLICY}; restore it from the release payload.`, { path: INDEX_POLICY, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+// CHECK 10: refused writes (stale-base guard, public PR #2097 @hjbrandt).
+// The memory reviewer passes a fingerprint of the entries it read, and setEntries
+// refuses (ESTALE_BASE) when the file's entries no longer match. Refusing writes
+// indicates the review loop is not losing data, but a high refusal rate suggests
+// edit/review races on the memory files. Counts rejections within 24h.
+let refusedWriteCount = 0;
+if (existsSync(MEMORY_WRITES_LOG)) {
+  const nowMs = process.env.CORTEX_HEALTH_NOW ? Date.parse(process.env.CORTEX_HEALTH_NOW) : Date.now();
+  const twentyFourHoursAgoMs = nowMs - 24 * 60 * 60 * 1000;
+  try {
+    const lines = readFileSync(MEMORY_WRITES_LOG, "utf8").trim().split("\n");
+    for (const line of lines) {
+      if (!line) continue;
+      try {
+        const row = JSON.parse(line);
+        if (row.rejected === true && (row.rejection_code === "ESTALE_BASE" || row.rejection_code === "ELOCK_HELD")) {
+          const stamp = row.ts ?? row.timestamp; // ledger events carry `ts`
+          const rowTimeMs = stamp ? Date.parse(stamp) : 0;
+          if (rowTimeMs >= twentyFourHoursAgoMs) refusedWriteCount++;
+        }
+      } catch {
+        // skip malformed rows
+      }
+    }
+  } catch (err) {
+    add("memory-writes-log-error", "warn", `Could not read ${MEMORY_WRITES_LOG}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+if (refusedWriteCount > 0) {
+  add("refused-writes", "warn", `${refusedWriteCount} memory writes were refused (ESTALE_BASE/ELOCK_HELD) in the last 24h. Edit/review race detected on memory files.`, { refused_count: refusedWriteCount });
+} else {
+  add("refused-writes-none", "ok", "No refused memory writes in the last 24h.");
 }
 
 // F5: evidence-driven Cortex health. Paths and clock are injectable so tests never touch live state.
@@ -353,11 +514,10 @@ function cortexThresholdEnv(name: string): number | undefined {
 }
 const retrievalStaleMs = cortexThresholdEnv("CORTEX_RETRIEVAL_STALE_MS");
 const proposalBacklog = cortexThresholdEnv("CORTEX_PROPOSAL_BACKLOG");
-const observabilityMaxBytes = cortexThresholdEnv("CORTEX_OBSERVABILITY_MAX_BYTES");
 const observabilityMaxAgeMs = cortexThresholdEnv("CORTEX_OBSERVABILITY_MAX_AGE_MS");
 const cortexEvidence = collectCortexEvidence({ root: CLAUDE, nowMs: process.env.CORTEX_HEALTH_NOW ? Date.parse(process.env.CORTEX_HEALTH_NOW) : Date.now(), thresholds: {
   ...(retrievalStaleMs === undefined ? {} : { retrievalStaleMs }), ...(proposalBacklog === undefined ? {} : { proposalBacklog }),
-  ...(observabilityMaxBytes === undefined ? {} : { observabilityMaxBytes }), ...(observabilityMaxAgeMs === undefined ? {} : { observabilityMaxAgeMs }),
+  ...(observabilityMaxAgeMs === undefined ? {} : { observabilityMaxAgeMs }),
 }, indexManifest: process.env.CORTEX_INDEX_MANIFEST });
 const cortexAssessment = assessCortexEvidence(cortexEvidence);
 for (const finding of cortexAssessment.findings) add(finding.id, finding.severity, finding.message, finding.evidence);
@@ -369,10 +529,39 @@ const oks = findings.filter(f => f.severity === "ok");
 
 const overall: Severity = criticals.length > 0 ? "critical" : warns.length > 0 ? "warn" : "ok";
 
+// ACTIONS — the human-facing translation of non-ok findings, consumed by the
+// statusline → attention stream and Pulse. Each is a short imperative; a
+// finding that self-heals (next curation folds it in) maps to NO action, so
+// surfaces only nag when a human can actually do something. A critical run
+// always yields at least one action.
+function actionFor(f: Finding): string | null {
+  const id = f.id;
+  if (id === "ledger-byte-drift" || id.startsWith("cap-pressure:")) return null; // next curation heals
+  if (id === "proposal-backlog-high") {
+    const pending = (f.detail as any)?.pending;
+    return `Fold ${Number.isFinite(pending) ? pending : "the"} memory proposals`;
+  }
+  if (id.startsWith("observability-over-budget:")) return `Find why ${id.slice("observability-over-budget:".length)} is growing`;
+  if (id.startsWith("observability-")) return "Check the observability logs";
+  if (id === "reviewer-eat-cap") return "Memory cap-jam: run a curation now";
+  if (id.startsWith("reviewer-") || id.startsWith("state-") || id === "review-stale") return "Check the memory reviewer";
+  if (id.startsWith("index-")) return "Rebuild the memory index";
+  if (id === "delta-surface-dead") return "Memory delta hook is dead: check hooks";
+  if (id === "ledger-fold-drift") return "Adopt memory edits: CortexLedger adopt";
+  if (id === "ledger-unverified") return "Anchor the memory ledger: CortexLedger genesis";
+  if (f.severity === "critical") return "Run a memory health check";
+  return null; // internals-only warn — lives in the log and the 🩺 nag
+}
+const actions = [...new Set(
+  findings.filter(f => f.severity !== "ok").map(actionFor).filter((a): a is string => a !== null),
+)].map(text => ({ text, severity: criticals.some(f => actionFor(f) === text) ? "critical" : "warn" }));
+if (overall === "critical" && actions.length === 0) actions.push({ text: "Run a memory health check", severity: "critical" });
+
 const report = {
   ts: new Date().toISOString(),
   overall,
   counts: { critical: criticals.length, warn: warns.length, ok: oks.length },
+  actions,
   thresholds: cortexAssessment.thresholds,
   evidence: cortexEvidence,
   findings: findings.filter(f => f.severity !== "ok"),

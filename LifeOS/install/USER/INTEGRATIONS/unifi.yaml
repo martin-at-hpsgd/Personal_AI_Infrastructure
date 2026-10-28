@@ -1,0 +1,29 @@
+# INTEGRATIONS/unifi.yaml — UniFi controller connection (template, non-secret)
+#
+# Read by the network skill's tools with a YAML parser:
+#   your network reader (UniFi client)      loadConfig()  — CONTROLLER_URL, CONTROLLER_IP, SITE
+#   your network reader (Protect client)    loadConfig()  — CONTROLLER_URL, SITE
+#   your network health card                           — CONTROLLER_IP via a regex that
+#                                                          expects a dotted IPv4 literal
+# Only the `UNIFI:` block is read. A missing or malformed file falls back to the
+# UNIFI_CONTROLLER_URL / UNIFI_CONTROLLER_IP / UNIFI_SITE environment variables,
+# then to https://unifi and site "default".
+#
+# Secrets NEVER go in this file. Put them in ~/.claude/.env:
+#   UNIFI_API_TOKEN     preferred (UniFi UI -> Settings -> Control Plane -> Integrations)
+#   UNIFI_USERNAME / UNIFI_PASSWORD   local-admin cookie fallback
+#
+# URL heuristic: a URL containing :8443 is treated as a standalone controller;
+# anything else (port 443) as UniFi OS.
+
+UNIFI:
+  CONTROLLER_URL: "https://192.0.2.1"
+  CONTROLLER_IP: "192.0.2.1"
+  SITE: "default"
+  # TLS: the tools verify the controller's certificate by default. A console with a self-signed
+  # certificate needs ONE opt-in (see skills/Network/Setup.md, TLS). Pinning the certificate is preferred:
+  #   openssl s_client -connect <host>:443 -servername <host> </dev/null | openssl x509 > unifi-controller.pem
+  # TLS:
+  #   PINNED_CERT_FILE: "LIFEOS/USER/INTEGRATIONS/unifi-controller.pem"
+  #   # CA_FILE: "path/to/internal-ca.pem"   # or your own CA, normal hostname checks
+  #   # INSECURE: true                       # last resort, verification off

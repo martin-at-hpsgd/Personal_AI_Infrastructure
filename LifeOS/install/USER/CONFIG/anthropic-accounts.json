@@ -1,0 +1,11 @@
+{
+  "accounts": [
+    {
+      "slug": "primary",
+      "email": "your-email@example.com"
+    }
+  ],
+  "configDirRoot": "~/.claude",
+  "switchThresholdPct": 80,
+  "headroomDeltaPts": 20
+}

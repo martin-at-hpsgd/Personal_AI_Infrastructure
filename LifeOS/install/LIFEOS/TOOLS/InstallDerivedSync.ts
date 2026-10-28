@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.2.9
  * InstallDerivedSync.ts - Materialize com.lifeos.derivedsync.plist.template and bootstrap it.
  *
  *   bun ~/.claude/LIFEOS/TOOLS/InstallDerivedSync.ts             # install
@@ -11,6 +12,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, realpat
 import { join } from "path";
 import * as systemd from "./lib/SystemdUser";
 import { homedir } from "node:os";
+import { getClaudeDir, lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { installVerb } from "./lib/InstallVerb";
 
 type SpawnProcess = {
   stdout: ReadableStream<Uint8Array> | null;
@@ -36,7 +39,7 @@ type LaunchctlResult = {
 };
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const TEMPLATE_PATH = join(HOME, ".claude", "LIFEOS", "TOOLS", "com.lifeos.derivedsync.plist.template");
+const TEMPLATE_PATH = lifeosPath("TOOLS", "com.lifeos.derivedsync.plist.template");
 const LAUNCH_AGENTS_DIR = join(HOME, "Library", "LaunchAgents");
 const TARGET_PLIST = join(LAUNCH_AGENTS_DIR, "com.lifeos.derivedsync.plist");
 const LABEL = "com.lifeos.derivedsync";
@@ -89,7 +92,7 @@ async function install(): Promise<void> {
   }
   const bunPath = await detectBun();
   const bunDir = bunPath.replace(/\/bun$/, "");
-  const userDir = realpathSync(join(HOME, ".claude", "LIFEOS", "USER"));
+  const userDir = realpathSync(lifeosPath("USER"));
   console.log(`[InstallDerivedSync] detected bun at ${bunPath}`);
   const template = readFileSync(TEMPLATE_PATH, "utf-8");
   const materialized = template
@@ -157,13 +160,13 @@ async function linuxSpec(): Promise<systemd.UnitSpec> {
   // realpathSync, matching the {{USER_DIR}} substitution the plist path uses:
   // LIFEOS/USER is a symlink into the private config repo, and watching the
   // link rather than its target would never fire on a write to the real file.
-  const userDir = realpathSync(join(HOME, ".claude", "LIFEOS", "USER"));
+  const userDir = realpathSync(lifeosPath("USER"));
   return {
     label: LABEL,
     description: "LifeOS derived-file sync",
-    exec: [bunPath, join(HOME, ".claude", "LIFEOS", "TOOLS", "DerivedSync.ts")],
-    logPath: join(HOME, ".claude", "LIFEOS", "MEMORY", "OBSERVABILITY", "derived-sync-systemd.log"),
-    workingDirectory: join(HOME, ".claude"),
+    exec: [bunPath, lifeosPath("TOOLS", "DerivedSync.ts")],
+    logPath: lifeosPath("MEMORY", "OBSERVABILITY", "derived-sync-systemd.log"),
+    workingDirectory: getClaudeDir(),
     schedule: {
       kind: "watch",
       // Mirrors the plist's WatchPaths array. A missing directory is dropped:
@@ -176,6 +179,9 @@ async function linuxSpec(): Promise<systemd.UnitSpec> {
         join(userDir, "PRINCIPAL"),
         join(userDir, "DIGITAL_ASSISTANT"),
         join(userDir, "CONFIG"),
+        // Deny-hash inputs outside the USER dirs above.
+        join(userDir, "MEMORY", "Network"),
+        join(getClaudeDir(), ".env"),
       ].filter((p) => existsSync(p)),
     },
   };
@@ -190,7 +196,7 @@ async function linuxMain(arg: string | undefined): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const arg = process.argv[2];
+  const arg = installVerb(process.argv, "InstallDerivedSync");
   if (systemd.isLinux()) return linuxMain(arg);
   if (arg === "--uninstall") return uninstall();
   if (arg === "--status") return status();

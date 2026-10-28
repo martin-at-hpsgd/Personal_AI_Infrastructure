@@ -3,7 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import AppHeader from "@/components/AppHeader";
 import ObserverScope from "@/components/ObserverScope";
-import SecurityBanner from "@/components/SecurityBanner";
+import AchillesBanner from "@/components/AchillesBanner";
 import { observerScopeScript } from "@/lib/observer";
 import CommandPalette from "@/components/palette/CommandPalette";
 import TemplateOnboarding from "@/components/TemplateOnboarding";
@@ -27,13 +27,16 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        <link rel="stylesheet" href="/pulse-typography.css?v=20260909" />
         {/* Pre-paint: applies observer class + route scope before first render so
             a reload with observer on never flashes personal data. */}
         <script dangerouslySetInnerHTML={{ __html: observerScopeScript() }} />
       </head>
       <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans`}>
         <Providers>
-          <SecurityBanner />
+          {/* The one security strip. Every finder (scanner, Synapse, Pentest, Socrates,
+              ThreatModel) writes into the Achilles registry; this reads it. */}
+          <AchillesBanner />
           <AppHeader />
           <ObserverScope />
           <CommandPalette />

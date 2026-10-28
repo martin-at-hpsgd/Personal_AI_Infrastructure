@@ -1,6 +1,8 @@
 # Will Storr's Science of Storytelling — Framework Reference
 
-Extracted from *The Science of Storytelling: Why Stories Make Us Human and How to Tell Them Better* by Will Storr. This document codifies Storr's key concepts for systematic use in fiction writing.
+**Contents:** The Brain as Story Processor · Unexpected Change · The Sacred Flaw · Cause and Effect · Status and Social Games · Theory of Mind and Curiosity · The Flawed Model · Moral Outrage and Gossip · Human Connection as Core Theme · Summary: The Storr Character Construction Protocol · The Theory of Control · The Confirmatory Event · The Dramatic Question (derived from the flaw) · Status Games as Motivation
+
+Summarizes, in our own words, key ideas from *The Science of Storytelling: Why Stories Make Us Human and How to Tell Them Better* by Will Storr, organized for systematic use in fiction writing. Read the book for the full argument.
 
 ## The Brain as Story Processor
 
@@ -62,7 +64,7 @@ The internal need is often the **direct inverse** of the sacred flaw:
 ### Crisis and Transformation
 
 The story's climax forces maximum pressure on the sacred flaw:
-- The character MUST choose: maintain the flaw or transform
+- The character has to choose: maintain the flaw or transform
 - **Positive arc:** Character transforms (recognizes flaw, changes)
 - **Negative arc:** Character refuses to transform (tragedy — the flaw wins)
 - **Flat arc:** Character already knows the truth; changes the WORLD instead

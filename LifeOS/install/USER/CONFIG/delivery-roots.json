@@ -1,0 +1,9 @@
+{
+  "_docs": "The folders where finished files you asked for land, scanned by LIFEOS/TOOLS/lib/DeliveryScan.ts for the output reconciler. `roots` is a list of paths, `~` allowed. When this file parses to a list of strings it replaces the built-in defaults; delete the file to get the defaults back (Downloads, Desktop, Documents, iCloud Drive and every folder under ~/Library/CloudStorage). A root that does not exist is skipped silently, and a root nested inside another is dropped.",
+  "roots": [
+    "~/Downloads",
+    "~/Desktop",
+    "~/Documents",
+    "~/Library/Mobile Documents/com~apple~CloudDocs"
+  ]
+}

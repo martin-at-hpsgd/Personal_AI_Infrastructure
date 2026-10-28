@@ -1,0 +1,17 @@
+{
+  "about": "Every producer the weekly Review pool reads. `reader` is the PoolSources key in Weekly.ts, wired live in Review.ts liveDeps(); `prefix` is the first segment of each pool id it makes. Paths are relative to ~/.claude unless they start with ~/. `bun LIFEOS/REVIEW/Review.ts sources` exits 1 when this list and the code disagree.",
+  "producers": [
+    { "id": "upgrades", "reader": "upgrades", "prefix": "upgrade", "path": "LIFEOS/MEMORY/UPGRADES/records/", "what": "Upgrades records recommended in the last 7 days, except source directive (standing orders are not questions)" },
+    { "id": "ideal-state", "reader": "idealRecs", "prefix": "ideal", "path": "~/.local/state/lifeos/ideal-state/recommendations.json", "what": "Open ideal-state loop recommendations, plus needs-input rows from reconcile.json beside it (decisions only he can make)" },
+    { "id": "errata-v4", "reader": "v4Recs", "prefix": "v4", "path": "LIFEOS/USER/ERRATA/v4/recommendations-<date>.jsonl", "what": "The latest Errata v4 recommendations" },
+    { "id": "hillclimb", "reader": "hills", "prefix": "hill", "path": "skills/HillClimb/Tools/HillClimb.ts", "what": "The HillClimb survey's top hills (survey --top 15 --json)" },
+    { "id": "review-daily", "reader": "alarms", "prefix": "alarm", "path": "LIFEOS/USER/REVIEW/alarms.jsonl", "what": "The week's daily-watch alarms" },
+    { "id": "errata-audit", "reader": "auditProposals", "prefix": "audit", "path": "LIFEOS/USER/ERRATA/audit/proposals-v<N>.jsonl", "what": "Errata weekly audit proposals from the newest taxonomy, failed rows excluded" },
+    { "id": "errata-triage", "reader": "triageClusters", "prefix": "triage", "path": "LIFEOS/USER/ERRATA/reports/triage-<date>.md", "what": "Clusters in the latest Errata triage report" },
+    { "id": "socrates", "reader": "socrates", "prefix": "socrates", "path": "LIFEOS/USER/SOCRATES/findings.jsonl", "what": "Open Socrates findings (opened, not resolved)" },
+    { "id": "deriver", "reader": "hypotheses", "prefix": "hypothesis", "path": "LIFEOS/MEMORY/WISDOM/FRAMES/_hypotheses/*.md", "what": "Pending LearningPatternSynthesis hypotheses (status hypothesis, not expired)" },
+    { "id": "model-advisor", "reader": "modelAdvisor", "prefix": "model-advisor", "path": "~/.local/state/lifeos/vigil/outbox.jsonl", "what": "The week's model advisor recommendations (its medium Vigil events)" },
+    { "id": "shadow-expiry", "reader": "shadowExpiry", "prefix": "shadow-expiry", "path": "~/.local/state/lifeos/vigil/outbox.jsonl", "what": "The week's ShadowExpiry recommendations (its Vigil events)" },
+    { "id": "vigil-advocate", "reader": "vigilAdvocate", "prefix": "vigil-advocate", "path": "LIFEOS/MEMORY/STATVS/", "what": "The continuous advocate's recommendations: changes its research, prepare and background runs proposed and did not make (STATVS stream vigil-log, kind recommendation)" }
+  ]
+}

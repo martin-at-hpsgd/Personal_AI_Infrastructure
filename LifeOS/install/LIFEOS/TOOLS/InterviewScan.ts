@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.4.24
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -28,6 +31,8 @@ import { join } from "path";
 import { readTelosFreshness, readStateFreshness, sectionSlug, legacyTelosFilePath, daysBetween, type SectionFreshness } from "./TelosFreshness";
 import { homedir } from "node:os";
 import { getDAName } from "../../hooks/lib/identity";
+import { REPO_JSON_PATH } from "../../hooks/lib/work-config"; // the loader owns the work_repo.json path; this scan only checks the file is filled in
+import { getClaudeDir, getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -37,7 +42,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const USER_DIR = join(LIFEOS_DIR, "USER");
 const TELOS_DIR = join(USER_DIR, "TELOS");
 const TELOS_PATH = join(TELOS_DIR, "TELOS.md");
@@ -75,7 +80,12 @@ type Target = {
   evidence_days_since_review?: number | null;
   never_reviewed?: boolean;
   evidence_live?: boolean;
+  /** JSON targets: each key must hold a string matching its pattern, or the file is incomplete. */
+  json_required?: Record<string, RegExp>;
 };
+
+// Mirrors REPO_REGEX in hooks/lib/work-config.ts, the loader that reads work_repo.json.
+const WORK_REPO_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 // ─── Registry: what files are interview-targets, and their prompts ───
 //
@@ -90,7 +100,7 @@ type Target = {
 
 type RegistryTarget = Omit<Target, "content_length" | "tbd_count" | "seed_markers" | "empty_sections" | "required_fields_missing" | "completeness_score" | "priority" | "review_mode" | "age_days" | "threshold_days" | "stale" | "why_incomplete">;
 
-const REGISTRY: RegistryTarget[] = [
+export const REGISTRY: RegistryTarget[] = [
   // ─── Phase 0: First-run setup (the bootstrap that makes Pulse work) ───
   { phase: 0, path: join(USER_DIR, "DIGITAL_ASSISTANT", "DA_IDENTITY.md"), name: "DA_IDENTITY", category: "setup", leverage: 10,
     prompts: ["What's your DA's name? (default: LifeOS)",
@@ -102,19 +112,22 @@ const REGISTRY: RegistryTarget[] = [
               "Location and timezone (city/region plus IANA zone, e.g. Lisbon, Europe/Lisbon)?",
               "One-line role / what you do?",
               "One-line focus — what you're working on right now?"] },
-  { phase: 0, path: join(LIFEOS_DIR, "PULSE", "PULSE.toml"), name: "PULSE.toml/voice", category: "setup", leverage: 9,
-    prompts: ["Main DA voice — pick from ElevenLabs library, or stick with default Rachel (21m00Tcm4TlvDq8ikWAM)?",
+  { phase: 0, path: join(USER_DIR, "CONFIG", "LIFEOS_CONFIG.toml"), name: "LIFEOS_CONFIG.toml/voice", category: "setup", leverage: 9,
+    prompts: ["Main DA voice — a Fish Audio reference id (fish_reference_id), or no voice for now?",
               "Want voice notifications on by default? (default: yes)"] },
-  { phase: 0, path: join(HOME, ".claude", ".env"), name: ".env/credentials", category: "setup", leverage: 10,
-    prompts: ["ANTHROPIC_API_KEY — required for inference. Paste here (will write to .env, won't echo back)?",
-              "ELEVENLABS_API_KEY — required for voice notifications. Skip if you don't want voice.",
+  { phase: 0, path: join(getClaudeDir(), ".env"), name: ".env/credentials", category: "setup", leverage: 10,
+    prompts: ["Inference — run `bun skills/LifeOS/Tools/DetectInference.ts --apply`; it uses the Claude or Codex login already on this machine, so no API key is needed.",
+              "FISH_API_KEY — only for voice; store it with `bun LIFEOS/TOOLS/Secrets.ts set <KEY>`. Skip to keep voice off.",
               "GH_TOKEN — optional, only if you want the work pipeline. Skip if not using GitHub issues.",
               "Any other API keys you want stored (Stripe, OpenAI, etc.)?"] },
   { phase: 0, path: join(USER_DIR, "PROJECTS.md"), name: "PROJECTS/setup", category: "setup", leverage: 8,
     prompts: ["At least one project so routing works — name, local path, public URL (or blank), deploy command, stack?",
               "What aliases would you use to refer to it conversationally? (e.g. \"my blog\", \"the site\")"] },
-  { phase: 0, path: join(USER_DIR, "WORK", "config.yaml"), name: "WORK/config", category: "setup", leverage: 7,
-    prompts: ["WORK.REPO — GitHub repo (org/name) for issue-based work tracking? Skip + disable if you don't want GitHub-issue sync.",
+  // The repo binding lives in work_repo.json (hooks/lib/work-config.ts reads it);
+  // WORK/config.yaml holds only kanban columns and the poll interval.
+  { phase: 0, path: REPO_JSON_PATH, name: "WORK/work_repo", category: "setup", leverage: 7,
+    json_required: { repo: WORK_REPO_RE },
+    prompts: ["Work repo — GitHub repo (owner/name) for issue-based work tracking? Written to WORK/work_repo.json as {\"repo\":\"owner/name\"}; the work system turns on only after gh confirms the repo is private. Skip + disable if you don't want GitHub-issue sync.",
               "If skipping: confirm we should set [work] enabled = false in PULSE.toml?"] },
 
   // ─── Phase 1: Foundational TELOS context ───
@@ -191,7 +204,7 @@ const REGISTRY: RegistryTarget[] = [
   { phase: 3, path: `${TELOS_PATH}#${sectionSlug("Bands")}`, name: "Bands", category: "preference", leverage: 4,
     prompts: ["Which artists have actually shaped you — not just ones you enjoy?",
               "Artists you'd travel 100 miles for — tour-alert priority ones?",
-              "Electronic / DJ / producer names you track?"] },
+              "Producers, DJs, or genre-specific names you track?"] },
   { phase: 3, path: `${TELOS_PATH}#${sectionSlug("Movies")}`, name: "Movies", category: "preference", leverage: 3,
     prompts: ["Films that shaped how you see the world?",
               "Genres you return to — crime, sci-fi, thrillers, something else?",
@@ -205,9 +218,9 @@ const REGISTRY: RegistryTarget[] = [
     prompts: ["Top 3-5 cuisines you eat weekly happily?",
               "Cuisines avoided?",
               "Spice tolerance, dietary posture?",
-              "Dishes you love to make? Dishes your partner makes you love?"] },
+              "Dishes you love to make? Dishes someone else makes that you love?"] },
   { phase: 3, path: `${TELOS_PATH}#${sectionSlug("Meetups")}`, name: "Meetups", category: "preference", leverage: 3,
-    prompts: ["Beyond AI, security, founder meetups — any other topics?",
+    prompts: ["Which meetup topics should be flagged for you — and any beyond the ones you already follow?",
               "Preferred event size and price ceiling?",
               "Any specific groups you already like locally?"] },
   { phase: 3, path: `${TELOS_PATH}#${sectionSlug("Civic")}`, name: "Civic", category: "preference", leverage: 2,
@@ -215,10 +228,9 @@ const REGISTRY: RegistryTarget[] = [
               "City council topics to always flag?",
               "State-level legislation topic areas?"] },
   { phase: 3, path: `${TELOS_PATH}#${sectionSlug("Learning Interests")}`, name: "Learning Interests", category: "preference", leverage: 4,
-    prompts: ["Beyond meditation / tennis / kickboxing — what else do you want to actively learn?",
-              "Spanish refresh — active or dormant?",
-              "Drums — lessons or self-taught?",
-              "Dormant-but-interested topics?"] },
+    prompts: ["What are you actively learning or practicing right now — and for each, lessons, a course, or self-taught?",
+              "Beyond those — what else do you want to actively learn?",
+              "Dormant-but-interested topics worth reviving?"] },
   { phase: 3, path: `${TELOS_PATH}#${sectionSlug("Team")}`, name: "Team", category: "preference", leverage: 5,
     prompts: ["Who belongs in the human and agent team map now?",
               "Any responsibilities, trust boundaries, or operating roles that have changed?",
@@ -232,6 +244,17 @@ const REGISTRY: RegistryTarget[] = [
   { phase: 4, path: join(USER_DIR, "PRINCIPAL", "PRINCIPAL_IDENTITY.md"), name: "PRINCIPAL_IDENTITY", category: "identity", leverage: 8,
     prompts: ["Anything in the identity file that's out-of-date or needs refinement?",
               "Aspects of how you want to be represented that aren't captured yet?"] },
+  // public issue #1997, @Trei-D — TelosFreshness registers these two system files
+  // (lifeos_system_prompt, lifeos_system_architecture) but the interview never
+  // asked about them, so their reviewed stamps could only go stale. The derived
+  // pair (PRINCIPAL_TELOS, ARCHITECTURE_SUMMARY) stays out: reviews route to
+  // their sources, per ContextCheckin.md.
+  { phase: 4, path: join(LIFEOS_DIR, "LIFEOS_SYSTEM_PROMPT.md"), name: "LIFEOS_SYSTEM_PROMPT", category: "identity", leverage: 6,
+    prompts: ["System prompt: is anything constitutional pending — an operational rule to add, retire, or reword? Default to surfacing, not editing; this is the most load-bearing file in the system.",
+              "Has any verification rule or hard prohibition drifted from how we actually work?"] },
+  { phase: 4, path: join(LIFEOS_DIR, "DOCUMENTATION", "LifeosSystemArchitecture.md"), name: "LifeosSystemArchitecture", category: "identity", leverage: 4,
+    prompts: ["Architecture doc: has any subsystem changed shape since this was last reviewed? ARCHITECTURE_SUMMARY regenerates from this file, so edits land here.",
+              "Any component retired, renamed, or missing from the section map?"] },
   { phase: 4, path: `${TELOS_PATH}#${sectionSlug("Current State")}`, name: "Current State", category: "current_state", leverage: 5,
     prompts: ["Right now: focus, energy, mood, last meal, sleep?",
               "This week's top intent, stalled items, wins?"] },
@@ -251,7 +274,22 @@ const PLACEHOLDER_PATTERNS = [
   /\bseeded during interview\b/gi,
   /^\s*_\(.*(seeded|pending|empty|awaiting).*\)_\s*$/gim,
   /^\s*-\s*TBD\s*$/gim,
+  /\(interview\s+—[^)]*\)/g, // shipped template dialect — public issue #2157, @tzioup
 ];
+
+// Heading-delimited section bodies. The final section runs to end of input:
+// (?![\s\S]) is that anchor under /m, where `$` means end of line and the
+// Python-style backslash-Z would be a literal capital Z in JS.
+// public issue #2157, @tzioup
+export const SECTION_BODY_RE = /^#{2,4}\s+.+\n([\s\S]*?)(?=^#{2,4}|(?![\s\S]))/gm;
+// Shipped bootstrap templates mark themselves in frontmatter; see scoreFile.
+export function hasTemplateProvenance(content: string): boolean {
+  if (!content.startsWith("---\n")) return false;
+  const end = content.indexOf("\n---", 4);
+  return end > 0 && /^provenance:\s*template\b/m.test(content.slice(4, end));
+}
+const TEMPLATE_SCORE_CEILING = 50;
+export const SUBSECTION_BODY_RE = /^#{3,4}\s+.+\n([\s\S]*?)(?=^#{3,4}|(?![\s\S]))/gm;
 
 // Phase boost ensures setup-then-foundational ordering. Phase 0 (setup) at 100%
 // drops to 0 boost so it disappears from the priority queue once configured;
@@ -317,9 +355,10 @@ function freshnessForSection(target: RegistryTarget): SectionFreshness | null {
   return freshnessBySlug.get(sectionSlug(target.name)) ?? null;
 }
 
-function scoreFile(target: RegistryTarget): Target {
+export function scoreFile(target: RegistryTarget): Target {
+  const { json_required: _schema, ...shown } = target; // a RegExp prints as {} in JSON output
   const result: Target = {
-    ...target,
+    ...shown,
     content_length: 0,
     tbd_count: 0,
     seed_markers: 0,
@@ -344,6 +383,29 @@ function scoreFile(target: RegistryTarget): Target {
   const content = readFileSync(target.path, "utf-8");
   result.content_length = content.length;
 
+  // A JSON config is complete when it parses to an object and every required key
+  // holds a valid value; Markdown placeholder and section heuristics mean nothing there.
+  if (target.path.endsWith(".json")) {
+    let parsed: unknown = null;
+    try { parsed = JSON.parse(content); } catch { /* reported below */ }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      result.why_incomplete.push("not a JSON object");
+      result.completeness_score = 0;
+    } else {
+      const required = Object.entries(target.json_required ?? {});
+      for (const [key, re] of required) {
+        const v = (parsed as Record<string, unknown>)[key];
+        if (typeof v !== "string" || !re.test(v)) result.required_fields_missing.push(key);
+      }
+      result.completeness_score = required.length === 0 ? 100 : Math.round(100 * (required.length - result.required_fields_missing.length) / required.length);
+      if (result.required_fields_missing.length > 0) result.why_incomplete.push(`missing or invalid: ${result.required_fields_missing.join(", ")}`);
+    }
+    result.priority = Math.round(PHASE_BOOST[target.phase] + target.leverage * 2 + (100 - result.completeness_score));
+    result.review_mode = result.completeness_score >= 80 && result.required_fields_missing.length === 0;
+    if (result.review_mode && result.why_incomplete.length === 0) result.why_incomplete.push("already substantive — review for updates/refinements");
+    return result;
+  }
+
   for (const pattern of PLACEHOLDER_PATTERNS) {
     const matches = content.match(pattern);
     if (!matches) continue;
@@ -352,12 +414,13 @@ function scoreFile(target: RegistryTarget): Target {
   }
 
   // Empty sections: a heading followed by whitespace or placeholder
-  const sectionMatches = content.matchAll(/^#{2,4}\s+.+\n([\s\S]*?)(?=^#{2,4}|\Z)/gm);
+  const sectionMatches = content.matchAll(SECTION_BODY_RE);
   for (const m of sectionMatches) {
     const body = m[1].trim();
     const substantive = body
       .replace(/<!--[\s\S]*?-->/g, "")
       .replace(/_\(.*?\)_/g, "")
+      .replace(/\(interview\s+—[^)]*\)/g, "")
       .replace(/\bTBD\b/g, "")
       .trim();
     if (substantive.length < 20) result.empty_sections += 1;
@@ -367,6 +430,14 @@ function scoreFile(target: RegistryTarget): Target {
   const placeholderPenalty = result.tbd_count * 40 + result.seed_markers * 20 + result.empty_sections * 30;
   const contentBonus = Math.min(content.length / 10, 500);
   result.completeness_score = Math.max(0, Math.min(100, 100 - placeholderPenalty / 10 + contentBonus / 50));
+
+  // A file still carrying the shipped template's frontmatter is not the
+  // principal's content, however much example text it holds: it is filled,
+  // never reviewed. public issues #2155 and #2157, @tzioup
+  if (hasTemplateProvenance(content)) {
+    result.completeness_score = Math.min(result.completeness_score, TEMPLATE_SCORE_CEILING);
+    result.why_incomplete.push("still the shipped template (provenance: template)");
+  }
 
   // Priority: phase (dominant) + leverage + incompleteness. Phase 1 always beats Phase 2.
   const incompleteness = 100 - result.completeness_score;
@@ -411,12 +482,13 @@ function scoreSection(target: RegistryTarget, sectionBody: string, sectionFreshn
   }
 
   // Empty sections: a heading followed by whitespace or placeholder
-  const sectionMatches = sectionBody.matchAll(/^#{3,4}\s+.+\n([\s\S]*?)(?=^#{3,4}|\Z)/gm);
+  const sectionMatches = sectionBody.matchAll(SUBSECTION_BODY_RE);
   for (const m of sectionMatches) {
     const body = m[1].trim();
     const substantive = body
       .replace(/<!--[\s\S]*?-->/g, "")
       .replace(/_\(.*?\)_/g, "")
+      .replace(/\(interview\s+—[^)]*\)/g, "")
       .replace(/\bTBD\b/g, "")
       .trim();
     if (substantive.length < 20) result.empty_sections += 1;
@@ -425,6 +497,7 @@ function scoreSection(target: RegistryTarget, sectionBody: string, sectionFreshn
   const substantiveSection = sectionBody
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/_\(.*?\)_/g, "")
+    .replace(/\(interview\s+—[^)]*\)/g, "")
     .replace(/\bTBD\b/g, "")
     .trim();
   if (substantiveSection.length < 20) result.empty_sections += 1;
@@ -497,6 +570,7 @@ const STATE_DOMAIN: Record<string, string> = {
   current_state_activity: "activity",
   current_state_consumption: "activity",
   current_state_financial: "money",
+  current_state_money: "money", // shipped template name (public issue #2202, @bak3r)
   current_state_snapshot: "health",
   ideal_state_health: "health",
   ideal_state_money: "money",
@@ -628,7 +702,7 @@ function formatHuman(targets: Target[]): string {
   lines.push(`Overall: ${overall}% complete across ${targets.length} interview targets`);
 
   // Per-phase averages
-  const phases: Phase[] = [1, 2, 3, 4, 9];
+  const phases: Phase[] = [0, 1, 2, 3, 4, 9]; // public issue #2155, @tzioup
   const phaseStats = phases.map((p) => {
     const t = targets.filter((x) => x.phase === p);
     const avg = t.length ? Math.round(t.reduce((s, x) => s + x.completeness_score, 0) / t.length) : 0;
@@ -751,4 +825,4 @@ function main(): void {
   }
 }
 
-main();
+if (import.meta.main) main();

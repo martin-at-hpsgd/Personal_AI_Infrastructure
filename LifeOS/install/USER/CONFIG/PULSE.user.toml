@@ -1,0 +1,46 @@
+# PULSE.user.toml — your machine-specific Pulse overrides (template)
+#
+# Read by LIFEOS/PULSE/lib.ts loadConfig() and layered OVER the shipped
+# LIFEOS/PULSE/PULSE.toml by LIFEOS/PULSE/pulse.ts loadPulseConfig():
+#   [modules]   — per-tab on/off switches; the user tier wins (lib/modules.ts resolveModules)
+#   [syslog]    — merged over the system [syslog]; `port` is what the collector binds
+#   [[job]]     — extra scheduled jobs; a job with the same `name` as a system job REPLACES it
+# `${VAR}` / `$VAR` in any string value expands from the environment at load time.
+# A missing file is fine; a file that fails to parse is logged and ignored.
+
+# ── Module switches ───────────────────────────────────────────────────────
+# Every key defaults to true except syslog, da, corpus and house (false). Uncomment
+# a line to change it. Valid keys (lib/modules.ts MODULE_DEFAULTS): telos, work,
+# content, health, finances, business, growth, local, gear, atlas, memory,
+# synapse, books, conduit, projects, ledger, upgrades, hypotheses, usage,
+# performance, bunker, algorithm, evals, threatmodel, achilles, socrates, vera,
+# hermes, docs, voice, syslog, da, corpus, house.
+[modules]
+# health = false
+# finances = false
+# syslog = true
+# corpus = true   # the CORPUS page: search everything you have published. Needs a deployed
+#                 # Corpus Worker and its endpoint in USER/CUSTOMIZATIONS/SKILLS/_CORPUS/Config.md.
+# house = true    # the HOUSE page: lights, vacuums, thermostat, cameras. Needs a home-device poller
+#                 # writing LIFEOS/MEMORY/_HOUSE/latest.json.
+
+# ── Syslog collector ──────────────────────────────────────────────────────
+# Enable if you point network devices at this machine. `port` becomes
+# PULSE_SYSLOG_PORT before the collector starts.
+[syslog]
+enabled = false
+port = 5514
+
+# ── Extra jobs ────────────────────────────────────────────────────────────
+# Fields (lib.ts jobsFromParsed): name, schedule (5-field cron, validated),
+# type = "script" | "claude", command (script) or prompt (claude), model,
+# output = "log" | "notify" | ["log", "notify"], enabled, timeout_ms.
+#
+# [[job]]
+# name = "example-nightly-script"
+# schedule = "0 3 * * *"
+# type = "script"
+# command = "bun ${HOME}/.claude/LIFEOS/TOOLS/Doctor.ts"
+# output = "log"
+# enabled = false
+# timeout_ms = 300000

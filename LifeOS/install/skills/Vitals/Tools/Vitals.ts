@@ -26,8 +26,16 @@ const topIdx = argv.indexOf("--top");
 const TOP_N = topIdx !== -1 ? Math.max(1, parseInt(argv[topIdx + 1] ?? "10", 10) || 10) : 10;
 const cmd = argv.find((a) => !a.startsWith("--") && a !== String(TOP_N)) ?? "check";
 
+// Every number this tool parses comes from libc-formatted output, and a
+// comma-decimal locale (es_AR, de_DE, ...) prints `7,84` where the regexes and
+// Number() expect `7.84` — load, swap and CPU% all came back null/NaN.
+// LC_NUMERIC=C pins the decimal point; LC_ALL must go because it outranks it.
+// public issue #1947, @jacobo-ortiz
+const C_NUMERIC_ENV: Record<string, string | undefined> = { ...process.env, LC_NUMERIC: "C" };
+delete C_NUMERIC_ENV.LC_ALL;
+
 function run(bin: string, args: string[], timeoutMs = 20000): string {
-  const p = Bun.spawnSync([bin, ...args], { timeout: timeoutMs, stdout: "pipe", stderr: "pipe" });
+  const p = Bun.spawnSync([bin, ...args], { timeout: timeoutMs, stdout: "pipe", stderr: "pipe", env: C_NUMERIC_ENV });
   return p.success ? new TextDecoder().decode(p.stdout).trim() : "";
 }
 
@@ -138,7 +146,8 @@ function topSecondSample(): { rows: Json[]; header: string } {
   // One call only (each -l 2 run costs ~3s of sampling); energy ordering is re-sorted in code.
   const p = Bun.spawnSync(
     ["/usr/bin/top", "-l", "2", "-n", String(Math.max(TOP_N * 4, 40)), "-o", "cpu", "-stats", "pid,cpu,power,mem,command"],
-    { timeout: 30000, stdout: "pipe", stderr: "pipe", env: { ...process.env, COLUMNS: "200" } },
+    // C_NUMERIC_ENV, not process.env: top's CPU% is locale-formatted too (public issue #1947, @jacobo-ortiz)
+    { timeout: 30000, stdout: "pipe", stderr: "pipe", env: { ...C_NUMERIC_ENV, COLUMNS: "200" } },
   );
   const out = p.success ? new TextDecoder().decode(p.stdout).trim() : "";
   const samples = out.split(/^Processes:/m);

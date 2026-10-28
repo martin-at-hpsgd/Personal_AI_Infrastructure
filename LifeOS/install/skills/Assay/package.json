@@ -1,0 +1,13 @@
+{
+  "name": "@lifeos/skill-evals",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Assertion-first AI eval framework for LifeOS — deterministic asserts, calibrated judges, pass^k with statistics, paired comparison",
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  }
+}

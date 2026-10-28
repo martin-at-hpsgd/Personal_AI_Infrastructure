@@ -1,0 +1,16 @@
+{
+  "_doc": "Workflow card overlay for the Pulse /workflows page. Declares the card slots a job definition cannot carry: input, SOP, output, destination, and the real steps with their executor (code, model, judgment, agent or human). Keys are record ids from `bun LIFEOS/WORKFLOWS/Workflows.ts list`. Overlay values win over derived ones; the job definitions stay the source of truth for scheduling. Delete the example card and add one per workflow you want described. The file is optional: without it every card shows only what the inventory can derive.",
+  "cards": {
+    "agent-job:example-digest": {
+      "purpose": "<one sentence: what this workflow is for>",
+      "input": "<what it reads, e.g. your inbox or a feed>",
+      "steps": [
+        { "id": "collect", "label": "<gather the inputs>", "executor": "code" },
+        { "id": "summarize", "label": "<turn them into a digest>", "executor": "model" }
+      ],
+      "sop": "<path to the skill or doc that defines how it runs>",
+      "output": "<what it produces>",
+      "destination": "<where the output goes, e.g. a Pulse page or an email>"
+    }
+  }
+}

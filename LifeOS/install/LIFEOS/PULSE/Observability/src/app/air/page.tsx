@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ApiError, useApi } from "@/lib/api";
 import { Wind, Thermometer, Droplets, Cloud, Sparkles, MapPin, Home, Trees } from "lucide-react";
 import EmptyStateGuide from "@/components/EmptyStateGuide";
 import { PageShell, PageHeader, Panel, PanelHeader, Pill } from "@/components/ui/chrome";
@@ -261,22 +261,9 @@ function Legend() {
 }
 
 export default function AirPage() {
-  const [air, setAir] = useState<AirData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/life/air")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setAir)
-      .catch((err) => setError(String(err)));
-    const interval = setInterval(() => {
-      fetch("/api/life/air")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => d && setAir(d))
-        .catch(() => {});
-    }, 60_000);
-    return () => clearInterval(interval);
-  }, []);
+  const { data: air = null, error: airError } = useApi<AirData>("/api/life/air", { refetchInterval: 60_000 });
+  // Shown only while there is no good data (a failed background refetch keeps the last reading).
+  const error = !air && airError ? (airError instanceof ApiError ? `Error: HTTP ${airError.status}` : String(airError)) : null;
 
   if (error) {
     return (

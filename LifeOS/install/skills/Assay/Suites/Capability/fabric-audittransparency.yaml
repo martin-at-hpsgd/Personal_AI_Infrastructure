@@ -1,0 +1,159 @@
+# Fabric AuditTransparency — whether a decision, system or policy that affects
+# people is explainable to them, where it is opaque, and whether that opacity is
+# justified. The regex asserts pin the literal shape (title, the eight sections
+# in order, the table headers, a valid verdict line, no asterisks); the judged
+# asserts carry what code cannot: the inferred read, evidence true to the input,
+# honest justification calls, a plain explainability attempt, specific fixes.
+# Synthetic inline fixtures only; every organization named is fictional.
+name: fabric-audittransparency
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AuditTransparency.md"
+cases:
+  - id: pasted_notice_stays_faithful
+    prompt: |
+      audit_transparency on this privacy notice from a fictional fitness app, StrideLoop:
+      "We collect your step count, heart rate, sleep times and GPS routes. We use this data to provide and improve our services and for other business purposes. We may share data with trusted partners. You can request a copy of your data by mailing a letter to our registered office. We may update this notice from time to time; continued use means you accept the changes."
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section, table and citation is in
+    # place and the shape checker passes it, but it invents a clause the notice
+    # never contains (sale to insurers), calls the verdict DELIBERATELY OBSCURED
+    # on suspicion, waves "partners" through as justified, writes the
+    # explainability attempt in jargon, and gives boilerplate recommendations.
+    adversarial_output: |
+      # Transparency Audit: StrideLoop's Privacy Notice
+
+      ## SYSTEM ANALYZED
+
+      StrideLoop is a fitness app that collects health and location data from its users and sells that data to health insurers, as stated in its privacy notice.
+
+      ## TRANSPARENCY VERDICT
+
+      DELIBERATELY OBSCURED: the company is clearly hiding its real business model from users to profit from their health data.
+
+      ## STAKEHOLDER MAP
+
+      | Party | Role | Information access | Power |
+      |-------|------|--------------------|-------|
+      | StrideLoop | Decision maker | Full | High |
+      | Users | Affected | Partial | Low |
+
+      ## TRANSPARENCY AUDIT
+
+      | Dimension | Rating | Evidence |
+      |-----------|--------|----------|
+      | Decision | Opaque | Decisions are not transparent to users. |
+      | Algorithmic | Opaque | Algorithms are not explained to users. |
+      | Financial | Opaque | The company sells data to insurers for profit. |
+      | Governance | Opaque | Rules are not transparent. |
+      | Data | Opaque | Data practices are not transparent. |
+
+      ## OPACITY ANALYSIS
+
+      | # | Opacity | Justified? | Who benefits | Who is harmed |
+      |---|---------|------------|--------------|---------------|
+      | 1 | The sale of health data to insurers is hidden | No | StrideLoop | Users |
+      | 2 | The list of partners is not published | Yes: partner relationships are commercially sensitive | StrideLoop | Users |
+
+      ## THE REVERSAL TEST
+
+      No. Nobody would accept their health data being sold to insurers without being told, so the company would never accept this itself.
+
+      ## EXPLAINABILITY CHECK
+
+      Attempt: StrideLoop ingests multimodal biometric telemetry and geospatial vectors, which are processed under a legitimate-interest basis for service optimization and monetized through downstream data-sharing arrangements with third-party processors and controllers.
+
+      Result: No — the complexity serves opacity
+
+      ## RECOMMENDATIONS
+
+      - StrideLoop should be more transparent about how it uses data (#1)
+      - Publish a clear and easy to read privacy policy for all users (#1)
+    assert:
+      - type: regex
+        weight: 3
+        value: '## SYSTEM ANALYZED[\s\S]*## TRANSPARENCY VERDICT[\s\S]*## STAKEHOLDER MAP[\s\S]*## TRANSPARENCY AUDIT[\s\S]*## OPACITY ANALYSIS[\s\S]*## THE REVERSAL TEST[\s\S]*## EXPLAINABILITY CHECK[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '\|\s*Dimension\s*\|\s*Rating\s*\|\s*Evidence\s*\|'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Transparency Audit: \S'
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: llm-assert
+        weight: 3
+        value: [ "Every claim about the notice is something the notice actually says or plainly leaves out; the audit does not invent practices such as selling data to insurers", "The vague phrases the notice uses ('other business purposes', 'trusted partners', 'from time to time') are named as opacity, quoted or closely paraphrased, and not accepted as justified", "The governance finding notes that changes take effect by continued use without prior notice, and the data finding notes that access requires a mailed letter", "The verdict is a label short of DELIBERATELY OBSCURED unless the audit shows evidence of deliberate choice, and its reason follows from the rows", "The explainability attempt is written in plain words a typical app user would understand", "Recommendations say exactly what the app should disclose or change, not 'be more transparent'" ]
+        reference: "A faithful audit quotes the vague purposes, unnamed partners, letter-only access and change-by-continued-use as opacity; it invents no data sale."
+
+  - id: bare_system_states_assumption
+    prompt: "audit transparency: automated content moderation on a large social platform"
+    assert:
+      - type: regex
+        weight: 3
+        value: '## SYSTEM ANALYZED[\s\S]*## TRANSPARENCY VERDICT[\s\S]*## STAKEHOLDER MAP[\s\S]*## TRANSPARENCY AUDIT[\s\S]*## OPACITY ANALYSIS[\s\S]*## THE REVERSAL TEST[\s\S]*## EXPLAINABILITY CHECK[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '\n(?:TRANSPARENT|MOSTLY TRANSPARENT|PARTIALLY OPAQUE|SIGNIFICANTLY OPAQUE|DELIBERATELY OBSCURED):\s+\S'
+      - type: regex
+        weight: 1
+        value: '\|\s*#\s*\|\s*Opacity\s*\|\s*Justified\?\s*\|\s*Who benefits\s*\|\s*Who is harmed\s*\|'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 3
+        value: [ "SYSTEM ANALYZED states the assumption made about how such moderation typically works, since the input named no platform", "The audit separates opacity with a specific legitimate reason (for example withholding exact spam or abuse signals so they cannot be evaded) from opacity without one (for example no stated reason for a removal or no visible appeal path)", "The ratings and evidence are specific to content moderation and would not fit most other systems as well", "The explainability attempt is a plain paragraph a user whose post was removed would understand" ]
+        reference: "audit transparency: automated content moderation on a large social platform"
+
+  - id: decision_maker_side_gets_fixes
+    prompt: "We run a fictional ride-share app called Hopline. Surge pricing multiplies fares when demand is high; riders see the multiplier before booking, drivers see a heat map but not what share of the surge they keep. How transparent is this, and what should we fix?"
+    assert:
+      - type: regex
+        weight: 3
+        value: '## SYSTEM ANALYZED[\s\S]*## TRANSPARENCY VERDICT[\s\S]*## STAKEHOLDER MAP[\s\S]*## TRANSPARENCY AUDIT[\s\S]*## OPACITY ANALYSIS[\s\S]*## THE REVERSAL TEST[\s\S]*## EXPLAINABILITY CHECK[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '\|\s*Party\s*\|\s*Role\s*\|\s*Information access\s*\|\s*Power\s*\|'
+      - type: icontains
+        weight: 1
+        value: "driver"
+      - type: llm-assert
+        weight: 3
+        value: [ "The audit credits what the input says is visible (riders see the multiplier before booking) instead of calling it opaque", "The driver's share of surge pay is identified as the main opacity, with drivers as the harmed party", "The recommendations are addressed to Hopline as the decision maker and say concretely what to show drivers or riders" ]
+        reference: "Hopline surge pricing: riders see the multiplier, drivers do not see their share of the surge."
+
+  - id: justified_opacity_not_punished
+    prompt: "audit_transparency: a fictional software vendor withholds technical details of a security flaw for 30 days while customers patch, then publishes a full advisory with the root cause and affected versions."
+    assert:
+      - type: regex
+        weight: 3
+        value: '## SYSTEM ANALYZED[\s\S]*## TRANSPARENCY VERDICT[\s\S]*## OPACITY ANALYSIS[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '\n(?:TRANSPARENT|MOSTLY TRANSPARENT):\s+\S'
+      - type: regex
+        weight: 1
+        value: '\|\s*\d+\s*\|[^\n]*\|\s*Yes:\s*\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The temporary withholding is judged justified for a specific reason (it protects customers from attack before patches exist) and is time-limited", "The verdict does not treat this as opacity that serves the vendor at the customers' expense" ]
+        reference: "Time-limited withholding of exploit details before a full advisory is justified opacity."
+
+  - id: question_answered_by_verdict
+    prompt: "Is a fictional city's red-light camera program transparent? The city publishes every camera location and the fine amount, but not the vendor contract, how revenue is split with the vendor, or how often the cameras are calibrated."
+    assert:
+      - type: regex
+        weight: 3
+        value: '## SYSTEM ANALYZED[\s\S]*## TRANSPARENCY VERDICT[\s\S]*## STAKEHOLDER MAP[\s\S]*## TRANSPARENCY AUDIT[\s\S]*## OPACITY ANALYSIS[\s\S]*## THE REVERSAL TEST[\s\S]*## EXPLAINABILITY CHECK[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Transparency Audit: \S'
+      - type: not-contains
+        weight: 1
+        value: "**"
+      - type: llm-assert
+        weight: 3
+        value: [ "The verdict answers whether the program is transparent", "The audit credits the published camera locations and fine amounts as visible to drivers rather than calling them opaque","The hidden vendor contract and revenue split are flagged as financial opacity that benefits the city or vendor at drivers' expense", "Unpublished calibration records are flagged because drivers cannot challenge a ticket without them" ]
+        reference: "Locations and fines are public; contract, revenue split and calibration are not."

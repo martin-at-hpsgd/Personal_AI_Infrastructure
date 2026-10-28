@@ -1,6 +1,8 @@
 # Critic Profiles for Multi-Pass Review
 
-The WriteChapter workflow's Step 8 runs the completed chapter through multiple critic passes. Each critic examines the prose from a single focused angle and produces specific, actionable suggestions to tighten the draft.
+**Contents:** Rules for All Critics · Output Format (per critic) · Mandatory Critics (run on every chapter) · Optional Critics (for high-stakes chapters: opening, midpoint, climax, finale) · Pass Ordering · Efficiency
+
+WriteChapter runs the completed chapter through multiple critic passes. Each critic examines the prose from a single focused angle and produces specific, actionable suggestions to tighten the draft.
 
 ## Rules for All Critics
 
@@ -45,29 +47,28 @@ The WriteChapter workflow's Step 8 runs the completed chapter through multiple c
 - A scene that only advances plot
 - A chapter with no mystery movement
 - Theme stated through exposition rather than action
-- A layer present in the Layer Articulation Map (Step 3) but absent from the actual prose
+- A layer present in WriteChapter's composition contract but absent from the actual prose
 
 ---
 
 ### 2. The Rhetoric Examiner
 
-**Focus:** Rhetorical figure deployment and prose musicality
-**Personality:** The ear. Hears rhythm, notices patterns, feels cadence.
+**Focus:** Restraint. Sentences that stop, paragraphs that end, figures that were earned.
+**Personality:** The ear. Hears the line that was written for its sound.
 
 **Asks:**
-- Were rhetorical figures deployed at the planned impact moments from Step 2?
-- Are figures present in BOTH dialogue and narrative prose?
-- Is there figure variety, or did the writer lean on the same 2-3 figures throughout?
-- Do the deployed figures match the Aesthetic Profile's emphasis?
-- Are memorable lines actually memorable — would a reader quote them?
-- Does sentence rhythm vary deliberately for pacing, or has it fallen into monotony?
-- Are there passages that would benefit from a figure but have none?
+- Read the last sentence of every paragraph alone: which ones exist for the snap rather than the fact?
+- Which sentences chain a clause that adds no fact (", which was …", a trailing phrase for cadence)?
+- Where are fragments stacked, short declaratives run in threes, contrasts paired, for rhythm?
+- Which figures would this character actually think, and which were placed by a writer performing craft (a transferred epithet, a metaphor per paragraph, a stock sensation for an abstraction)?
+- Is any line quotable? A quotable line in quiet fiction is usually the tell, not the prize.
+- Does the sentence length move with the scene, or is it evenly weighted throughout (the machine's default)?
 
 **Red flags:**
-- A chapter with zero identifiable figures in narrative prose
-- Over-deployment that makes the prose feel performative or purple
-- Rhythm monotony — all sentences of similar length
-- A climactic moment that lacks any rhetorical engineering
+- Most paragraphs closing on a shaped landing line
+- A metaphor in every paragraph
+- A climactic moment written as beats instead of as what happened
+- Any line that reads as engineered to be remembered
 
 ---
 
@@ -77,13 +78,16 @@ The WriteChapter workflow's Step 8 runs the completed chapter through multiple c
 **Personality:** Allergic to the generic. Demands the unexpected.
 
 **Asks:**
-- Did anything from the `AntiCliche.md` banned lists survive the Step 7 sweep?
+- Did anything from the `AntiCliche.md` banned lists survive the anti-cliché sweep?
 - Are there dead metaphors or familiar phrasings that passed the first filter?
 - Is every description filtered through the POV character's specific perception, or are there "default camera" descriptions that any character would notice?
 - Could any abstract noun be replaced with a concrete image?
 - Are emotions shown through behavior or stated directly?
-- Is there at least one genuinely surprising detail per scene?
+- Are the details true to the person and place, or placed to be noticed?
+- Do the story's turns happen in scenes with people speaking, or in narrated summary?
+- Does the narrator step out of the character anywhere: a universal claim (everyone / nobody / anyone / people), a gloss on what the moment means, a feeling explained after it was shown? (`AntiCliche.md` § The mechanisms)
 - Are there any AI-specific prose patterns (tapestry of, weight of, symphony of, dance of, echoes of)?
+- What do `StoryGate.ts` and `StoryJudge.ts` say, and does the draft's revision answer the axis they named?
 
 **Red flags:**
 - "Her heart raced" or any variant of stated physiological emotion
@@ -214,4 +218,4 @@ Run critics in this order — structural issues before polish, craft before gut-
 
 ## Efficiency
 
-Each critic pass produces 2-5 brief, actionable notes. This is a tightening pass, NOT a second draft. The total overhead of the 4 mandatory passes should be a focused review cycle producing 8-20 specific suggestions, not a rewriting process.
+This is a tightening pass, not a second draft: the 4 mandatory passes together produce 8-20 specific suggestions (2-5 per critic, rule 3), never a rewrite.

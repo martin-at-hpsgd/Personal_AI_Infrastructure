@@ -18,6 +18,7 @@ import { join, resolve } from "path"
 import { copyFileSync, existsSync, mkdirSync } from "fs"
 import { PULSE_BASE } from "./endpoint"
 import { homedir } from "node:os";
+import { writeAgent } from "../TOOLS/lib/LaunchAgent"
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir()
 const LIFEOS_DIR = join(HOME, ".claude", "LIFEOS")
@@ -301,7 +302,8 @@ async function installService(force = false): Promise<void> {
   }
 
   const plistSrc = join(PULSE_DIR, "com.lifeos.pulse.plist")
-  const plistDst = join(HOME, "Library", "LaunchAgents", "com.lifeos.pulse.plist")
+  const plistLabel = "com.lifeos.pulse"
+  const plistDst = join(HOME, "Library", "LaunchAgents", `${plistLabel}.plist`)
 
   if (!existsSync(plistSrc)) {
     warn("com.lifeos.pulse.plist not found — create it manually")
@@ -313,21 +315,32 @@ async function installService(force = false): Promise<void> {
   // file is deny-list clean; the installed copy is per-user materialized.
   const template = await Bun.file(plistSrc).text()
   const materialized = template.split("__HOME__").join(HOME)
-  const written = await writeConfigPreserving(plistDst, materialized, {
-    force,
-    onOverwrite: ({ backupPath }) =>
-      warn(`--force: replacing the launch agent — copying the current one to ${backupPath}`),
-  })
+  let outcome: ConfigWriteOutcome
+  let backupPath: string | undefined
+  if (existsSync(plistDst) && !force) {
+    outcome = "preserved"
+    ok("Launch agent already exists; preserving it (use --force to replace)")
+  } else {
+    if (existsSync(plistDst)) {
+      backupPath = backupPathFor(plistDst)
+      warn(`--force: replacing the launch agent — copying the current one to ${backupPath}`)
+      copyFileSync(plistDst, backupPath)
+      outcome = "overwritten"
+    } else {
+      outcome = "created"
+    }
+    writeAgent(plistLabel, materialized)
+  }
   const proc = Bun.spawn(["launchctl", "load", plistDst], {
     stdout: "pipe",
     stderr: "pipe",
   })
   await proc.exited
 
-  if (written.outcome === "created") {
+  if (outcome === "created") {
     ok("launchd service installed")
-  } else if (written.outcome === "overwritten") {
-    ok(`launchd service reinstalled (backup: ${written.backupPath})`)
+  } else if (outcome === "overwritten") {
+    ok(`launchd service reinstalled (backup: ${backupPath})`)
   } else {
     ok("launch agent already installed — left untouched (any local edits kept)")
   }
@@ -377,6 +390,11 @@ ${"═".repeat(50)}
 ${"═".repeat(50)}`)
 
   const startTime = Date.now()
+  // Only --force is an option; --help prints usage and anything else refuses before the wizard
+  // starts, so a stray flag never ends in a launchctl load (round-19 audit).
+  const unknown = process.argv.slice(2).filter((a) => a !== "--force")
+  if (unknown.some((a) => a === "--help" || a === "-h")) { console.log("Usage: bun LIFEOS/PULSE/setup.ts [--force]\n  Interactive first-run setup for the Pulse worker; --force replaces an existing PULSE.toml and launch agent (backed up first)."); process.exit(0) }
+  if (unknown.length) { console.error(`setup.ts: unknown argument(s): ${unknown.join(" ")}\nUsage: bun LIFEOS/PULSE/setup.ts [--force]`); process.exit(2) }
   const force = process.argv.includes("--force")
   if (force) {
     warn("--force: an existing PULSE.toml and launch agent will be REPLACED.")

@@ -1,6 +1,6 @@
 # The 8 Lenses of Iterative Depth
 
-Each lens is a structured perspective that forces exploration of a problem from a fundamentally different angle. They are ordered from most concrete to most abstract, and from most commonly useful to most specialized.
+Each lens forces exploration of a problem from a fundamentally different angle. They are ordered from most concrete to most abstract, and from most commonly useful to most specialized, so a short run reaching for the earlier ones covers the most universally useful ground. Pick whatever the problem calls for, in any order.
 
 ---
 
@@ -18,7 +18,7 @@ Each lens is a structured perspective that forces exploration of a problem from 
 **Grounded in:** Viewpoint-Oriented RE (Finkelstein & Nuseibeh), Triangulation (Denzin)
 **Focus:** Identify every stakeholder beyond the requester. End users, maintainers, administrators, downstream systems, future developers. What does each need that wasn't stated?
 **ISC Output:** Criteria for stakeholder needs not in the original request.
-**Example prompt variation:** "Identify every stakeholder affected by this work. For each, what requirement would THEY add that the requester didn't mention?"
+**Example prompt variation:** "Identify every stakeholder affected by this work. For each, what requirement would they add that the requester didn't mention?"
 
 ---
 
@@ -26,7 +26,7 @@ Each lens is a structured perspective that forces exploration of a problem from 
 **Question:** "What could fail? What would an adversary exploit? What are the edge cases?"
 **Grounded in:** Misuse Cases (Sindre & Opdahl), Pre-Mortem (Klein), STRIDE Threat Modeling
 **Focus:** Assume the solution exists. Now break it. Error states, race conditions, security holes, data corruption, user confusion, performance under load. Every way this could go wrong.
-**ISC Output:** Anti-criteria (what must NOT happen) and defensive criteria.
+**ISC Output:** Anti-criteria (what must not happen) and defensive criteria.
 **Example prompt variation:** "This solution ships tomorrow. List every way it fails in the first week. Be adversarial."
 
 ---
@@ -41,7 +41,7 @@ Each lens is a structured perspective that forces exploration of a problem from 
 ---
 
 ## Lens 5: EXPERIENTIAL (How Should It Feel?)
-**Question:** "When this works perfectly, how does the user FEEL? What's the experience?"
+**Question:** "When this works perfectly, how does the user feel? What's the experience?"
 **Grounded in:** Appreciative Inquiry (Cooperrider), de Bono Red Hat (emotions)
 **Focus:** Beyond functional correctness — the qualitative experience. Speed, elegance, surprise, delight, confidence, trust. What's the difference between "works" and "works beautifully"?
 **ISC Output:** Quality-of-experience criteria that elevate from functional to euphoric.
@@ -72,8 +72,4 @@ Each lens is a structured perspective that forces exploration of a problem from 
 **Grounded in:** Hermeneutic Circle (Gadamer), Double-Loop Learning (Argyris), Soft Systems Methodology (Checkland)
 **Focus:** Step outside the problem entirely. Is the request a symptom of a deeper issue? Is there a reframing that dissolves the problem instead of solving it? Would a different question yield a better outcome?
 **ISC Output:** Criteria that reframe or expand the problem definition itself.
-**Example prompt variation:** "Forget the specific request. What is the UNDERLYING need? Is there a reframing that produces a better outcome than what was asked for?"
-
----
-
-Draw from this catalog. The lenses are ordered concrete-to-abstract and common-to-specialized, so a short run reaching for the earlier ones covers the most universally useful ground — but pick whatever the problem calls for, in any order.
+**Example prompt variation:** "Forget the specific request. What is the underlying need? Is there a reframing that produces a better outcome than what was asked for?"

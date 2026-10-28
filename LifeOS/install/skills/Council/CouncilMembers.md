@@ -1,16 +1,16 @@
 # Council Members
 
-Council members are custom agents you write inline, then launch with `subagent_type: "general-purpose"`. There is no composition tool and no trait matrix — you write each member's brief directly, tailored to the topic. A capable model writes a sharper, more topic-specific persona than any generic trait lookup, so this is both simpler and better.
+Council members are personas you write inline, tailored to the topic, then run as direct model calls split across vendors (§ Launch).
 
-## Why inline briefs, not built-in types
+## Why inline briefs
 
-A bare built-in agent type (or a generic `general-purpose` with no persona) has no stake in the topic and produces bland agreement. Council needs members who disagree on the merits. The friction comes from each member having a distinct role, expertise, and stance — which you supply in the brief. Write four different briefs; never launch four identical agents.
+A model called with no persona has no stake in the topic and produces bland agreement. Council needs members who disagree on the merits. The friction comes from each member having a distinct role, expertise, and stance — which you supply in the brief.
 
 ## How to Create Council Members
 
-### Step 1: Analyze the Topic
+### Choosing perspectives
 
-Decide what perspectives would create the most productive friction for THIS specific debate. Design the roles around the topic, not from a generic list.
+Design the roles around the perspectives that create the most productive friction for this specific debate, not from a generic list.
 
 **Example — "Should we use WebSockets or SSE?"**
 - Real-time systems architect who defends push-first bidirectional transport
@@ -24,25 +24,30 @@ Decide what perspectives would create the most productive friction for THIS spec
 - Pragmatic engineer focused on real-world trade-offs
 - Evidence-based researcher who wants the numbers
 
-### Step 2: Write Each Member's Brief
+### The brief
 
-For each member, write 2–4 sentences: a name, their role/expertise, the stance they hold, and what they'll push on and attack. That paragraph IS the persona.
+Each member gets 2–4 sentences: a name, their role/expertise, the stance they hold, and what they'll push on and attack. That paragraph is the whole persona.
 
 Example brief:
 > **Mara — real-time systems architect.** Believes push-first. Will defend WebSocket bidirectionality and attack SSE's connection-count limits and reconnection story. Speaks precisely, cites protocol behavior.
 
-### Step 3: Launch with general-purpose
+### Launch: one direct call per member, split across vendors
 
-Spawn each member with the brief you wrote as the system context, plus the round instructions and topic. Always `subagent_type: "general-purpose"`.
+A council member is text in, text out: it needs no tools, and every round already carries the prior transcript in its prompt. Run each member as one `Inference.ts` call, all members of a round in parallel, and split the council across vendors so the members do not share one lineage's blind spots:
 
-```typescript
-Agent({
-  description: "Council member 1 - systems architect",
-  prompt: <member brief> + <round instructions> + <topic context>,
-  subagent_type: "general-purpose",
-  model: "sonnet"
-})
+```bash
+bun ~/.claude/LIFEOS/TOOLS/Inference.ts --level <level> --vendor <openai|anthropic> --no-fallback --timeout 180000 \
+  "<member brief>" "<topic context + round instructions + prior transcript>"
 ```
+
+- **No fallback:** always pass `--no-fallback`. Without it an openai member that fails is answered by anthropic and the council quietly loses its second lineage. With it the call exits 1; report the missing member in the transcript and re-run it or proceed without it.
+- **Vendor:** alternate members between `openai` and `anthropic`. When the topic is judged by taste (naming, voice, visual or creative direction), give the majority to `anthropic`; when it is judged by correctness (does it work, is it true), give the majority to `openai`.
+- **Level:** `medium` for Quick, `high` for Debate, `max` when the principal asked for depth or the decision is expensive to get wrong. Levels resolve to models in `LIFEOS/TOOLS/models.ts`; never name a model here.
+- **Lookups:** a member who must fetch something live (a current number, a doc) is an `Agent` spawn instead, with the brief as its prompt and no `model:` pin, because the direct call has no tools.
+
+The tool prints the model it executed on stderr. A member that did not run on the requested vendor is reported in the transcript, never silently kept. Do not send members to the Sol worker or the Haiku agents; those exist for code tasks.
+
+Paired probe, 2026-09-18: four member briefs on a Claude subagent and on one direct call. The direct call held persona, length and structure on all four, while one subagent member wrapped its answer in a report about itself and each cost about 100k tokens of injected context.
 
 ## Default Perspective Slots
 

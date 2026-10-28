@@ -1,10 +1,10 @@
 ---
 last_updated: 2026-07-11T00:00:00Z
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 last_reviewed: 2026-05-25T18:45:00Z
-last_reviewed_by: {{PRINCIPAL_NAME}}
-version: 1.1.4
+last_reviewed_by: principal
+version: 1.1.13
 ---
 
 # Curation Coverage — what LifeOS autonomic systems touch
@@ -21,8 +21,8 @@ Defined in `LIFEOS/TOOLS/MutationTier.ts` as a closed allowlist (default-deny):
 |---|---|---|
 | **A** | Auto, set-overwrite | `PRINCIPAL_MEMORY.md`, `DA_MEMORY.md` |
 | **B** | Logged append + audit | `PROJECTS.md`, `CONTACTS.md`, `MEMORY/KNOWLEDGE/**`, `MEMORY/IDEAS/**` |
-| **C** | Propose-only (Pulse dashboard approval, or auto-apply at confidence ≥ 0.70) | `PRINCIPAL_IDENTITY.md`, `DA_IDENTITY.md`, `WRITINGSTYLE.md`, `DEFINITIONS.md`, `CANONICAL_CONTENT.md`, `RESUME.md`, `OPERATIONAL_RULES.md` |
-| **D** | Untouchable by memory subsystem | Everything else |
+| **C** | Propose-only (queues for the principal's yes unless its kind has a numeric auto-apply threshold in `memory-review.json`; the shipped template queues `identity` and `operational-rule` always, and this install maps every kind to `null`, so nothing auto-applies here, since 2026-10-08) | `PRINCIPAL_IDENTITY.md`, `DA_IDENTITY.md`, `WRITINGSTYLE.md`, `DEFINITIONS.md`, `CANONICAL_CONTENT.md`, `RESUME.md` |
+| **D** | Untouchable by memory subsystem | Everything else, including `OPERATIONAL_PREFERENCES.md`: `operational-rule` proposals name it as their target and wait in the queue for the principal's yes, but `MutationTier.ts` does not list it |
 
 A new file added to `~/.claude/` is Tier D by default until a code change promotes it.
 
@@ -44,7 +44,7 @@ A new file added to `~/.claude/` is Tier D by default until a code change promot
 | `USER/DEFINITIONS.md` | C | Same | `proposal` (kind=definition) | P1 extends |
 | `USER/CANONICAL_CONTENT.md` | C | Same | `proposal` (kind=canonical-content) | P1 extends |
 | `USER/PRINCIPAL/RESUME.md` | C | Same | `proposal` (kind=resume) | P1 extends |
-| `USER/CONFIG/OPERATIONAL_RULES.md` | C | Same | `proposal` (kind=operational-rule) | P1 extends |
+| `USER/CONFIG/OPERATIONAL_PREFERENCES.md` | D (proposal target) | Same | `proposal` (kind=operational-rule) | P1 extends |
 
 ### Curated by OTHER autonomic pipelines (orthogonal to MutationTier)
 
@@ -53,28 +53,28 @@ These files are Tier D from the memory subsystem's POV (untouchable by the revie
 | File | Writer | Trigger | Cadence |
 |---|---|---|---|
 | `USER/TELOS/PRINCIPAL_TELOS.md` | `LIFEOS/TOOLS/GenerateTelosSummary.ts` | TELOS source-file change | Manual run; planned cron in P2 |
-| `USER/TELOS/LIFEOS_STATE.json` | `LIFEOS/TOOLS/ComputeGap.ts` | Cron / Stop hook | Hourly |
+| `USER/TELOS/LIFEOS_STATE.json` | `LIFEOS/TOOLS/UpdateLifeosState.ts` (measured progress from `IdealState.ts reconcile` first) | DerivedSync / daily `ideal-reconcile` | Daily |
 | `DOCUMENTATION/ARCHITECTURE_SUMMARY.md` | `LIFEOS/TOOLS/ArchitectureSummaryGenerator.ts` | `DocIntegrity.hook.ts` on SessionEnd | Per session end |
-| `MEMORY/WORK/**/ISA.md` | `hooks/ISASync.hook.ts` | Algorithm phase transitions | Per Edit (debounced 30s) |
-| `MEMORY/LEARNING/**` | `WorkCompletionLearning`, `SatisfactionCapture`, `FailureCapture` hooks | UserPromptSubmit, Stop, tool failures | Per event |
-| `MEMORY/WISDOM/**` | `WisdomFrameUpdater`, `WisdomCrossFrameSynthesizer` | Algorithm LEARN phase | Per LEARN; planned monthly cron in P3 |
+| `LIFEOS/MEMORY/WORK/**/ISA.md` | `hooks/ISASync.hook.ts` | Algorithm phase transitions | Per Edit (debounced 30s) |
+| `MEMORY/LEARNING/**` | `WorkCompletionLearning` and `SatisfactionCapture` hooks; `SatisfactionCapture` calls the `FailureCapture.ts` tool | SessionEnd, UserPromptSubmit | Per event |
+| `MEMORY/WISDOM/**` | Algorithm LEARN phase; otherwise hand-curated (no writer tool since 2026-10-14) | Algorithm LEARN phase | Per LEARN |
 | `MEMORY/SECURITY/**` | `Safety.hook.ts` (PermissionRequest path) | Tool calls | Per event |
 | `MEMORY/OBSERVABILITY/**` | Many hooks (EventLogger, MemoryReviewer, etc.) | Tool events | Continuous |
 | `MEMORY/STATE/work.json` | `hooks/ISASync.hook.ts` | Phase transitions | Per change |
-| `MEMORY/STATE/session-names.json` | `LIFEOS/TOOLS/SessionRename.ts` (manual), `SessionAnalysis` (auto-name) | First prompt at session start; manual rename | One-shot per session |
-| `MEMORY/VOICE/voice-events.jsonl` | Pulse VoiceServer | Voice event | Per fire |
+| `MEMORY/STATE/session-names.json` | `LIFEOS/TOOLS/SessionRename.ts` (manual), the PromptProcessing hook's naming step through `hooks/lib/session-identity.ts` (auto-name) | First prompt at session start; manual rename | One-shot per session |
+| `MEMORY/VOICE/voice-events.jsonl` | `hooks/handlers/VoiceNotification.ts`, `hooks/lib/notification-channel.ts` | Voice event | Per fire |
 
 ### Manual-only (no autonomic pipeline)
 
-These files are Tier D AND have no other writer. {{PRINCIPAL_NAME}} writes directly; the autonomic system never proposes changes.
+These files are Tier D AND have no other writer. The principal writes directly; the autonomic system never proposes changes.
 
 | File / Directory | Why manual |
 |---|---|
-| `USER/TELOS/TELOS.md` + sub-files (GOALS, MISSION, STRATEGIES, NARRATIVES, CHALLENGES, WRONG, TRAUMAS, MODELS) | Belief revision is deep-conviction work; planned P2 TELOS Reviewer will propose changes via the `Telos` skill Update workflow, not direct edit |
+| `USER/TELOS/TELOS.md` (the single unified source) | Belief revision is deep-conviction work; planned P2 TELOS Reviewer will propose changes via the `Telos` skill Update intent, not direct edit |
 | `USER/PRINCIPAL/PRONUNCIATIONS.json` | Voice-server runtime config; principal-curated |
 | `USER/CONFIG/memory-review.json` | Cadence config for the memory system itself; principal-curated to avoid recursive auto-tuning |
 | `USER/CONFIG/CREDENTIALS/**` | Security boundary — credentials never autonomic |
-| `USER/GEAR.md`, `USER/SMARTHOME.md`, `USER/SECURITY/SecurityPosture.md`, `USER/DAEMON.md` | Manually curated documentation (GEAR.md also skill-updated by gear-aware skills) |
+| `USER/GEAR.md`, `USER/SECURITY/SecurityPosture.md` | Manually curated documentation (GEAR.md also skill-updated by gear-aware skills) |
 | `USER/BUSINESS/**`, `USER/HEALTH/**`, `USER/FINANCES/**` | Domain-specific, principal-curated |
 | `USER/INTEGRATIONS/*.yaml` | Per-skill config; principal-curated |
 | `USER/WORK/config.yaml` | Work-hub config; principal-curated |
@@ -92,7 +92,7 @@ Different content types update at fundamentally different rates. The cadence per
 |---|---|---|
 | Hot-layer memory (`memory` items) | Per-turn-batched (8 / 30 min / 2 idle) | Loads every turn; needs freshness |
 | Knowledge graph (`knowledge`, `idea`) | Same | BM25 retrieval; freshness matters less |
-| Identity / style / definition / canonical / resume / operational-rule proposals | Same | Dashboard-gated; principal has the final word |
+| Identity / style / definition / canonical / resume / operational-rule proposals | Same | Queued for the principal's approval unless the kind has a numeric threshold in `confidence_threshold_by_kind`. The shipped template queues `identity` and `operational-rule` always; this install maps every proposal kind to `null`, so none auto-applies here (`USER/CONFIG/memory-review.json`, 2026-10-08). Logged in pending-proposals.jsonl |
 | TELOS reviews (planned P2) | Weekly cron | Belief revision; deep observation window |
 | Wisdom frame synthesis (planned P3) | Monthly cron | Compounding wisdom; long observation window |
 | Architecture summary | Per-session-end (DocIntegrity hook on SessionEnd) | Tracks source `LifeosSystemArchitecture.md` changes |
@@ -102,7 +102,8 @@ Different content types update at fundamentally different rates. The cadence per
 ## Roadmap
 
 - **P1 (this build, 2026-05-25)** — extend reviewer prompt with 7 new proposal subtypes (`style`, `definition`, `canonical-content`, `resume`, `operational-rule`, `projects`, `contacts`); persist `target_kind` on queue rows; render `[kind]` badge in Telegram; group pending by subtype in the memory-status CLI. (Telegram integration since removed 2026-07-15.)
-- **P2 (named follow-up ISA)** — TELOS autonomic loop. Weekly `TelosReviewer.ts` cron that reads recent ISAs + LEARNING + WISDOM + recent PRINCIPAL_MEMORY snapshots, emits TELOS-change proposals (goal-deferral, new-strategy, mission-drift) routed via the `Telos` skill Update workflow.
+- **Ideal-state loop (built 2026-10-07)** — daily `ideal-reconcile` measures bound targets; weekly `ideal-recommend` proposes at most 3 IDEAL_STATE rows and 2 watchers, each applied only on the principal's yes (`IdealState.ts accept`).
+- **P2 (named follow-up ISA)** — TELOS autonomic loop. Weekly `TelosReviewer.ts` cron that reads recent ISAs + LEARNING + WISDOM + recent PRINCIPAL_MEMORY snapshots, emits TELOS-change proposals (goal-deferral, new-strategy, mission-drift) routed via the `Telos` skill Update intent.
 - **P3 (named follow-up ISA)** — WISDOM autonomic loop. Monthly synthesis pass extracts new WISDOM frames from accumulated LEARNING signals; surfaces principle candidates via the Pulse dashboard for principal review-and-graduate.
 - **P4 (named follow-up ISA)** — On-demand LLM-agent retrieval tier (`recall "<question>"` CLI command) for deep questions that need tool-using LLM loops over KNOWLEDGE. Different latency budget, different use case from per-turn BM25.
 
@@ -125,7 +126,7 @@ The principle: code is the source of truth; documentation mirrors. The MutationT
 
 The whole matrix comes alive when you watch a single conversation get sorted. Suppose in one working session a user reveals four different things. Each is a different *kind* of fact, so each lands in a different place under a different SLA:
 
-- **"I always want measurements in metric."** A durable operating preference → the reviewer emits a **Tier C** proposal (`operational-rule`). It does *not* write silently; it surfaces for approval, or auto-applies only if confidence clears the bar. Identity-class facts get the principal's final word.
+- **"I always want measurements in metric."** A durable operating preference → the reviewer emits a **Tier C** proposal (`operational-rule`). It queues and waits for the principal's yes. The mechanism is the `confidence_threshold_by_kind` map in `memory-review.json`: kind → a number (that kind's own auto-apply threshold) or `null` (never auto-apply; always queue). An install that sets every kind to `null` auto-applies nothing; the live values are whatever `memory-review.json` holds. A kind the map leaves out, or a missing map, falls back to `confidence_threshold`, and any value other than a number reads as `null`. The shipped template also sets `identity` and `operational-rule` to `null`, so edits to the always-loaded identity and rules files wait for review. (GHSA-xjxj-cqpp-gf82, @mj-deving; discussion #2229, @Steffen025)
 - **A new collaborator named three times, with role and why they matter.** → **Tier B** (`contacts`): a logged append to the contacts file, with an audit row. Additive, reversible, no approval gate.
 - **"I'm currently deep in a migration."** Fast-moving current-state → **Tier A** (`memory`): auto set-overwrite into hot-layer memory, loaded on every future turn until it goes stale.
 - **A change to a credentials file.** → **Tier D**: untouchable. The memory system never proposes, never writes. It isn't in the allowlist, so default-deny holds.
@@ -145,7 +146,7 @@ flowchart TD
     K -->|contact or knowledge| B[Tier B: logged append]
     K -->|current-state memory| A[Tier A: auto overwrite]
     K -->|not in the allowlist| D[Tier D: untouched]
-    C --> P[Dashboard approval, or auto-apply if confident]
+    C --> P[Waits for the principal's yes]
     B --> W[Write plus audit row]
     A --> H[Loads every turn]
 ```

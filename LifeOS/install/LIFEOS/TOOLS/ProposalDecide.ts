@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.2
  * ProposalDecide — the shipped exit path for human-gated memory proposals.
  *
  * The memory reviewer auto-applies rows at or above the confidence threshold.
@@ -24,7 +25,7 @@
  *   bun ProposalDecide.ts --accept 2                   # apply the row's own text to its target
  *   bun ProposalDecide.ts --reject 2                   # close it, write nothing
  *   bun ProposalDecide.ts --edit 2 "better wording"    # apply alternate text instead
- *   bun ProposalDecide.ts --applied-elsewhere 2 --note "landed in skills/_COFFEE/SKILL.md"
+ *   bun ProposalDecide.ts --applied-elsewhere 2 --note "landed in the coffee skill instructions"
  *
  * Exit codes: 0 decision made or list printed, 1 bad usage or refused decision.
  */
@@ -37,11 +38,12 @@ import {
   type DecisionResult,
   type ProposalRow,
 } from "../PULSE/lib/memory-proposals";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const HOME = process.env.HOME ?? "";
 
 function shortFile(row: ProposalRow): string {
-  return row.target_file.replace(`${HOME}/.claude/`, "").replace(/^.*\/LIFEOS\//, "LIFEOS/");
+  return row.target_file.replace(`${getClaudeDir()}/`, "").replace(/^.*\/LIFEOS\//, "LIFEOS/");
 }
 
 function truncate(s: string, n: number): string {

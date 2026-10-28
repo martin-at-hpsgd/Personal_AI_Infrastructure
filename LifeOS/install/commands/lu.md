@@ -2,6 +2,7 @@
 name: lu
 description: LifeOS upgrade — extract system improvements from content, monitor external sources, and scan bookmarks for upgrade opportunities. Shortcut for the Upgrade skill.
 argument-hint: [url or topic]
+version: 1.0.0
 ---
 
 # lu — Redirect

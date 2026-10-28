@@ -1,3 +1,6 @@
+/**
+ * @version 1.0.0
+ */
 export interface VoiceMirrorLine {
   ts: string;
   skill: string;

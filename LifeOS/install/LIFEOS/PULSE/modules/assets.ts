@@ -1,3 +1,4 @@
+import { PRIVATE_SKILL_NAMES } from "../../TOOLS/CodeDataBoundary.ts";
 /**
  * Assets Pulse module — read-only unified inventory surface over the user's existing
  * asset stores. Holds ZERO data: parses the source files on every request and
@@ -8,8 +9,8 @@
  *
  * Sources (merged, in priority order):
  *   1. USER/GEAR.md                              — the curated human inventory (tables per category)
- *   2. MEMORY/_NETWORK/topology-snapshot-*.md    — named network / smart-home devices (cameras, switches, gateway) with IPs
- *   3. MEMORY/_NETWORK/assets.json               — raw LAN arp scan; reduced to a COUNT only (0 named entries → too noisy to card)
+ *   2. Network memory topology snapshots    — named network / smart-home devices (cameras, switches, gateway) with IPs
+ *   3. Network memory asset inventory               — raw LAN arp scan; reduced to a COUNT only (0 named entries → too noisy to card)
  *
  * Data/code separation: no asset name, model, or IP is hardcoded here — every
  * field is derived from the source files at request time. READ-ONLY: this module
@@ -22,7 +23,7 @@ import { join } from "node:path";
 const MODULE_NAME = "assets";
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
 const GEAR_PATH = join(CLAUDE_DIR, "LIFEOS", "USER", "GEAR.md");
-const NETWORK_DIR = join(CLAUDE_DIR, "LIFEOS", "MEMORY", "_NETWORK");
+const NETWORK_DIR = join(CLAUDE_DIR, "LIFEOS", "MEMORY", PRIVATE_SKILL_NAMES.network);
 const NETWORK_ASSETS_JSON = join(NETWORK_DIR, "assets.json");
 const state = { running: false };
 
@@ -166,7 +167,7 @@ export function gearLastUpdated(md: string): string | null {
   return m ? m[1] : null;
 }
 
-/** Newest topology-snapshot-*.md in the _NETWORK dir, or null. */
+/** Newest topology-snapshot-*.md in the network memory directory, or null. */
 function newestSnapshot(): string | null {
   try {
     const files = readdirSync(NETWORK_DIR)
@@ -264,7 +265,7 @@ function read(): ReadResult {
       const devices = parseTopology(readFileSync(snap, "utf8"));
       if (devices.length) {
         assets.push(...devices);
-        sources.push("MEMORY/_NETWORK/topology-snapshot");
+        sources.push(`MEMORY/${PRIVATE_SKILL_NAMES.network}/topology-snapshot`);
       }
     }
   } catch (err) {

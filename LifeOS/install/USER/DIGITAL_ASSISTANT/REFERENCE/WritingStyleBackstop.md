@@ -2,7 +2,7 @@
 provenance: template
 last_updated: 1970-01-01T00:00:00Z
 last_updated_by: bootstrap-template
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 ---
 
 # Writing Style Backstop

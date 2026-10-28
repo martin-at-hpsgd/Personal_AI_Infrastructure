@@ -12,9 +12,17 @@
 // two sibling manifests that ship (`LIFEOS/PULSE`, root) were already literals
 // for the same reason. defineBunker only asserts name+type are present, which a
 // literal carrying both satisfies by construction.
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
 export default {
   name: "hermes",
   type: "cli",
+  // Adopted only while a Hermes home exists on this install. Mirrors Services.ts:
+  // an install that stepped off the sidecar (2026-09-02) must not carry a
+  // permanently red app for a process that is not supposed to be running.
+  enabled: existsSync(process.env.HERMES_HOME || join(homedir(), ".hermes")),
   // Per-install state: the ISA is created by the running install (run-state
   // never ships in a release), so this path resolves only once one exists.
   isa: "./ISA.md",

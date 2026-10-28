@@ -1,0 +1,18 @@
+{
+  "title": "ExampleNet: How a Request Becomes a Result",
+  "kind": "video",
+  "audience": "Technically curious professionals encountering a personal AI assistant system for the first time",
+  "register": "A five-minute editorial explainer: cinematic painted environments, precise structural diagrams, restrained typography, and visible causal transitions",
+  "references": [
+    "Museum exhibition films: composed light and patient attention to physical detail",
+    "Technical cutaway illustrations: every connector explains a real dependency",
+    "Editorial title sequences: deliberate type scale and movement that carries meaning"
+  ],
+  "bar": 8.5,
+  "mustNot": [
+    "Decorative node networks that reveal no actual relationship",
+    "Generic clip-art icons or tiny centered elements in otherwise empty frames",
+    "Five minutes of static text cards over flat vector backgrounds",
+    "Motion or ornament that obscures the transition from request to verified result"
+  ]
+}

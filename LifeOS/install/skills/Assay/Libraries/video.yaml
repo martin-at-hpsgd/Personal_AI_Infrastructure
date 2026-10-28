@@ -1,0 +1,93 @@
+# Shared check library: video.
+# Every rendered video needs these, whatever it is about. An ISA pulls them in with `output: video`
+# in frontmatter (or Compile infers it from an `artifact:` path with a video extension) and binds
+# `artifact:` to the rendered file. Each check is written in the ISA `## Evals` stage format
+# (ISAFormat § `## Evals`); Compile copies it into the ISA as an inherited eval, `{{artifact}}`
+# replaced by the bound path. Switch one off in the ISA's `## Evals` section with
+# `disable: video.<check> because <reason>`.
+#
+# Origin: Proof's built-in video profile (loudness, nondegenerate, gatescan, the layout checks) and
+# the principal's catches on a series of rendered product films. Every check here is code: compiling one never calls
+# a model, and running one never does either. The layout judge (text colliding with shapes, lines and
+# marks) stays in Proof, which samples frames and hands them to the vision panel.
+library: video
+version: 1
+bindings:
+  artifact: the rendered video file, relative to where the ISA's checks run
+match:
+  extensions: [mp4, mov, m4v, webm, mkv]
+checks:
+  - id: loudness
+    title: integrated loudness on target
+    reason: >-
+      Streaming platforms normalize to about -14 LUFS; a mix far below sounds weak next to every other
+      video and one far above gets turned down and clips. Proof's loudness check uses the same target.
+    stages:
+      - code: |-
+          out=$(ffmpeg -hide_banner -nostats -i {{artifact}} -af ebur128=framelog=quiet -f null - 2>&1) && l=$(printf '%s\n' "$out" | rg -o 'I:\s+-?[0-9.]+ LUFS' | tail -1 | rg -o -- '-?[0-9.]+') && awk -v l="$l" 'BEGIN { exit !(l != "" && l >= -15 && l <= -13) }'
+
+  - id: no-blank-frames
+    title: no black frames
+    reason: >-
+      A stretch of black (half a second or more) is a render gap or a missing clip, never a creative
+      choice the brief asked for; a viewer reads it as a broken file.
+    stages:
+      - code: |-
+          out=$(ffmpeg -hide_banner -nostats -i {{artifact}} -vf blackdetect=d=0.5:pix_th=0.10 -an -f null - 2>&1) && ! printf '%s\n' "$out" | rg -q 'black_start'
+
+  - id: no-frozen-frames
+    title: no frozen picture
+    reason: >-
+      An identical picture held for three seconds or more is a stalled render or a dropped source.
+      A deliberately held slide is the one exception; disable this check with that reason.
+    stages:
+      - code: |-
+          out=$(ffmpeg -hide_banner -nostats -i {{artifact}} -vf freezedetect=n=-60dB:d=3 -an -f null - 2>&1) && ! printf '%s\n' "$out" | rg -q 'freeze_start'
+
+  - id: caption-legibility
+    title: on-screen text big enough and clear enough to read
+    reason: >-
+      Captions and titles are read on phones. Text shorter than 2.8% of the frame height is too small
+      there, and text the OCR engine reads with low confidence is almost always low-contrast or soft.
+      OCR confidence is the contrast proxy until a pixel-contrast measure replaces it.
+    stages:
+      - code: |-
+          set -o pipefail; d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && h=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 {{artifact}}) && ffmpeg -hide_banner -loglevel error -i {{artifact}} -vf fps=1/2 "$d/f%04d.png" && for f in "$d"/f*.png; do tesseract "$f" - tsv 2>/dev/null || exit 1; done | awk -F'\t' -v H="$h" '$1 == 5 && $12 ~ /^[[:alpha:]]{3,}$/ && $11 >= 30 { n++; if ($10 < 0.028 * H) small++; if ($11 < 60) faint++ } END { exit (H == "" || small > 0 || faint > 2) }'
+
+  - id: no-text-overlap
+    title: no text drawn over other text
+    reason: >-
+      Two pieces of text on top of each other cannot be read. The check compares OCR word boxes on
+      different lines of the same frame; it only sees overlaps where both words still read, so the
+      layout judge in Proof remains the backstop for overlaps that destroy the words.
+    stages:
+      - code: |-
+          set -o pipefail; d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && ffmpeg -hide_banner -loglevel error -i {{artifact}} -vf fps=1/2 "$d/f%04d.png" && for f in "$d"/f*.png; do tesseract "$f" - tsv 2>/dev/null | awk -F'\t' '$1 == 5 && $11 >= 60 && $12 ~ /[[:alnum:]]/ { n++; k[n] = $3 "." $4 "." $5; x[n] = $7; y[n] = $8; w[n] = $9; h[n] = $10 } END { for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (k[i] != k[j]) { r = (x[i] + w[i] < x[j] + w[j] ? x[i] + w[i] : x[j] + w[j]); l = (x[i] > x[j] ? x[i] : x[j]); b = (y[i] + h[i] < y[j] + h[j] ? y[i] + h[i] : y[j] + h[j]); t = (y[i] > y[j] ? y[i] : y[j]); a = (w[i] * h[i] < w[j] * h[j] ? w[i] * h[i] : w[j] * h[j]); if (r > l && b > t && (r - l) * (b - t) > 0.2 * a) bad++ } exit (bad > 0) }' || exit 1; done
+
+  - id: on-screen-spelling
+    title: no misspellings in on-screen text
+    reason: >-
+      A misspelled title or caption is the first thing a viewer screenshots. codespell flags only
+      known common misspellings, so OCR noise does not trip it.
+    stages:
+      - code: |-
+          set -o pipefail; d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && ffmpeg -hide_banner -loglevel error -i {{artifact}} -vf fps=1/2 "$d/f%04d.png" && for f in "$d"/f*.png; do tesseract "$f" - 2>/dev/null || exit 1; done | codespell -
+
+  - id: no-pixelation
+    title: resolution and bitrate high enough to stay sharp
+    reason: >-
+      Below 720 lines, or below about 0.05 bits per pixel per frame, compression blocks and smears
+      show on any modern screen.
+    stages:
+      - code: |-
+          ffprobe -v error -select_streams v:0 -show_entries stream=width,height,avg_frame_rate:format=bit_rate -of default=nw=1 {{artifact}} | awk -F= '{ v[$1] = $2 } END { split(v["avg_frame_rate"], fr, "/"); fps = (fr[2] > 0 ? fr[1] / fr[2] : 0); bpp = (v["width"] * v["height"] * fps > 0 ? v["bit_rate"] / (v["width"] * v["height"] * fps) : 0); exit !(v["height"] >= 720 && bpp >= 0.05) }'
+
+  - id: pacing
+    title: shot length inside pacing bounds
+    reason: >-
+      An average shot under one second is strobing; a single shot over 45 seconds with no cut loses
+      the viewer. A talking-head or screen-recording video can exceed the upper bound by design;
+      disable this check with that reason.
+    stages:
+      - code: |-
+          dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 {{artifact}}) && out=$(ffmpeg -hide_banner -nostats -i {{artifact}} -vf "select='gt(scene,0.3)',showinfo" -an -f null - 2>&1) && printf '%s\n' "$out" | rg -o 'pts_time:[0-9.]+' | rg -o '[0-9.]+' | awk -v D="$dur" 'BEGIN { p = 0; m = 0; n = 0 } { g = $1 - p; if (g > m) m = g; p = $1; n++ } END { g = D - p; if (g > m) m = g; avg = D / (n + 1); exit !(D > 0 && avg >= 1 && m <= 45) }'

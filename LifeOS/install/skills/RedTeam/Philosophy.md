@@ -1,37 +1,13 @@
 # Red Team Philosophy
 
-## Origin
+Red teaming comes from the military: dedicated teams that attack plans, strategies, and assumptions to find vulnerabilities before the enemy does.
 
-Military red teaming - dedicated teams that attack plans, strategies, and assumptions to find vulnerabilities before the enemy does.
+The goal is not destruction. It is finding the fundamental flaw that, if challenged, causes the entire structure to collapse.
 
-## Core Insight
-
-**The goal is NOT destruction** - it's finding the fundamental flaw that, if challenged, causes the entire structure to collapse.
-
-The most powerful critique is usually ONE core issue:
+The most powerful critique is usually one core issue:
 - A hidden assumption that's actually false
 - A logical step that doesn't follow
 - A category error (treating X like Y)
 - An ignored precedent that directly contradicts
 
-## Success Criteria
-
-- Steelman is strong enough that a proponent would say "yes, that's my argument"
-- Counter-argument defeats the steelman, not a weaker strawman
-- Multiple agents converged on same insights
-- Reader says "I hadn't thought of that"
-
-## The 32 Agent Types
-
-| Type | Count | Focus |
-|------|-------|-------|
-| **Engineers** | 8 | Technical and logical rigor |
-| **Architects** | 8 | Structural and systemic issues |
-| **Pentesters** | 8 | Adversarial thinking |
-| **Interns** | 8 | Fresh perspectives |
-
-Each agent type brings unique attack angles - see `Workflows/ParallelAnalysis.md` for full roster.
-
----
-
-**Last Updated:** 2025-12-20
+The attacker angles for a full pass (engineers, architects, pentesters, fresh eyes) are in `Intents/ParallelAnalysis.md` § Tool contract.

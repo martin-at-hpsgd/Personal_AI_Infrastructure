@@ -1,0 +1,23 @@
+{
+  "intent": "CreateCommand",
+  "cases": [
+    {
+      "id": "plain_nmap_scan",
+      "pattern": "create_command",
+      "input": "tool=nmap;echo -e \"scan the host at 198.51.100.23, I need to know every open TCP port and what service is running on each, and I don't want it to take all day\\n\\n$($tool -h 2>&1)\" | fabric --pattern create_command",
+      "expects": "A single runnable nmap command built only from switches present in the pasted help text (likely a service/version scan with a timing template), with no invented flags. Nothing but the bare command is output: no markdown, no explanation, no warnings."
+    },
+    {
+      "id": "named_pattern_sqlmap",
+      "pattern": "create_command",
+      "input": "run create_command for sqlmap against the login form at https://portal.example.com/login?returnUrl=1, the returnUrl parameter is the one I'm testing, use a random user agent and batch mode so it doesn't prompt me\n\nsqlmap -h\nUsage: python sqlmap [options]\n\nOptions:\n  -u URL, --url=URL   Target URL\n  -p TESTPARAMETER    Testable parameter(s)\n  --random-agent      Use randomly selected HTTP User-Agent header\n  --batch             Never ask for user input, use the default behavior\n  --level=LEVEL       Level of tests to perform (1-5, default 1)\n  --risk=RISK         Risk of tests to perform (1-3, default 1)\n  --forms             Parse and test forms on target URL\n  --cookie=COOKIE     HTTP Cookie header value\n  -v VERBOSE          Verbosity level (0-6, default 1)",
+      "expects": "One bash command for sqlmap that uses -u, -p, --random-agent and --batch exactly as documented, pulling in --forms or --level/--risk only if the request actually implies them, never switches absent from the pasted help. Output is the command alone, nothing else."
+    },
+    {
+      "id": "hard_thin_mismatched_help",
+      "pattern": "create_command",
+      "input": "need a hydra command to brute-force SSH on 203.0.113.9, user is 'backup-svc', wordlist is /tmp/rockyou-small.txt, go fast with like 32 threads and don't lock the account out after a few tries\n\nHydra v9.4 (c) 2023 by van Hauser/THC\nSyntax: hydra [[[-l LOGIN|-L FILE] [-p PASS|-P FILE]] | [-C FILE]] [-e nsr] [-o FILE] [-t TASKS] [-M FILE [-T TASKS]] [-w TIME] [-W TIME] [-f] [-s PORT] [-S] [-v/-V] server service [OPT]\n\nOptions:\n  -l LOGIN   login with LOGIN name\n  -L FILE    login names from FILE\n  -p PASS    try password PASS\n  -P FILE    try passwords from FILE\n  -t TASKS   run TASKS number of connects in parallel (default 16)\n  -f         exit after first found login/password pair\n  -s PORT    use PORT instead of default protocol port\n  -V/-v      verbose mode",
+      "expects": "A hydra command using -l, -P, -t 32, server and service only from the documented syntax, with no lockout-avoidance switch invented since the help text has none for it; the account-lockout request is simply not represented rather than papered over with a fake flag. Output is the bare command, exact and literal to the switches shown, nothing added that the principal didn't ask for or that help doesn't support."
+    }
+  ]
+}

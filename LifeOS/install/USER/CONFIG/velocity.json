@@ -1,0 +1,5 @@
+{
+  "_comment": "Pulse /velocity and the shipping collector. Every key is optional; an absent key keeps the built-in default. roots: folders whose child git repos are counted. exclude_dirs: regexes on repo folder names to skip. Add a deeds block (owner, since, exclude[], roots[]) only to opt in to model-bound deeds analysis; exclude must then list every repo that must never go to a model.",
+  "roots": ["~/Projects"],
+  "exclude_dirs": ["-bak$"]
+}

@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-05-13
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 status: redirect
 ---
 
@@ -21,7 +21,7 @@ status: redirect
 - **Parameter schema:** [`archive/parameter-schema.md`](archive/parameter-schema.md)
 - **Eval mode guide:** [`eval-guide.md`](eval-guide.md)
 - **Target types:** [`archive/target-types.md`](archive/target-types.md)
-- **Optimize skill (router):** `~/.claude/skills/Optimize/SKILL.md`
+- **Successor:** the Optimize skill was absorbed into the HillClimb skill on 2026-10-01 (`skills/HillClimb/`; metric mode → `skills/HillClimb/Intents/Metric.md`, eval mode → `skills/HillClimb/Intents/Prompt.md`).
 
 ## Backwards-compat note
 

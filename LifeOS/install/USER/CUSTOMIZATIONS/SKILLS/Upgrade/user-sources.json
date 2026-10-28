@@ -1,0 +1,11 @@
+{
+  "github_repos": [],
+  "blogs": [],
+  "github_trending": {
+    "enabled": false,
+    "lookback_days": 7,
+    "min_stars": 50,
+    "results_per_query": 3,
+    "queries": ["topic:ai-agent"]
+  }
+}

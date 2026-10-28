@@ -35,6 +35,8 @@ import {
   Tooltip,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -43,6 +45,7 @@ import {
 } from "recharts";
 import { FreshnessIndicator, type FreshnessData } from "@/components/FreshnessIndicator";
 import EmptyStateGuide from "@/components/EmptyStateGuide";
+import { ApiError, useApi } from "@/lib/api";
 import {
   PageShell,
   PageHeader,
@@ -54,6 +57,8 @@ import {
   type Dim,
   type TabSpec,
 } from "@/components/ui/chrome";
+import { fmtDateParts } from "@/lib/time";
+import { OwedCard, type OwedSummaryData } from "./OwedCard";
 
 // ─── Types matching /api/life/finances v2 envelope ───
 
@@ -90,6 +95,8 @@ interface InsightLine {
   display: string;
   monthly_usd: number;
   annual_usd: number;
+  current_monthly_usd?: number;
+  lapsed?: boolean;
   observed_usd: number;
   cadence: string;
   confidence: "high" | "medium" | "low";
@@ -101,6 +108,13 @@ interface InsightLine {
   reason?: string;
 }
 
+interface AiSummary {
+  total_annualized: number;
+  observed: InsightLine[];
+  unattributed_buckets: InsightLine[];
+  ledger_blind_spots: { vendor: string; item: string; monthly_usd: number | null }[];
+}
+
 interface SpendInsights {
   top_bills: InsightLine[];
   top_ai_services: InsightLine[];
@@ -108,12 +122,67 @@ interface SpendInsights {
   cut_candidates: InsightLine[];
   by_category: { category: string; annual_usd: number; merchants: number }[];
   total_annualized: number;
+  ai_summary?: AiSummary;
   statement_spend: {
     generated_at: string | null;
     record_count: number;
     jsonl_path: string;
     tool: string;
   };
+}
+
+// An operator-side sponsorship report writes FINANCES/sponsorships.json.
+// Bookings ≠ revenue; rendered beside
+// the income numbers, never summed into them.
+interface SponsorshipMonth {
+  month: string;
+  gross: number;
+  deals: number;
+  accounts: string[];
+  by_product: Record<string, number>;
+}
+interface SponsorshipDeal {
+  close_date: string;
+  account: string;
+  product: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+}
+interface SponsorshipArRow {
+  sponsorship: string;
+  status: string;
+  gross: number;
+  commission: number;
+  net: number;
+  due_date: string;
+  overdue: boolean;
+}
+interface Sponsorships {
+  updated: string;
+  agency: string;
+  commission_rate: number;
+  summary: {
+    latest_month: string;
+    latest_month_gross: number;
+    latest_month_deals: number;
+    latest_month_net_est: number;
+    trailing_months: number;
+    trailing_gross: number;
+    trailing_avg_per_month: number;
+    months_missing: string[];
+    first_month: string;
+  };
+  months: SponsorshipMonth[];
+  by_product: Record<string, { gross: number; deals: number; avg_unit_price: number }>;
+  top_accounts: { account: string; gross: number }[];
+  latest_month_deals: SponsorshipDeal[];
+  ar: {
+    report_date: string;
+    totals: { gross: number; commission: number; net: number; count: number };
+    overdue: { count: number; gross: number; net: number };
+    rows: SponsorshipArRow[];
+  } | null;
 }
 
 interface FinancesDataV2 {
@@ -125,6 +194,7 @@ interface FinancesDataV2 {
     mrr_monthly: number;
     mrr_annual: number;
   };
+  sponsorships?: Sponsorships | null;
   outbound?: {
     vendors: ResolvedLine[];
     obligations: ResolvedLine[];
@@ -148,6 +218,9 @@ interface FinancesDataV2 {
     active_collectors: string[];
     jsonl_path: string;
   };
+  cfo?: CfoSummary | null;
+  // Owed to you (Recover.ts summary): absent when the CFO tool is not installed, null when it failed.
+  recovery?: OwedSummaryData | null;
   insights?: SpendInsights;
   currency?: string;
   // v1 legacy fields (still populated)
@@ -179,6 +252,7 @@ interface FinancesDataV2 {
     investments?: FreshnessData;
     taxes?: FreshnessData;
     plan?: FreshnessData;
+    sponsorships?: FreshnessData | null;
   };
 }
 
@@ -276,7 +350,6 @@ const OUTBOUND_ICON: Record<string, LucideIcon> = {
   cloudflare: Server,
   anthropic: Cpu,
   openai: Cpu,
-  elevenlabs: Cpu,
   mortgage: Home,
   property_tax: Home,
   home_insurance: Home,
@@ -451,6 +524,131 @@ function IncomeHero({
   );
 }
 
+// Reconciled spend snapshot: one number every surface shares, with the gaps it
+// could not close shown beside it rather than hidden in the total.
+interface CfoSummary {
+  generated_at: string;
+  totals: {
+    monthly_known: number;
+    annual_known: number;
+    obligations_monthly: number;
+    monthly_with_obligations: number;
+    by_basis: Record<string, number>;
+    known_count: number;
+    pending_count: number;
+    stale_count: number;
+  };
+  discrepancies: { collector: string; ledger_monthly: number; collected_monthly: number; pct: number; members: string[] }[];
+  unledgered: { merchant: string; display: string; monthly_avg_usd: number; last_seen: string }[];
+  unledgered_count: number;
+  ai: { monthly_dollars: number; subscription_value_30d_usd: number | null; overage_month_usd: number } | null;
+  delta: { compared_to: string | null; change_pct: number | null } | null;
+  sources: { id: string; status: string; as_of: string | null; detail?: string }[];
+  alerts: { id: string; severity: string; title: string }[];
+  breakdown?: {
+    buckets: { name: string; monthly_usd: number; unknown: string[]; items: { id: string; monthly_usd: number | null }[]; note?: string }[];
+    monthly_total: number;
+    outside_ledger_monthly: number;
+  } | null;
+  breakdown_not_counted_monthly?: number;
+}
+
+// The principal's own buckets (cfo.json `breakdown`), the same numbers `/ex` reads.
+function BreakdownCard({ b, notCounted }: { b: NonNullable<CfoSummary["breakdown"]>; notCounted: number }) {
+  return (
+    <Panel className="relative border-l-[3px] [border-left-color:var(--money)]">
+      <span className="text-[13px] font-medium uppercase tracking-wider text-ink-2">Where It Goes Each Month</span>
+      <div className="text-3xl font-medium tabular-nums mt-1" style={{ color: "var(--money)" }} data-sensitive>{fmtHero(b.monthly_total)}/mo</div>
+      <div className="mt-4">
+        {b.buckets.map(k => (
+          <div key={k.name} className="flex items-start justify-between gap-4 text-sm py-2 border-b border-white/5">
+            <div className="flex flex-col min-w-0 leading-5">
+              <span className="text-ink-1 whitespace-nowrap">{k.name}</span>
+              {k.note && <span className="text-ink-2 text-[12px] leading-4">{k.note}</span>}
+            </div>
+            <span className="tabular-nums text-ink-2 whitespace-nowrap leading-5" data-sensitive>
+              {k.items.length ? fmtExact(k.monthly_usd) : "Not metered"}
+              {k.unknown.length > 0 && <span className="text-[12px]"> + {k.unknown.length} unknown</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 text-[12px] text-ink-2" data-sensitive>
+        {b.outside_ledger_monthly > 0 && <>Includes {fmtExact(b.outside_ledger_monthly)}/mo read from statements but not in the ledger. </>}
+        {notCounted > 0 && <>Not counted: {fmtExact(notCounted)}/mo of recurring statement charges not in the ledger yet.</>}
+      </div>
+    </Panel>
+  );
+}
+
+function CfoCard({ cfo }: { cfo: CfoSummary }) {
+  const t = cfo.totals;
+  const asOf = cfo.generated_at.slice(0, 16).replace("T", " ");
+  const tone = (status: string) => (status === "ok" ? "var(--health)" : status === "failed" ? "var(--danger, #ef4444)" : "var(--creative)");
+  return (
+    <Panel className="relative border-l-[3px] [border-left-color:var(--money)]">
+      <span className="text-[13px] font-medium uppercase tracking-wider text-ink-2">Reconciled Monthly Spend</span>
+      <div className="flex items-baseline gap-3 mt-1 flex-wrap">
+        <span className="text-5xl font-medium tabular-nums" style={{ color: "var(--money)", letterSpacing: "-0.02em" }} data-sensitive>
+          {fmtHero(t.monthly_known)}
+        </span>
+        <span className="text-sm text-ink-2" data-sensitive>
+          {fmtHero(t.monthly_with_obligations)}/mo with obligations
+        </span>
+      </div>
+      <span className="text-sm mt-1 block text-ink-2">
+        Invoices, vendor APIs and statements applied per line, as of {asOf}
+        {cfo.delta?.change_pct != null ? ` · ${cfo.delta.change_pct > 0 ? "+" : ""}${cfo.delta.change_pct}% vs ${cfo.delta.compared_to?.slice(0, 10)}` : ""}
+      </span>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+        <KpiChip label="Priced lines" value={`${t.known_count}`} tone="neutral" sensitive={false} />
+        <KpiChip label="No amount yet" value={`${t.pending_count}`} tone="neutral" sensitive={false} />
+        <KpiChip label="Billed ≠ ledger" value={`${cfo.discrepancies.length}`} tone="outbound" sensitive={false} />
+        <KpiChip label="Not in ledger" value={`${cfo.unledgered_count}`} tone="outbound" sensitive={false} />
+      </div>
+      {cfo.discrepancies.length > 0 && (
+        <div className="mt-5">
+          <div className="text-[12px] uppercase tracking-wider text-ink-2 mb-2">Billed vs ledger</div>
+          {cfo.discrepancies.map(d => (
+            <div key={d.collector} className="flex justify-between text-sm py-1 border-b border-white/5">
+              <span className="text-ink-1">{d.collector}</span>
+              <span className="tabular-nums text-ink-2" data-sensitive>
+                billed {fmtExact(d.collected_monthly)} · ledger {fmtExact(d.ledger_monthly)} ({d.pct}%)
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {cfo.unledgered.length > 0 && (
+        <div className="mt-5">
+          <div className="text-[12px] uppercase tracking-wider text-ink-2 mb-2">Recurring on statements, not in the ledger</div>
+          {cfo.unledgered.map(u => (
+            <div key={u.merchant} className="flex justify-between text-sm py-1 border-b border-white/5">
+              <span className="text-ink-1">{u.display}</span>
+              <span className="tabular-nums text-ink-2" data-sensitive>{fmtExact(u.monthly_avg_usd)}/mo</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {cfo.ai && (
+        <div className="mt-5 text-sm text-ink-2">
+          AI paid: <span className="text-ink-1 tabular-nums" data-sensitive>{fmtExact(cfo.ai.monthly_dollars)}/mo</span>
+          {cfo.ai.subscription_value_30d_usd != null && (
+            <> · usage at API prices on flat plans (value, not spend): <span className="tabular-nums" data-sensitive>{fmtHero(cfo.ai.subscription_value_30d_usd)}</span> over 30 days</>
+          )}
+        </div>
+      )}
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-2">
+        {cfo.sources.map(src => (
+          <span key={src.id} title={src.detail ?? ""}>
+            <span style={{ color: tone(src.status) }}>●</span> {src.id.replace("collector:", "")} {src.status}
+          </span>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
 function OutboundHero({
   data,
   freshness,
@@ -586,9 +784,15 @@ function TrendChart({ trend }: { trend: TrendPoint[] }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <p className="text-[12px] mt-2 text-ink-2">
-        Flat baseline until Phase 2 collectors accumulate historical monthly data.
-      </p>
+      {trend.length > 1 && trend.every((t) => t.income === trend[0].income && t.outbound === trend[0].outbound) ? (
+        <p className="text-[12px] mt-2 text-ink-2">
+          Flat baseline — no monthly history yet. Pull a books export (P&L by month) to light this up.
+        </p>
+      ) : (
+        <p className="text-[12px] mt-2 text-ink-2">
+          Real monthly Income / Expenses / Net from the latest books export.
+        </p>
+      )}
     </Panel>
   );
 }
@@ -600,6 +804,7 @@ interface SankeyNodePayload {
   category?: string;
   colorIndex?: number;
   value?: number;
+  depth?: number;
 }
 
 interface SankeyNodeProps {
@@ -623,7 +828,7 @@ function SankeyNode(props: SankeyNodeProps) {
         : payload?.category === "net"
           ? DIMENSION_PALETTE[2]
         : "#6B80AB");
-  const isLeft = x < 300;
+  const isLeft = (payload?.depth ?? 0) === 0;
   return (
     <g>
       <Rectangle
@@ -724,13 +929,14 @@ function FinancesSankey({
   const data = useMemo<{ nodes: SankeyNodeDatum[]; links: SankeyLinkDatum[] }>(() => {
     const nodes: SankeyNodeDatum[] = [];
     const links: SankeyLinkDatum[] = [];
-    incomeStreams.forEach((s, i) =>
+    const streams = incomeStreams.filter((s) => s.annual > 0);
+    streams.forEach((s, i) =>
       nodes.push({ name: s.label, category: "income", colorIndex: i }),
     );
     nodes.push({ name: "Gross Income", category: "pool" });
     const grossIdx = nodes.length - 1;
-    incomeStreams.forEach((s, i) => {
-      if (s.annual > 0) links.push({ source: i, target: grossIdx, value: s.annual });
+    streams.forEach((s, i) => {
+      links.push({ source: i, target: grossIdx, value: s.annual });
     });
     nodes.push({ name: "Expenses", category: "pool" });
     const outboundIdx = nodes.length - 1;
@@ -764,15 +970,14 @@ function FinancesSankey({
   return (
     <Panel className="p-4">
       <div className="w-full h-[460px]" data-sensitive>
-        <Sankey
-          width={1200}
-          height={460}
-          data={data}
-          node={<SankeyNode />}
-          link={<SankeyLink />}
-          nodePadding={50}
-          margin={{ top: 20, bottom: 20, left: 100, right: 100 }}
-        >
+        <ResponsiveContainer width="100%" height="100%">
+          <Sankey
+            data={data}
+            node={<SankeyNode />}
+            link={<SankeyLink />}
+            nodePadding={36}
+            margin={{ top: 24, bottom: 24, left: 175, right: 175 }}
+          >
           <Tooltip
             contentStyle={{
               backgroundColor: "var(--surface-1)",
@@ -782,7 +987,8 @@ function FinancesSankey({
             }}
             formatter={(v: number) => fmtExact(v)}
           />
-        </Sankey>
+          </Sankey>
+        </ResponsiveContainer>
       </div>
     </Panel>
   );
@@ -895,6 +1101,146 @@ function AccountCategory({ item }: { item: Section }) {
 
 // ─── Tabs ───
 
+// ─── Sponsorship pipeline (bookings + AR from the sales agency) ───
+
+function monthLabel(ym: string): string {
+  // Calendar-day keys carry no zone: anchor at noon UTC so the principal's zone never shifts the day.
+  return fmtDateParts(`${ym}-15T12:00:00Z`, { month: "short", year: "numeric" });
+}
+function shortDate(iso: string): string {
+  return fmtDateParts(`${iso}T12:00:00Z`, { month: "short", day: "numeric" });
+}
+
+function SponsorshipPanel({ data, freshness }: { data: Sponsorships; freshness?: FreshnessData | null }) {
+  const s = data.summary;
+  const ar = data.ar;
+  const chart = data.months.map((m) => ({
+    month: monthLabel(m.month).replace(" 20", " '"),
+    gross: m.gross,
+    deals: m.deals,
+  }));
+  const products = Object.entries(data.by_product).sort((a, b) => b[1].gross - a[1].gross);
+  const productTotal = products.reduce((t, [, p]) => t + p.gross, 0);
+  return (
+    <section>
+      <h2 className="text-sm font-medium uppercase tracking-widest text-ink-2 mb-4 flex items-center gap-2 flex-wrap">
+        <Briefcase className="w-4 h-4" color="var(--money)" /> Sponsorship Pipeline
+        <span className="text-[11px] normal-case tracking-normal text-ink-3">
+          via <span data-sensitive>{data.agency}</span> · bookings by close date, not revenue · {Math.round(data.commission_rate * 100)}% agency commission
+        </span>
+        <span className="ml-auto normal-case tracking-normal">
+          <FreshnessIndicator freshness={freshness ?? undefined} />
+        </span>
+      </h2>
+      <Panel className="border-l-[3px] [border-left-color:var(--money)]">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KpiChip label={`${monthLabel(s.latest_month)} bookings`} value={fmtHero(s.latest_month_gross)} tone="income" />
+          <KpiChip label={`Avg / month · ${s.trailing_months} mo`} value={fmtHero(s.trailing_avg_per_month)} tone="income" />
+          <KpiChip label="Receivable (net)" value={fmtHero(ar?.totals.net ?? 0)} tone="net" />
+          <KpiChip
+            label="Overdue"
+            value={ar ? `${ar.overdue.count} · ${fmtHero(ar.overdue.net)}` : "—"}
+            tone={ar && ar.overdue.count > 0 ? "outbound" : "neutral"}
+          />
+        </div>
+        <div className="mt-2 text-xs text-ink-3">
+          {s.latest_month_deals} deal{s.latest_month_deals === 1 ? "" : "s"} closed in {monthLabel(s.latest_month)} ·{" "}
+          <span data-sensitive>{fmtHero(s.latest_month_net_est)}</span> net after commission
+          {s.months_missing.length > 0 && (
+            <> · no report on file for {s.months_missing.map(monthLabel).join(", ")}</>
+          )}
+        </div>
+
+        <div className="mt-5 h-52" data-sensitive>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line-2)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: "var(--ink-3)" }} axisLine={false} tickLine={false} />
+              <YAxis
+                tick={{ fontSize: 11, fill: "var(--ink-3)" }}
+                axisLine={false}
+                tickLine={false}
+                width={52}
+                tickFormatter={(v: number) => `$${Math.round(v / 1000)}k`}
+              />
+              <Tooltip
+                cursor={{ fill: "var(--surface-2)" }}
+                contentStyle={{ background: "var(--surface-1)", border: "1px solid var(--line-2)", borderRadius: 10, fontSize: 12 }}
+                formatter={(v: number, _n, item) => [`${fmtHero(v)} · ${item?.payload?.deals} deals`, "Bookings"]}
+              />
+              {/* No mount animation: a backgrounded tab suspends rAF and the bars would stay at zero height. */}
+              <Bar dataKey="gross" fill="var(--money)" radius={[6, 6, 0, 0]} maxBarSize={44} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-5 mt-5">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-3 mb-2">
+              {monthLabel(s.latest_month)} — closed deals
+            </h3>
+            <div className="space-y-1.5">
+              {data.latest_month_deals.map((d, i) => (
+                <div key={i} className="flex items-baseline gap-2 text-sm">
+                  <span className="text-ink-3 tabular-nums w-14 shrink-0 whitespace-nowrap">{shortDate(d.close_date)}</span>
+                  <span className="font-medium truncate" data-sensitive>{d.account}</span>
+                  <span className="text-ink-3 truncate text-xs">
+                    {d.product}
+                    {d.quantity > 1 ? ` ×${d.quantity}` : ""}
+                  </span>
+                  <span className="ml-auto tabular-nums shrink-0" style={{ color: "var(--money)" }} data-sensitive>
+                    {fmtHero(d.total)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-3 mt-5 mb-2">
+              Product mix · since {monthLabel(s.first_month)}
+            </h3>
+            <div className="space-y-1">
+              {products.map(([name, p]) => (
+                <div key={name} className="flex items-center gap-2 text-xs">
+                  <span className="w-40 truncate text-ink-2">{name}</span>
+                  <div className="flex-1 h-1.5 rounded-full bg-surface-2 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${(p.gross / productTotal) * 100}%`, background: "var(--money)" }} />
+                  </div>
+                  <span className="tabular-nums text-ink-3 w-16 text-right" data-sensitive>{fmtHero(p.gross)}</span>
+                  <span className="tabular-nums text-ink-3 w-10 text-right">{p.deals}×</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-3 mb-2">
+              Receivables{ar ? ` · as of ${shortDate(ar.report_date)}` : ""}
+            </h3>
+            {ar ? (
+              <div className="space-y-1.5">
+                {ar.rows.map((r, i) => (
+                  <div key={i} className="flex items-baseline gap-2 text-sm">
+                    <span className={`tabular-nums w-14 shrink-0 whitespace-nowrap ${r.overdue ? "font-semibold" : "text-ink-3"}`} style={r.overdue ? { color: "var(--creative)" } : undefined}>
+                      {shortDate(r.due_date)}
+                    </span>
+                    <span className="truncate" data-sensitive>{r.sponsorship}</span>
+                    {r.overdue && <Pill dim="creative">overdue</Pill>}
+                    <span className="ml-auto tabular-nums shrink-0" data-sensitive>{fmtHero(r.net)}</span>
+                  </div>
+                ))}
+                <div className="flex items-baseline gap-2 text-sm pt-2 border-t border-line-2">
+                  <span className="text-ink-2">{ar.totals.count} open · gross <span data-sensitive>{fmtHero(ar.totals.gross)}</span> · commission <span data-sensitive>{fmtHero(ar.totals.commission)}</span></span>
+                  <span className="ml-auto tabular-nums font-medium" style={{ color: "var(--money)" }} data-sensitive>{fmtHero(ar.totals.net)}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-ink-3">No AR report on file.</p>
+            )}
+          </div>
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
 function IncomeTab({ data }: { data: FinancesDataV2 }) {
   const income = data.income;
   const streams = income?.streams ?? data.incomeStreams ?? [];
@@ -902,6 +1248,10 @@ function IncomeTab({ data }: { data: FinancesDataV2 }) {
   return (
     <div className="space-y-6">
       {income && <IncomeHero data={income} freshness={incomeFreshness} />}
+      <OwedCard recovery={data.recovery} />
+      {data.sponsorships && (
+        <SponsorshipPanel data={data.sponsorships} freshness={data.freshness_per_card?.sponsorships} />
+      )}
       {streams.length > 0 && (
         <section>
           <h2 className="text-sm font-medium uppercase tracking-widest text-ink-2 mb-4 flex items-center gap-2">
@@ -953,13 +1303,21 @@ function InsightLineRow({ line, accent }: { line: InsightLine; accent: string })
   // observed_one_month and one_time show "$X observed (1mo)" so the user sees what we actually saw.
   const isUncertain = line.cadence === "observed_one_month" || (line.cadence === "one_time" && line.charge_count >= 2);
   const cadenceLabel =
-    line.cadence === "monthly_recurring"
-      ? `${line.charge_count}× over ${line.active_months}mo · monthly`
-      : line.cadence === "annual_subscription"
-        ? "annual subscription"
-        : line.cadence === "observed_one_month"
-          ? `${line.charge_count}× in 1mo · observed only`
-          : "one-time";
+    line.lapsed || line.cadence === "lapsed"
+      ? `LAPSED — last charge ${fmtDateParts(line.last_seen + "T12:00:00Z", { month: "short", year: "numeric" })}`
+      : line.cadence === "monthly_recurring"
+        ? `${line.charge_count}× over ${line.active_months}mo · monthly`
+        : line.cadence === "annual_subscription"
+          ? "annual subscription"
+          : line.cadence === "observed_one_month"
+            ? `${line.charge_count}× in 1mo · observed only`
+            : "one-time";
+  const showCurrent =
+    !line.lapsed &&
+    typeof line.current_monthly_usd === "number" &&
+    line.current_monthly_usd > 0 &&
+    line.monthly_usd > 0 &&
+    Math.abs(line.current_monthly_usd - line.monthly_usd) / line.monthly_usd > 0.25;
   const confidenceColor =
     line.confidence === "high" ? "var(--health)" : line.confidence === "medium" ? "var(--money)" : "var(--ink-2)";
   return (
@@ -977,11 +1335,19 @@ function InsightLineRow({ line, accent }: { line: InsightLine; accent: string })
       <div className="flex items-center gap-2 text-[12px] text-ink-2 flex-wrap mt-1">
         {!isUncertain && line.monthly_usd > 0 && (
           <>
-            <span data-sensitive>{fmtHero(line.monthly_usd)}/mo</span>
+            <span data-sensitive>{fmtHero(line.monthly_usd)}/mo avg</span>
             <span>·</span>
           </>
         )}
-        <span>{cadenceLabel}</span>
+        {showCurrent && (
+          <>
+            <span data-sensitive style={{ color: (line.current_monthly_usd ?? 0) > line.monthly_usd ? "var(--err)" : "var(--health)" }}>
+              now {fmtHero(line.current_monthly_usd)}/mo
+            </span>
+            <span>·</span>
+          </>
+        )}
+        <span style={line.lapsed ? { color: "var(--money)", fontWeight: 500 } : undefined}>{cadenceLabel}</span>
         <span>·</span>
         <span style={{ color: confidenceColor }}>conf: {line.confidence}</span>
         {line.tags.length > 0 && (
@@ -1090,6 +1456,61 @@ function CategoryBreakdown({ categories, total }: { categories: SpendInsights["b
   );
 }
 
+function AiSpendSection({ ai }: { ai: AiSummary }) {
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h3 className="text-sm font-medium uppercase tracking-widest text-ink-2 flex items-center gap-2">
+            <Cpu className="w-4 h-4" color="var(--relationships)" /> AI Spend Breakdown
+          </h3>
+          <p className="text-[12px] text-ink-2 mt-1">
+            Observed AI vendors, unattributed AI-labeled buckets, and ledger AI lines with no visible charge.
+          </p>
+        </div>
+        <span className="text-lg font-medium tabular-nums" style={{ color: "var(--relationships)" }} data-sensitive>
+          {fmtHero(ai.total_annualized)}<span className="text-[12px] text-ink-2 ml-1">/yr observed</span>
+        </span>
+      </div>
+      {ai.observed.length === 0 ? (
+        <Panel className="p-4"><p className="text-xs text-ink-2">No AI vendors observed yet — run the finance refresh.</p></Panel>
+      ) : (
+        <div className="prob-grid">
+          {ai.observed.map((l, i) => (
+            <InsightLineRow key={`${l.display}-${i}`} line={l} accent="var(--relationships)" />
+          ))}
+        </div>
+      )}
+      {ai.unattributed_buckets.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[12px] text-ink-2 mb-2">
+            AI-labeled buckets with no vendor recorded — needs a statement-level look:
+          </p>
+          <div className="prob-grid">
+            {ai.unattributed_buckets.map((l, i) => (
+              <InsightLineRow key={`${l.display}-${i}`} line={l} accent="var(--money)" />
+            ))}
+          </div>
+        </div>
+      )}
+      {ai.ledger_blind_spots.length > 0 && (
+        <Panel className="p-3.5 mt-3">
+          <p className="text-[12px] text-ink-2 mb-2">
+            In the expense ledger but never observed in any statement or books export (personal cards or bundled billing):
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ai.ledger_blind_spots.map((b, i) => (
+              <Pill key={`${b.vendor}-${i}`} dim="rhythms">
+                {b.vendor}{b.monthly_usd ? <span data-sensitive>{` · $${Math.round(b.monthly_usd)}/mo`}</span> : " · $?"}
+              </Pill>
+            ))}
+          </div>
+        </Panel>
+      )}
+    </section>
+  );
+}
+
 function SpendInsightsSection({ insights }: { insights: SpendInsights }) {
   return (
     <div className="space-y-6 pt-4" style={{ borderTop: "1px solid var(--line-1)" }}>
@@ -1106,7 +1527,7 @@ function SpendInsightsSection({ insights }: { insights: SpendInsights }) {
         {insights.statement_spend.generated_at && (
           <span className="text-[12px] text-ink-2">
             {insights.statement_spend.record_count} merchants · generated{" "}
-            {new Date(insights.statement_spend.generated_at).toLocaleDateString("en-US", {
+            {fmtDateParts(insights.statement_spend.generated_at, {
               month: "short", day: "numeric", year: "numeric",
             })}
           </span>
@@ -1124,14 +1545,18 @@ function SpendInsightsSection({ insights }: { insights: SpendInsights }) {
         emptyHint="No statement aggregate yet — run StatementAnalyzer.ts to populate."
       />
 
-      <InsightSection
-        title="Top AI Services"
-        icon={Cpu}
-        accent="var(--relationships)"
-        description="What the AI stack actually costs — sorted by annualized spend."
-        lines={insights.top_ai_services}
-        emptyHint="No AI services detected yet. Drop more CSV exports under FINANCES/Statements/."
-      />
+      {insights.ai_summary ? (
+        <AiSpendSection ai={insights.ai_summary} />
+      ) : (
+        <InsightSection
+          title="Top AI Services"
+          icon={Cpu}
+          accent="var(--relationships)"
+          description="What the AI stack actually costs — sorted by annualized spend."
+          lines={insights.top_ai_services}
+          emptyHint="No AI services detected yet. Drop more CSV exports under FINANCES/Statements/."
+        />
+      )}
 
       <InsightSection
         title="Top Infrastructure Services"
@@ -1172,6 +1597,8 @@ function OutboundTab({ data }: { data: FinancesDataV2 }) {
   }
   return (
     <div className="space-y-6">
+      {data.cfo?.breakdown && <BreakdownCard b={data.cfo.breakdown} notCounted={data.cfo.breakdown_not_counted_monthly ?? 0} />}
+      {data.cfo && <CfoCard cfo={data.cfo} />}
       <OutboundHero data={outbound} freshness={outboundFreshness} />
       <OutboundSubgroup
         title="Vendors & Services"
@@ -1433,21 +1860,13 @@ function PlanTab({ data }: { data: FinancesDataV2 }) {
 // ─── Page ───
 
 export default function FinancesPage() {
-  const [data, setData] = useState<FinancesDataV2 | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data = null, error: queryError } = useApi<FinancesDataV2>("/api/life/finances", { retry: false });
+  const error = !data && queryError ? (queryError instanceof ApiError ? `Error: HTTP ${queryError.status}` : String(queryError)) : null;
   const [tab, setTab] = useState<TabKey>("income");
   const [periodView, setPeriodView] = useState<"monthly" | "annual">("monthly");
 
-  // Load data
-  useEffect(() => {
-    fetch("/api/life/finances")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((json: FinancesDataV2) => {
-        setCurrency(json.currency);
-        setData(json);
-      })
-      .catch((e) => setError(String(e)));
-  }, []);
+  // Module-level currency must be set before children render with the data.
+  if (data) setCurrency(data.currency);
 
   // Hash-routed tab state
   useEffect(() => {

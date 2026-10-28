@@ -234,7 +234,7 @@ ${doc.footer ? `<p class="foot">${doc.footer}</p>` : ""}
 // ---------- CLI ----------
 
 const EXAMPLE: Doc = {
-  title: "Never a Liberal?",
+  title: "Is the Claim True?",
   eyebrow: "A red team of one claim · evidence brief",
   subtitle: "The claim under test, with verbatim sourced quotes both ways.",
   summary: { label: "Verdict", html: "<b>False on the letter.</b> Survives only as a definitional argument." },

@@ -1,20 +1,20 @@
 // modules/siri.ts — Siri→{{DA_NAME}} voice turn endpoint.
 //
 // The iPhone leg is a stock Shortcuts shortcut named "Talk to {{DA_NAME}}": Siri
-// dictates {{PRINCIPAL_NAME}}'s words, the shortcut POSTs them here, and Siri speaks the
+// dictates the principal's words, the shortcut POSTs them here, and Siri speaks the
 // reply back. This module is the "to and from" bridge: it runs the LifeOS
 // context brain (buildLifeosContextBlock + Claude Agent SDK query) with a
 // SIRI MODE system prompt tuned for text-to-speech output.
 //
 // Exposure: POST /api/siri/turn, wired in pulse.ts. Publicly reachable ONLY
-// through the path-restricted Cloudflare Tunnel (see LIFEOS/TOOLS/SiriTunnel/
-// ingress config) — the tunnel forwards a loopback Host header to satisfy the
+// through a path-restricted Cloudflare Tunnel (the ingress config is the install's own,
+// maintainer-side; NOT in the public release payload) — the tunnel forwards a loopback Host header to satisfy the
 // anti-DNS-rebinding guard, and everything outside /api/siri/* 404s at the
 // tunnel edge. Auth: Authorization: Bearer $SIRI_API_KEY (header only, never
 // URL — constitutional security rule). Fail-closed when the key is unset.
 //
 // Continuity: SDK-resume session ID + 60-minute idle boundary. Single user
-// ({{PRINCIPAL_NAME}}), sequential turns — a second request while one is processing gets
+// (the principal), sequential turns — a second request while one is processing gets
 // 429 so the Shortcut can say "still thinking".
 
 import { query } from "@anthropic-ai/claude-agent-sdk"
@@ -99,7 +99,7 @@ async function runTurn(text: string): Promise<string> {
     ...(Object.keys(remoteMcp).length > 0 ? { mcpServers: remoteMcp } : {}),
     settingSources: ["user", "project"], // no "local" — skip CLAUDE.md mode/format machinery
     // Channel marker — hooks skip the desktop /notify voice when not "desktop".
-    // {{PRINCIPAL_NAME}} hears the reply through Siri's TTS on the phone, not the Mac speaker.
+    // The principal hears the reply through Siri's TTS on the phone, not the Mac speaker.
     env: { ...process.env, LIFEOS_NOTIFICATION_CHANNEL: "siri" },
     maxTurns: MAX_TURNS,
     canUseTool: (toolName: string, input: unknown) => {
@@ -119,15 +119,15 @@ async function runTurn(text: string): Promise<string> {
       preset: "claude_code",
       append: `\n\n${contextBlock}\n\n## SIRI MODE — HOW YOU RESPOND
 
-You are ${getDAName()}. ${getPrincipalName()} is talking to you HANDS-FREE through Siri on his iPhone — driving, walking, AirPods in. Your reply will be read aloud by text-to-speech, word for word. He cannot see a screen.
+You are ${getDAName()}. ${getPrincipalName()} is talking to you HANDS-FREE through Siri on their iPhone — driving, walking, AirPods in. Your reply will be read aloud by text-to-speech, word for word. They cannot see a screen.
 
 Rules, absolute:
 - Answer in spoken prose only. NO markdown, NO bullets, NO headers, NO code, NO emoji, NO URLs, NO template scaffolding (no mode banners, no phase headers, no field prefixes).
-- 80 words or fewer unless he explicitly asks for depth. One breath, one answer.
+- 80 words or fewer unless they explicitly ask for depth. One breath, one answer.
 - Lead with the answer. No preamble.
 - Numbers and names the way a person says them out loud.
 - If a task needs real work (files, deploys, long research), do the quick version now and offer to queue the rest: "want me to pick that up on the Mac?"
-- Speak as ${getDAName()} — precise, fast, warm through attention to his context.
+- Speak as ${getDAName()} — precise, fast, warm through attention to their context.
 - ${mcpStatusPromptLine(Object.keys(remoteMcp))}`,
     },
   }
@@ -138,11 +138,16 @@ Rules, absolute:
   }
   if (resumeFromSdk) queryOpts.resume = resumeFromSdk
 
+  // The controller must reach query() via `options.abortController`; a flag
+  // checked between messages cannot cancel a turn stalled mid-tool.
+  // (public issue #2027, @bowlax)
+  const timeoutController = new AbortController()
+  const timeout = setTimeout(() => timeoutController.abort(), SDK_TIMEOUT_MS)
+  sdkOptions.abortController = timeoutController
+
   const conversation = query(queryOpts as never)
 
   let fullText = ""
-  const timeoutController = new AbortController()
-  const timeout = setTimeout(() => timeoutController.abort(), SDK_TIMEOUT_MS)
   try {
     for await (const message of conversation) {
       if (timeoutController.signal.aborted) break
@@ -158,6 +163,8 @@ Rules, absolute:
         if (turnText.trim()) fullText = turnText // keep the LAST assistant text (final answer)
       }
     }
+  } catch (err) {
+    if (!timeoutController.signal.aborted) throw err // an abort we caused keeps the streamed text
   } finally {
     clearTimeout(timeout)
   }

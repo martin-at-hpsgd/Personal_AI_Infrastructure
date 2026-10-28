@@ -1,0 +1,6 @@
+{
+  "_about": "Per-install config for LIFEOS/TOOLS/Achilles.ts. source_aliases ({old: current}) and source_ref_prefix_aliases ([[\"old:\", \"current:\"]]) resolve registry rows stored under a source's old name after a rename; a fresh install has none. stack_terms are the platforms your estate runs on, added to the Atlas and GEAR terms by `achilles gen-stack`; replace the examples with yours.",
+  "source_aliases": {},
+  "source_ref_prefix_aliases": [],
+  "stack_terms": ["ExampleNet", "Cloudflare", "GitHub", "macOS", "iOS", "Chrome", "bun", "TypeScript", "React", "Ubuntu"]
+}

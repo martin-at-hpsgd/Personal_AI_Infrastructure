@@ -1,5 +1,7 @@
 # Story Layers Architecture
 
+**Contents:** The Seven Layers · Layer Interaction Rules · Mapping Template
+
 The WriteStory system constructs fiction across seven simultaneous narrative layers. Think of these as sedimentary strata — each exists independently but they interact, influence, and reinforce each other at every point in the narrative.
 
 ## The Seven Layers
@@ -144,21 +146,21 @@ Every scene contains: Inciting Incident → Progressive Complications → Crisis
 
 ### Layer 7: Prose (Style, Rhetoric, Voice)
 
-**What it is:** HOW the story is told at the sentence level. This is where the Elements of Eloquence figures live — the "toolbelt" that transforms competent prose into memorable language.
+**What it is:** HOW the story is told at the sentence level. This is where a rare rhetorical figure lives, when the moment and the character call for one.
 
 **How it works:**
 - Prose style is configured per project via Aesthetic Profiles
-- Rhetorical figures are deployed strategically at high-impact moments
+- Rhetorical figures are rare, from the character's world, and placed only where the writer names the moment
 - Anti-cliche system prevents generic, predictable language
 - Voice consistency is maintained through style guidelines
 
 **Key principles:**
-- Memorable lines are ENGINEERED, not accidental (Forsyth's thesis)
-- Strategic deployment > constant deployment (save the fireworks for key moments)
+- Sentences stop and paragraphs end on the last thing that happened (`Intents/WriteChapter.md` § The sentence contract)
+- A line engineered to be quotable is the machine tell, not the prize
 - Dialogue and prose use different figure profiles
-- Genre affects density and type of rhetorical deployment
+- Genre affects which figures fit, never how many
 
-**See:** `RhetoricalFigures.md` for the full toolbelt
+**See:** `RhetoricalFigures.md` for the figure catalogue
 **See:** `AntiCliche.md` for freshness enforcement
 **See:** `AestheticProfiles.md` for style configuration
 

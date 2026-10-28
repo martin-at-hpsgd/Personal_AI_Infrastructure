@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.1.0
+ * @version 1.1.4
  * WorkReconcile.ts — heal work.json drift against ISA frontmatter.
  *
  * WHY: ISASync only fires on Write/Edit tool events against the ISA path.
@@ -35,9 +35,10 @@ import {
   writeRegistry,
   applyAscent,
 } from '../../hooks/lib/isa-utils';
-import { paiPath } from '../../hooks/lib/paths';
+import { lifeosPath } from "./Paths";
+import { projectSessionIdentity } from "../../hooks/lib/session-identity";
 
-const STATE_PATH = paiPath('MEMORY', 'STATE', 'work-reconcile.json');
+const STATE_PATH = lifeosPath('MEMORY', 'STATE', 'work-reconcile.json');
 const DEBOUNCE_MS = 60_000;
 
 interface ReconcileState {
@@ -70,13 +71,14 @@ function main() {
   }
 
   const registry = readRegistry();
-  const paiDir = paiPath();
+  const projectAfterWrite = new Set<string>();
+  const lifeosDir = lifeosPath();
   let drifted = 0;
   const fixes: string[] = [];
 
   for (const [slug, session] of Object.entries(registry.sessions) as [string, any][]) {
     if (!session || typeof session.isa !== 'string' || !session.isa) continue;
-    const isaPath = join(paiDir, session.isa);
+    const isaPath = join(lifeosDir, session.isa);
 
     let mtimeMs: number;
     try {
@@ -120,7 +122,7 @@ function main() {
       session.phase = fmPhase;
     }
 
-    // Criteria — re-parse so claim cards sit in the right kanban column.
+    // Criteria — re-parse so criterion cards sit in the right kanban column.
     // Preserve createdInPhase from the existing row (same rule as syncToWorkJson).
     const fresh = parseCriteriaList(content);
     if (fresh.length > 0) {
@@ -163,6 +165,7 @@ function main() {
       if (h1) {
         changes.push('sessionName←H1');
         session.sessionName = h1;
+        projectAfterWrite.add(session.sessionUUID ?? '');
       }
     }
 
@@ -182,6 +185,8 @@ function main() {
   }
 
   if (drifted > 0) writeRegistry(registry, 'WorkReconcile');
+  // A row that just got its name needs that name on the status line and tab too.
+  for (const uuid of projectAfterWrite) if (uuid) { try { projectSessionIdentity(uuid, { source: 'WorkReconcile' }); } catch { /* best-effort */ } }
 
   state.checkedAt = new Date().toISOString();
   try {

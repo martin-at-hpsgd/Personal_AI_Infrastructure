@@ -21,7 +21,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 import { join, resolve } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { checkSymlinkContract, detectDevTree, setupUserSeparation } from "./InstallEngine";
+import { checkSymlinkContract, initConfigRootRepo, linkMemory, refuseDevInstallWrites, setupUserSeparation } from "./InstallEngine";
 
 /** Canonical on-disk path, or null when the path does not exist. */
 function realPath(p: string): string | null {
@@ -59,10 +59,7 @@ function main(): void {
   const apply = a.includes("--apply");
   const allowDev = a.includes("--allow-dev");
 
-  if (detectDevTree(configRoot) && !allowDev) {
-    console.log(JSON.stringify({ ok: false, refused: "dev-tree", detail: `${configRoot} is a source tree — refusing to relink.` }, null, 2));
-    process.exit(2);
-  }
+  refuseDevInstallWrites(configRoot, [join(configRoot, "LIFEOS", "USER"), join(configDir, "USER"), configDir], allowDev);
 
   // Refuse a self-link loudly (public issue #1491, @donovan-sec): if the env
   // ships LIFEOS_CONFIG_DIR identical to the harness LIFEOS dir, the link
@@ -82,14 +79,26 @@ function main(): void {
   const realSrc = realPath(linkSrc);
   if (realSrc !== null && realSrc === realPath(linkDst)) {
     if (isSymlink(linkSrc)) {
-      console.log(JSON.stringify({
-        ok: true,
-        action: "already-linked",
-        target: linkDst,
-        copied: 0,
-        contract: { passed: true, detail: `${linkSrc} already resolves to ${realSrc}` },
-      }, null, 2));
-      process.exit(0);
+      // The USER leg is right, but the contract has two legs: check MEMORY too
+      // and repair only that leg rather than reporting a pass it has not earned.
+      // An install linked by an older release still gets the config-root repo and its
+      // .env / credentials ignore rules on --apply (idempotent; never on a dry run).
+      const before = checkSymlinkContract(configRoot, configDir);
+      if (before.passed) {
+        const configRepo = apply ? initConfigRootRepo(configRoot) : undefined;
+        console.log(JSON.stringify({ ok: true, action: "already-linked", target: linkDst, copied: 0, ...(configRepo ? { configRepo } : {}), contract: before }, null, 2));
+        process.exit(0);
+      }
+      if (!apply) {
+        console.log(JSON.stringify({ ok: true, dryRun: true, action: "already-linked", currentContract: before, willLink: `${join(configRoot, "LIFEOS", "MEMORY")} → ${join(configDir, "USER", "MEMORY")}` }, null, 2));
+        process.exit(0);
+      }
+      const memory = linkMemory(configRoot, configDir);
+      const configRepo = initConfigRootRepo(configRoot);
+      const contract = checkSymlinkContract(configRoot, configDir);
+      const ok = contract.passed && !memory.error;
+      console.log(JSON.stringify({ ok, written: true, action: "already-linked", target: linkDst, copied: 0, memory, configRepo, contract }, null, 2));
+      process.exit(ok ? 0 : 1);
     }
     // Not a symlink, yet the same directory: configDir reaches back inside the
     // harness tree. Same hazard as the lexical self-link above — migrating would
@@ -105,9 +114,14 @@ function main(): void {
   }
 
   const result = setupUserSeparation(configRoot, configDir);
+  // Local history for the config root too (never a remote); ignore rules land
+  // first so no later commit can carry .env or the harness token store
+  // (public issue #2036, @tzioup). Like the USER repo leg, a no-git machine
+  // records a reason rather than failing the link.
+  const configRepo = initConfigRootRepo(configRoot);
   const contract = checkSymlinkContract(configRoot, configDir);
   const ok = contract.passed && !result.error;
-  console.log(JSON.stringify({ ok, written: true, ...result, contract }, null, 2));
+  console.log(JSON.stringify({ ok, written: true, ...result, configRepo, contract }, null, 2));
   process.exit(ok ? 0 : 1);
 }
 

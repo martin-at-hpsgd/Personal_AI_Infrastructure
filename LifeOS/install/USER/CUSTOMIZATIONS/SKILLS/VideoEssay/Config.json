@@ -1,0 +1,63 @@
+{
+  "_provenance": "template",
+  "_comment": "Every value here is made up; replace each with yours. Field reference: skills/VideoEssay/Setup.md § Fill in. The VideoEssay tools ignore top-level keys they do not read, so these two underscore keys are inert.",
+  "fonts": {
+    "serif": "~/Fonts/ExampleSerif-Regular.otf",
+    "serifBold": "~/Fonts/ExampleSerif-Bold.otf",
+    "serifItalic": "~/Fonts/ExampleSerif-Italic.otf",
+    "serifTabBold": "~/Fonts/ExampleSerif-TabBold.otf",
+    "figures": "~/Fonts/ExampleFigures-Semibold.otf",
+    "sans": "~/Fonts/ExampleSans-Regular.otf",
+    "sansTab": "~/Fonts/ExampleSans-Tab.otf",
+    "caps": "~/Fonts/ExampleSans-Caps.otf",
+    "kicker": "~/Fonts/ExampleCaps-Tab.otf",
+    "kickerBold": "~/Fonts/ExampleCaps-Bold.otf",
+    "display": "~/Fonts/ExampleCaps-Narrow.otf",
+    "cite": "~/Fonts/ExampleCaps-Condensed.otf",
+    "quote": "~/Fonts/ExampleQuote-Regular.otf",
+    "mono": "~/Fonts/ExampleMono-Regular.otf"
+  },
+  "avatar": "da-portrait.png",
+  "runsRoot": "~/Videos/essay-runs",
+  "blogBaseUrl": "https://blog.example.com/posts/",
+  "possessive": "their",
+  "presenter": {
+    "avatar": "author.png",
+    "label": "ALEX",
+    "badge": "a"
+  },
+  "narrators": {
+    "da": {
+      "reader": "NOVA",
+      "badge": "b",
+      "seed": 100,
+      "takes": 2
+    }
+  },
+  "styleFile": "EssayStyle.md",
+  "fontFamilies": {
+    "serif": "Example Serif",
+    "mono": "Example Mono"
+  },
+  "colors": {
+    "accent": "#1E3A8A",
+    "highlight": "#FDE68A",
+    "paper": "#F5F0E6",
+    "paperInk": {
+      "accent": "#1E40AF"
+    },
+    "darkInk": {
+      "ground": "#0A0F1E",
+      "accent": "#93C5FD"
+    }
+  },
+  "badge": {
+    "header": "READ ALOUD",
+    "andNot": "AND NOT",
+    "struck": "A SUMMARY",
+    "wordsLine": "{LABEL}'S OWN WORDS"
+  },
+  "skipParagraphs": [
+    "^[^A-Za-z0-9]*Filed under:"
+  ]
+}

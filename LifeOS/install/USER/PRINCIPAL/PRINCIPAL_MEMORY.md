@@ -5,7 +5,7 @@ cap_entries: 48
 cap_chars_per_entry: 256
 last_updated: 2026-01-01
 last_updated_by: bootstrap-template
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 ---
 
 # Principal Hot-Layer Memory

@@ -19,6 +19,7 @@
  */
 
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import {
@@ -229,8 +230,12 @@ function stampTarget(absPath: string): void {
   }
 }
 
-export function applyProposalEdit(targetFile: string, editText: string): { ok: true } | { ok: false; reason: string } {
-  // A proposal's targetFile is root-relative (e.g. "LIFEOS/USER/CONFIG/OPERATIONAL_RULES.md").
+export function applyProposalEdit(
+  targetFile: string,
+  editText: string,
+  meta: { proposalId?: string; confidence?: number; source?: string } = {},
+): { ok: true } | { ok: false; reason: string } {
+  // A proposal's targetFile is root-relative (e.g. "LIFEOS/USER/CONFIG/OPERATIONAL_PREFERENCES.md").
   // Resolve it against ~/.claude so it works regardless of the process CWD: the Pulse server runs
   // from LIFEOS/PULSE, so a bare relative path resolved to a nonexistent nested path and every
   // apply failed with "target file missing" even though the file was present (public PR #1507,
@@ -255,6 +260,24 @@ export function applyProposalEdit(targetFile: string, editText: string): { ok: t
     } else {
       next = current.trimEnd() + `\n\n${sectionHeader}\n\n${entry.trim()}\n`;
     }
+    // Content-carrying audit event BEFORE the write, fail-closed (Phase 1.5,
+    // 20260816-cortex-ledger-build): auto-applied proposals are robot writes to
+    // identity-class files — the highest blast radius in the memory system — so
+    // an apply we cannot audit does not happen. The queue row stays pending on
+    // failure and the apply is retryable.
+    const { appendEvent } = require("../../TOOLS/lib/CortexLedgerCore") as typeof import("../../TOOLS/lib/CortexLedgerCore");
+    const ev = appendEvent({
+      kind: "proposal/apply",
+      ts,
+      file: targetFile,
+      updated_by: meta.source ?? "applyProposalEdit",
+      ...(meta.proposalId ? { proposal_id: meta.proposalId } : {}),
+      ...(meta.confidence !== undefined ? { confidence: meta.confidence } : {}),
+      applied_text: editText,
+      prior_file_sha256: createHash("sha256").update(current, "utf8").digest("hex"),
+      new_file_sha256: createHash("sha256").update(next, "utf8").digest("hex"),
+    });
+    if (!ev.ok) return { ok: false, reason: `audit event append failed (apply aborted, fail-closed): ${ev.message}` };
     const tmp = `${resolved}.tmp`;
     writeFileSync(tmp, next, "utf8");
     renameSync(tmp, resolved);
@@ -314,7 +337,11 @@ function resolve(
     if (target === null) {
       return { ok: false, reason: `target_file '${row.target_file}' is not an allowed target for its kind` };
     }
-    const applied = applyProposalEdit(target, editText);
+    const applied = applyProposalEdit(target, editText, {
+      proposalId: id,
+      ...(row.confidence !== undefined ? { confidence: row.confidence } : {}),
+      source: "ProposalDecide",
+    });
     if (!applied.ok) return { ok: false, reason: applied.reason };
   }
 

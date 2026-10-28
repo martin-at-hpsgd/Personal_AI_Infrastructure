@@ -153,7 +153,7 @@ console.log(`\nExecuting ffmpeg...`);
 
 const ffmpegResult = await $`ffmpeg -y \
   -i ${audioFile} \
-  -filter_complex_script ${filterFile} \
+  -/filter_complex ${filterFile} \
   -map "[out]" \
   ${codecArgs} \
   -ar ${sampleRate} \

@@ -1,11 +1,12 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiSend, useApi, useApiMutation } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 import MarkdownRenderer from "@/components/wiki/MarkdownRenderer";
 import { Zap, ArrowLeft, Pencil, Check, X, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { fmtDateParts } from "@/lib/time";
 import {
   PageShell,
   PageHeader,
@@ -22,7 +23,7 @@ interface SkillMeta {
   dir?: string;
   description: string;
   effort: string;
-  hasWorkflows: boolean;
+  hasIntents: boolean;
   lastModified: string;
 }
 
@@ -61,7 +62,7 @@ function SkillsLanding({ skills }: { skills: SkillMeta[] }) {
       <PageHeader
         title="Skills"
         icon={Zap}
-        subtitle="Domain-specific capabilities that activate on trigger phrases. Each skill bundles prompts, workflows, tools, and templates into a self-contained unit."
+        subtitle="Domain-specific capabilities that activate on trigger phrases. Each skill bundles prompts, intents, tools, and templates into a self-contained unit."
       />
 
       <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 220px))" }}>
@@ -112,7 +113,7 @@ function SkillCard({ skill }: { skill: SkillMeta }) {
         </p>
         <div className="flex items-center gap-1.5 mt-auto pt-1">
           <Pill dim={effortDim(skill.effort)}>{skill.effort}</Pill>
-          {skill.hasWorkflows && <Pill dim="relationships">workflows</Pill>}
+          {skill.hasIntents && <Pill dim="relationships">intents</Pill>}
         </div>
       </Panel>
     </Link>
@@ -122,22 +123,11 @@ function SkillCard({ skill }: { skill: SkillMeta }) {
 function SkillDetailView({ skill }: { skill: SkillDetail }) {
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(skill.content);
-  const queryClient = useQueryClient();
+  const skillPath = `/api/wiki/skills/${encodeURIComponent(skill.name)}`;
 
-  const mutation = useMutation({
-    mutationFn: async (content: string) => {
-      const res = await fetch(`/api/wiki/skills/${encodeURIComponent(skill.name)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      });
-      if (!res.ok) throw new Error("Failed to save");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["skill-detail", skill.name] });
-      setEditing(false);
-    },
+  const mutation = useApiMutation((content: string) => apiSend(skillPath, "PUT", { content }), {
+    invalidates: [skillPath],
+    onSuccess: () => setEditing(false),
   });
 
   const btnBase =
@@ -159,11 +149,7 @@ function SkillDetailView({ skill }: { skill: SkillDetail }) {
             <h1 className="text-ink-1">{skill.name}</h1>
             <p className="mt-0.5 text-[13px] text-ink-2">
               {skill.wordCount} words ·{" "}
-              {new Date(skill.lastModified).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+              {fmtDateParts(skill.lastModified, { month: "short", day: "numeric", year: "numeric" })}
             </p>
           </div>
         </div>
@@ -245,26 +231,9 @@ function SkillsPageInner() {
   const skillName = searchParams.get("name");
   const isViewing = !!skillName;
 
-  const { data: listData } = useQuery<{ skills: SkillMeta[]; total: number }>({
-    queryKey: ["skills-list"],
-    queryFn: async () => {
-      const res = await fetch("/api/wiki/skills");
-      if (!res.ok) throw new Error("Failed to fetch skills");
-      return res.json();
-    },
-    staleTime: 30_000,
-    enabled: !isViewing,
-  });
+  const { data: listData } = useApi<{ skills: SkillMeta[]; total: number }>(isViewing ? null : "/api/wiki/skills", { staleTime: 30_000 });
 
-  const { data: detailData } = useQuery<SkillDetail>({
-    queryKey: ["skill-detail", skillName],
-    queryFn: async () => {
-      const res = await fetch(`/api/wiki/skills/${encodeURIComponent(skillName!)}`);
-      if (!res.ok) throw new Error("Failed to fetch skill");
-      return res.json();
-    },
-    enabled: isViewing,
-  });
+  const { data: detailData } = useApi<SkillDetail>(isViewing ? `/api/wiki/skills/${encodeURIComponent(skillName!)}` : null);
 
   if (isViewing && detailData) {
     return <SkillDetailView skill={detailData} />;

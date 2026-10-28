@@ -1,0 +1,294 @@
+# Fabric TerraformPlan — a pre-apply review of a Terraform plan. The regex and
+# contains asserts pin what is literal (the Plan counts, the verdict wording,
+# addresses that must be named, a secret that must not be repeated); the judged
+# asserts carry what code cannot: catching each replacement with what it loses,
+# naming the exact risky attribute, and takeaways specific to this plan.
+# Each judged assert's reference is the case prompt, so the judge sees the plan.
+# Synthetic inline fixtures only.
+name: fabric-terraformplan
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/TerraformPlan.md"
+cases:
+  - id: replace_database_and_open_ssh
+    prompt: &replace_plan |
+      analyze_terraform_plan
+
+      Terraform used the selected providers to generate the following execution plan.
+
+      Terraform will perform the following actions:
+
+        # aws_db_instance.main must be replaced
+      -/+ resource "aws_db_instance" "main" {
+            ~ arn                   = "arn:aws:rds:us-west-2:111122223333:db:example-main" -> (known after apply)
+            ~ endpoint              = "example-main.abc123.us-west-2.rds.amazonaws.com:5432" -> (known after apply)
+              engine                = "postgres"
+              identifier            = "example-main"
+              instance_class        = "db.t3.medium"
+            ~ storage_encrypted     = false -> true # forces replacement
+              deletion_protection   = false
+              skip_final_snapshot   = true
+              # (14 unchanged attributes hidden)
+          }
+
+        # aws_instance.web will be updated in-place
+        ~ resource "aws_instance" "web" {
+              id            = "i-0abc123def4567890"
+            ~ instance_type = "t3.small" -> "m5.4xlarge"
+              # (30 unchanged attributes hidden)
+          }
+
+        # aws_security_group_rule.ssh will be created
+        + resource "aws_security_group_rule" "ssh" {
+            + cidr_blocks       = [
+                + "0.0.0.0/0",
+              ]
+            + from_port         = 22
+            + protocol          = "tcp"
+            + security_group_id = "sg-0123456789abcdef0"
+            + to_port           = 22
+            + type              = "ingress"
+          }
+
+      Plan: 2 to add, 1 to change, 1 to destroy.
+    # SYNTHETIC ADVERSARIAL FIXTURE: right shape, right counts and every address,
+    # but it calls the database replacement an update with no data loss, treats
+    # the world-open SSH rule as routine, and its takeaways fit any plan.
+    adversarial_output: |
+      ## Terraform plan review: database encryption, web resize and a new SSH rule
+
+      **Summary:** The plan updates the main database to enable encryption, resizes the web server and adds a security group rule.
+
+      **Plan:** 2 to add, 1 to change, 1 to destroy (1 replacement)
+
+      **Verdict:** Apply with care. The plan touches production resources, so review it before applying.
+
+      ### Main points
+
+      1. **Change** `aws_db_instance.main`: storage encryption is turned on, improving the database's security posture.
+      2. **Change** `aws_instance.web`: the instance type changes to a larger size.
+      3. **Change** `aws_security_group_rule.ssh`: a new ingress rule is added to the security group.
+
+      ### Takeaways
+
+      1. Review all changes carefully before applying.
+      2. Follow the principle of least privilege.
+      3. Monitor costs after the change.
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Plan:\*\* 2 to add, 1 to change, 1 to destroy'
+      - type: regex
+        weight: 2
+        value: '\*\*Verdict:\*\* (Do not apply as is|Apply with care)\.'
+      - type: contains
+        weight: 1
+        value: "aws_db_instance.main"
+      - type: contains
+        weight: 1
+        value: "aws_security_group_rule.ssh"
+      - type: regex
+        weight: 1
+        value: '### Main points[\s\S]*### Takeaways'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 4
+        value: [ "The review says aws_db_instance.main is replaced (destroyed and recreated), not merely updated, and names storage_encrypted as the attribute forcing it", "The review says the replacement loses the database's stored data, and notes that skip_final_snapshot = true or deletion_protection = false leaves no safety net", "The review flags that aws_security_group_rule.ssh opens port 22 to 0.0.0.0/0, the whole internet, as a security risk", "The review flags the instance_type change on aws_instance.web from t3.small to m5.4xlarge as a cost increase", "The takeaways are actions specific to this plan, such as snapshotting the database or migrating its data before applying and narrowing the SSH CIDR, not general advice that fits any plan", "The verdict is Do not apply as is, or Apply with care with a reason naming the data loss" ]
+        reference: *replace_plan
+  - id: json_plan_makes_bucket_public
+    prompt: &json_plan |
+      Is this safe to apply? Output of terraform show -json:
+
+      {"format_version":"1.2","terraform_version":"1.9.5","resource_changes":[{"address":"aws_s3_bucket_public_access_block.customer_exports","type":"aws_s3_bucket_public_access_block","name":"customer_exports","change":{"actions":["delete"],"before":{"bucket":"example-customer-exports","block_public_acls":true,"block_public_policy":true,"ignore_public_acls":true,"restrict_public_buckets":true},"after":null}},{"address":"aws_s3_bucket_policy.customer_exports","type":"aws_s3_bucket_policy","name":"customer_exports","change":{"actions":["create"],"before":null,"after":{"bucket":"example-customer-exports","policy":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::example-customer-exports/*\"}]}"}}},{"address":"aws_s3_bucket.customer_exports","type":"aws_s3_bucket","name":"customer_exports","change":{"actions":["no-op"],"before":{"bucket":"example-customer-exports"},"after":{"bucket":"example-customer-exports"}}}]}
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Plan:\*\* 1 to add, 0 to change, 1 to destroy'
+      - type: regex
+        weight: 2
+        value: '\*\*Verdict:\*\* Do not apply as is\.'
+      - type: contains
+        weight: 1
+        value: "aws_s3_bucket_public_access_block.customer_exports"
+      - type: llm-assert
+        weight: 4
+        value: [ "The review says the plan makes the customer exports bucket's objects publicly readable by anyone on the internet, because the public access block is deleted and the new bucket policy allows Principal \"*\" to s3:GetObject", "The review treats the deletion of the public access block as a destroy and names it as the change that removes the guard", "The review does not invent resources or changes beyond the two the plan contains (the bucket itself is a no-op)", "The takeaways are specific to this plan, such as keeping the public access block and granting access to a named principal or through signed URLs or a CDN instead" ]
+        reference: *json_plan
+  - id: no_changes_is_not_padded
+    prompt: &noop_plan |
+      analyze_terraform_plan
+
+      aws_vpc.main: Refreshing state... [id=vpc-0a1b2c3d4e5f60718]
+      aws_subnet.private[0]: Refreshing state... [id=subnet-0a1b2c3d4e5f60719]
+      aws_subnet.private[1]: Refreshing state... [id=subnet-0a1b2c3d4e5f60720]
+
+      No changes. Your infrastructure matches the configuration.
+
+      Terraform has compared your real infrastructure against your configuration and found no differences, so no changes are needed.
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Plan:\*\* 0 to add, 0 to change, 0 to destroy'
+      - type: regex
+        weight: 2
+        value: '\*\*Verdict:\*\* Safe to apply\.'
+      - type: not-icontains
+        weight: 2
+        value: "### Main points"
+      - type: llm-assert
+        weight: 2
+        value: [ "The review says the plan changes nothing and invents no change, risk or recommendation the plan does not support", "The review is short: no padding, filler findings or general best-practice advice" ]
+        reference: *noop_plan
+  - id: question_gets_an_answer_not_a_review
+    prompt: &question |
+      analyze_terraform_plan: what does -/+ mean next to a resource in a plan, and when should it worry me?
+    assert:
+      - type: not-contains
+        weight: 2
+        value: "**Verdict:**"
+      - type: not-contains
+        weight: 2
+        value: "**Plan:**"
+      - type: llm-assert
+        weight: 4
+        value: [ "The answer says -/+ means the resource will be replaced: destroyed and then created again, and that +/- means the new one is created before the old one is destroyed (create_before_destroy)", "The answer says to look for the attribute marked forces replacement to see why", "The answer says it should worry you for resources that hold data or identity (databases, buckets, volumes, keys, IP addresses, load balancers), because replacing them loses data or changes endpoints, and names a safeguard such as a snapshot, prevent_destroy or create_before_destroy", "The answer is plain prose that answers the question directly, not a review of a plan" ]
+        reference: *question
+  - id: clear_text_secret_is_not_repeated
+    prompt: &secret_plan |
+      review this plan before I apply it
+
+        # mysql_user.reporting will be created
+        + resource "mysql_user" "reporting" {
+            + host               = "%"
+            + id                 = (known after apply)
+            + plaintext_password = "PLAINTEXT-PASS-TWO"
+            + user               = "reporting"
+          }
+
+        # mysql_grant.reporting will be created
+        + resource "mysql_grant" "reporting" {
+            + database   = "sales"
+            + host       = "%"
+            + privileges = [
+                + "SELECT",
+              ]
+            + user       = "reporting"
+          }
+
+      Plan: 2 to add, 0 to change, 0 to destroy.
+    assert:
+      - type: not-contains
+        weight: 3
+        value: "PLAINTEXT-PASS-TWO"
+      - type: regex
+        weight: 2
+        value: '\*\*Plan:\*\* 2 to add, 0 to change, 0 to destroy'
+      - type: contains
+        weight: 1
+        value: "mysql_user.reporting"
+      - type: regex
+        weight: 1
+        value: '\*\*Verdict:\*\* (Do not apply as is|Apply with care)\.'
+      - type: llm-assert
+        weight: 4
+        value: [ "The review flags that the plan output shows the plaintext_password of mysql_user.reporting in clear text, as a security point, without repeating the value", "The review gives a fix specific to this plan, such as marking the variable sensitive or generating the password with random_password or a secrets manager, and rotating the exposed password", "The review notes that host = \"%\" lets the reporting user connect from any host" ]
+        reference: *secret_plan
+  - id: truncated_noisy_plan_keeps_visible_changes
+    prompt: &cut_plan |
+      analyze_terraform_plan (pasted from the CI log, it got cut off)
+
+      2026-03-02T10:14:01Z aws_vpc.edge: Refreshing state... [id=vpc-0fedcba9876543210]
+      2026-03-02T10:14:01Z aws_route53_zone.example: Refreshing state... [id=Z0EXAMPLE12345]
+      2026-03-02T10:14:02Z aws_instance.app: Refreshing state... [id=i-0aaa111bbb222ccc3]
+
+      Warning: Argument is deprecated
+
+        with aws_instance.app,
+        on main.tf line 41, in resource "aws_instance" "app":
+
+      Terraform will perform the following actions:
+
+        # aws_instance.app must be replaced
+      -/+ resource "aws_instance" "app" {
+            ~ ami           = "ami-0old1111111111111" -> "ami-0new2222222222222" # forces replacement
+            ~ id            = "i-0aaa111bbb222ccc3" -> (known after apply)
+            ~ public_ip     = "198.51.100.24" -> (known after apply)
+              instance_type = "t3.large"
+              # (25 unchanged attributes hidden)
+          }
+
+        # aws_route53_record.app will be updated in-place
+        ~ resource "aws_route53_record" "app" {
+              name    = "app.example.com"
+            ~ records = [
+                - "198.51.100.24",
+              ] -> (known after apply)
+              ttl     = 300
+              type    = "A"
+          }
+
+        # aws_lb_target_group.app will be created
+        + resource "aws_lb_target_group" "app" {
+            + arn      = (known after apply)
+            + name     = "example-app"
+            + port     = 8080
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Plan:\*\* Not available \([^)]*truncat[^)]*\)'
+      - type: not-regex
+        weight: 2
+        value: '\*\*Verdict:\*\* Safe to apply'
+      - type: contains
+        weight: 1
+        value: "aws_instance.app"
+      - type: llm-assert
+        weight: 4
+        value: [ "The review says the plan output is cut off, that its totals are unknown, and that the unseen part could hold further destroys or replacements", "The review still reviews the visible changes: aws_instance.app is replaced because the ami change forces it, and its public IP changes, which aws_route53_record.app has to follow", "The review does not claim a guarantee about when clients switch to the new address; if it mentions the 300-second TTL, it treats it as how long resolvers may keep the old answer, not as a promise", "A takeaway is to get the complete plan output (the full CI log or terraform show on the saved plan) before applying" ]
+        reference: *cut_plan
+  - id: requested_structure_and_no_costs_win
+    prompt: &shaped_plan |
+      Review this plan from the prod-network job. Give me exactly three sections: a one-sentence summary, at most five main points, and at most three takeaways. No cost figures.
+
+      Terraform will perform the following actions:
+
+        # aws_subnet.private_a must be replaced
+      -/+ resource "aws_subnet" "private_a" {
+            ~ cidr_block        = "100.64.1.0/24" -> "100.64.8.0/24" # forces replacement
+            ~ id                = "subnet-0aa11bb22cc33dd44" -> (known after apply)
+              vpc_id            = "vpc-0123abcd4567ef890"
+              # (8 unchanged attributes hidden)
+          }
+
+        # aws_nat_gateway.a will be destroyed
+        - resource "aws_nat_gateway" "a" {
+            - allocation_id = "eipalloc-0abc1234def567890" -> null
+            - id            = "nat-0abc1234def567890" -> null
+            - subnet_id     = "subnet-0aa11bb22cc33dd44" -> null
+          }
+
+        # aws_iam_role_policy_attachment.flow_logs will be created
+        + resource "aws_iam_role_policy_attachment" "flow_logs" {
+            + id         = (known after apply)
+            + policy_arn = "arn:aws:iam::111122223333:policy/example-flow-logs"
+            + role       = "example-flow-logs"
+          }
+
+      Plan: 2 to add, 0 to change, 2 to destroy.
+    assert:
+      - type: not-regex
+        weight: 3
+        value: '\$\s?\d'
+      - type: contains
+        weight: 1
+        value: "aws_subnet.private_a"
+      - type: contains
+        weight: 1
+        value: "aws_nat_gateway.a"
+      - type: llm-assert
+        weight: 4
+        value: [ "The output has exactly the three sections the request asked for (a one-sentence summary, main points, takeaways), with at most five main points and at most three takeaways, and no other sections", "The output gives no cost figure, price or dollar estimate", "The review says aws_subnet.private_a is replaced because its cidr_block changes, and that aws_nat_gateway.a is destroyed, and treats losing private egress and anything running in that subnet as a risk for a production network", "The review does not invent resilience, availability or compliance benefits the plan does not show, and for the flow-logs policy attachment it says what the attached policy grants is not shown in the plan rather than concluding it is safe or unsafe" ]
+        reference: *shaped_plan

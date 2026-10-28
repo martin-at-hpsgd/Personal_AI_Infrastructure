@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.lifeos.people.plist.template — Source template. Install via:
+    bun ~/.claude/LIFEOS/PEOPLE/InstallPeople.ts
+
+  The installer reads $HOME at install time, substitutes the {{...}} placeholders,
+  writes the materialized plist to ~/Library/LaunchAgents/, and bootstraps it with
+  launchctl. This template stays clean of principal-specific paths so it ships in
+  the public LifeOS release.
+
+  Behavior:
+    Runs `people tick` hourly (StartInterval 3600): Apple Contacts, Gmail, calendar,
+    Stripe and the newsletter in order, then a merge that rebuilds the store. Each
+    source is isolated — one failing source is recorded as `failed` and the rest
+    still run (ISC-27, ISC-38).
+
+    RunAtLoad is FALSE on purpose. The tick rewrites the live people store, so
+    installing the job must not itself trigger a write: the first run is the
+    operator's, after a backup, and the schedule takes over an hour later.
+
+    Headless by contract — LIFEOS_NOTIFICATION_CHANNEL=headless silences every
+    voice-firing hook (OPERATIONAL_PREFERENCES § Background work: no terminal, no voice).
+    The tick module imports no notification client either, so there is nothing here
+    that could speak even if the variable were lost (ISC-4).
+
+    Crash-loop rate-limited (ThrottleInterval 60s).
+    stdout/stderr captured to MEMORY/OBSERVABILITY/people-launchd.log.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeos.people</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{BUN}}</string>
+    <string>{{HOME}}/.claude/LIFEOS/PEOPLE/People.ts</string>
+    <string>tick</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>PATH</key>
+    <string>{{PATH}}</string>
+    <key>LIFEOS_NOTIFICATION_CHANNEL</key>
+    <string>headless</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>WorkingDirectory</key>
+  <string>{{HOME}}/.claude</string>
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/OBSERVABILITY/people-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/OBSERVABILITY/people-launchd.log</string>
+</dict>
+</plist>

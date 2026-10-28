@@ -1,0 +1,23 @@
+{
+  "intent": "ExplainCode",
+  "cases": [
+    {
+      "id": "plain_retry_helper",
+      "pattern": "explain_code",
+      "input": "what does this do? I found it in the worker for the newsletter-stats collector and I want to be sure it won't hammer the API when it's down\n\n```ts\nexport async function fetchWithBackoff(url: string, opts: RequestInit = {}, max = 5): Promise<Response> {\n  let delay = 500;\n  for (let attempt = 0; attempt < max; attempt++) {\n    try {\n      const res = await fetch(url, opts);\n      if (res.status === 429 || res.status >= 500) {\n        const retryAfter = Number(res.headers.get('retry-after'));\n        delay = retryAfter > 0 ? retryAfter * 1000 : delay * 2;\n        await new Promise((r) => setTimeout(r, delay));\n        continue;\n      }\n      return res;\n    } catch (e) {\n      if (attempt === max - 1) throw e;\n      await new Promise((r) => setTimeout(r, delay));\n    }\n  }\n  throw new Error('exhausted');\n}\n```",
+      "expects": "Explains what the function does step by step in plain exact words, and directly answers the question about hammering the API: it backs off on 429 and 5xx (honoring Retry-After, otherwise doubling), but network errors retry at a fixed delay without growth, and after the final 5xx or 429 attempt it throws a generic 'exhausted' error rather than returning the response. Accuracy about these specifics matters more than generic retry commentary."
+    },
+    {
+      "id": "named_nmap_output",
+      "pattern": "explain_code",
+      "input": "explain this nmap output, what are the security implications for this host\n\n```\nStarting Nmap 7.94 ( https://nmap.org ) at 2026-10-20 09:14 UTC\nNmap scan report for app01.example.com (203.0.113.45)\nHost is up (0.021s latency).\nNot shown: 994 closed tcp ports (reset)\nPORT     STATE SERVICE  VERSION\n22/tcp   open  ssh      OpenSSH 7.4 (protocol 2.0)\n80/tcp   open  http     nginx 1.14.0\n443/tcp  open  ssl/http nginx 1.14.0\n3306/tcp open  mysql    MySQL 5.5.62\n6379/tcp open  redis    Redis key-value store 4.0.9\n8080/tcp open  http     Apache Tomcat 8.5.16\n\nService detection performed. Please report any incorrect results at https://nmap.org/submit/ .\nNmap done: 1 IP address (1 host up) scanned in 14.82 seconds\n```",
+      "expects": "Explains the security implications of this scan: which exposed services are risky and why, with emphasis on the internet-reachable MySQL and Redis, and the old versions of OpenSSH, nginx, Tomcat, MySQL and Redis. It stays tied to what the output actually shows and does not assert specific CVEs or exploitability it cannot confirm from version banners alone."
+    },
+    {
+      "id": "hard_truncated_config_question",
+      "pattern": "explain_code",
+      "input": "no idea what this is, found in a repo a contractor left. is it safe to leave running? also why is there a second rule that seems to contradict the first\n\n```\n# /etc/example-gw/rules.conf\nmode = permissive\nlog_level = 0\n\nallow src=198.51.100.0/24 dst=any port=any\ndeny  src=any dst=10.0.0.0/8 port=22,3389\nallow src=any dst=10.0.0.0/8 port=22 if tag=maint\n\nrule_order = last_match\n#rule_order = first_match\nupdate_url = http://updates.example.com/rules.tgz\nverify_sig = false\nexec_hook = /opt/example-gw/hook.sh $\n```",
+      "expects": "Explains what each setting does and answers both questions specifically: the later allow overrides the earlier deny only because rule_order is last_match, and mode permissive, log_level 0, an http update URL with verify_sig false, and the truncated exec_hook make leaving it running questionable. It admits what cannot be known from the snippet (for example what permissive mode enforces, what the tag is, the unfinished hook line, the contents of hook.sh) instead of guessing."
+    }
+  ]
+}

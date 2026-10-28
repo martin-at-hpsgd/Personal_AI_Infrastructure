@@ -1,10 +1,10 @@
 ---
-last_updated: 2026-07-16
+last_updated: 2026-10-08T07:30:00.000Z
 last_updated_by: da
 last_reviewed: 2026-07-16
 last_reviewed_by: da
-convention: pai-freshness-v1
-version: 1.3.1
+convention: lifeos-freshness-v1
+version: 1.4.1
 ---
 
 # LifeOS — The Life Operating System Thesis
@@ -35,7 +35,7 @@ LifeOS solves this with **intent engineering**: capturing what you're ultimately
 
 - **TELOS** holds durable intent — mission, goals, problems, strategies. The why behind every what.
 
-- **ISAs** hold task intent — what done looks like, written as testable claims (ISC) before the work starts.
+- **ISAs** hold task intent — what done looks like, written as testable criteria (ISC) before non-trivial work starts, each carrying an executable assert that Assay resolves at the cheapest honest tier, so testability is implemented, not just intended.
 
 - **Memory and context** carry situational intent — who you are, what you own, what you've already decided.
 
@@ -92,6 +92,10 @@ Every real assistant does one job: **understand your current state, understand y
 - **Ideal State** comes from Telos — your goals, your mission, your values, your strategies, your narratives, your challenges.
 - **The Hill-Climb** is what the DA does on every interaction: pick the next move that reduces the gap.
 
+The full statement of the loop, and of how the system checks and improves its own climbing (ISA, Assay and its judgment layer, labels, Errata, Upgrades), is `HillClimbing.md`.
+
+The loop runs at every level, from one output up through tasks and projects to the life itself, and the top level does not wait for a prompt. The principal's whole ideal state is the DA's standing assignment, the way the assistant in *The Real Internet of Things* works on your behalf all day: every target in TELOS should have something measuring it and something moving it. Workflows are the hands, doing recurring work and measurement on a clock. Vigil is the nervous system, hearing every result and deciding when the principal needs to know. When a new target appears, the DA's first move is a proposal for how to reach it. Mechanics: `HillClimbing.md` § 13, One hill at every level.
+
 This loop is the purpose of the OS. Memory compounds so the DA understands current state better over time. Skills expand so the DA can take more actions to close the gap. Hooks automate so the system runs even when you're not looking at it. The Algorithm is the systematic version of this loop for every task the DA executes.
 
 ### The Meta-Ideal-State — Euphoric Surprise
@@ -125,7 +129,7 @@ Most of what people call "AI assistants" today are AS1, maybe AS1.5. Claude Code
 
 ## Lineage — The Real Internet of Things
 
-This thesis did not appear overnight. The core ideas — an AI assistant as primary interface, everything else as APIs the assistant talks to on your behalf, "omniscient defender," "continuous customization," the agent as the new operating system — all come from {{PRINCIPAL_NAME}}'s 2016 book [**The Real Internet of Things**](https://example.com/blog/the-real-internet-of-things).
+This thesis did not appear overnight. The core ideas — an AI assistant as primary interface, everything else as APIs the assistant talks to on your behalf, "omniscient defender," "continuous customization," the agent as the new operating system — all come from the principal's 2016 book [**The Real Internet of Things**](https://example.com/blog/the-real-internet-of-things).
 
 That book described a future in which the interface to everything is your personal AI, and all the services of the world — restaurants, health systems, education, commerce, government — expose themselves to it via APIs. Your DA sits in front, understands you, and transacts with the world on your behalf.
 
@@ -155,7 +159,7 @@ Pulse is not LifeOS. Pulse is one window onto LifeOS. A LifeOS with no dashboard
 
 ## Respark — The Human Reclamation Layer
 
-A LifeOS that optimizes only for productivity is a prison. {{PRINCIPAL_NAME}}'s thesis (captured in today's recording, 2026-04-11) is that any real LifeOS must also integrate **respark** — the deliberate reclamation of childhood dreams, play, creativity, and self-belief that adult life and corporate existence systematically beat out of people.
+A LifeOS that optimizes only for productivity is a prison. The principal's thesis (captured in today's recording, 2026-04-11) is that any real LifeOS must also integrate **respark** — the deliberate reclamation of childhood dreams, play, creativity, and self-belief that adult life and corporate existence systematically beat out of people.
 
 Respark is not a feature. It is a first-class concept inside Telos, woven into the way LifeOS helps you define your ideal state. "What did you want to be when you were seven?" is a legitimate input to your current-state-to-ideal-state hill-climb. Play is where imagination fires. Most people lose play by age twenty. LifeOS exists in part to give it back.
 
@@ -246,7 +250,7 @@ The diagram is the thesis in one frame: current state and ideal state are two in
 | `LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md` | Master architecture — subsystems, pipelines, instruction hierarchy |
 | `LIFEOS/DOCUMENTATION/Pulse/PulseSystem.md` | The Life Dashboard — modules, subsystems, operational details |
 | `LIFEOS/LIFEOS_SYSTEM_PROMPT.md` | Constitutional rules — what the DA must always do |
-| `github.com/danielmiessler/LifeOS` (README) | Public-facing pitch — open-source LifeOS framework |
+| The public LifeOS repo on GitHub (README) | Public-facing pitch — open-source LifeOS framework |
 | `LIFEOS/USER/TELOS/` | Personal goals, mission, strategies — the ideal-state input |
 
 ---

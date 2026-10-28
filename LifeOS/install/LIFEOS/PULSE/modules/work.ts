@@ -9,9 +9,8 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  * Work — Pulse module rendering the agent-visible Kanban over GitHub Issues.
  *
  * The work system in LifeOS is backed by a private GitHub repo configured at
- * WORK.REPO in USER/WORK/config.yaml. ULWorkSync.hook.ts pushes Algorithm sessions
- * to that repo as issues, and ReminderRouter.hook.ts captures mid-conversation
- * reminders/research/queue intents. This module reads those issues via `gh`
+ * WORK.REPO in USER/WORK/work_repo.json. WorkSweep.ts files forward work
+ * (a maintainer-side session-sync hook may add more). This module reads those issues via `gh`
  * and groups them into the configured Kanban columns for the Pulse Work tab.
  *
  * Routes (all under /api/work):
@@ -60,7 +59,7 @@ interface IssueRecord {
   ageHours: number;
   column: string;
   slug?: string;
-  source: "pai-sync" | "auto-native" | "auto-sweep" | "reminder" | "bookmark" | "manual";
+  source: "lifeos-sync" | "auto-native" | "auto-sweep" | "reminder" | "bookmark" | "manual";
   // v6.6.0 — literal user ask, parsed from MEMORY/WORK/{slug}/ISA.md frontmatter
   // when slug resolves to a local ISA. Absent when no slug, no local ISA, or
   // ISA carries no principal_stated_goal field.
@@ -114,13 +113,13 @@ const LEGACY_STATUS_ALIASES: Record<string, string> = {
 
 // Source detection — derives where the issue came from based on labels.
 // Used by the kanban card badge.
-function issueSource(labels: string[]): "pai-sync" | "auto-native" | "auto-sweep" | "reminder" | "bookmark" | "manual" {
+function issueSource(labels: string[]): "lifeos-sync" | "auto-native" | "auto-sweep" | "reminder" | "bookmark" | "manual" {
   const lc = new Set(labels.map((l) => l.toLowerCase()));
   if (lc.has("source:twitter-bookmark")) return "bookmark";
   if (lc.has("auto-native")) return "auto-native";
   if (lc.has("auto-sweep")) return "auto-sweep";
   if (lc.has("type:reminder") || lc.has("reminder")) return "reminder";
-  if (lc.has("pai-sync")) return "pai-sync";
+  if (lc.has("lifeos-sync") || lc.has("pai-sync")) return "lifeos-sync"; // pai-sync: issues labelled before the 2026-10-15 rename
   return "manual";
 }
 
@@ -131,6 +130,11 @@ function deriveColumn(issue: { labels: string[]; state: string }, columns: strin
       : columns.includes("Done")
         ? "Done"
         : columns[columns.length - 1];
+  }
+  // Content ideas get their own lane (2026-08-15 methodology): a Type:content
+  // issue is a candidate post/video competing for attention, not a status stage.
+  if (columns.includes("Content") && issue.labels.some((l) => l.toLowerCase() === "type:content")) {
+    return "Content";
   }
   for (const label of issue.labels) {
     if (label.startsWith("Status:")) {
@@ -176,16 +180,34 @@ function extractPrincipalGoal(slug: string | undefined): string | undefined {
 
 // ── Fetch ───────────────────────────────────────────────────────────────────
 
+// Open issues are fetched on their own, uncapped in practice: one "--state all
+// --limit 500" call let open issues fall off the board once open + closed passed
+// 500, silently (public issue #2237, @jacobo-ortiz). Closed keeps its old window.
+const OPEN_LIMIT = 5000;
+const CLOSED_LIMIT = 500;
+
 async function fetchIssues(repo: string): Promise<IssueRecord[] | null> {
+  const [open, closed] = await Promise.all([
+    ghIssueList(repo, "open", OPEN_LIMIT, 60_000),
+    ghIssueList(repo, "closed", CLOSED_LIMIT, 20_000),
+  ]);
+  if (open === null || closed === null) return null;
+  if (open.length >= OPEN_LIMIT) {
+    console.error(`[${MODULE}] open issues hit the ${OPEN_LIMIT} fetch cap; the oldest are not on the board`);
+  }
+  return toRecords([...open, ...closed]);
+}
+
+async function ghIssueList(repo: string, issueState: "open" | "closed", limit: number, timeout: number): Promise<any[] | null> {
   const proc = Bun.spawn(
     [
       "gh", "issue", "list",
       "--repo", repo,
-      "--state", "all",
-      "--limit", "500",
+      "--state", issueState,
+      "--limit", String(limit),
       "--json", "number,title,url,state,labels,assignees,updatedAt,createdAt,body",
     ],
-    { stdout: "pipe", stderr: "pipe", timeout: 12000 },
+    { stdout: "pipe", stderr: "pipe", timeout },
   );
 
   // Drain stdout AND stderr concurrently (issue #1482). stderr was piped but
@@ -210,7 +232,10 @@ async function fetchIssues(repo: string): Promise<IssueRecord[] | null> {
     console.error(`[${MODULE}] could not parse gh JSON: ${err}`);
     return null;
   }
+  return raw;
+}
 
+function toRecords(raw: any[]): IssueRecord[] {
   const now = Date.now();
   const cfg = state.config!;
   return raw.map((i) => {
@@ -256,7 +281,15 @@ function writeCache(cache: CacheShape): void {
 
 // ── Refresh cycle ───────────────────────────────────────────────────────────
 
-async function refresh(): Promise<{ ok: boolean; reason?: string }> {
+// One fetch at a time: the open-issue call's 60 s timeout equals the default poll
+// interval, so a stalled gh would otherwise overlap the next poll.
+let inFlight: Promise<{ ok: boolean; reason?: string }> | null = null;
+
+function refresh(): Promise<{ ok: boolean; reason?: string }> {
+  return (inFlight ??= doRefresh().finally(() => { inFlight = null; }));
+}
+
+async function doRefresh(): Promise<{ ok: boolean; reason?: string }> {
   if (!state.config?.enabled || !state.config.repo) return { ok: false, reason: "WORK.REPO unset" };
   const issues = await fetchIssues(state.config.repo);
   if (!issues) return { ok: false, reason: "gh fetch failed" };
@@ -334,9 +367,9 @@ function setupTemplate(reason: string): Response {
     subtype,
     instructions: [
       "Bind a PRIVATE GitHub repo by writing `LIFEOS/USER/WORK/work_repo.json`:\n`{ \"repo\": \"owner/repo\", \"privacy\": { \"verified_private\": true, \"verified_at\": \"1970-01-01T00:00:00Z\", \"visibility\": \"private\" } }`\nThe loader never trusts a hand-written attestation on its own — it re-runs `gh repo view --json visibility,isPrivate` and only enables the module if the repo is genuinely private, then writes back a fresh `verified_at`. If your install ships a work-tracking skill with a SetWorkRepo tool, use that instead; it writes the same file.",
-      `Ensure the repo has these labels: Type:feature, Type:reminder, Type:research, Type:queue, Status:queued, Status:in-progress, Status:in-review, Status:blocked, Status:done, Priority:P0..P3, Property:internal, Agent:${getDAName()}, pai-sync.`,
+      `Ensure the repo has these labels: Type:feature, Type:research, Type:queue, Status:queued, Status:in-progress, Status:in-review, Status:blocked, Status:done, Priority:P0..P3, Property:internal, Agent:${getDAName()}, lifeos-sync.`,
       "Restart Pulse so this module re-reads work_repo.json: `bun ~/.claude/LIFEOS/PULSE/manage.sh restart`.",
-      "Run an Algorithm session — the SessionEnd work-capture hook will open the first issue.",
+      "Install the hourly work sweep with `bun ~/.claude/LIFEOS/TOOLS/InstallWorkSweep.ts`, then run an Algorithm session; the next sweep (or `bun ~/.claude/LIFEOS/TOOLS/WorkSweep.ts` now) opens the first issue.",
     ],
     docs: "LIFEOS/DOCUMENTATION/Work/WorkSystem.md (see 'Capture surfaces')",
   };
@@ -371,10 +404,19 @@ function buildResponseFromCache(): Response {
     col.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   }
 
+  // Attention panel — recurring state computed by WorkSweep (goals without
+  // open work, stale projects, BLE cadence). Read, never re-derived here.
+  let attention: unknown = null;
+  const attentionPath = join(LIFEOS_DIR, "MEMORY", "STATE", "work-attention.json");
+  if (existsSync(attentionPath)) {
+    try { attention = JSON.parse(readFileSync(attentionPath, "utf-8")); } catch { /* stale file — omit */ }
+  }
+
   return Response.json({
     config: { repo: cfg.repo, columns: cfg.kanbanColumns, poll_interval_seconds: cfg.pollIntervalSeconds },
     columns: grouped,
     items: cache.issues,
+    attention,
     lastFetch: cache.fetchedAt,
     stale,
     stale_reason: stale ? "gh fetch stale (offline or rate-limited?)" : undefined,
@@ -546,6 +588,18 @@ function renderKanbanHTML(): string {
   .status-in-progress .status-dot { background: var(--inprogress); }
   .status-in-review .status-dot { background: var(--review); }
   .status-complete .status-dot { background: var(--done); }
+  .status-content .status-dot { background: #8b5cf6; }
+
+  /* ── Attention strip (recurring state, never work items) ─────────── */
+  .attention {
+    margin-bottom: 20px; padding: 12px 16px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    display: flex; flex-wrap: wrap; gap: 8px 18px;
+    font-size: 12px; color: var(--text-2);
+  }
+  .attention .att-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; font-weight: 600; margin-right: 4px; }
+  .attention .att-bad { color: var(--inprogress); }
+  .attention .att-overdue { color: var(--blocked); font-weight: 600; }
   .section-name { font-weight: 600; font-size: 13px; letter-spacing: 0.02em; }
   .section-count {
     color: var(--muted); font-size: 12px; font-family: "SF Mono", ui-monospace, monospace;
@@ -596,7 +650,7 @@ function renderKanbanHTML(): string {
     text-transform: uppercase; letter-spacing: 0.04em;
     white-space: nowrap;
   }
-  .src-pai-sync { background: rgba(123, 97, 255, 0.15); color: #b09cff; }
+  .src-lifeos-sync { background: rgba(123, 97, 255, 0.15); color: #b09cff; }
   .src-auto-native { background: rgba(96, 165, 250, 0.15); color: #93c5fd; }
   .src-auto-sweep { background: rgba(251, 202, 4, 0.12); color: #fde68a; }
   .src-reminder { background: rgba(228, 230, 105, 0.15); color: #ffeb84; }
@@ -687,8 +741,10 @@ const fSrc = document.getElementById('filter-source');
 const fState = document.getElementById('filter-state');
 const counterEl = document.getElementById('counter');
 
-const STATUS_ORDER = ['In-Progress', 'In-Review', 'Blocked', 'Queued', 'Complete'];
-const STATUS_CLASS = { 'In-Progress':'status-in-progress', 'In-Review':'status-in-review', 'Blocked':'status-blocked', 'Queued':'status-queued', 'Complete':'status-complete' };
+// Column order comes from the server config (WORK.KANBAN_COLUMNS); this list is
+// only the fallback before first load.
+let STATUS_ORDER = ['In-Progress', 'Queued', 'Content', 'Blocked', 'In-Review', 'Complete'];
+const STATUS_CLASS = { 'In-Progress':'status-in-progress', 'In-Review':'status-in-review', 'Blocked':'status-blocked', 'Queued':'status-queued', 'Content':'status-content', 'Complete':'status-complete' };
 
 let lastData = null;
 const collapsed = JSON.parse(localStorage.getItem('pai-work-collapsed') || '{}');
@@ -815,6 +871,9 @@ function renderBoard(data) {
   }
 
   lastData = data;
+  if (Array.isArray(data.config?.columns) && data.config.columns.length) {
+    STATUS_ORDER = data.config.columns;
+  }
   repoEl.textContent = data.config.repo;
   const total = data.items?.length || 0;
   metaEl.innerHTML = data.lastFetch
@@ -832,13 +891,36 @@ function renderBoard(data) {
   rerender();
 }
 
+function renderAttention(att) {
+  if (!att) return '';
+  const bits = [];
+  if (att.overdue && att.overdue.length) {
+    bits.push('<span><span class="att-label">Overdue</span><span class="att-overdue">' +
+      att.overdue.map(o => '#' + o.number).join(' ') + '</span></span>');
+  }
+  if (att.goals_without_work && att.goals_without_work.length) {
+    bits.push('<span><span class="att-label">Goals w/o open work</span><span class="att-bad">' + escapeHtml(att.goals_without_work.join(', ')) + '</span></span>');
+  }
+  if (att.stale_projects && att.stale_projects.length) {
+    bits.push('<span><span class="att-label">Stale projects</span>' + escapeHtml(att.stale_projects.join(', ')) + '</span>');
+  }
+  if (att.ble) {
+    bits.push('<span><span class="att-label">BLE pass</span>' +
+      (att.ble.overdue ? '<span class="att-overdue">' : '<span>') +
+      escapeHtml(att.ble.reason || (att.ble.days_since === null ? 'never' : att.ble.days_since + 'd ago (cadence ' + att.ble.cadence_days + 'd)')) +
+      '</span></span>');
+  }
+  if (!bits.length) return '';
+  return '<div class="attention">' + bits.join('') + '</div>';
+}
+
 function rerender() {
   if (!lastData) return;
   const filtered = applyFilters(lastData.items || []);
   counterEl.textContent = filtered.length + ' of ' + (lastData.items || []).length + ' shown';
   const groups = groupByStatus(filtered);
 
-  let html = '';
+  let html = renderAttention(lastData.attention);
   for (const col of STATUS_ORDER) {
     const items = groups[col] || [];
     const isCollapsed = collapsed[col] === true || (col === 'Complete' && collapsed[col] !== false);

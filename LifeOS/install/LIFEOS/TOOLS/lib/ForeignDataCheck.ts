@@ -18,21 +18,22 @@
  * shippable. Contract: LIFEOS/DOCUMENTATION/SystemUserBoundary.md.
  *
  * Consumers (each an independent layer):
- *   - <your-release-skill>/Tools/UpdateKaiRepo.ts  — GATE 1B, refuses the commit/push
+ *   - the private repository-update tool — refuses the commit/push
  *   - hooks/CheckpointPerISC.hook.ts          — never stages a foreign path
- *   - <your-release-skill>/Tools/ShadowRelease.ts   — release gate G24 on staging
+ *   - the private release builder — checks staging
  *   - LIFEOS/TOOLS/MemorySystem.ts + LIFEOS/PULSE/lib/memory-proposals.ts —
  *     assertInsideUserData() refuses personal writes outside USER_DATA
  *   - ~/.claude/.gitignore carries the same shapes as static patterns
  *
- * Pure and dependency-free beyond node builtins. Path checks are lexical over
+ * Node builtins plus Boundary.confinedPath (the one symlink-aware path walk). Path checks are lexical over
  * repo-RELATIVE paths (git output); filesystem checks use lstat/realpath so a
  * symlinked component can never redirect or defeat them.
  */
 
-import { closeSync, existsSync, lstatSync, openSync, readFileSync, readSync, realpathSync } from "node:fs";
+import { closeSync, lstatSync, openSync, readFileSync, readSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve as pathResolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve as pathResolve, sep } from "node:path";
+import { confinedPath } from "./Boundary.ts";
 
 // Directory names that exist at an absolute filesystem root (macOS + Linux)
 // and therefore appear as path COMPONENTS when a relative-write bug mirrors an
@@ -53,17 +54,21 @@ const REAL_TOP_DIRS: ReadonlySet<string> = new Set([
 ]);
 
 // Personal-data FILE signatures, matched on the basename only (a directory
-// named `_LIFELOG` or a doc named `Granola.md` must never hit). Each entry
+// named `lifelog skill` or a doc named `Granola.md` must never hit). Each entry
 // names a known personal-export shape.
 const PERSONAL_NAME_SIGNATURES: ReadonlyArray<{ test: (base: string) => boolean; label: string }> = [
   // The export family is `lifelog-<kind>-<id>` — monitor, followup, and any
   // future kind. Keyed to the shape (kind word + id), not to specific kinds, so
   // a new variant can't slip the gate the way `lifelog-followup-<id>` did past a
-  // `monitor`/`transcript`-only rule (INC 7.38.4). `Lifelog.md`/`_LIFELOG` don't
+  // `monitor`/`transcript`-only rule (INC 7.38.4). `Lifelog.md`/`lifelog skill` don't
   // match — they lack the `-<kind>-<digit>` export shape.
   { test: (b) => /^lifelog-[a-z]+-\d/i.test(b), label: "lifelog export (Bee wearable / followup transcript)" },
   { test: (b) => /lifelog/i.test(b) && /transcript/i.test(b), label: "lifelog transcript export" },
-  { test: (b) => /^bee-(conversation|transcript|export|lifelog)/i.test(b), label: "Bee wearable export" },
+  // Every `bee` CLI output is `bee-<something>`: bee-list, bee-<id>-transcript,
+  // bee-conversation-<id>. A kind allowlist rots the same way the lifelog one did
+  // (INC 7.38.4) and missed both real files, so this keys on the prefix and a data
+  // extension — `bee-client.ts` and `Bee.md` stay clean.
+  { test: (b) => /^bee-.+\.(json|jsonl|csv|txt|md)$/i.test(b), label: "Bee wearable export" },
   { test: (b) => /granola/i.test(b) && /(transcript|export)/i.test(b), label: "Granola meeting export" },
 ];
 
@@ -148,7 +153,8 @@ export function isForeignToSystemRepo(
 // personal transcript this large is still caught (fail-suspicious), just via
 // tokens instead of structure.
 const TRANSCRIPT_PARSE_CAP_BYTES = 25 * 1024 * 1024;
-const TRANSCRIPT_HEAD_SCAN_BYTES = 256 * 1024;
+const TRANSCRIPT_HEAD_SCAN_BYTES = 256 * 1024; // size of each streamed chunk
+const TRANSCRIPT_TOKEN_OVERLAP = 4096; // bytes of the previous chunk rescanned, so a split token is found
 
 function isUtteranceLike(el: unknown): boolean {
   if (!el || typeof el !== "object" || Array.isArray(el)) return false;
@@ -160,6 +166,23 @@ function isUtteranceLike(el: unknown): boolean {
   // only inside a `transcript`-keyed array (see caller) — that pairing is the
   // documented export shape and the key scopes it away from generic fixtures.
   return hasSpeaker && (hasStamp || hasText);
+}
+
+/**
+ * The conversation-LIST shape: a `conversations` array whose elements carry a
+ * prose `summary` plus a session timestamp. Bee's list export has no
+ * `transcript` array at any depth, so the utterance walk below returns clean on
+ * it while the file holds full personal conversation summaries.
+ */
+function isConversationListLike(node: unknown): boolean {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return false;
+  const c = (node as Record<string, unknown>).conversations;
+  if (!Array.isArray(c)) return false;
+  return c.slice(0, 5).some((el) => {
+    if (!el || typeof el !== "object" || Array.isArray(el)) return false;
+    const o = el as Record<string, unknown>;
+    return typeof o.summary === "string" && ("start_time" in o || "startTime" in o || "spoken_at" in o);
+  });
 }
 
 function containsTranscriptArray(node: unknown, depth: number): boolean {
@@ -175,6 +198,7 @@ function containsTranscriptArray(node: unknown, depth: number): boolean {
     });
   }
   const obj = node as Record<string, unknown>;
+  if (isConversationListLike(obj)) return true;
   const t = obj.transcript;
   if (Array.isArray(t) && t.slice(0, 5).some(isUtteranceLike)) return true;
   for (const value of Object.values(obj)) {
@@ -192,38 +216,129 @@ function containsTranscriptArray(node: unknown, depth: number): boolean {
  * — this is the check that catches the incident class even when the transcript
  * text mentions nothing identifying. lstat-based: never follows a symlink.
  */
-export function looksLikePersonalTranscript(absPath: string): boolean {
+export type TranscriptInspection =
+  | { verdict: "transcript"; reason: string }
+  | { verdict: "clean" }
+  | { verdict: "error"; reason: string };
+
+/** Token-triple signature over raw text: used for oversize heads and for JSON that will not parse. */
+function hasTranscriptTokens(text: string): boolean {
+  if (/"conversations"\s*:/.test(text) && /"summary"\s*:/.test(text)
+    && /"start_?[tT]ime"\s*:/.test(text)) return true;
+  return /"transcript"\s*:/.test(text) && /"speaker"\s*:/.test(text)
+    && (/"spoken_?[aA]t"\s*:/.test(text) || /"text"\s*:/.test(text));
+}
+
+/**
+ * Three-valued form of the transcript backstop. `error` means the file exists
+ * and is a regular file but could not be inspected (lstat other than ENOENT,
+ * open or read failure): it is a BLOCKING result, never clean. A file that is
+ * absent (ENOENT), empty, not a regular file (never followed), or not
+ * JSON-shaped is `clean`. JSON that fails to parse (truncated, JSONL) is
+ * scanned for the transcript token signature and is `transcript` when it
+ * carries it, so a damaged export cannot read as clean.
+ */
+export function inspectPersonalTranscript(absPath: string): TranscriptInspection {
   let st;
-  try { st = lstatSync(absPath); } catch { return false; }
-  if (!st.isFile() || st.size === 0) return false;
+  try { st = lstatSync(absPath); } catch (e: any) {
+    if (e?.code === "ENOENT") return { verdict: "clean" };
+    return { verdict: "error", reason: `cannot lstat ${absPath} (${e?.code ?? e?.message ?? e})` };
+  }
+  if (!st.isFile() || st.size === 0) return { verdict: "clean" };
 
   if (st.size > TRANSCRIPT_PARSE_CAP_BYTES) {
-    // Too big to parse whole — bounded head-scan for the token triple.
-    let head = "";
+    // Too big to parse whole: stream the WHOLE file for the token triple. A head-only scan
+    // reported clean when the signature sat past the first 256 KiB (LOSIntegrity
+    // ). Each token is remembered once seen, and every chunk is scanned
+    // with the tail of the previous one so a token split across a boundary is still found.
+    const seen = { conversations: false, summary: false, startTime: false, transcript: false, speaker: false, spokenAt: false, text: false };
     try {
       const fd = openSync(absPath, "r");
       try {
         const buf = Buffer.alloc(TRANSCRIPT_HEAD_SCAN_BYTES);
-        const n = readSync(fd, buf, 0, buf.length, 0);
-        head = buf.subarray(0, n).toString("utf8");
+        let carry = "";
+        let read = 0;
+        for (;;) {
+          const n = readSync(fd, buf, 0, buf.length, null);
+          if (n === 0) break;
+          read += n;
+          const text = carry + buf.subarray(0, n).toString("latin1");
+          seen.conversations ||= /"conversations"\s*:/.test(text);
+          seen.summary ||= /"summary"\s*:/.test(text);
+          seen.startTime ||= /"start_?[tT]ime"\s*:/.test(text);
+          seen.transcript ||= /"transcript"\s*:/.test(text);
+          seen.speaker ||= /"speaker"\s*:/.test(text);
+          seen.spokenAt ||= /"spoken_?[aA]t"\s*:/.test(text);
+          seen.text ||= /"text"\s*:/.test(text);
+          carry = text.slice(-TRANSCRIPT_TOKEN_OVERLAP);
+        }
+        // A file that changed size under the scan was not fully covered: say so, never clean.
+        if (read !== st.size) return { verdict: "error", reason: `${absPath} changed size while it was scanned (${read} of ${st.size} bytes)` };
       } finally { closeSync(fd); }
-    } catch { return false; }
-    return /"transcript"\s*:/.test(head) && /"speaker"\s*:/.test(head)
-      && (/"spoken_?[aA]t"\s*:/.test(head) || /"text"\s*:/.test(head));
+    } catch (e: any) {
+      return { verdict: "error", reason: `cannot read ${absPath} (${e?.code ?? e?.message ?? e})` };
+    }
+    const hit = (seen.conversations && seen.summary && seen.startTime) || (seen.transcript && seen.speaker && (seen.spokenAt || seen.text));
+    return hit
+      ? { verdict: "transcript", reason: "oversize file carries the transcript token signature" }
+      : { verdict: "clean" };
   }
 
   let text: string;
-  try { text = readFileSync(absPath, "utf8"); } catch { return false; }
+  try { text = readFileSync(absPath, "utf8"); } catch (e: any) {
+    return { verdict: "error", reason: `cannot read ${absPath} (${e?.code ?? e?.message ?? e})` };
+  }
   const first = text.trimStart()[0];
-  if (first !== "{" && first !== "[") return false;
+  if (first !== "{" && first !== "[") return { verdict: "clean" };
   let parsed: unknown;
-  try { parsed = JSON.parse(text); } catch { return false; }
-  return containsTranscriptArray(parsed, 3);
+  try { parsed = JSON.parse(text); } catch {
+    // Truncated or JSONL-shaped: structure is unavailable, so decide on tokens.
+    return hasTranscriptTokens(text)
+      ? { verdict: "transcript", reason: "malformed JSON carrying the transcript token signature" }
+      : { verdict: "clean" };
+  }
+  return containsTranscriptArray(parsed, 3)
+    ? { verdict: "transcript", reason: "transcript[] with speaker + spoken_at/text" }
+    : { verdict: "clean" };
+}
+
+/**
+ * Boolean form for the existing callers. FAILS CLOSED: true for a detected
+ * transcript AND for an inspection error, so an unreadable file is held back
+ * rather than staged or shipped as clean.
+ */
+export function looksLikePersonalTranscript(absPath: string): boolean {
+  return inspectPersonalTranscript(absPath).verdict !== "clean";
+}
+
+/**
+ * Canonical USER_DATA repo root — where all personal data physically lives.
+ *
+ * Was hardcoded to `~/.config/LIFEOS/USER`, so any install that relocated its
+ * data home (the `--config-dir` / `LIFEOS_CONFIG_DIR` convention every installer
+ * tool honours) had its personal writes measured against a root that does not
+ * exist — and `assertInsideUserData` fails CLOSED, so those writes were refused
+ * outright (public issue #1882, @jacobo-ortiz, @CarbonRaven, @xg-gh-25).
+ *
+ * Precedence matches LinkUser.ts:38 exactly: an explicit `--config-dir` on the
+ * running command, then `LIFEOS_CONFIG_DIR`, then the default. The `$HOME`
+ * normalization is the same guard the installer tools carry — a harness that
+ * injects the var unexpanded would otherwise resolve a literal `$HOME/…` shadow
+ * root (#1404 / PR #1451, author jbmml).
+ */
+export function userDataConfigDir(): string {
+  const i = process.argv.indexOf("--config-dir");
+  const flag = i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[i + 1] : undefined;
+  const raw = flag || process.env.LIFEOS_CONFIG_DIR;
+  if (raw) {
+    return /^\$\{?HOME\}?(\/|$)/.test(raw) ? raw.replace(/^\$\{?HOME\}?/, process.env.HOME ?? homedir()) : raw;
+  }
+  return join(homedir(), ".config", "LIFEOS");
 }
 
 /** Canonical USER_DATA repo root — where all personal data physically lives. */
 export function userDataRoot(): string {
-  return join(homedir(), ".config", "LIFEOS", "USER");
+  return join(userDataConfigDir(), "USER");
 }
 
 /**
@@ -244,24 +359,49 @@ export function assertInsideUserData(absTarget: string): { ok: true } | { ok: fa
     return { ok: false, reason: `USER_DATA root unresolvable at ${userDataRoot()} (${e?.message ?? e}) — refusing personal-data write (fail-closed)` };
   }
 
-  let dir = pathResolve(absTarget);
+  // Walk the path the way the kernel will (Boundary.confinedPath): each existing component is
+  // resolved through the filesystem BEFORE the next one is applied, so `link/../x` goes where the
+  // link points and then up, never where a lexical collapse of `..` says (LOSIntegrity S066). A
+  // dangling or looping link, a component under a file, or `..` after a missing component is
+  // refused. A relative target is taken from the cwd without normalising it first.
+  //
+  // The original check must pass as well: `..` collapsed lexically, then the deepest existing ancestor
+  // realpath-resolved. A target is accepted only when both readings land inside, so a path whose
+  // lexical and physical destinations disagree (`out/link-into-USER/../x`) is refused either way.
+  const target = isAbsolute(absTarget) ? absTarget : process.cwd() + sep + absTarget;
+  const lexical = pathResolve(target);
+  const ancestorReading = resolveFromExistingAncestor(lexical);
+  if ("reason" in ancestorReading) return { ok: false, reason: ancestorReading.reason };
+  const lexicalInside = ancestorReading.resolved === root || ancestorReading.resolved.startsWith(root + sep);
+  if (lexicalInside && confinedPath(root, target) !== null) return { ok: true };
+  return {
+    ok: false,
+    reason: `target ${absTarget} does not resolve inside the USER_DATA repo (${root}) both physically and after collapsing \`..\` — it lands outside the USER_DATA repo or through a dangling link (lexically ${lexical}, ancestor-resolved ${ancestorReading.resolved}); personal data must never land in the system tree (SystemUserBoundary.md)`,
+  };
+}
+
+/**
+ * The original reading of a write target: `dir` (already lexically resolved) with its deepest
+ * existing ancestor realpath-resolved and the missing tail joined back on. lstat, not existsSync:
+ * existsSync follows symlinks, so a DANGLING symlink would read as absent and be joined lexically;
+ * here it is present, and realpath of a dangling or looping link throws and is refused.
+ */
+function resolveFromExistingAncestor(lexical: string): { resolved: string } | { reason: string } {
+  let dir = lexical;
   const tail: string[] = [];
-  while (!existsSync(dir)) {
+  for (;;) {
+    try { lstatSync(dir); break; } catch (e: any) {
+      if (e?.code !== "ENOENT") return { reason: `cannot inspect ${dir} (${e?.code ?? e?.message ?? e})` };
+    }
     const parent = dirname(dir);
-    if (parent === dir) return { ok: false, reason: `no existing ancestor for ${absTarget}` };
+    if (parent === dir) return { reason: `no existing ancestor for ${lexical}` };
     tail.unshift(basename(dir));
     dir = parent;
   }
-  let real: string;
   try {
-    real = realpathSync(dir);
+    const real = realpathSync(dir);
+    return { resolved: tail.length > 0 ? join(real, ...tail) : real };
   } catch (e: any) {
-    return { ok: false, reason: `cannot resolve ${dir} (${e?.message ?? e})` };
+    return { reason: `cannot resolve ${dir} (${e?.message ?? e})` };
   }
-  const resolved = tail.length > 0 ? join(real, ...tail) : real;
-  if (resolved === root || resolved.startsWith(root + sep)) return { ok: true };
-  return {
-    ok: false,
-    reason: `resolved target ${resolved} is outside the USER_DATA repo (${root}) — personal data must never land in the system tree (SystemUserBoundary.md)`,
-  };
 }

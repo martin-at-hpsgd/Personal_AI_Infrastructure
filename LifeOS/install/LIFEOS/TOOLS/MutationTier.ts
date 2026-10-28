@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.11
  * MutationTier — four-tier autonomic-mutation boundary classifier.
  *
  * LifeOS autonomic memory subsystem, F8.
@@ -34,53 +35,128 @@
  */
 
 // public issue #1747, @umair-a11y — isAbsolute()/sep instead of hardcoded "/"
-import { resolve as pathResolve, isAbsolute, sep } from "node:path";
-import { homedir } from "node:os";
+import { resolve as pathResolve, isAbsolute, sep, dirname, basename } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
 import { getPrincipalName } from "../../hooks/lib/identity";
+import { getClaudeDir } from "./Paths"; // public issue #1665 @rogdex24, #1584 @ramazanpolat — aliased resolve sites missed by the 09-03 sweep
 
 // ── Constants ──
 
-const CLAUDE_ROOT = pathResolve(homedir(), ".claude");
+const CLAUDE_ROOT = getClaudeDir();
 
 export type Tier = "A" | "B" | "C" | "D";
 
-/** Tier A: fully-autonomic memory hot-layer files. */
-const TIER_A_FILES: ReadonlySet<string> = new Set([
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/PRINCIPAL/PRINCIPAL_MEMORY.md"),
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/DIGITAL_ASSISTANT/DA_MEMORY.md"),
-]);
+/**
+ * Canonical form of a path: the realpath of its nearest existing ancestor with the not-yet-existing
+ * remainder re-attached. Dereferences every symlink in the existing part, so an allowed-looking path
+ * that is a link to a protected file (or the LIFEOS/USER and LIFEOS/MEMORY links into the private
+ * USER_DATA repo) classifies by where it really lands. Code invariant: realpath BEFORE the boundary check.
+ *
+ * Returns null when the canonical identity cannot be established: a component that exists as an entry
+ * but will not resolve (a dangling or looping symlink, an unreadable directory). Only a genuinely
+ * absent component (ENOENT/ENOTDIR on lstat) is climbed past and re-attached.
+ */
+export function canonicalPath(p: string): string | null {
+  const abs = pathResolve(p);
+  const tail: string[] = [];
+  let probe = abs;
+  for (;;) {
+    try { return pathResolve(realpathSync(probe), ...[...tail].reverse()); } catch { /* resolve failed: absent, or unresolvable */ }
+    try {
+      lstatSync(probe);
+      return null; // the entry is there but cannot be resolved: never guess where it lands
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") return null;
+    }
+    const up = dirname(probe);
+    if (up === probe) return abs;
+    tail.push(basename(probe));
+    probe = up;
+  }
+}
 
-/** Tier B: append-with-audit files (exact-match paths). */
-const TIER_B_FILES: ReadonlySet<string> = new Set([
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/PROJECTS.md"),
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/CONTACTS.md"),
-]);
-
-/** Tier B: append-with-audit prefixes (any file beneath these dirs is Tier B). */
-const TIER_B_PREFIXES: readonly string[] = [
-  pathResolve(CLAUDE_ROOT, "LIFEOS/MEMORY/KNOWLEDGE") + sep,
-  pathResolve(CLAUDE_ROOT, "LIFEOS/MEMORY/IDEAS") + sep,
+/** Sanctioned homes for autonomic writes: the USER and MEMORY trees (wherever their links really land). */
+const SANCTIONED_ROOTS = ["LIFEOS/USER", "LIFEOS/MEMORY"];
+/** System destinations no allowlist entry may ever resolve to, whatever link it travels through. */
+const PROTECTED_DESTINATIONS = [
+  "hooks", "settings.json", "settings.local.json", "CLAUDE.md", ".env", "agents", "commands", "skills",
+  "Plugins", "LIFEOS/TOOLS", "LIFEOS/LIFEOS_SYSTEM_PROMPT.md",
 ];
+const within = (c: string, dir: string): boolean => c === dir || c.startsWith(dir + sep);
 
-/** Tier C: propose-only identity-doctrine files (exact-match paths). */
-const TIER_C_FILES: ReadonlySet<string> = new Set([
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/PRINCIPAL/PRINCIPAL_IDENTITY.md"),
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md"),
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/PRINCIPAL/WRITINGSTYLE.md"),
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/DEFINITIONS.md"),
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/CANONICAL_CONTENT.md"),
-  pathResolve(CLAUDE_ROOT, "LIFEOS/USER/PRINCIPAL/RESUME.md"),
-]);
+/**
+ * The canonical destination of one allowlist entry, or null when that destination is not a sanctioned
+ * user-data location: it must sit strictly inside a canonical USER/MEMORY root and never at or under a
+ * protected system destination. An entry that is a link into code or settings is dropped, so its tier
+ * falls to D instead of being granted to the link's target.
+ */
+function admissibleEntry(root: string, rel: string): string | null {
+  const c = canonicalPath(pathResolve(root, rel));
+  if (c === null) return null;
+  const sanctioned = SANCTIONED_ROOTS.map((r) => canonicalPath(pathResolve(root, r))).filter((r): r is string => r !== null);
+  const protectedDest = PROTECTED_DESTINATIONS.map((r) => canonicalPath(pathResolve(root, r))).filter((r): r is string => r !== null);
+  // A sanctioned root that itself resolves onto (or around) a protected destination sanctions nothing.
+  const usable = sanctioned.filter((s) => !protectedDest.some((d) => within(s, d) || within(d, s)));
+  if (!usable.some((s) => c !== s && c.startsWith(s + sep))) return null;
+  if (protectedDest.some((d) => within(c, d))) return null;
+  return c;
+}
+
+/** The tier allowlists under one root, every entry canonicalized the same way the candidate path is. */
+export interface TierTable {
+  a: ReadonlySet<string>;
+  bFiles: ReadonlySet<string>;
+  bPrefixes: readonly string[];
+  c: ReadonlySet<string>;
+}
+export function buildTierTable(root: string): TierTable {
+  // Autonomic tiers (A, B) are granted only to sanctioned user-data destinations.
+  const grant = (rels: string[]): string[] => rels.map((r) => admissibleEntry(root, r)).filter((c): c is string => c !== null);
+  // Tier C is a restriction, not a grant: every resolvable identity stays listed so the most restrictive tier still wins.
+  const restrict = (rels: string[]): string[] => rels.map((r) => canonicalPath(pathResolve(root, r))).filter((c): c is string => c !== null);
+  return {
+    // Tier A: fully-autonomic memory hot-layer files.
+    a: new Set(grant(["LIFEOS/USER/PRINCIPAL/PRINCIPAL_MEMORY.md", "LIFEOS/USER/DIGITAL_ASSISTANT/DA_MEMORY.md"])),
+    // Tier B: append-with-audit files (exact match) and prefixes (any file beneath the dir).
+    bFiles: new Set(grant(["LIFEOS/USER/PROJECTS.md", "LIFEOS/USER/CONTACTS.md"])),
+    bPrefixes: grant(["LIFEOS/MEMORY/KNOWLEDGE", "LIFEOS/MEMORY/IDEAS"]).map((c) => c + sep),
+    // Tier C: propose-only identity-doctrine files (exact match).
+    c: new Set(restrict([
+      "LIFEOS/USER/PRINCIPAL/PRINCIPAL_IDENTITY.md",
+      "LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md",
+      "LIFEOS/USER/PRINCIPAL/WRITINGSTYLE.md",
+      "LIFEOS/USER/DEFINITIONS.md",
+      "LIFEOS/USER/CANONICAL_CONTENT.md",
+      "LIFEOS/USER/PRINCIPAL/RESUME.md",
+    ])),
+  };
+}
+
+/** Classify against an explicit table. The most restrictive matching tier wins, so an allowlist entry that is itself a link cannot lower a protected file. */
+export function classifyWith(table: TierTable, absolutePath: string): Tier {
+  if (!isAbsolute(absolutePath)) return "D";
+  const abs = canonicalPath(absolutePath);
+  if (abs === null) return "D"; // canonical identity cannot be established: untouchable
+  if (table.c.has(abs)) return "C";
+  if (table.bFiles.has(abs) || table.bPrefixes.some((prefix) => abs.startsWith(prefix))) return "B";
+  if (table.a.has(abs)) return "A";
+  return "D";
+}
+
+// Built once per process, at first use: a link planted after the process started cannot move an allowlist entry.
+let TABLE: TierTable | undefined;
 
 // ── Public API ──
 
 /**
  * Classify an absolute path into one of four mutation tiers.
  *
- * The argument MUST be absolute (caller should `path.resolve()` first). Symlink
- * resolution is the caller's responsibility — this classifier matches on the
- * canonical absolute path string only, by design: it must be cheap, sync, and
- * untrickable by relative-path games.
+ * The argument MUST be absolute (caller should `path.resolve()` first). Symlinks
+ * are dereferenced HERE (canonicalPath: realpath of the nearest existing ancestor),
+ * and the allowlists are canonicalized the same way, so a link whose own name looks
+ * allowed (a KNOWLEDGE/ file pointing at an identity file) classifies by its target
+ * (2026-10-13).
  *
  * Returns 'D' (untouchable) for any path that is not explicitly on a higher
  * tier's allowlist. This default-deny posture is intentional: a brand-new file
@@ -88,22 +164,9 @@ const TIER_C_FILES: ReadonlySet<string> = new Set([
  * explicitly raises its tier.
  */
 export function getTier(absolutePath: string): Tier {
-  if (!isAbsolute(absolutePath)) {
-    // Defensive: relative paths are always Tier D. The reviewer dispatcher
-    // should resolve before classification, but we don't trust the caller.
-    return "D";
-  }
-
-  const abs = pathResolve(absolutePath);
-
-  if (TIER_A_FILES.has(abs)) return "A";
-  if (TIER_B_FILES.has(abs)) return "B";
-  for (const prefix of TIER_B_PREFIXES) {
-    if (abs.startsWith(prefix)) return "B";
-  }
-  if (TIER_C_FILES.has(abs)) return "C";
-
-  return "D";
+  // Relative paths are always Tier D (the dispatcher should resolve first, but we don't trust the caller).
+  // Symlinks are dereferenced here: the candidate and every allowlist entry are compared by canonical path.
+  return classifyWith((TABLE ??= buildTierTable(CLAUDE_ROOT)), absolutePath);
 }
 
 /**
@@ -210,7 +273,7 @@ function smokeTest(): number {
       why: ".env is untouchable by reviewer",
     },
     {
-      path: pathResolve(CLAUDE_ROOT, "hooks/Safety.hook.ts"),
+      path: pathResolve(CLAUDE_ROOT, "hooks/StopGates.hook.ts"),
       expected: "D",
       why: "hooks/* is code, untouchable",
     },

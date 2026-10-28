@@ -9,7 +9,7 @@
  * Serves the /algorithm tab:
  *   GET  /api/algorithm-tab                       — composed payload: version, the
  *        full chain catalog (every file with role, stage, per-file AI summary +
- *        staleness), live claims/teeth counts parsed from the doctrine, version
+ *        staleness), live criteria/teeth counts parsed from the doctrine, version
  *        history, and the cached overview explanation. When anything is stale,
  *        the GET itself kicks background regeneration (cooldown-guarded) — the
  *        page self-updates whenever the algorithm changes; no manual step.
@@ -89,7 +89,7 @@ const CHAIN: ChainSpec[] = [
     loaded: "Every turn (auto-loaded + @-imports)", stage: "context", editable: true, kind: "markdown",
   },
   {
-    id: "operational-rules", name: "Operational Rules", rel: "LIFEOS/USER/CONFIG/OPERATIONAL_RULES.md",
+    id: "operational-preferences", name: "Operational Preferences", rel: "LIFEOS/USER/CONFIG/OPERATIONAL_PREFERENCES.md",
     role: "Principal-specific operating rules — model selection, versioning, deploy doctrine, design variety, releases, autonomy boundaries. @-imported every turn.",
     loaded: "Every turn (@-import via CLAUDE.md)", stage: "context", editable: true, kind: "markdown",
   },
@@ -107,7 +107,7 @@ const CHAIN: ChainSpec[] = [
   /* ── The doctrine ── */
   {
     id: "doctrine", name: "The Algorithm (doctrine)", rel: "LIFEOS/ALGORITHM/v{LATEST}.md",
-    role: "The thinking loop itself — euphoric surprise as the target, the ISA as hill + instrument, the 16 done-claims with their teeth (HOOK/CHECK/SELF), the event nudge table, spend doctrine. Read at the start of any substantial run.",
+    role: "The thinking loop itself — euphoric surprise as the target, the ISA as hill + instrument, the 16 done-criteria with their teeth (HOOK/CHECK/SELF), the event nudge table, spend doctrine. Read at the start of any substantial run.",
     loaded: "On any substantial run (first action)", stage: "doctrine", editable: true, kind: "markdown",
   },
   {
@@ -119,7 +119,7 @@ const CHAIN: ChainSpec[] = [
   /* ── The ISA system ── */
   {
     id: "isa-format", name: "ISA Format Spec", rel: "LIFEOS/DOCUMENTATION/ISA/ISAFormat.md",
-    role: "The contract for the Ideal State Artifact — section order, claim shapes, ID stability, the Splitting and Variation tests. The ISA is where 'done' gets written down before building.",
+    role: "The contract for the Ideal State Artifact — section order, criterion shapes, ID stability, the Splitting and Variation tests. The ISA is where 'done' gets written down before building.",
     loaded: "During a run (ISA work)", stage: "isa", editable: true, kind: "markdown",
   },
   {
@@ -134,13 +134,13 @@ const CHAIN: ChainSpec[] = [
   },
   {
     id: "isasync-hook", name: "ISASync hook", rel: "hooks/ISASync.hook.ts",
-    role: "Mirrors every ISA write to the work registry (work.json) → Pulse. This write IS the run telemetry — claim 13's carrier.",
+    role: "Mirrors every ISA write to the work registry (work.json) → Pulse. This write IS the run telemetry — criterion 13's carrier.",
     loaded: "Event-driven (ISA writes)", stage: "isa", editable: true, kind: "code",
   },
   {
     id: "checkpoint-hook", name: "CheckpointPerISC hook", rel: "hooks/CheckpointPerISC.hook.ts",
-    role: "Auto git-commit on every claim close (`[ ]`→`[x]`) — evidence trail per closed claim, part of claim 8's teeth.",
-    loaded: "Event-driven (ISA claim edits)", stage: "isa", editable: true, kind: "code",
+    role: "Auto git-commit on every criterion close (`[ ]`→`[x]`) — evidence trail per closed criterion, part of criterion 8's teeth.",
+    loaded: "Event-driven (ISA criterion edits)", stage: "isa", editable: true, kind: "code",
   },
   {
     id: "isa-render-hook", name: "ISARenderOnStop hook", rel: "hooks/ISARenderOnStop.hook.ts",
@@ -156,8 +156,8 @@ const CHAIN: ChainSpec[] = [
   },
   {
     id: "verification-gate", name: "VerificationGate hook", rel: "hooks/VerificationGate.hook.ts",
-    role: "Mechanical teeth for claim 8 — no claim closes without tool evidence of the right modality; web/UI claims need a real browser, appearance claims need viewed pixels.",
-    loaded: "Event-driven (claim close / stop)", stage: "run", editable: true, kind: "code",
+    role: "Mechanical teeth for criterion 8 — no criterion closes without tool evidence of the right modality; web/UI criteria need a real browser, appearance criteria need viewed pixels.",
+    loaded: "Event-driven (criterion close / stop)", stage: "run", editable: true, kind: "code",
   },
   {
     id: "stop-gates", name: "StopGates hook", rel: "hooks/StopGates.hook.ts",
@@ -166,18 +166,8 @@ const CHAIN: ChainSpec[] = [
   },
   {
     id: "format-gate", name: "FormatGate hook", rel: "hooks/FormatGate.hook.ts",
-    role: "Deterministic Stop-hook teeth for the ONE output format — banner first, closer last, hook-fed memory lines echoed verbatim.",
+    role: "Deterministic Stop-hook teeth for the ONE output format — closer last, hook-fed memory lines echoed verbatim.",
     loaded: "Stop (every turn end)", stage: "run", editable: true, kind: "code",
-  },
-  {
-    id: "spend-auditor", name: "SpendAuditor hook", rel: "hooks/SpendAuditor.hook.ts",
-    role: "Outcome-side spend verification (claim 15) — catches the heavy ask answered inline with zero capability use and no stated reason.",
-    loaded: "Event-driven (turn analysis)", stage: "run", editable: true, kind: "code",
-  },
-  {
-    id: "writing-gate", name: "WritingGate hook", rel: "hooks/WritingGate.hook.ts",
-    role: "Publication gate — prose authored for the principal that will be published must pass the _WRITING audit + a real Pangram run, SHA-verified; typing the audit line without running the tool does not pass.",
-    loaded: "Stop (publication signals)", stage: "run", editable: true, kind: "code",
   },
   {
     id: "drift-reminder", name: "DriftReminder hook", rel: "hooks/DriftReminder.hook.ts",
@@ -207,11 +197,6 @@ const CHAIN: ChainSpec[] = [
     loaded: "On demand (encoding a learning / degraded state)", stage: "ondemand", editable: true, kind: "markdown",
   },
   {
-    id: "operational-rules-expanded", name: "Operational Rules Expanded", rel: "LIFEOS/USER/CONFIG/OperationalRulesExpanded.md",
-    role: "The mechanics behind every operational rule — full rationale, incident history, procedures, same section names as the operative core. Read when a rule fires and you need the how.",
-    loaded: "On demand (a rule fires)", stage: "ondemand", editable: true, kind: "markdown",
-  },
-  {
     id: "writing-style-backstop", name: "Writing Style Backstop", rel: "LIFEOS/USER/DIGITAL_ASSISTANT/REFERENCE/WritingStyleBackstop.md",
     role: "The complete voice doctrine — ban lists, banned rhythms, the pre-emit checks, long-form exemplars. Loaded when auditing writing or a drift flag fires.",
     loaded: "On demand (writing audit / drift flag)", stage: "ondemand", editable: true, kind: "markdown",
@@ -236,7 +221,7 @@ function readLatestSync(): string {
   }
 }
 
-/* ── Doctrine parsing — claims + teeth, live from the file ── */
+/* ── Doctrine parsing — criteria + teeth, live from the file ── */
 
 function parseClaims(doctrine: string): { total: number; hook: number; check: number; self: number } {
   const m = doctrine.match(/## A run is complete when([\s\S]*?)(?=\n## )/);
@@ -325,15 +310,15 @@ async function inference(level: "low" | "high", system: string, user: string, ti
   return paras.join("\n\n").trim();
 }
 
-const OVERVIEW_PROMPT = `You are writing the "How this system works" panel for the Pulse Algorithm dashboard — the page where the principal inspects how his AI system thinks. You are given the live contents of every file in the thinking chain.
+const OVERVIEW_PROMPT = `You are writing the "How this system works" panel for the Pulse Algorithm dashboard — the page where the principal inspects how their AI system thinks. You are given the live contents of every file in the thinking chain.
 
 Write it SIMPLE. The reader is smart but should not need to already know the system.
 
 Shape:
-- Open with ONE plain paragraph (3-5 sentences, no header) that explains the whole thing to someone with zero context: what happens when a message arrives, how the system decides whether it's a quick answer or real work, what an ISA is in plain words (a written definition of "done" made of testable claims), and why nothing counts as done without tool evidence.
+- Open with ONE plain paragraph (3-5 sentences, no header) that explains the whole thing to someone with zero context: what happens when a message arrives, how the system decides whether it's a quick answer or real work, what an ISA is in plain words (a written definition of "done" made of testable criteria), and why nothing counts as done without tool evidence.
 - Then exactly these sections, each 2-4 short sentences of plain language:
   ## Every turn — what loads before the first token and what wins conflicts.
-  ## When work is real — how a run works: write done down, climb, close claims on evidence.
+  ## When work is real — how a run works: write done down, climb, close criteria on evidence.
   ## The teeth — hooks that block mechanically vs checks vs self-attestation; name the actual hook files.
   ## Where the rules live — which files carry what, so the reader knows what to edit to change behavior.
 
@@ -341,7 +326,7 @@ Shape:
 
 Output ONLY the markdown. No preamble, no closing notes, no meta-commentary.`;
 
-const FILE_PROMPT = `You are writing the summary card for ONE file in the Pulse Algorithm dashboard. The reader wants to quickly and deeply understand what this file is doing in his AI system.
+const FILE_PROMPT = `You are writing the summary card for ONE file in the Pulse Algorithm dashboard. The reader wants to quickly and deeply understand what this file is doing in their AI system.
 
 Write 3-5 short sentences of plain language covering: (1) what this file actually performs — what happens when it loads or fires; (2) when it runs; (3) how it affects the overall Algorithm system — what would change or break if it vanished. If it's a hook, say what event triggers it and what it blocks or injects. No headers, no lists, no preamble — just the sentences.`;
 
@@ -510,7 +495,11 @@ async function saveDoctrine(body: { content?: string; bump?: string; note?: stri
 
   // Changelog entry — inserted above the newest existing entry, intro preserved.
   const clPath = join(ALGO_DIR, "changelog.md");
-  const cl = await Bun.file(clPath).text();
+  // Public releases do not ship history until the first doctrine bump. Treat
+  // that absence as an empty changelog so the version marker is never held
+  // behind a successful doctrine write.
+  let cl = "";
+  try { cl = await Bun.file(clPath).text(); } catch { /* first bump creates it */ }
   const stamp = new Date().toISOString().slice(0, 10);
   const entry = `- **v${next} changelog (${note.trim().split(/[.\n]/)[0].slice(0, 80)}, ${bump.toUpperCase()}):** edited via the Pulse Algorithm tab, ${stamp}. ${note.trim()} Migration: \`echo ${next} > LATEST\` (done). Rollback: \`echo ${cur} > LATEST\`.\n\n`;
   const firstEntry = cl.search(/^- \*\*v/m);
@@ -574,7 +563,10 @@ async function compose(): Promise<unknown> {
   const store = await readStore();
   const hash = await chainHash();
 
-  const chain = await Promise.all(CHAIN.map(async (spec) => {
+  // The changelog is created by the first doctrine bump and is intentionally
+  // absent from public releases before then; do not render a dead card for it.
+  const visibleChain = CHAIN.filter((spec) => spec.id !== "changelog" || existsSync(chainPath(spec)));
+  const chain = await Promise.all(visibleChain.map(async (spec) => {
     const path = chainPath(spec);
     let bytes = 0, mtime: string | null = null, fileHash: string | null = null;
     try {

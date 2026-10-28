@@ -1,5 +1,7 @@
 # Story Structures Reference
 
+**Contents:** Save the Cat Beat Sheet (Blake Snyder) · Dramatica Theory (Phillips & Huntley) · Story Grid (Shawn Coyne) · Sanderson's Framework · The Hero's Journey (Campbell/Vogler) · Synthesis: How These Frameworks Work Together
+
 Synthesized structural frameworks for mapping plot and narrative architecture. These complement Storr's character-driven approach with mechanical scaffolding.
 
 ## Save the Cat Beat Sheet (Blake Snyder)

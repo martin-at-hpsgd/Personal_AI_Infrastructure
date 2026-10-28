@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.2.14
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -35,6 +38,8 @@ import pagerank from "graphology-metrics/centrality/pagerank";
 import * as fs from "fs";
 import * as path from "path";
 import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { bumpMemoryGeneration } from "./MemoryRetriever";
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -44,7 +49,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || path.join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const MEMORY = path.join(LIFEOS_DIR, "MEMORY");
 const KNOWLEDGE_DIR = path.join(MEMORY, "KNOWLEDGE");
 const WORK_DIR = path.join(MEMORY, "WORK");
@@ -410,8 +415,10 @@ function computePatterns(graph: Graph) {
   // Communities (Louvain)
   louvain.assign(graph, { resolution: 1 });
 
-  // PageRank (influence) + degree
-  pagerank.assign(graph, { getEdgeWeight: "weight" });
+  // PageRank (influence) + degree. graphology's power iteration never converges
+  // on an empty graph (it throws "failed to converge"), and a fresh install has
+  // no notes yet — skip it there; every reader below iterates zero nodes (public PR #2111, @pai-scaffolde).
+  if (graph.order > 0) pagerank.assign(graph, { getEdgeWeight: "weight" });
 
   const degree = new Map<string, number>();
   graph.forEachNode((n) => degree.set(n, graph.degree(n)));
@@ -551,6 +558,7 @@ function build(layer: EdgeLayer = "declared"): { order: number; size: number; co
   const { graph, edges } = buildGraph(raws, layer);
   const p = computePatterns(graph);
   emit(graph, edges, p);
+  bumpMemoryGeneration();
   const inferred = edges.filter((e) => e.kind === "inferred").length;
   return { order: graph.order, size: graph.size, communities: p.communities.length, orphans: p.orphans.length, inferred };
 }

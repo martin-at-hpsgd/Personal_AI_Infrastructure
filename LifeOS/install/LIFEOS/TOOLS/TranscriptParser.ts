@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.6.8
  * TranscriptParser.ts - Claude transcript parsing utilities
  *
  * Shared library for extracting content from Claude Code transcript files.

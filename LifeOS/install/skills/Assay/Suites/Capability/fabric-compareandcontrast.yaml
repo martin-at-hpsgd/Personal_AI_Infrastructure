@@ -1,0 +1,150 @@
+# Fabric CompareAndContrast — any set of things as one markdown table, items
+# down the left and dimensions across the top, closed by an In common line and
+# a Key difference line. The regex and contains asserts pin the literal shape
+# (title, separator row, item rows, the two closing lines); the judged asserts
+# carry what code cannot: the inferred read, dimensions that actually separate
+# the items, concrete and accurate cells, fidelity to a source, and a Key
+# difference line that answers a question.
+# Synthetic inline fixtures only; every vendor and figure in them is fictional.
+name: fabric-compareandcontrast
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/CompareAndContrast.md"
+cases:
+  - id: list_of_three_languages
+    prompt: "compare and contrast Rust, Go and Zig"
+    # SYNTHETIC ADVERSARIAL FIXTURE: title, table, rows and closing lines are all
+    # in place, but the cells are vague ratings ("High", "Good"), the columns are
+    # generic, and the Key difference line hedges into false balance.
+    adversarial_output: |
+      # Compare and Contrast: Rust, Go and Zig
+
+      | Language | Performance | Safety | Ease of use | Community |
+      |---|---|---|---|---|
+      | Rust | High | Very good | Medium | Large and growing |
+      | Go | Good | Good | High | Large |
+      | Zig | High | Medium | Medium | Small but active |
+
+      **In common:** All three are modern programming languages with active communities.
+
+      **Key difference:** Each language has its own strengths and the right choice depends on your needs.
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*# Compare and Contrast:\s+\S'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)\|[^\n]*\|[ \t]*\n\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*){2,}\|?[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\|[ \t]*\**Rust\**[ \t]*\|'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\|[ \t]*\**Go\**[ \t]*\|'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\|[ \t]*\**Zig\**[ \t]*\|'
+      - type: contains
+        weight: 1
+        value: "**In common:**"
+      - type: contains
+        weight: 1
+        value: "**Key difference:**"
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 3
+        value: [ "Every cell is a concrete, item-specific phrase (a named mechanism, practice or number, such as Rust's borrow checker or Go's garbage collector and goroutines), not a bare rating like High, Good or Medium", "The dimensions are ones on which Rust, Go and Zig actually differ (for example memory management, concurrency model, maturity), not generic categories that every language is scored on", "The Key difference line names a specific difference that matters and does not hedge with 'it depends on your needs'" ]
+        reference: "compare and contrast Rust, Go and Zig"
+      # Kept apart: a fact check the judge cannot settle comes back UNKNOWN, and
+      # an UNKNOWN in the assert above would hide the fixture's real failures.
+      - type: llm-assert
+        weight: 1
+        value: [ "Nothing the table states about Rust, Go or Zig is clearly false (for example Go is garbage collected, Rust has no garbage collector, Zig is pre-1.0)" ]
+        reference: "compare and contrast Rust, Go and Zig"
+  - id: question_answers_the_choice
+    prompt: "compare_and_contrast: Postgres or SQLite for a single-user desktop app that stores local notes?"
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*# Compare and Contrast:\s+\S'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)\|[^\n]*\|[ \t]*\n\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*){2,}\|?[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\*\*Key difference:\*\*[ \t]+\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The dimensions bear on choosing a database for a single-user desktop app (for example setup and deployment, running a server process, concurrency needs, file portability), not a general database feature list", "The Key difference line answers the question, and the answer favors SQLite for this case or gives a sound, specific reason otherwise", "Postgres and SQLite are the item rows, one per row" ]
+        reference: "compare_and_contrast: Postgres or SQLite for a single-user desktop app that stores local notes?"
+  - id: pasted_quotes_stay_faithful
+    prompt: 'compare and contrast these two quotes: "Quote from Northwind Hosting (fictional): $1,200 a month, 99.9% uptime SLA, support by email within 24 hours, 12-month contract. Quote from Bluepeak Cloud (fictional): $950 a month, 99.5% uptime SLA, 24/7 phone support, month-to-month, data stored in the EU."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: correct shape and plausible cells, but it
+    # invents an uptime figure, swaps the support terms, and fills Northwind's
+    # data-location cell with a guess instead of Not stated.
+    adversarial_output: |
+      # Compare and Contrast: Northwind Hosting vs Bluepeak Cloud Quotes
+
+      | Vendor | Monthly price | Uptime SLA | Support | Contract | Data location |
+      |---|---|---|---|---|---|
+      | Northwind Hosting | $1,200 | 99.99% | 24/7 phone support | 12 months | United States |
+      | Bluepeak Cloud | $950 | 99.5% | Email within 24 hours | Month-to-month | EU |
+
+      **In common:** Both are managed hosting quotes with a written uptime SLA.
+
+      **Key difference:** Northwind costs $250 more a month but adds a much stronger SLA and phone support.
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*# Compare and Contrast:\s+\S'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)\|[^\n]*\|[ \t]*\n\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*){2,}\|?[ \t]*\n'
+      - type: contains
+        weight: 2
+        value: "$1,200"
+      - type: contains
+        weight: 2
+        value: "$950"
+      - type: icontains
+        weight: 2
+        value: "month-to-month"
+      - type: llm-assert
+        weight: 3
+        value: [ "Every figure and term in the table matches the pasted quotes exactly (Northwind: $1,200, 99.9%, email within 24 hours, 12-month contract; Bluepeak: $950, 99.5%, 24/7 phone, month-to-month, EU data), with nothing swapped between vendors", "No fact is added that the quotes do not state, beyond plain arithmetic on their own figures; where a dimension is given for only one vendor (such as data location), the other vendor's cell says Not stated or equivalent rather than a guess" ]
+        reference: 'compare and contrast these two quotes: "Quote from Northwind Hosting (fictional): $1,200 a month, 99.9% uptime SLA, support by email within 24 hours, 12-month contract. Quote from Bluepeak Cloud (fictional): $950 a month, 99.5% uptime SLA, 24/7 phone support, month-to-month, data stored in the EU."'
+  - id: one_thing_means_its_alternatives
+    prompt: "compare and contrast kubernetes"
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*# Compare and Contrast:\s+\S'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)\|[^\n]*\|[ \t]*\n\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*){2,}\|?[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)\|[ \t]*\**Kubernetes\**[^\n|]*\|'
+      - type: llm-assert
+        weight: 3
+        value: [ "Kubernetes is compared against two to four real alternatives a team would weigh it against (for example Nomad, Docker Swarm, a managed container service such as ECS or Cloud Run), rather than its features being listed alone or a clarifying question being asked", "The title names that read, Kubernetes against its alternatives" ]
+        reference: "compare and contrast kubernetes"
+  - id: ideas_held_and_denied
+    prompt: "compare and contrast stoicism and epicureanism"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)\|[^\n]*\|[ \t]*\n\|[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*){2,}\|?[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)\|[ \t]*\**[Ss]toicism\**[ \t]*\|'
+      - type: contains
+        weight: 1
+        value: "**In common:**"
+      - type: llm-assert
+        weight: 3
+        value: [ "The dimensions separate the two schools on what each holds (for example the highest good, the role of pleasure, attitude to fear of death, engagement in public life), and each cell states that school's actual position accurately", "The In common line names something the two schools genuinely share (for example both seek tranquility, ataraxia or freedom from disturbance, through reason)" ]
+        reference: "compare and contrast stoicism and epicureanism"

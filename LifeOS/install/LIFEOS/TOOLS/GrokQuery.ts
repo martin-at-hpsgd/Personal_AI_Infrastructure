@@ -6,16 +6,15 @@
  * chat completions against api.x.ai; model defaults from CROSS_VENDOR.grok
  * in models.ts so the pin has one home.
  *
- * ⚠️ DATA CLASS: PUBLIC ONLY — HARD CEILING. xAI had a context-recording
- * incident (conversation data retained/exposed from API traffic), so this
- * carrier is approved ({{PRINCIPAL_NAME}}, 2026-08-12) for non-sensitive tasks only.
- * Nothing from ~/.claude private trees, no USER data, no credentials, no
- * principal PII goes into a prompt through this tool. The Grok agent's
- * deny rules enforce the read side; this header is the send-side contract.
+ * DATA CLASS: any class. xAI is a trusted vendor for all data since
+ * 2026-10-16 (OPERATIONAL_PREFERENCES § Model selection). Secret values
+ * (keys, tokens, passwords) never leave: the .env read deny rules in
+ * settings.json keep them out of reach, and the Grok agent never forwards
+ * one it is handed.
  *
  * Usage:
  *   bun ~/.claude/LIFEOS/TOOLS/GrokQuery.ts "<query>"
- *   bun ~/.claude/LIFEOS/TOOLS/GrokQuery.ts --model grok-4.6 "<query>"
+ *   bun ~/.claude/LIFEOS/TOOLS/GrokQuery.ts --model <grok id> "<query>"
  *   bun ~/.claude/LIFEOS/TOOLS/GrokQuery.ts --json "<query>"
  *
  * Options:
@@ -25,23 +24,25 @@
  *   --json             Emit raw API JSON
  *   -h, --help         Usage — costs nothing, sends no request
  *
- * Environment (either one; direct xAI preferred when both exist):
- *   XAI_API_KEY         xAI API key — direct api.x.ai
- *   OPENROUTER_API_KEY  OpenRouter broker — same Grok models via x-ai/<model>
- *                       slugs (verified live 2026-08-12). Same PUBLIC-only
- *                       ceiling either way; the broker adds a party, it never
- *                       relaxes the rule.
+ * Environment:
+ *   XAI_API_KEY         xAI API key — direct api.x.ai. The only route: a broker
+ *                       adds a party between us and xAI, so there is no fallback.
+ *
+ * Send side: no hook inspects the call. Secret values stay out of reach through
+ * the native .env read deny rules in settings.json, and the Grok agent refuses
+ * a brief that carries one.
  *
  * Exit codes: 0 ok, 1 error (missing key, API failure, empty response)
  *
  * @author LifeOS System
- * @version 1.0.0
+ * @version 2.0.4
  */
 
 import { readFileSync } from 'fs'
-import { homedir } from 'os'
 import { join } from 'path'
 import { CROSS_VENDOR } from './models'
+import { recordModelUse } from "./lib/ModelUse";
+import { getClaudeDir } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const colors = {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
@@ -49,11 +50,10 @@ const colors = {
 }
 
 const XAI_URL = 'https://api.x.ai/v1/chat/completions'
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 const USAGE = `Usage: bun ~/.claude/LIFEOS/TOOLS/GrokQuery.ts [options] "<query>"
 
-⚠️ PUBLIC data only — never Restricted Data in a prompt (see file header).
+Never put a secret value (key, token, password) in a prompt (see file header).
 
 Options:
   --model <id>       Grok model id (default: ${CROSS_VENDOR.grok})
@@ -64,7 +64,7 @@ Options:
 
 /** Canonical .env is ~/.claude/.env — never $LIFEOS_CONFIG_DIR/.env. */
 function loadEnv(): Record<string, string> {
-  const envPath = join(homedir(), '.claude', '.env')
+  const envPath = join(getClaudeDir(), '.env')
   const env: Record<string, string> = {}
   try {
     for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
@@ -79,9 +79,6 @@ function loadEnv(): Record<string, string> {
 
 const ENV = loadEnv()
 const XAI_KEY = ENV.XAI_API_KEY || process.env.XAI_API_KEY || ''
-const OPENROUTER_KEY = ENV.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || ''
-// Route: direct xAI when a key exists, else the OpenRouter broker.
-const ROUTE = XAI_KEY ? 'xai' : (OPENROUTER_KEY ? 'openrouter' : '')
 
 interface Opts {
   model: string
@@ -112,19 +109,17 @@ async function grok(query: string, opts: Opts): Promise<Parsed> {
   if (opts.system) messages.push({ role: 'system', content: opts.system })
   messages.push({ role: 'user', content: query })
 
-  // OpenRouter namespaces xAI models as x-ai/<model> (list verified live).
-  const url = ROUTE === 'xai' ? XAI_URL : OPENROUTER_URL
-  const key = ROUTE === 'xai' ? XAI_KEY : OPENROUTER_KEY
-  const model = ROUTE === 'xai' || opts.model.includes('/') ? opts.model : `x-ai/${opts.model}`
+  const model = opts.model
 
-  const res = await fetch(url, {
+  const res = await fetch(XAI_URL, {
     method: 'POST',
     // Auth rides the header, never the URL (URLs leak to logs and history).
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${key}`,
+      'Authorization': `Bearer ${XAI_KEY}`,
     },
-    signal: AbortSignal.timeout(120_000),
+    // 4 minutes: Grok's reasoning on long benchmark prompts ran past the old 120 s limit on most cells.
+    signal: AbortSignal.timeout(240_000),
     body: JSON.stringify({
       model,
       messages,
@@ -138,6 +133,7 @@ async function grok(query: string, opts: Opts): Promise<Parsed> {
     throw new Error(data.error?.message || data.error || `HTTP ${res.status}`)
   }
 
+  recordModelUse(data.model ?? opts.model, Number(data.usage?.completion_tokens ?? 0))
   const text = (data.choices?.[0]?.message?.content ?? '').trim()
   // Report the model the API says actually ran, not the one we asked for —
   // a silent server-side substitution should be visible to the caller.
@@ -156,10 +152,11 @@ async function main() {
 
   const { opts, query } = parseArgs(argv)
 
-  if (!ROUTE) {
-    console.error(`${colors.red}Error: neither XAI_API_KEY nor OPENROUTER_API_KEY set in ~/.claude/.env${colors.reset}`)
+  if (!XAI_KEY) {
+    console.error(`${colors.red}Error: XAI_API_KEY not set in ~/.claude/.env${colors.reset}`)
     process.exit(1)
   }
+  try { const z = await import('./XaiZdr'); if (z.needsRefresh()) await z.check(XAI_KEY) } catch {}
   if (!query) {
     console.error(`${colors.red}Error: no query provided${colors.reset}`)
     console.error(USAGE)
@@ -185,7 +182,7 @@ async function main() {
   }
 
   console.log(result.text)
-  console.log(`${colors.dim}model: ${result.model} · route: ${ROUTE}${colors.reset}`)
+  console.log(`${colors.dim}model: ${result.model} · route: xai direct${colors.reset}`)
 }
 
 if (import.meta.main) {

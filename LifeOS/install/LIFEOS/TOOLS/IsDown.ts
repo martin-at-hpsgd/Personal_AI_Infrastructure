@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.0
  * IsDown.ts — Is a site down for everyone, or just you?
  *
  * Probes the site from multiple vantage points and compares:

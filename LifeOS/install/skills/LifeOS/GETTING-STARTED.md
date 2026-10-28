@@ -1,8 +1,8 @@
 # Getting Started — after the install
 
-You installed LifeOS. This page covers the part `INSTALL.md` couldn't: the **external tools** LifeOS's doctrine uses when they're available. Almost all of them are optional and degrade honestly when absent — each just unlocks a real capability. For each: what it powers, how to set it up, and how to prove it's live.
+**Contents:** codex — cross-vendor audit · Interceptor — real-browser verification · Cloudflare (cf) — scheduled cloud flows · Fish Audio — voice notifications · gh — the work system of record · Command-line tools · Smaller optional tools · How degradation works (so you can trust it)
 
-**One exception, stated plainly:** `gh` is not optional if you use the Work System. That system keeps its system of record in a private GitHub repo, and every reader reaches it by spawning `gh` with no fallback — so without `gh`, work capture *fails* rather than degrading. Everything else on this page really is optional.
+You installed LifeOS. This page covers the part `INSTALL.md` couldn't: the **external tools** LifeOS's doctrine uses when they're available. Almost all of them are optional and degrade honestly when absent — each just unlocks a real capability. For each: what it powers, how to set it up, and how to prove it's live.
 
 **The one command to remember:**
 
@@ -10,7 +10,19 @@ You installed LifeOS. This page covers the part `INSTALL.md` couldn't: the **ext
 bun <configRoot>/LIFEOS/TOOLS/Doctor.ts
 ```
 
-Run it whenever anything feels off. Every ❌ line carries its own fix command. `--network` adds end-to-end auth checks (only for tools you've configured). `decline <name>` turns a capability off permanently and silently — declining is a supported way to run LifeOS, not a defect.
+If Pulse or a core background service is not running, `bun <configRoot>/skills/LifeOS/Tools/InstallAll.ts --yes` brings the whole stack back up; it is the same one command the install ran, and running it again on a working install changes nothing.
+
+**Updating later.** Ask your agent to "update LifeOS". Its Update intent fetches the newest release, runs `InstallAll.ts --yes` (which keeps your `USER/` data and backs up any system file it replaces), and finishes with Doctor. The bootstrap keeps the previous skill in `<configRoot>/.lifeos-skill-backups/`.
+
+Run Doctor whenever anything feels off. Every ❌ line carries its own fix command. `--network` adds end-to-end auth checks (only for tools you've configured). `decline <name>` turns a capability off permanently and silently — declining is a supported way to run LifeOS, not a defect.
+
+**Your own systems.** Doctor checks tools. Your data is a separate question: many LifeOS systems (security guards, Location, Relay, finances, health) do nothing until you fill in your own files. One command shows where you stand:
+
+```
+bun <configRoot>/LIFEOS/TOOLS/SetupInventory.ts status
+```
+
+Each row says ready, needs setup, or optional and off, and names its guide under `LIFEOS/DOCUMENTATION/Setup/`. Each guide covers what the system does, what to fill in, which accounts and secrets it needs, and a command that proves it works. Add `--probe` to run those proving commands.
 
 ---
 
@@ -21,33 +33,33 @@ Run it whenever anything feels off. Every ❌ line carries its own fix command. 
 - **Install:** `bun install -g @openai/codex`
 - **Auth:** `codex login` (needs an OpenAI account)
 - **Verify:** `bun <configRoot>/LIFEOS/TOOLS/Doctor.ts` → codex ✅
-- **Don't want it?** `Doctor.ts decline codex` — audits stay single-vendor, honestly labeled.
+- **Don't want it?** `Doctor.ts decline codex` — audits stay single-vendor, honestly labeled, and the MAX lane is disabled; prompts that would bind to MAX continue without that lane and log the capability-based degradation.
 
 ## Interceptor — real-browser verification
 
 **Powers:** verification of anything web-facing through a real Chrome — screenshots, console logs, actual page loads. Doctrine treats "curl returned 200" as *not* verification; this is the tool that does it right.
 
-- **Install:** the skill ships with LifeOS; it needs a real browser binary — Google Chrome or Brave.
-- **Auth:** none.
-- **Verify:** `Doctor.ts` → interceptor ✅ (skill present + browser found).
+- **Install:** the skill ships with LifeOS, but it needs a one-time setup before it works: a real browser (Google Chrome or Brave), the `interceptor` program, a dedicated test profile with the Interceptor extension loaded, and a `preferences.env` naming that profile's context ID. The steps are in `skills/Interceptor/Setup.md`.
+- **Auth:** none beyond your own logins inside the test profile.
+- **Verify:** `Doctor.ts` → interceptor ✅ only when the skill, a browser, the `interceptor` CLI and a pinned `INTERCEPTOR_TEST_CONTEXT_ID` are all present; then `bash <configRoot>/skills/Interceptor/Tools/PreflightIsolation.sh` exits 0 with the test profile open.
 
-## Cloudflare / wrangler — scheduled cloud flows
+## Cloudflare (cf) — scheduled cloud flows
 
-**Powers:** the "runs while you sleep" layer (Arbol) and Worker deploys.
+**Powers:** the "runs while you sleep" layer (Workflows) and Worker deploys.
 
-- **Install:** wrangler runs via `bunx wrangler` — nothing global needed.
+- **Install:** `bun add -g cf`, Cloudflare's CLI. Projects carry `cloudflare.config.ts` and bundle through `@cloudflare/vite-plugin`, so no project needs Wrangler.
 - **Auth:** create a Cloudflare API token (Workers permissions), add to `<configRoot>/.env` as `CLOUDFLARE_API_TOKEN=...`
-- **Verify:** `Doctor.ts --network` → cloudflare ✅ (runs a real `wrangler whoami`).
+- **Verify:** `Doctor.ts --network` → cloudflare ✅ (runs a real `cf auth whoami`).
 - **Don't want it?** `Doctor.ts decline cloudflare`.
 
-## ElevenLabs — voice notifications
+## Fish Audio — voice notifications
 
-**Powers:** spoken notifications through the Pulse voice server.
+**Powers:** spoken notifications through the Pulse voice server. Fish Audio is the one voice engine. Full guide: `<configRoot>/LIFEOS/DOCUMENTATION/Setup/Voice.md`.
 
 - **Install:** nothing — it's an API.
-- **Auth:** add `ELEVENLABS_API_KEY=...` and `ELEVENLABS_VOICE_ID=...` to `<configRoot>/.env`. Pick a **premade or cloned** voice from your ElevenLabs library — "famous" voices are not usable through the API and fail with `famous_voice_not_permitted`. A scoped, TTS-only API key works fine.
-- **Verify:** `Doctor.ts --network` → voice ✅ (runs a real 2-character synthesis on the exact path notifications use).
-- **Don't want it?** `Doctor.ts decline voice` — notifications stay on-screen only.
+- **Auth:** `bun <configRoot>/LIFEOS/TOOLS/Secrets.ts set FISH_API_KEY` (reads the key with echo off, writes `.env` at mode 0600), then set `fish_reference_id` under `[da.voices.main]` in `LIFEOS_CONFIG.toml`.
+- **Verify:** `Doctor.ts --network` → voice ✅ (runs a real short synthesis on the exact path notifications use).
+- **No key?** Voice is `off`: notifications stay on-screen, no turn errors, and Doctor says `off` rather than broken. `Doctor.ts decline voice` silences the row for good.
 
 ## gh — the work system of record
 
@@ -58,56 +70,18 @@ Run it whenever anything feels off. Every ❌ line carries its own fix command. 
 - **Verify:** `Doctor.ts` → gh ✅
 - **Note:** the tools that use it spawn `gh` with **no fallback**, so without it work capture fails rather than degrading — this is the one entry on the page that breaks the "everything degrades" promise, and the one most worth installing first.
 
-## ripgrep — fast filesystem search
+## Command-line tools
 
-**Powers:** ContextSearch queries, the work sweep, and the model-drift scan. LifeOS treats the filesystem as its index instead of a vector store, so shipped tools shell out to `rg` directly.
+`Doctor.ts` checks each one; none needs auth. Linux installs are the same package names through `apt-get`.
 
-- **Install:** `brew install ripgrep` (Linux: `sudo apt-get install ripgrep`)
-- **Auth:** none.
-- **Verify:** `Doctor.ts` → ripgrep ✅
-- **Note:** the built-in `Grep` tool is already ripgrep-backed and works regardless; this is for the tools that spawn `rg` themselves.
-
-## ImageMagick — image inspection
-
-**Powers:** Interceptor's blank-frame guard, its measured zoom (`skills/Interceptor/Tools/Zoom.ts`), and Art's composition steps.
-
-- **Install:** `brew install imagemagick` (Linux: `sudo apt-get install imagemagick`)
-- **Auth:** none.
-- **Verify:** `Doctor.ts` → imagemagick ✅
-- **Note:** without it, `Capture.sh` still returns a screenshot but prints `BLANK-FRAME GUARD SKIPPED` — the capture is then unchecked for a black or blank frame, so don't cite it as pixel-verified without looking at it yourself.
-
-## ffmpeg — audio and video
-
-**Powers:** AudioEditor's cutting pipeline, transcript splitting for long recordings, Conveyor renders, and Interceptor's zoom fallback when ImageMagick is absent.
-
-- **Install:** `brew install ffmpeg` (Linux: `sudo apt-get install ffmpeg`)
-- **Auth:** none.
-- **Verify:** `Doctor.ts` → ffmpeg ✅
-
-## yt-dlp — YouTube ingestion
-
-**Powers:** the Feed system's YouTube source and the Upgrade skill's channel scan.
-
-- **Install:** `brew install yt-dlp` (Linux: `sudo apt-get install yt-dlp`)
-- **Auth:** none.
-- **Verify:** `Doctor.ts` → ytdlp ✅
-
-## fabric — prompt patterns
-
-**Powers:** the Fabric skill's pattern library and its YouTube transcript fetch.
-
-- **Install:** see the fabric project.
-- **Auth:** per fabric's own setup.
-- **Verify:** `Doctor.ts` → fabric ✅
-
-## jq — JSON in shell hooks
-
-**Powers:** the shell hooks that parse JSON, including the command-compression rewrite.
-
-- **Install:** `brew install jq` (Linux: `sudo apt-get install jq`)
-- **Auth:** none.
-- **Verify:** `Doctor.ts` → jq ✅
-- **Note:** hooks that need it check first and skip silently when it's missing, so absence costs the feature, never the tool call.
+| Tool | Powers | Install | Note |
+|---|---|---|---|
+| `rg` (ripgrep) | ContextSearch, the work sweep, the model-drift scan | `brew install ripgrep` | the built-in `Grep` tool is already ripgrep-backed; this is for tools that spawn `rg` themselves |
+| ImageMagick | Interceptor's blank-frame guard and zoom, Art composition | `brew install imagemagick` | without it `Capture.sh` exits 14 (the content check cannot run); `--allow-unchecked` takes the capture unverified, so look at it yourself before citing it |
+| `ffmpeg` | AudioEditor, transcript splitting, Conveyor renders, the zoom fallback | `brew install ffmpeg` | |
+| `yt-dlp` | Feed's YouTube source, Upgrade's channel scan | `brew install yt-dlp` | |
+| `fabric` | the Fabric skill's patterns and YouTube transcripts | see the fabric project | auth per fabric's own setup |
+| `jq` | shell hooks that parse JSON | `brew install jq` | hooks skip silently without it, so absence costs the feature, never the tool call |
 
 ## Smaller optional tools
 
@@ -115,11 +89,10 @@ These are narrower — tied to one terminal, one platform, or one opt-in workflo
 
 | Tool | Powers | Install |
 |------|--------|---------|
-| `rtk` | Transparent command compression on the Bash pre-tool hook — compresses what the model *watches* (git status, test and build runs), never what it *reads*. Skips silently without it (also needs `jq`). | `brew install rtk`, or take the release binary. **Do not run `rtk init -g`**: that installs rtk's own global hook alongside LifeOS's `ContextReduction.hook.sh` and you get two rewriters on the same command. rtk also keeps a local `history.db` of proxied commands, and its telemetry is opt-in — `rtk telemetry disable` makes that explicit. |
+| `rtk` | Transparent command compression on the Bash pre-tool hook — compresses what the model *watches* (git status, commit/push/pull output, gh metadata), never what it *reads* (`git diff`, `git log` and `git show` pass through untouched). Skips silently without it (also needs `jq`). | `brew install rtk`, or take the release binary. **Do not run `rtk init -g`**: that installs rtk's own global hook alongside LifeOS's `ContextReduction.hook.sh` and you get two rewriters on the same command. rtk also keeps a local `history.db` of proxied commands, and its telemetry is opt-in — `rtk telemetry disable` makes that explicit. |
 | `kitten` | Terminal tab naming and the retro banner, on the kitty terminal only. | ships with kitty |
-| `cmux` | The CMUX agent cockpit skill. macOS only. | see the cmux project |
 | `mkcert` | Local HTTPS certificates during Pulse setup. Pulse runs over HTTP without it. | `brew install mkcert` |
-| `gws` | Pulse job-output email and the Conveyor YouTube OAuth client. | see the gws project |
+| Google OAuth credential | Gmail via `LIFEOS/TOOLS/gmail.ts` (refresh-token JSON under `USER/CONFIG/CREDENTIALS/google/`), plus the Conveyor YouTube OAuth client. Calendar tooling is not included in this payload. | Google Cloud console → OAuth Desktop client |
 
 ---
 

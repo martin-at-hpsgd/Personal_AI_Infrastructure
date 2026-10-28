@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-05-13
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 status: redirect
 ---
 
@@ -19,7 +19,7 @@ status: redirect
 - **Ideate mode doctrine:** [`modes/ideate.md`](archive/modes/ideate.md) — 9 phases, parameters, presets, Meta-Learner, effort tier mapping
 - **Mode taxonomy:** [`modes/README.md`](archive/modes/README.md)
 - **Parameter schema:** [`archive/parameter-schema.md`](archive/parameter-schema.md)
-- **Ideate skill (router):** `~/.claude/skills/Ideate/SKILL.md`
+- **Ideate skill:** retired 2026-09-22, absorbed into BeCreative's evolve-ideas intent, which moved to `skills/HillClimb/Intents/Ideate.md` on 2026-10-11
 
 ## Backwards-compat note
 

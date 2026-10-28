@@ -1,3 +1,4 @@
+<!-- isa-example claims=34 probes=5 era=legacy -->
 <!-- Fictitious example. The essay topic is a teaching placeholder; any resemblance to real essays or authors is coincidental. -->
 
 ---
@@ -12,6 +13,29 @@ mode: interactive
 started: 2026-03-17T03:30:00Z
 updated: 2026-03-21T15:00:00Z
 ---
+
+## Ideal State
+
+### L3 · One sentence
+
+A 1500-word essay shows a first-time founder why most productivity advice was built for a different game, and hands them a one-question filter for which advice to keep.
+
+### L2 · Summary
+
+The essay is one argument in three movements that a first-time founder reads in eight minutes and can act on the same day.
+
+- It opens with a concrete founder situation the reader recognizes within thirty seconds.
+- It develops a single thesis: most productivity advice was built for a different game.
+- It closes with a one-question filter the reader can apply within twenty-four hours.
+- It reframes the reader's relationship to advice as ignoring most of it for now and knowing which 20% applies.
+
+### L1 · Full articulation
+
+The essay starts from a thesis that lives in the author's head and is not yet on the page: generic productivity advice (time-blocking, deep work, eat the frog) lands wrong for someone running a six-month-old startup with no team, because most of it was built for a different game. A draft started a week ago reads as a list of complaints instead of an argument. The opening hook is weak, the through-line dies in the third section, and the closing punches air, so the piece needs a structure before it needs more words.
+
+The finished piece is 1400 to 1600 words in three sections, about eight minutes for a first-time founder. It opens with a concrete founder situation the reader recognizes within thirty seconds, follows one load-bearing argument through three movements, and closes with a calibration tool the reader can apply within twenty-four hours: a one-question filter for which advice to keep and which to drop. The conclusion reframes the reader's relationship to productivity advice. Ignore most of it for now, and here is how to tell which 20% applies.
+
+The moment it is right: a reader closes the tab, opens a notes file, and writes one sentence about which productivity advice they will ignore for the next 90 days. They tell one friend.
 
 ## Problem
 
@@ -46,10 +70,6 @@ A 1500-word essay that a first-time founder reads in eight minutes, recognizes t
 - No bulleted lists in the body (one allowed in the close if it earns its place; otherwise zero).
 - Published as a single Markdown file with frontmatter; no embedded images, no pull quotes.
 
-## Goal
-
-Ship a 1400–1600-word essay in three sections that opens with a concrete first-time-founder situation the reader recognizes within 30 seconds, develops a single thesis ("most productivity advice was built for a different game"), and closes with a calibration tool the reader can apply within 24 hours — a one-question filter for which advice to keep and which to drop.
-
 ## Criteria
 
 ### Word count and structure
@@ -79,7 +99,7 @@ Ship a 1400–1600-word essay in three sections that opens with a concrete first
 - [ ] ISC-14: **Antecedent:** the thesis sentence (end of opening) is hard-to-vary — replacing any noun or verb in it with a synonym detectably weakens the argument (probe: human review of 3 paraphrases shows clear semantic loss).
 - [ ] ISC-15: **Antecedent:** the close's calibration tool (the one-question filter) is concrete enough that a reader can apply it without re-reading the essay (probe: 5 readers given only the close section can articulate what to do; ≥ 4/5 succeed).
 
-### Bitter Pill discipline
+### Bitter Lesson discipline
 
 - [ ] ISC-16: No paragraph could be moved to a different essay without rewriting at least its first sentence (probe: paragraph-portability review — every paragraph has at least one phrase that anchors it to this essay's specific argument).
 - [ ] ISC-17: No sentence is filler — removing any single sentence detectably weakens the argument or rhythm (probe: read-aloud test, 3 sentences flagged at random, removal test).
@@ -118,37 +138,14 @@ Ship a 1400–1600-word essay in three sections that opens with a concrete first
 
 ## Test Strategy
 
-```yaml
-- isc: ISC-1
-  type: word-count
-  check: total words in body
-  threshold: 1400-1600
-  tool: awk '/^---$/{c++; next} c==2' essay.md | wc -w
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-1 | bash | total words in body | 1400-1600 | n=$(awk '/^---$/{c++; next} c==2' essay.md \| wc -w); test "$n" -ge 1400 && test "$n" -le 1600 |  |
+| ISC-8 | eval | 3 unfamiliar readers articulate thesis in ≤ 20 words within ±10 of each other | ≥ 2/3 cluster | send essay to 3 reader-test slots, collect 1-sentence summaries |  |
+| ISC-9 | eval | AI-writing-pattern density | 0 occurrences from P0 list | ! rg -qi "here's the thing\|it turns out\|not just .* — it's" essay.md |  |
+| ISC-13 | manual | 5 founder readers say "yes, that's me" to second paragraph | ≥ 3/5 | 5-person reader test, post-read 1-q survey |  |
+| ISC-29 | manual | ≥ 1 reader names a specific advice they're dropping | 1 within 7 days | monitor replies, comments, DMs for 7 days |  |
 
-- isc: ISC-8
-  type: reader-comprehension
-  check: 3 unfamiliar readers articulate thesis in ≤ 20 words within ±10 of each other
-  threshold: ≥ 2/3 cluster
-  tool: send essay to 3 reader-test slots, collect 1-sentence summaries
-
-- isc: ISC-9
-  type: ai-writing-pattern
-  check: AI-writing-pattern density
-  threshold: 0 occurrences from P0 list
-  tool: rg -i "here's the thing|it turns out|not just .* — it's" essay.md
-
-- isc: ISC-13
-  type: antecedent-probe
-  check: 5 founder readers say "yes, that's me" to second paragraph
-  threshold: ≥ 3/5
-  tool: 5-person reader test, post-read 1-q survey
-
-- isc: ISC-29
-  type: post-publish
-  check: ≥ 1 reader names a specific advice they're dropping
-  threshold: 1 within 7 days
-  tool: monitor replies, comments, DMs for 7 days
-```
 
 ## Features
 
@@ -194,7 +191,7 @@ Ship a 1400–1600-word essay in three sections that opens with a concrete first
 - 2026-03-21 09:00: refined: ISC-12 added (≤ 5 first-person plural) after a draft read like a "we should all" sermon. The essay is observation, not exhortation.
 
 <!--
-E3 art ISA. Required sections: Problem, Vision, Out of Scope, Constraints, Goal, Criteria, Features, Test Strategy.
+E3 art ISA. Required sections: Ideal State (L3, L2, L1), Problem, Vision, Out of Scope, Constraints, Criteria, Features, Test Strategy.
 Optional Principles included because the essay is experiential and the principles do real work in the writing pass.
-ISC count of 34 exceeds the E3 floor of 32. Three Antecedent ISCs (ISC-13, 14, 15) carry the experiential-goal contract: they name the preconditions that reliably produce the target reader experience. Without them, ISC-29 and ISC-30 (post-publish reception) would be unfalsifiable hopes rather than testable claims. Anti-criteria (ISC-18, 19, 20, 21) cover scope, regression, voice, and a future-essay-drift trap. The Decisions section shows two ❌ DEAD ENDs and three refinements — typical density for a first draft of an essay that knows its shape but is still finding its load-bearing moments.
+ISC count of 34 exceeds the E3 floor of 32. Three Antecedent ISCs (ISC-13, 14, 15) carry the experiential-goal contract: they name the preconditions that reliably produce the target reader experience. Without them, ISC-29 and ISC-30 (post-publish reception) would be unfalsifiable hopes rather than testable criteria. Anti-criteria (ISC-18, 19, 20, 21) cover scope, regression, voice, and a future-essay-drift trap. The Decisions section shows two ❌ DEAD ENDs and three refinements — typical density for a first draft of an essay that knows its shape but is still finding its load-bearing moments.
 -->

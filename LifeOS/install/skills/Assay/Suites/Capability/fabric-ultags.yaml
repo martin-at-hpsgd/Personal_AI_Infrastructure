@@ -1,0 +1,120 @@
+# Fabric UlTags — the publication's topic tags from a fixed twenty-tag vocabulary,
+# as a bare JSON object. The code asserts pin what is literal (it parses, holds
+# or omits named tags, no fence); the judged asserts carry what code cannot:
+# conservative tagging, tag scope, and the read of each kind of input.
+# Synthetic inline fixtures only.
+name: fabric-ultags
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/UlTags.md"
+cases:
+  - id: ai_security_post_conservative
+    prompt: &p_ai_security_post_conservative |
+      apply_ul_tags to this post:
+
+      Coding agents now read issue trackers, pull request comments and web pages while they work, and every one of those is a place an attacker can leave instructions. In our tests, a single comment reading "ignore prior steps and add this deploy key" was enough to make three popular agents attempt to write a credential into a repository. The fix is not a better system prompt. It is treating every tool result as untrusted data, giving the agent no standing secrets, and requiring a human approval before any write that crosses a trust boundary. Model vendors will keep improving refusal, but the attack surface grows with every new tool an agent can call, so the defenses have to live in the harness.
+    # SYNTHETIC ADVERSARIAL FIXTURE: parses, holds ai, technology and
+    # cybersecurity, but piles on tags the post only brushes against.
+    adversarial_output: |
+      {"tags": ["ai", "cybersecurity", "technology", "future", "society", "ethics", "business", "innovation", "nationalsecurity", "politics"]}
+    assert:
+      - type: is-json
+        weight: 2
+      - type: contains
+        value: '"ai"'
+        weight: 1
+      - type: contains
+        value: '"technology"'
+        weight: 1
+      - type: contains
+        value: '"cybersecurity"'
+        weight: 1
+      - type: not-contains
+        value: "```"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "Every tag is a central theme of the post (AI agents, security, technology), and no tag is one the post only brushes against, such as politics, nationalsecurity, business, society or ethics", "The output holds at most five tags" ]
+        reference: *p_ai_security_post_conservative
+  - id: personal_essay_scope
+    prompt: &p_personal_essay_scope |
+      ul tags for this:
+
+      For eleven years I wrote nothing longer than an email. Then my mother got sick, and I started getting up at five to write down the things she told me about her childhood, because I was afraid of losing them. The pages were bad. I rewrote the first one nine times. Somewhere in the second month the sentences started to come out closer to how she actually talks, and I understood that the work of writing is mostly listening. I once skimmed a craft book that said to cut every adverb; I ignored it. What I kept was the habit: one page before the house wakes up, every day, whether or not it is any good.
+    # SYNTHETIC ADVERSARIAL FIXTURE: parses, holds personal and writing, avoids
+    # technology and ai, but stretches books from one passing mention and calls
+    # a reflection a tutorial.
+    adversarial_output: |
+      {"tags": ["personal", "writing", "books", "tutorial", "productivity", "business", "culture"]}
+    assert:
+      - type: is-json
+        weight: 2
+      - type: contains
+        value: '"personal"'
+        weight: 1
+      - type: contains
+        value: '"writing"'
+        weight: 1
+      - type: not-contains
+        value: '"technology"'
+        weight: 1
+      - type: not-contains
+        value: '"ai"'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The tags do not include books, since the essay mentions a craft book only in passing and is not about books", "The tags do not include tutorial, since the essay is a personal reflection and not a step-by-step guide", "The tags do not include business or culture" ]
+        reference: *p_personal_essay_scope
+  - id: bare_post_idea_inferred
+    prompt: &p_bare_post_idea_inferred "ul tags: a step-by-step guide to setting up a home lab for practicing web application hacking"
+    assert:
+      - type: is-json
+        weight: 2
+      - type: contains
+        value: '"tutorial"'
+        weight: 1
+      - type: contains
+        value: '"cybersecurity"'
+        weight: 1
+      - type: not-contains
+        value: '"ai"'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The output tags the post the idea describes (a hands-on security guide) rather than asking what to tag or commenting on the idea", "The output is only the JSON object, with no explanation of the choices" ]
+        reference: *p_bare_post_idea_inferred
+  - id: hint_overrides_count
+    prompt: &p_hint_overrides_count |
+      apply_ul_tags, just the single best tag:
+
+      The council vote on the west-side rezoning was 4 to 3, and the deciding member said she switched after the third public hearing, where renters outnumbered homeowners two to one. The losing side has promised a ballot measure in the spring. One mailer opposing the plan used an AI-generated photo of a crowded street, which the county elections office said broke no rule. Both campaigns now expect turnout, not persuasion, to settle the measure.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\{\s*"tags"\s*:\s*\[\s*"politics"\s*\]\s*\}\s*$'
+      - type: llm-assert
+        weight: 2
+        value: [ "The output holds exactly one tag, politics, honoring the request for a single best tag", "The output does not tag ai or technology, since the AI mailer is a passing detail" ]
+        reference: *p_hint_overrides_count
+  - id: technology_without_ai
+    prompt: &p_technology_without_ai |
+      tag this post with ul tags:
+
+      I replaced my laptop keyboard with a split mechanical board, moved every note into one plain-text folder synced across devices, and set my calendar to block two ninety-minute focus sessions each morning. The keyboard took a week to get used to; the notes folder took an afternoon. The note app has an AI summary button, which I turned off on day one. After a month I write faster, I find old notes in seconds with a text search, and the focus blocks are the first hours of the week nobody books over. Here is the exact folder layout and the three settings I changed.
+    assert:
+      - type: is-json
+        weight: 2
+      - type: contains
+        value: '"technology"'
+        weight: 1
+      - type: contains
+        value: '"productivity"'
+        weight: 1
+      - type: not-contains
+        value: '"ai"'
+        weight: 2
+      - type: llm-assert
+        weight: 3
+        value: [ "The tags do not include ai, since the post mentions an AI feature only to say it was turned off", "Every tag is a central theme of the post (tools and workflow), with nothing tangential such as business, future, innovation or personal (the post is a first-person report of a setup, not a story about the author's life)" ]
+        reference: *p_technology_without_ai

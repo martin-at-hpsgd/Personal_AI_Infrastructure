@@ -3,13 +3,14 @@
 import { useMemo } from "react";
 import type { AlgorithmState, ClimbPoint } from "@/types/algorithm";
 import { LIFECYCLE_META } from "@/lib/lifecycle";
+import { fmtClock } from "@/lib/time";
 
 // ─── ClimbChart — the ascent of a run ───
 //
 // Two truths on one time axis (2026-07-22 redesign):
 //   HILL PROFILE — total ISCs is the mountain's silhouette; closed ISCs the
-//     filled ascent. Adding claims visibly raises the hill (+n markers);
-//     closing them gains altitude. Y is claim COUNT, not ratio, so the hill
+//     filled ascent. Adding criteria visibly raises the hill (+n markers);
+//     closing them gains altitude. Y is criterion COUNT, not ratio, so the hill
 //     growing and the climb are separate, visible motions.
 //   ACTIVITY RIBBON — per-minute tool calls colored by derived class
 //     (exploring/building/verifying/delegating), from tool-activity.jsonl via
@@ -61,7 +62,7 @@ export default function ClimbChart({ state, variant }: ClimbChartProps) {
       const yOf = (count: number) => H - PAD - (count / maxTotal) * (H - PAD * 2);
 
       // Done series (the ascent) + total series (the hill silhouette), both as
-      // step paths — claims move in discrete steps, not slopes.
+      // step paths — criteria move in discrete steps, not slopes.
       const donePts: XY[] = [{ x: xOf(start), y: yOf(0) }];
       const totalPts: XY[] = [{ x: xOf(start), y: yOf(raw.length ? 0 : 0) }];
       const addMarkers: { x: number; y: number; n: number }[] = [];
@@ -149,7 +150,7 @@ export default function ClimbChart({ state, variant }: ClimbChartProps) {
   return (
     <div className="w-full">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: H }} aria-label={`Climb chart ${pct}%`}>
-        {/* claim-count gridlines */}
+        {/* criterion-count gridlines */}
         {Array.from({ length: Math.min(maxTotal, 4) }, (_, i) => {
           const count = Math.round(((i + 1) / Math.min(maxTotal, 4)) * maxTotal);
           const y = H - PAD - (count / maxTotal) * (H - PAD * 2);
@@ -162,9 +163,9 @@ export default function ClimbChart({ state, variant }: ClimbChartProps) {
             </g>
           );
         })}
-        {/* hill silhouette — total claims */}
+        {/* hill silhouette — total criteria */}
         <path d={totalPath} fill="none" stroke="#565f89" strokeWidth={1.5} strokeDasharray="3 3" opacity={0.8} />
-        {/* the ascent — closed claims */}
+        {/* the ascent — closed criteria */}
         <path d={doneArea} fill={lineColor} opacity={0.07} />
         <path d={donePath} fill="none" stroke={lineColor} strokeWidth={2} strokeLinejoin="round" />
         {/* +n markers where the hill grew */}
@@ -183,7 +184,7 @@ export default function ClimbChart({ state, variant }: ClimbChartProps) {
         {dots.map((p, i) => (
           <circle key={i} cx={p.x} cy={p.y} r={3} fill={p.point && p.point.done === p.point.total ? LIFECYCLE_META.cairn.color : lineColor}>
             <title>
-              {p.point ? `${p.point.done}/${p.point.total} at ${new Date(p.point.ts).toLocaleTimeString()}` : ""}
+              {p.point ? `${p.point.done}/${p.point.total} at ${fmtClock(p.point.ts)}` : ""}
             </title>
           </circle>
         ))}

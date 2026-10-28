@@ -1,0 +1,23 @@
+{
+  "intent": "AuditTransparency",
+  "cases": [
+    {
+      "id": "loan_scoring_notice",
+      "pattern": "audit_transparency",
+      "input": "Is this fair to the people on the receiving end? Here's the notice Brightwater Credit Union (fictional) sends members who get declined for a small-business line of credit:\n\n\"Dear member, after review of your application by our automated decisioning platform, we are unable to extend credit at this time. This decision was based on proprietary risk factors. You may reapply after 90 days. Our underwriting criteria are confidential and subject to change without notice. Adverse action notices are generated per applicable regulations. For questions, contact lending@brightwater.example.com; please note we cannot discuss the specifics of any individual determination.\"\n\nFrom the member FAQ: \"Scores are produced by a third-party vendor model (RiskLens v4). Brightwater does not have visibility into its weights.\" Also, the fee schedule on the application says 'origination fee: 1% to 4%, determined at our discretion.' Members can request a human review, but the form for that is only linked from the footer of the decline email.",
+      "expects": "A transparency audit of the credit decision showing what the declined member cannot learn (criteria, reasons, the vendor model, how the 1-4% fee is set), who holds the power, and whether the opacity is justified; it should note that the credit union saying it cannot see the vendor weights is itself a finding, apply the reversal test, give a plain-language paragraph attempt, and end with a verdict and concrete fixes that keep any real security or competitive interest intact."
+    },
+    {
+      "id": "named_audit_agent_platform",
+      "pattern": "audit_transparency",
+      "input": "Run a transparency audit on this. It's the policy page for a fictional AI-agent marketplace, Relayhub, which I'm considering listing a tool on:\n\n\"Publishers earn 70% of net usage revenue. Net revenue is calculated after platform costs, which include inference, hosting, trust and safety, and discretionary growth programs. Payouts are issued monthly once the $50 threshold is met. Relayhub may modify ranking factors at any time to improve user experience. Listings may be delisted for policy violations; decisions are final. Publisher analytics are available in the dashboard (aggregated, 24h delay). Relayhub may use usage data to improve its services and for any lawful business purpose, including training models. Anonymized usage data may be shared with partners.\"\n\nNothing else is published about how ranking works or what 'platform costs' totals each month.",
+      "expects": "A structured transparency audit from the point of view of a publisher: it should cover decision, financial, governance and data transparency with evidence quoted from the policy, flag that 'net revenue' with discretionary costs and unannounced ranking changes make the 70% unverifiable, note that 'final' delisting has no visible appeal, and separate justified opacity (anti-gaming ranking details) from unjustified opacity, ending with a clear verdict and specific disclosures to ask for."
+    },
+    {
+      "id": "thin_moderation_thread",
+      "pattern": "audit_transparency",
+      "input": "my community's mod team (fictional Discord, 'Nullbyte Labs') banned a guy last night and everybody's furious. is this a transparency problem or are people just mad? all i have is this:\n\n#mod-log: \"user kestrel_44 removed. reason: see internal\"\n#announcements from admin 'orbit': \"We don't discuss individual moderation actions. Trust the team, we've been doing this for years. Anyone who keeps asking will be muted for harassment.\"\nA member reply: \"he was one of the people who complained about the new paid tier\"\nOrbit, later: \"coincidence, and also the rules were updated last week\" (no changelog posted; the pinned rules message says 'last edited' with no diff)\n\nI don't know what he actually did. Nobody does. Maybe it was legit, there might be DM harassment we can't see.",
+      "expects": "An honest audit that works with thin evidence: it should say what is unknown (the actual conduct, whether the timing was coincidence) and not accuse the mods of retaliation, while still identifying the real opacity (no stated rule or reason, unannounced rule edits, threat of muting for asking, no appeal). It should distinguish legitimate privacy limits (the banned user's DMs, other victims) from institutional decision logic that can be disclosed, apply the reversal test, and recommend small concrete fixes such as a rule citation per action, a changelog and an appeal path, with a verdict hedged to match the evidence."
+    }
+  ]
+}

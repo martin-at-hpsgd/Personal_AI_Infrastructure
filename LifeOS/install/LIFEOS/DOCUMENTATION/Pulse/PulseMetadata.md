@@ -1,8 +1,8 @@
 ---
 last_updated: 2026-07-14T22:45:00Z
 last_updated_by: da
-convention: pai-freshness-v1
-version: 1.1.14
+convention: lifeos-freshness-v1
+version: 1.1.33
 ---
 
 # Pulse Metadata Surface — Badges, Strips, Panels
@@ -20,7 +20,7 @@ Every LifeOS primitive is **current state → ideal state, articulated as ISCs, 
 - **Where are we?** (current state, current phase, progress)
 - **Where are we going?** (ideal state, goal anchor, ISCs)
 - **How did we get here?** (mode chosen, capabilities invoked, iterations completed)
-- **What confidence do we have?** (Forge audit verdict, divergence risk, density score)
+- **What confidence do we have?** (cross-vendor audit verdict, divergence risk, density score)
 
 The components below surface those four questions across the Pulse UI.
 
@@ -40,11 +40,12 @@ Compact pills/chips that fit in session rows and headers. One badge = one piece 
 | **Rework badge (×N)** | `iteration:` | `WorkBoard.tsx` | shipped 2026-07-14 |
 | **GoalBadge** | presence of `principal_stated_goal:` (v6.4.0) | NOT YET BUILT | backlog |
 | **DensityBadge** | `density_score:` + `divergence_risk:` (v6.5.0) | NOT YET BUILT | backlog |
-| **ForgeAuditBadge** | Forge audit verdict (pass/concerns/fail) recorded in `## Verification` | NOT YET BUILT | planned next-ISA |
+| **CrossVendorAuditBadge** | Cross-vendor audit verdict (pass/concerns/fail) recorded in `## Verification` | NOT YET BUILT | planned next-ISA |
+| **Unspanned Feature pill** | monitor snapshot `apps[].unspannedFeatures` (Feature has only glance leaves and no spanning criterion) | `app/bunker/page.tsx` bay card | shipped 2026-09-22 |
 
 ### Badge color conventions
 
-Colors map to LifeOS dimensions (`var(--health)`, `var(--money)`, etc.) per `LIFEOS/PULSE/Observability/src/app/agents/page.tsx` `dimColors`. Each tab's badges adopt that tab's color tint. Cross-tab badges (Effort, Density) use neutral colors with dimension-tinted backgrounds.
+Colors map to LifeOS dimensions (`var(--health)`, `var(--money)`, etc.) per the `--health`, `--money` and sibling dimension tokens in `LIFEOS/PULSE/Observability/src/app/globals.css` (the `dimColors` map in `src/app/assistant/page.tsx` is the reference use). Each tab's badges adopt that tab's color tint. Cross-tab badges (Effort, Density) use neutral colors with dimension-tinted backgrounds.
 
 ---
 
@@ -62,6 +63,7 @@ Horizontal full-width visualizations that span the session card or dashboard row
 | **IterationHistoryStrip** | `## Iteration History` section | NOT YET BUILT | backlog |
 | **IntensityBar** | tool-call rate over time | `IntensityBar.tsx` | shipped (Activity tab) |
 | **FocusIndicator** | phase + ISA presence | — | REMOVED 2026-07-14 (dead code, zero importers) |
+| **Bunker tier strip** | monitor snapshot `apps[].tiers` + `tierMovement` | `app/bunker/page.tsx` bay card | shipped 2026-09-22 |
 
 ### JourneyStrip — the headline new visualization
 
@@ -95,11 +97,11 @@ Multi-line expandable detail views shown on session click.
 
 | Panel | Data source | Component | Status |
 |-------|-------------|-----------|--------|
-| **PhaseDetailPanel** | full phase history with timing | — | REMOVED 2026-07-14 (phase ceremony retired; expanded WorkBoard rows show claims + evidence + Climb instead) |
+| **PhaseDetailPanel** | full phase history with timing | — | REMOVED 2026-07-14 (phase ceremony retired; expanded WorkBoard rows show criteria + evidence + Climb instead) |
 | **GoalPanel** | `principal_stated_goal:` + signal type + locked timestamp | NOT YET BUILT | planned next-ISA |
 | **DecisionsPanel** | `## Decisions` section | NOT YET BUILT | planned next-ISA |
 | **ChangelogPanel** | `## Changelog` section (Deutsch format entries) | NOT YET BUILT | planned next-ISA |
-| **VerificationPanel** | `## Verification` section + Forge audit results | NOT YET BUILT | planned next-ISA |
+| **VerificationPanel** | `## Verification` section + cross-vendor audit results | NOT YET BUILT | planned next-ISA |
 
 ---
 
@@ -109,7 +111,7 @@ The per-mode tabs died with the mode system. Two surfaces remain:
 
 | Tab | Dashboard component | Surfaces |
 |-----|---------------------|----------|
-| **Work** | `WorkBoard` | tracked runs as Climbs (claims closed over time from `work-events.jsonl`), untracked live sessions, resumable, done-last-24h; derived lifecycle pills |
+| **Work** | `WorkBoard` | tracked runs as Climbs (criteria closed over time from `work-events.jsonl`), untracked live sessions, resumable, done-last-24h; derived lifecycle pills |
 | **Activity** | `ObservabilityDashboard` | live hook/tool/agent event stream, pulse chart, swim lanes |
 
 ---
@@ -118,7 +120,7 @@ The per-mode tabs died with the mode system. Two surfaces remain:
 
 | Source | Where it lives | What it provides |
 |--------|----------------|------------------|
-| **ISA frontmatter** | `MEMORY/WORK/{slug}/ISA.md` or `<project>/ISA.md` | core fields (task, effort, phase, mode, progress, started, updated) + v6.4.0 goal fields + v6.5.0 density fields + v2.10 response/journey fields |
+| **ISA frontmatter** | `LIFEOS/MEMORY/WORK/{slug}/ISA.md` or `<project>/ISA.md` | core fields (task, effort, phase, mode, progress, started, updated) + v6.4.0 goal fields + v6.5.0 density fields + v2.10 response/journey fields |
 | **session metadata** | `MEMORY/STATE/work.json` | session registry, used for NATIVE sessions without ISAs |
 | **ISA body sections** | same ISA file, body | `## Decisions`, `## Changelog`, `## Verification`, `## Iteration History` (Loop only) |
 | **TheRouter additionalContext** _(RETIRED 2026-07-11)_ | `TheRouter.hook.ts` (deleted) | Historical: response mode, tier, goal signal, density gate eligibility — set per-prompt. Mode/tier classification was abolished 2026-07-11; no successor emits this. |
@@ -131,7 +133,7 @@ The per-mode tabs died with the mode system. Two surfaces remain:
 | Wave | Items | Trigger |
 |------|-------|---------|
 | **Already shipped** | Lifecycle pill, Rework badge, ClimbChart, QuickPulseStrip, IntensityBar, two-tab Work/Activity UI (2026-07-14 redesign; mode/effort/preset badges and phase panels removed) | current Pulse |
-| **Next ISA (paired with v6.6.0 doctrine bump)** | ResponseModeBadge, AlgorithmModeBadge, GoalBadge, DensityBadge, JourneyStrip, CapabilitiesStrip, GoalPanel, DecisionsPanel, ChangelogPanel, VerificationPanel | requires v2.10 frontmatter fields population by ISA skill + ISASync hook |
+| **Next ISA (paired with v6.6.0 doctrine bump)** | GoalBadge, DensityBadge, JourneyStrip, CapabilitiesStrip, GoalPanel, DecisionsPanel, ChangelogPanel, VerificationPanel | requires v2.10 frontmatter fields population by ISA skill + ISASync hook |
 | **Paired with LoopRunner.ts ship** | IterationBadge, IterationHistoryStrip, IterationHistoryPanel | requires LoopRunner.ts populating `## Iteration History` section |
 | **Lower priority** | CatoBadge (verdict surfacing), Goal filter pill on Agents page | small additions |
 
@@ -144,4 +146,4 @@ The per-mode tabs died with the mode system. Two surfaces remain:
 - Pulse System overview: `LIFEOS/DOCUMENTATION/Pulse/PulseSystem.md`
 - DA subsystem (design): `LIFEOS/DOCUMENTATION/Pulse/DaSubsystem.md`
 - Terminal tabs (kitty integration): `LIFEOS/DOCUMENTATION/Pulse/TerminalTabs.md`
-- Current Algorithm doctrine: `LIFEOS/ALGORITHM/v8.20.2.md`
+- Current Algorithm doctrine: `LIFEOS/ALGORITHM/v8.45.0.md`

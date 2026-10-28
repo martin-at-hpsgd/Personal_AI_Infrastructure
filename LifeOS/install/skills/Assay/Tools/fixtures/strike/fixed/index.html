@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<!-- The same strikes after the 2026-10-09 fix: placed on the cap middle measured after fonts load (canvas TextMetrics + a zero-height baseline marker). -->
+<html><head><meta charset="UTF-8">
+<style>
+@font-face { font-family: "Din"; src: local("DIN Condensed Bold"), local("DINCondensed-Bold"), url("file:///System/Library/Fonts/Supplemental/DIN%20Condensed%20Bold.ttf"); font-weight: 700; }
+html, body { margin: 0; background: #0b0d12; }
+#root { position: relative; width: 1200px; height: 400px; overflow: hidden; background: #0b0d12; color: #e3e9f4; }
+.cby { position: absolute; left: 60px; top: 60px; display: flex; align-items: center; gap: 14px; font-family: "Din"; font-size: 60px; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; white-space: nowrap; }
+.byn { position: relative; display: inline-flex; align-items: center; gap: 14px; font-weight: 700; }
+.strike { position: absolute; left: -8px; right: -8px; top: 50%; height: 13px; margin-top: -8px; background: #58a6ff; border-radius: 4px; transform-origin: 0 50%; }
+.big { position: absolute; left: 60px; top: 200px; font-family: "Din"; font-weight: 700; font-size: 96px; text-transform: uppercase; letter-spacing: -0.01em; white-space: nowrap; }
+.struckw { position: relative; display: inline-block; color: #8f9bb8; }
+.struckw i { position: absolute; left: -6px; right: -6px; top: 44%; height: 9px; background: #58a6ff; border-radius: 4px; }
+</style></head>
+<body><div id="root" data-composition-id="fx" data-width="1200" data-height="400" data-duration="2">
+<div class="cby"><span class="byn"><span id="hero_by">A FIRST-TIME WRITER</span><i class="strike" id="hero_strike" data-mark="strike"></i></span></div>
+<div class="big"><span>NOT THE <span class="struckw">BYLINE<i id="word_strike" data-mark="strike"></i></span>.</span></div>
+</div>
+<script>
+document.fonts.load('700 60px "Din"').then(function () {
+  if (!document.fonts.check('700 60px "Din"')) throw new Error("DIN Condensed Bold did not load");
+  // Cap-middle strike placement ("Strike bars sit on the cap middle"), selector widened to every declared strike.
+  var cv = document.createElement("canvas").getContext("2d");
+  document.querySelectorAll('[data-mark="strike"]').forEach(function (bar) {
+    var p = bar.parentElement;
+    if (getComputedStyle(p).position === "static") p.style.position = "relative";
+    var t = null;
+    for (var n of Array.from(p.childNodes)) {
+      if (n === bar) continue;
+      if (n.nodeType === 1 && n.textContent.trim()) { t = n; break; }
+      if (n.nodeType === 3 && n.textContent.trim()) { var s = document.createElement("span"); p.insertBefore(s, n); s.appendChild(n); t = s; break; }
+    }
+    if (!t) throw new Error("strike bar with no text beside it");
+    var cs = getComputedStyle(t);
+    cv.font = cs.fontStyle + " " + cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
+    var txt = t.textContent.trim();
+    var caps = cs.textTransform === "uppercase" || txt === txt.toUpperCase();
+    var asc = cv.measureText(caps ? "H" : "x").actualBoundingBoxAscent;
+    var mk = document.createElement("span"); mk.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+    t.appendChild(mk);
+    var base = 0, e = mk; while (e && e !== p) { base += e.offsetTop; e = e.offsetParent; }
+    mk.remove();
+    if (e !== p) throw new Error("strike text is not laid out inside its bar parent");
+    var h = parseFloat(getComputedStyle(bar).height);
+    bar.style.marginTop = "0px";
+    bar.style.top = (base - asc / 2 - h / 2).toFixed(1) + "px";
+    bar.style.left = (t.offsetLeft - 4) + "px"; bar.style.right = "auto"; bar.style.width = (t.offsetWidth + 8) + "px";
+  });
+  window.__timelines = { fx: { seek: function () {} } };
+});
+</script></body></html>

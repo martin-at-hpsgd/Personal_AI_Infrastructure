@@ -1,6 +1,6 @@
 /**
  * Infra-inventory collector — observes the security scanner's curated target list.
- * Atlas OBSERVES infra-inventory.ts; it never replaces it (Anti-claim A4).
+ * Atlas OBSERVES infra-inventory.ts; it never replaces it (Anti-criterion A4).
  * A MONITORS edge from a target to a domain is what `atlas unregistered` keys off.
  */
 
@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { AssetObs, CollectResult, Collector, EdgeObs } from "../Store";
 
-const INVENTORY = join(homedir(), ".claude/LIFEOS/USER/CUSTOMIZATIONS/ARBOL/Shared/infra-inventory.ts");
+const INVENTORY = join(homedir(), ".claude/LIFEOS/USER/CUSTOMIZATIONS/WORKFLOWS/Shared/infra-inventory.ts");
 
 export const infraInventory: Collector = {
   name: "infra-inventory",
@@ -25,7 +25,7 @@ export const infraInventory: Collector = {
     const assets: AssetObs[] = [];
     const edges: EdgeObs[] = [];
 
-    assets.push({ kind: "system", key: "system:security-plane", name: "Bunker Security plane (Arbol scanner)" });
+    assets.push({ kind: "system", key: "system:security-plane", name: "Bunker Security plane (Workflows scanner)" });
 
     for (const t of mod.TARGETS) {
       const name = String(t.name);
@@ -43,6 +43,11 @@ export const infraInventory: Collector = {
         },
       });
       edges.push({ kind: "MONITORS", srcKey: key, dstKey: `domain:${domain}`, srcKind: "target", dstKind: "domain" });
+      // Aliases (the www. twin) are served by the same Worker and probed by the
+      // scanner's alias-reachable check, so they count as monitored. (2026-09-04)
+      for (const alias of (t.aliases as string[] | undefined) ?? []) {
+        edges.push({ kind: "MONITORS", srcKey: key, dstKey: `domain:${String(alias)}`, srcKind: "target", dstKind: "domain" });
+      }
       edges.push({ kind: "REGISTERED_IN", srcKey: key, dstKey: "system:security-plane", srcKind: "target", dstKind: "system" });
     }
     return { complete: true, assets, edges };

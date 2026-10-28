@@ -3,6 +3,8 @@
 > **Status:** v1.0.0 · 2026-05-03
 > **Source of truth:** `LIFEOS/PULSE/Schema/PulseSchema.ts`
 > **Companion:** `LIFEOS/DOCUMENTATION/LifeOs/LifeOsSchema.md`
+>
+> **Data Plane retired 2026-10-14.** The Pulse Data Plane that built pages in this schema (page manifests, `AdapterRunner`, `RebuildAll`, the `PULSE_DATA/` writer and the v2 renderer) is gone: nothing had rendered its output since Pulse's pages moved to the Next app on 2026-07-04. Nothing produces data in this schema today. The schema and `ValidateSchema.ts` remain, and the LifeOS doctor (`skills/LifeOS/Tools/PulseHealth.ts audit`) checks only that the validator runs.
 
 The Pulse Schema is the typed contract between USER/ files and the Pulse v2 UI. It formalizes the four render contracts from `LifeOsSchema.md` (collection, narrative, reference, index) as a Zod-validated discriminated union, plus shared `PageMeta` for adapter-run telemetry.
 
@@ -81,7 +83,7 @@ Tile grid linking to children. Used for domain directory roots: `Health/README.m
 
 ## PageMeta (shared)
 
-Every page carries a `meta` block written by `AdapterRunner`. Tracks build provenance and cost so every cell of the data plane is auditable.
+Every page carries a `meta` block, which the retired `AdapterRunner` wrote to track build provenance and cost.
 
 ```ts
 {
@@ -106,7 +108,7 @@ Categories follow LifeOs verbatim — `identity`, `voice`, `mind`, `taste`, `sha
 
 ## Validation
 
-Every adapter output is parsed against `PageDataSchema` before reaching the Data Plane. The CLI:
+The CLI validates a JSON file against `PageDataSchema`:
 
 ```bash
 bun LIFEOS/PULSE/Tools/ValidateSchema.ts <path-to-json>
@@ -116,7 +118,7 @@ returns exit 0 on valid output and exit 1 with `(field path) → message` lines 
 
 ## Versioning
 
-`SCHEMA_VERSION` is a string constant in `PulseSchema.ts`. Adding a new page kind, removing a field, or changing field types bumps the version. AdapterRunner's cache keys include the schema version, so a bump invalidates all caches automatically.
+`SCHEMA_VERSION` is a string constant in `PulseSchema.ts`. Adding a new page kind, removing a field, or changing field types bumps the version.
 
 ## Adding a New Kind
 
@@ -124,6 +126,6 @@ The four kinds are intentionally stable. New rendering needs go through composit
 
 1. Add the schema under `PulseSchema.ts` and append it to `PageDataSchema` discriminated union.
 2. Add the schema export to `ALL_PAGE_SCHEMAS`.
-3. Add a UI component under `LIFEOS/PULSE/ui/components/`.
+3. Add a UI component under `LIFEOS/PULSE/Observability/src/components/`.
 4. Bump `SCHEMA_VERSION`.
 5. Update this doc.

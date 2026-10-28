@@ -1,0 +1,6 @@
+# Judge sheets (in build/), regenerated before every judged run by skills/_VIDEO/Tools/Cards/SubscribeFrames.ts.
+# They carry the install's channel name and brand mark, so on an install they live in the skill's USER extension
+# (<configRoot>/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/Assay/Suites/Capability/video-subscribe-card/build) and build is
+# a local symlink to it; nothing under build ships.
+*.png
+/build

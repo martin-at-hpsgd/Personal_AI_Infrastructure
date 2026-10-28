@@ -9,22 +9,36 @@
  *   bun InstallConduit.ts --status     show launchd state
  */
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
+import { existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { loadConfig } from "./config.ts"
 import { DATA_ROOT } from "./paths.ts"
 import * as systemd from "../../TOOLS/lib/SystemdUser"
+import { installVerb } from "../../TOOLS/lib/InstallVerb"
+import { agentPath, writeAgent } from "../../TOOLS/lib/LaunchAgent"
 
 const LABEL = "com.lifeos.conduit"
-const PLIST = join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`)
+const PLIST = agentPath(LABEL)
 const CONDUIT = join(import.meta.dir, "conduit.ts")
 const LOG_DIR = join(DATA_ROOT, "logs")
-const BUN = process.execPath // the bun binary currently running
+// The bun on PATH, not process.execPath: under Homebrew execPath resolves to the
+// version-pinned Cellar path, which the next `brew upgrade bun` deletes and the
+// job dies with it. The PATH entry is a symlink that survives upgrades.
+// public PR #2208, @pai-scaffolde
+const BUN = Bun.which("bun") ?? process.execPath
 
 /** Escape a string for safe interpolation into a plist XML <string> value. */
 function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+/** launchd gives jobs only /usr/bin:/bin:/usr/sbin:/sbin; the capture job spawns gh
+ *  and other Homebrew tools, so bake the installer's PATH the way InstallConduitInsight
+ *  does (SOC-0060 flagged the capture job as PATH-less, 2026-09-15). */
+function launchdPath(): string {
+  const base = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+  const current = (process.env.PATH ?? "").split(":").filter(Boolean)
+  return [...new Set([...current, ...base])].join(":")
 }
 
 function plistBody(intervalSec: number): string {
@@ -45,6 +59,10 @@ function plistBody(intervalSec: number): string {
   <key>Nice</key><integer>10</integer>
   <key>StandardOutPath</key><string>${escapeXml(join(LOG_DIR, "conduit.out.log"))}</string>
   <key>StandardErrorPath</key><string>${escapeXml(join(LOG_DIR, "conduit.err.log"))}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>${escapeXml(launchdPath())}</string>
+  </dict>
 </dict>
 </plist>
 `
@@ -53,7 +71,7 @@ function plistBody(intervalSec: number): string {
 function install(): void {
   mkdirSync(LOG_DIR, { recursive: true })
   const intervalSec = loadConfig().pollIntervalSec
-  writeFileSync(PLIST, plistBody(intervalSec))
+  writeAgent(LABEL, plistBody(intervalSec))
   try {
     execFileSync("launchctl", ["unload", PLIST], { stdio: "ignore" })
   } catch {
@@ -97,7 +115,7 @@ async function linuxSpec(): Promise<systemd.UnitSpec> {
   return {
     label: LABEL,
     description: "LifeOS Conduit capture",
-    // BUN is process.execPath, already absolute — no `which` lookup needed.
+    // BUN is already absolute (resolved at the top) — no `which` lookup needed.
     exec: [BUN, CONDUIT, "capture"],
     logPath: join(LOG_DIR, "conduit.out.log"),
     errLogPath: join(LOG_DIR, "conduit.err.log"),
@@ -114,7 +132,7 @@ async function linuxMain(a: string | undefined): Promise<void> {
   if (!(await systemd.install(spec, log))) process.exit(1)
 }
 
-const arg = process.argv[2]
+const arg = installVerb(process.argv, "InstallConduit")
 if (systemd.isLinux()) await linuxMain(arg)
 else if (arg === "--uninstall") uninstall()
 else if (arg === "--status") status()

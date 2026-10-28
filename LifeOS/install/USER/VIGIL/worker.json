@@ -1,0 +1,6 @@
+{
+  "d1": {
+    "name": "vigil-db",
+    "id": "<the database id that `cf d1 create vigil-db` printed>"
+  }
+}

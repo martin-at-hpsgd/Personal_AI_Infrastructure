@@ -1,0 +1,19 @@
+version: 1
+name: format-summary
+description: Format a supplied summary using the existing portable Arbol action.
+trigger:
+  type: manual
+input:
+  type: object
+  required: [summary]
+  properties:
+    summary: { type: string }
+defaults:
+  timeout_ms: 30000
+  retries: 0
+steps:
+  format:
+    uses: A_EXAMPLE_FORMAT
+    with:
+      summary: { $ref: input.summary }
+output: { $ref: steps.format.output }

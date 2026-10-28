@@ -1,5 +1,5 @@
 ---
-version: 1.1.0
+version: 1.1.1
 ---
 
 # LifeOS Brand Assets
@@ -27,8 +27,8 @@ Blues: light-blue wordmark/blocks (`Life`), bright-blue accent (`OS` and lead bl
 
 ## Where they live
 
-- Site: `ourlifeos.ai` → `public/lifeos-logo-full.png` (nav), `public/lifeos-logo-graphical.png` (hero center).
-- Public repo: `images/lifeos-logo-full.png` → the README header (maintainer-side source: the release skill's `RELEASE_TEMPLATES/lifeos-logo-full.png`).
+- Project website: `public/lifeos-logo-full.png` (nav), `public/lifeos-logo-graphical.png` (hero center).
+- Public repo: `images/lifeos-logo-full.png` → the README header. The file lives only in the public checkout's `images/`, which the release cut leaves in place; there is no copy in the release templates.
 
 ---
 

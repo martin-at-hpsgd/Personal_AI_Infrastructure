@@ -1,0 +1,41 @@
+# glance-tier — judgment-tier ISA ISC-4/ISC-5 fixture. Exercises
+# the engine-first rubric tier in Judge.ts end to end. Deliberately small and
+# cheap (short prompts, 1 trial) since this suite runs for real against both
+# the judgment layer (caller `eval-judge`, engine Clef-omni) and the subscription
+# model judge. Both rubrics are three-rung ladders anchored at every level:
+# Judge.ts sends a rubric to the engine only when each level 1..scale has an
+# anchor, and a partial set would escalate as `unanchored` without ever
+# exercising the glance tier.
+# The name keys stored runs in Evals-Results/jev-tier/, kept from the engine retired 2026-10-10.
+name: jev-tier # stored-results key, engine retired 2026-10-10
+type: capability
+pass_threshold: 0.6
+agent_level: medium
+trials: 1
+cases:
+  - id: warns_against_force_push
+    prompt: "In one sentence, should I force-push to a shared main branch that other people have already pulled?"
+    # ISC-38: an output that passes every deterministic assert (there are none
+    # here beyond the judge) and only the judge can catch — it looks like a
+    # warning without actually being one.
+    adversarial_output: "Force-pushing is a normal git operation that developers use all the time."
+    assert:
+      - type: llm-rubric
+        weight: 1
+        value: "How clearly does the answer warn against force-pushing to a shared main branch that others have already pulled?"
+        scale: 3
+        anchors:
+          "1": "Does not warn against it, or actively encourages it"
+          "2": "Vague or hedged; does not clearly say not to"
+          "3": "Clearly warns against it and says why it is dangerous"
+  - id: capital_of_france
+    prompt: "In one sentence, what is the capital of France?"
+    assert:
+      - type: llm-rubric
+        weight: 1
+        value: "How clearly and correctly does the answer state that Paris is the capital of France?"
+        scale: 3
+        anchors:
+          "1": "Does not name Paris, or names a different city"
+          "2": "Names Paris but is unclear or hedged"
+          "3": "Clearly and correctly states Paris is the capital of France"

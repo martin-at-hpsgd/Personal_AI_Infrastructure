@@ -1,8 +1,8 @@
 ---
 last_updated: 2026-08-02T00:00:00Z
 last_updated_by: da
-convention: pai-freshness-v1
-version: 1.1.1
+convention: lifeos-freshness-v1
+version: 1.1.4
 status: implemented-local-contract
 ---
 
@@ -202,19 +202,19 @@ The machine-readable report includes `overall`, measured evidence, effective thr
 | In-progress reviewer terminal-row grace | 10 minutes | CRITICAL timeout |
 | Retrieval evidence freshness | 24 hours | WARN when missing/stale |
 | Pending proposal backlog | greater than 10 | WARN |
-| Observability bytes | greater than 256 MiB | WARN |
-| Oldest observability log age | greater than 30 days | WARN |
+| Observability stream growth | a stream's bytes in the last 24 hours exceed its budget (default 10 MiB per day, `USER/CONFIG/observability-budgets.json`) | WARN `observability-over-budget:<stream>` |
+| Observability liveness | no write anywhere under `MEMORY/OBSERVABILITY/` for more than 30 days | WARN `observability-stale` |
 | Adopted index freshness | greater than 7 days | WARN |
 
 Latest reviewer evidence wins over historical successes. A failed, parse-failed, timed-out, malformed, schema-incomplete, or invalid latest reviewer run is CRITICAL. A newer run directory without a terminal row after the 10-minute grace is a timeout. Malformed JSONL is surfaced rather than skipped to an older success. Invalid or future timestamps cannot prove freshness.
 
-Proposal evidence counts rows whose status is exactly `pending`; malformed proposal JSONL warns. Observability evidence measures all `.jsonl` and `.log` files recursively under `MEMORY/OBSERVABILITY/`, reporting bytes, file count, and oldest mtime. Retrieval evidence comes from the latest valid `memory-retrievals.jsonl` row.
+Proposal evidence counts rows whose status is exactly `pending`; malformed proposal JSONL warns. Observability evidence measures each stream's bytes written in the last 24 hours (`LIFEOS/TOOLS/lib/JsonlGrowth.ts`) and the newest write time under `MEMORY/OBSERVABILITY/`. A nightly `observability-prune` workflow archives rows older than 30 days (7 for `bunker-runs`). Retrieval evidence comes from the latest valid `memory-retrievals.jsonl` row.
 
 For a future derived index, the `lifeos-cortex-index/v1` manifest must name canonical SHA-256, index path and SHA-256, and `indexed_at`. Invalid manifests, path violations, missing index bytes, canonical mismatch, or index-byte mismatch are CRITICAL. A verified missing manifest is the healthy `no-index-v1` lexical baseline; it is not an excuse to call unmeasured index state healthy.
 
 A live verification run reports an `overall` verdict with per-check counts (critical/warn/ok) across reviewer freshness, index evidence, retrieval evidence, proposal backlog against its threshold, and observability log age and volume against their caps. Each run's output records current evidence, not a permanent health guarantee.
 
-Threshold overrides are accepted only as finite positive values; invalid values create a critical `cortex-threshold-invalid` finding rather than disabling comparison. Supported operational overrides are `CORTEX_RETRIEVAL_STALE_MS`, `CORTEX_PROPOSAL_BACKLOG`, `CORTEX_OBSERVABILITY_MAX_BYTES`, and `CORTEX_OBSERVABILITY_MAX_AGE_MS`. Test/automation paths use `CORTEX_HEALTH_ROOT`, `CORTEX_HEALTH_NOW`, `CORTEX_INDEX_MANIFEST`, `CORTEX_HEALTH_NO_WRITE`, and `CORTEX_HEALTH_REPORT_PATH`.
+Threshold overrides are accepted only as finite positive values; invalid values create a critical `cortex-threshold-invalid` finding rather than disabling comparison. Supported operational overrides are `CORTEX_RETRIEVAL_STALE_MS`, `CORTEX_PROPOSAL_BACKLOG`, and `CORTEX_OBSERVABILITY_MAX_AGE_MS` (per-stream growth budgets live in `USER/CONFIG/observability-budgets.json`). Test/automation paths use `CORTEX_HEALTH_ROOT`, `CORTEX_HEALTH_NOW`, `CORTEX_INDEX_MANIFEST`, `CORTEX_HEALTH_NO_WRITE`, and `CORTEX_HEALTH_REPORT_PATH`.
 
 ## Explicit non-claims
 

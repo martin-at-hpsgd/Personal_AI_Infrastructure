@@ -2,6 +2,7 @@
 name: isdown
 description: Check whether a site is down for everyone or just you — local probe + downforeveryoneorjustme API, with --deep for a 7-node worldwide sweep via check-host.net.
 argument-hint: <domain-or-url> [--deep] [--json]
+version: 1.0.0
 ---
 
 # /isdown — Is this site down, or is it just me?

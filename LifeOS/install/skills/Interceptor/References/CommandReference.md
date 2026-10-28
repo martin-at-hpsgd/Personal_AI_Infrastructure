@@ -1,10 +1,12 @@
 # Interceptor Command Reference
 
-> Full CLI verb listing moved out of SKILL.md (progressive disclosure). The six capability classes, compound commands, hard prohibitions, and isolation gates stay in SKILL.md — this file is the encyclopedic per-verb reference. Reference target: binary `0.16.9`.
+**Contents:** macOS Native (Computer Use) · VM Lifecycle (Computer Use only) · Core Browser Commands · Network — Passive, CDP, and Exports · Recording (Session Monitor) · Canvas (Rich Web Apps) · Scene Graph (Rich Editors — Google Docs/Slides, Canva) · LinkedIn · ChatGPT Agentic Bridge · Batch + Meta
+
+> The per-verb reference. The six capability classes, compound commands, hard prohibitions, and isolation gates live in `References/CompleteGuide.md`. The installed binary is the authority: its own catalog (`interceptor manifest`, `interceptor <cmd> --help`) wins wherever this listing differs, so confirm a flag there before relying on it. The version floor is `0.23.16` (CompleteGuide.md § Preflight Isolation Gate).
 >
-> **Isolation note for every browser example below:** each verb assumes `--context "$INTERCEPTOR_TEST_CONTEXT_ID"`, and screenshots route through `Tools/Capture.sh`, never raw `interceptor screenshot`. Bare browser verbs only fail-safe while 2+ contexts are connected (the daemon hard-errors `multiple extensions connected, use --context <id>`); the moment one context remains, a bare verb silently auto-routes to it. `--context` is mandatory, not optional.
+> **Isolation note for every browser example below:** each verb assumes `--context "$INTERCEPTOR_TEST_CONTEXT_ID"`, and screenshots route through `Tools/Capture.sh`, never raw `interceptor screenshot`. A bare browser verb fails safe only while 2+ contexts are connected (the daemon hard-errors `multiple extensions connected, use --context <id>`); once one context remains, it silently auto-routes to that one, which is why `--context` is mandatory (CompleteGuide.md § Isolation Doctrine).
 >
-> Daemon control socket: `/tmp/interceptor.sock` (bridge socket: `/tmp/interceptor-bridge.sock`).
+> Daemon control socket: `$TMPDIR/interceptor.sock` (bridge socket: `$TMPDIR/interceptor-bridge.sock`, the legacy `/tmp` path before 1.0.1).
 
 ## macOS Native (Computer Use)
 
@@ -34,7 +36,7 @@ interceptor macos menu --app "X"                    # Menu-bar AX tree
 interceptor macos tree --app "X" --filter interactive --depth 6
 interceptor macos find "Send" --app "Slack" --role button
 interceptor macos value <ref>                       # Current AX value of a field
-interceptor macos trust                             # Probe TCC grants (fields: accessibility, screenRecording, microphone — camelCase, no inputMonitoring)
+interceptor macos trust                             # Probe TCC grants (fields: accessibility, screenRecording, microphone, speechRecognition — camelCase, no inputMonitoring)
 interceptor macos trust --walkthrough               # Deep-link to System Settings for missing grants
 interceptor macos intent dispatch --bundle <id> --script '<applescript>'   # Apple Events
 interceptor macos intent warmup <bundle1> <bundle2> ...                    # Pre-prompt TCC for several apps
@@ -78,7 +80,7 @@ interceptor macos vm stop macos-test
 interceptor macos vm delete macos-test --force
 ```
 
-Full lifecycle + Lume migration table: `Workflows/VmLifecycle.md`.
+Full lifecycle + Lume migration table: `Intents/VmLifecycle.md`.
 
 ## Core Browser Commands
 
@@ -133,7 +135,7 @@ interceptor cookies delete <url> <name>
 ## Network — Passive, CDP, and Exports
 
 ```bash
-# Passive capture (always-on, no CDP fingerprint)
+# Passive capture (always-on, no CDP attach)
 interceptor net log [--filter <pat>] [--limit N] [--since <ts>] [--json]
 interceptor net headers [--filter <pat>]       # CSRF, auth headers
 interceptor net export --format har             # HAR 1.2 export
@@ -182,7 +184,7 @@ interceptor monitor export <sid> --format har|pcapng           # Network-tab exp
 interceptor monitor export <sid> --with-bodies                 # Include request/response bodies
 ```
 
-macOS-flavored recording: `interceptor macos monitor *` — records AX events, optional `--frames N`, `--vision-text`, `--include clipboard|files|network|log|notifications|speech`, `--watch-path <p>`, `--log-predicate "<NSPredicate>"`. See `Workflows/RecordAndReplayMacFlow.md`.
+macOS-flavored recording: `interceptor macos monitor *` — records AX events, optional `--frames N`, `--vision-text`, `--include clipboard|files|network|log|notifications|speech`, `--watch-path <p>`, `--log-predicate "<NSPredicate>"`. See `Intents/RecordAndReplayMacFlow.md`.
 
 ## Canvas (Rich Web Apps)
 
@@ -211,7 +213,7 @@ interceptor scene cursor-to <x> <y>
 interceptor scene slide list | current | goto <index> | notes [--slide N]
 interceptor scene render <id> [--save]
 interceptor scene zoom
-interceptor scene ... --profile <name>       # Force profile, bypass detection
+interceptor scene ... --profile <name>       # Force profile
 ```
 
 ## LinkedIn

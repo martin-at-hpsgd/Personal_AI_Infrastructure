@@ -6,7 +6,7 @@ import type { Telos } from "./data";
 // Subordinate tabs — warm, sentence-led.
 
 interface SparkProps {
-  points?: readonly number[];
+  points: readonly number[];
   color?: string;
 }
 
@@ -14,7 +14,8 @@ interface SubTabsProps {
   telos: Telos;
 }
 
-export function Spark({ points=[38,42,40,45,48,52,51,56,58,62], color='var(--accent)' }: SparkProps) {
+export function Spark({ points, color='var(--accent)' }: SparkProps) {
+  if (points.length < 2) return null; // a line needs measured points; none are invented
   const W=160, H=36, max=Math.max(...points), min=Math.min(...points);
   const norm = (v: number, i: number)=>{
     const x = (i/(points.length-1))*W;
@@ -30,15 +31,7 @@ export function Spark({ points=[38,42,40,45,48,52,51,56,58,62], color='var(--acc
   );
 }
 
-const SPARK_SEEDS = {
-  business:  [36,39,42,44,47,50,52,55,58,60,61,62],
-  finances:  [48,49,51,53,54,57,58,59,60,61,61,62],
-  health:    [58,60,62,64,65,66,68,69,70,70,71,71],
-  work:      [30,31,34,36,38,40,42,43,45,46,47,48],
-  life:      [82,81,80,79,78,78,77,77,77,78,77,77],
-} as const;
-
-type SubtabId = keyof typeof SPARK_SEEDS;
+type SubtabId = string;
 
 export function SubTabs({ telos }: SubTabsProps) {
   const [active, setActive] = useState<SubtabId>('business');
@@ -88,8 +81,11 @@ export function SubTabs({ telos }: SubTabsProps) {
             </div>
           </div>
           <div className="sub-r">
-            <div className="spark-head">last twelve months</div>
-            <Spark points={SPARK_SEEDS[active]} color={`var(${dim.color})`}/>
+            {/* Measured values only: no history is stored for a corner, so the gauge shows where it is against its ideal. */}
+            <div className="spark-head">where it is against ideal</div>
+            <div className="bar" style={{marginTop:10,width:160}} role="img" aria-label={`${tab.cur} of ${tab.ideal}`}>
+              <div className="bar-fill" style={{width:`${tab.ideal>0?Math.max(0,Math.min(100,(tab.cur/tab.ideal)*100)):0}%`,background:`var(${dim.color})`}}/>
+            </div>
           </div>
         </div>
       </div>

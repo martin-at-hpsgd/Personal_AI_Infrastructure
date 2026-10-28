@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.7.0
  * add-bg - Add Background Color CLI
  *
  * Add a solid background color to transparent PNG images.
@@ -9,20 +10,50 @@
  * (commit 1), @anikinsasha.)
  *
  * Usage:
- *   add-bg input.png "#EAE9DF" output.png
- *   add-bg input.png --ul-brand output.png
+ *   add-bg input.png "#F5F5F0" output.png
+ *   add-bg input.png --brand output.png
+ *
+ * Config: --brand reads `brandColor` from <userDir>/CONFIG/add-bg.json
+ * (userDir from LifeosConfig, normally LIFEOS/USER) → { "brandColor": "#RRGGBB" }.
  *
  * @see ~/.claude/skills/Art/SKILL.md
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { lifeosUserDir } from "./LifeosConfig";
 
 const execFileAsync = promisify(execFile);
 
-// UL Brand background color for thumbnails/social previews
-const UL_BRAND_COLOR = "#EAE9DF";
+// Per-install brand background lives in USER config, never in this file.
+const BRAND_CONFIG_REL = join("CONFIG", "add-bg.json");
+
+function brandConfigPath(): string {
+  return join(lifeosUserDir(), BRAND_CONFIG_REL);
+}
+
+/** Read the install's brand color, or exit with an error naming the file and key. */
+function loadBrandColor(): string {
+  const path = brandConfigPath();
+  if (!existsSync(path)) {
+    console.error(`❌ --brand needs ${path} with a "brandColor" key, e.g. { "brandColor": "#F5F5F0" }`);
+    process.exit(1);
+  }
+  let color: unknown;
+  try {
+    color = JSON.parse(readFileSync(path, "utf8"))?.brandColor;
+  } catch (error) {
+    console.error(`❌ Could not parse ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+  if (typeof color !== "string" || !color) {
+    console.error(`❌ ${path} has no "brandColor" key (expected "#RRGGBB")`);
+    process.exit(1);
+  }
+  return color;
+}
 
 // ============================================================================
 // Help
@@ -36,19 +67,20 @@ Add a solid background color to transparent PNG images using ImageMagick.
 
 USAGE:
   add-bg <input> <color> <output>
-  add-bg <input> --ul-brand <output>
+  add-bg <input> --brand <output>
 
 ARGUMENTS:
   input       Path to transparent PNG image
-  color       Hex color code (e.g., "#EAE9DF") OR --ul-brand
+  color       Hex color code (e.g., "#F5F5F0") OR --brand
   output      Path to save result
 
 OPTIONS:
-  --ul-brand  Use UL brand color (#EAE9DF) for thumbnails
+  --brand     Use your brand background color, read from
+              <userDir>/CONFIG/add-bg.json key "brandColor"
 
 EXAMPLES:
-  # Add UL brand background for thumbnail
-  add-bg header.png --ul-brand header-thumb.png
+  # Add your brand background for a thumbnail
+  add-bg header.png --brand header-thumb.png
 
   # Add custom background color
   add-bg header.png "#FFFFFF" header-white.png
@@ -59,12 +91,13 @@ EXAMPLES:
 REQUIREMENTS:
   ImageMagick must be installed (magick command)
 
-UL BRAND COLOR:
-  #EAE9DF - Sepia/cream background for social previews
+CONFIG:
+  ${brandConfigPath()}
+  { "brandColor": "#RRGGBB" }
 
 ERROR CODES:
   0  Success
-  1  Error (file not found, invalid color, ImageMagick error)
+  1  Error (file not found, invalid color, missing brand config, ImageMagick error)
 `);
   process.exit(0);
 }
@@ -95,7 +128,7 @@ async function addBackground(
   // Validate hex color
   if (!validateHexColor(hexColor)) {
     console.error(`❌ Invalid hex color: ${hexColor}`);
-    console.error('   Must be in format #RRGGBB (e.g., "#EAE9DF")');
+    console.error('   Must be in format #RRGGBB (e.g., "#F5F5F0")');
     process.exit(1);
   }
 
@@ -128,10 +161,10 @@ async function main(): Promise<void> {
     showHelp();
   }
 
-  // Need at least 3 args: input, color/--ul-brand, output
+  // Need at least 3 args: input, color/--brand, output
   if (args.length < 3) {
     console.error("❌ Missing arguments");
-    console.error("   Usage: add-bg <input> <color|--ul-brand> <output>");
+    console.error("   Usage: add-bg <input> <color|--brand> <output>");
     process.exit(1);
   }
 
@@ -139,8 +172,14 @@ async function main(): Promise<void> {
   const colorArg = args[1];
   const outputPath = args[2];
 
-  // Handle --ul-brand flag
-  const hexColor = colorArg === "--ul-brand" ? UL_BRAND_COLOR : colorArg;
+  // --brand resolves to the install's configured brand color. Any other flag in the
+  // color slot (including the pre-1.7 brand flag) is refused with the flag to use.
+  if (colorArg.startsWith("--") && colorArg !== "--brand") {
+    console.error(`❌ Unknown flag in the color slot: ${colorArg}`);
+    console.error("   Use --brand for the configured brand color, or a #RRGGBB hex color");
+    process.exit(1);
+  }
+  const hexColor = colorArg === "--brand" ? loadBrandColor() : colorArg;
 
   await addBackground(inputPath, hexColor, outputPath);
 }

@@ -1,23 +1,38 @@
 /* Pulse · TELOS v6 */
 *, *::before, *::after { box-sizing: border-box; }
-html, body { background: #060B1A !important; color: #E8EFFF !important; }
+/* Ground is owned by globals.css (html = --ground, body transparent so the
+   dusk-room backdrop shows). This sheet must not repaint it. */
+html { background: var(--ground) !important; }
+body { background: transparent !important; color: var(--ink-1) !important; }
 
 .n-trace { display: inline !important; vertical-align: baseline !important; line-height: inherit !important; }
 .narrative .n-trace, .narrative button { display: inline !important; vertical-align: baseline !important; }
 
 .telos-card {
-  background: #141C38 !important;
+  background:
+    linear-gradient(160deg, rgba(255,255,255,0.045), rgba(255,255,255,0.008) 38%, transparent 72%),
+    var(--surface-2) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
   color: #ECE8FF !important;
-  border: 1px solid #23305A !important;
-  border-radius: 12px !important;
+  border: 1px solid var(--line-2) !important;
+  border-radius: 8px !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge), var(--glass-shadow);
   padding: 20px !important;
   display: flex;
   flex-direction: column;
   gap: 10px;
   cursor: pointer;
-  transition: background 200ms, border-color 200ms, transform 200ms;
+  transition: background 200ms, border-color 200ms, transform 250ms cubic-bezier(.16,1,.3,1), box-shadow 250ms;
 }
-.telos-card:hover { background: #1A2444 !important; border-color: #2E3E6E !important; }
+.telos-card:hover {
+  background:
+    linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015) 40%, transparent 75%),
+    var(--surface-3) !important;
+  border-color: var(--line-3) !important;
+  box-shadow: inset 0 1px 0 var(--glass-edge-hover), var(--glass-shadow);
+  transform: translateY(-1px);
+}
 .telos-card * { color: inherit; }
 .telos-card .meta, .telos-card .muted { color: #A8A5C8 !important; }
 .telos-card .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; background: rgba(59,130,246,0.15); color: #9ACBFF !important; border: 1px solid rgba(154,203,255,0.25); font-size: 12px; font-weight: 500; }
@@ -27,7 +42,7 @@ html, body { background: #060B1A !important; color: #E8EFFF !important; }
 .telos-card .pill.pill-creative      { background: rgba(248,123,123,0.14); color:#F87B7B !important;  border-color: rgba(248,123,123,0.3); }
 .telos-card .pill.pill-relationships { background: rgba(183,148,244,0.14); color:#B794F4 !important;  border-color: rgba(183,148,244,0.3); }
 .telos-card .pill.pill-rhythms       { background: rgba(45,212,191,0.14);  color:#2DD4BF !important;  border-color: rgba(45,212,191,0.3); }
-.progress-bar { height: 6px; background: #23305A; border-radius: 3px; overflow: hidden; margin: 4px 0; }
+.progress-bar { height: 6px; background: var(--line-2); border-radius: 3px; overflow: hidden; margin: 4px 0; }
 .progress-fill { height: 100%; background: linear-gradient(90deg, #3B82F6, #7DD3FC); border-radius: 3px; }
 .telos-card.goal-card.dim-health    .progress-fill { background: linear-gradient(90deg, #34D399, #6FD6A1); }
 .telos-card.goal-card.dim-money     .progress-fill { background: linear-gradient(90deg, #E0A458, #F0A35E); }
@@ -38,7 +53,7 @@ html, body { background: #060B1A !important; color: #E8EFFF !important; }
 .telos-card.prob-high { border-left: 3px solid #F87171 !important; }
 .telos-card.prob-med  { border-left: 3px solid #FBBF24 !important; }
 .telos-card.prob-low  { border-left: 3px solid #6B80AB !important; }
-.telos-card.mission-card { border-left: 3px solid #9ACBFF !important; background: linear-gradient(90deg, rgba(154,203,255,0.08), #0F1A33) !important; }
+.telos-card.mission-card { border-left: 3px solid #9ACBFF !important; background: linear-gradient(90deg, rgba(154,203,255,0.08), transparent 60%), var(--surface-2) !important; }
 .telos-card.team-agent { border-left: 3px solid #3B82F6 !important; }
 .telos-card.team-human { border-left: 3px solid #9ACBFF !important; }
 .telos-card.rec-high  { border-left: 3px solid #F87171 !important; }
@@ -94,7 +109,7 @@ html, body { background: #060B1A !important; color: #E8EFFF !important; }
 
 .telos-card.team-agent, .telos-card.team-human { gap: 12px !important; }
 .telos-card .team-top { display: flex; gap: 14px; align-items: center; }
-.telos-card .team-avatar { width: 40px; height: 40px; background: #17284A !important; border-radius: 50%; display: grid; place-items: center; font-weight: 500; flex-shrink: 0; }
+.telos-card .team-avatar { width: 40px; height: 40px; background: var(--surface-3) !important; border-radius: 50%; display: grid; place-items: center; font-weight: 500; flex-shrink: 0; }
 .telos-card .team-head { display: flex; flex-direction: column; gap: 2px; }
 .telos-card .team-name { font-size: 16px; font-weight: 500; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .telos-card .team-role { font-size: 13px; }
@@ -129,30 +144,33 @@ html, body { background: #060B1A !important; color: #E8EFFF !important; }
 .prefs-toggle { display: flex !important; align-items: center; gap: 14px; padding: 14px 20px; width: 100%; text-align: left; }
 .prefs-title { font-size: 14px; font-weight: 500; }
 .prefs-sub { font-size: 13px; }
-.telos-card.prefs.open .prefs-toggle { border-bottom: 1px dashed #1A2A4D; }
+.telos-card.prefs.open .prefs-toggle { border-bottom: 1px dashed var(--line-1); }
 .prefs-body { padding: 18px 20px !important; display: grid !important; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important; gap: 16px 24px !important; }
 .pref-col { display: flex; flex-direction: column; gap: 6px; }
 .pref-label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500; }
 .pref-items { display: flex; flex-wrap: wrap; gap: 5px; }
-.pref-item { font-size: 13px; color: #D6E1F5 !important; padding: 3px 9px; background: #12203D !important; border: 1px solid #1A2A4D; border-radius: 999px; }
+.pref-item { font-size: 13px; color: #D6E1F5 !important; padding: 3px 9px; background: var(--surface-1) !important; border: 1px solid var(--line-1); border-radius: 999px; }
 .pref-item.aph { font-style: italic; background: transparent !important; border: none; padding: 2px 0; display: block; }
 
 :root {
   --cap: 1180px;
 
-  /* LifeOS palette — warmed navy base, per-dimension hues */
-  --bg:#0A0E1F;
-  --bg-1:#141C38;
-  --bg-2:#1A2444;
-  --bg-3:#1F2B52;
-  --line:#23305A;
-  --line-2:#2E3E6E;
+  /* LifeOS palette — legacy v7 surface/line names repointed onto the global
+     glass tokens (2026-08-17). Values only; every consumer stays untouched.
+     --line-2 is intentionally NOT redefined here: it is a global token name,
+     and shadowing it from this sheet (which loads after globals.css) would
+     hand every glass consumer an opaque navy border. */
+  --bg:var(--ground);
+  --bg-1:var(--surface-1);
+  --bg-2:var(--surface-2);
+  --bg-3:var(--surface-3);
+  --line:var(--line-1);
 
-  --text:#ECE8FF;
-  --text-1:#D8D4F0;
-  --text-2:#A8A5C8;
-  --text-3:#7E7B9E;
-  --text-4:#5A5879;
+  --text:var(--ink-1);
+  --text-1:var(--ink-1);
+  --text-2:var(--ink-2);
+  --text-3:var(--ink-3);
+  --text-4:var(--ink-3);
 
   --navy:#002B9D;       /* logo deep blue */
   --azure:#3B82F6;
@@ -181,15 +199,10 @@ html, body { background: #060B1A !important; color: #E8EFFF !important; }
   --flat:#A8A5C8;           /* muted parchment for flat velocity */
 }
 
-body {
-  background:
-    radial-gradient(1200px 700px at 80% -10%, rgba(52,211,153,.08), transparent 60%),
-    radial-gradient(800px 500px at 10% 110%, rgba(183,148,244,.06), transparent 60%),
-    linear-gradient(180deg, #0A0E1F 0%, #111830 100%) fixed;
-}
+/* v7's own body gradient retired — the global aurora field is the atmosphere. */
 
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text-1);font-family:var(--sans);font-size:15px;line-height:1.5}
+html,body{margin:0;padding:0;color:var(--text-1);font-family:var(--sans);font-size:15px;line-height:1.5}
 button { font-family:inherit; color:inherit; background:transparent; border:none; padding:0; margin:0; }
 .mono { font-family: var(--mono); font-feature-settings:"tnum","zero"; }
 
@@ -204,9 +217,12 @@ button { font-family:inherit; color:inherit; background:transparent; border:none
   position:sticky; top:0; z-index:50;
   display:flex; align-items:center; gap:28px;
   padding:14px 28px;
-  background:rgba(24,25,35,.82);
-  backdrop-filter:blur(14px) saturate(1.2);
-  border-bottom:1px solid var(--line);
+  background:
+    linear-gradient(170deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 35%, transparent 65%),
+    rgba(9,12,24,0.55);
+  -webkit-backdrop-filter:blur(28px) saturate(1.5);
+  backdrop-filter:blur(28px) saturate(1.5);
+  border-bottom:1px solid var(--line-1);
 }
 .brand { display:flex; align-items:center; gap:10px; }
 .brand-mark {
@@ -264,11 +280,15 @@ button { font-family:inherit; color:inherit; background:transparent; border:none
 /* ---------- Frame ---------- */
 .frame {
   max-width:var(--cap);
-  margin:0 auto;
-  padding:24px 32px 80px;
+  margin:12px auto 40px;
+  padding:32px 32px 64px;
   display:flex; flex-direction:column;
   gap:48px;       /* generous between major sections */
   width:100%;
+  background: var(--sheet-bg);
+  border: 1px solid var(--line-1);
+  border-radius: 12px;
+  box-shadow: var(--glass-shadow);
 }
 
 /* ---------- HERO ---------- */
@@ -338,7 +358,7 @@ button { font-family:inherit; color:inherit; background:transparent; border:none
 /* ── 1. Synthesis paragraph with clickable typed tokens ── */
 .hero-synthesis {
   margin:0;
-  font-family: 'valkyrie-text', Georgia, 'Iowan Old Style', serif;
+  font-family: var(--sans);
   font-size:clamp(20px, 1.55vw, 26px);
   line-height:1.5;
   color:#EFF3FB;
@@ -365,7 +385,11 @@ button { font-family:inherit; color:inherit; background:transparent; border:none
   cursor: default;
   transition: color 180ms cubic-bezier(.4,0,.2,1), border-color 180ms cubic-bezier(.4,0,.2,1), background-color 180ms cubic-bezier(.4,0,.2,1);
 }
-button.synth-tok { cursor: pointer; }
+button.synth-tok { cursor: pointer; display: inline; text-align: inherit; }
+@media (max-width: 600px) {
+  .hero-state-block { padding: 0; }
+  .hero-synthesis { font-size: 19px; line-height: 1.6; }
+}
 button.synth-tok:hover,
 button.synth-tok:focus-visible {
   outline: none;
@@ -885,8 +909,8 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .col-body { padding:12px; display:flex; flex-direction:column; gap:10px; max-height:680px; overflow-y:auto; }
 
 .card {
-  background:#0F1A33 !important;
-  border:1px solid #1A2A4D;
+  background:var(--surface-1) !important;
+  border:1px solid var(--line-1);
   border-radius:12px;
   padding:20px;
   cursor:pointer;
@@ -894,7 +918,7 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
   display:flex; flex-direction:column; gap:10px;
   color:var(--text-1);
 }
-.col { background:#0F1A33 !important; }
+.col { background:var(--surface-1) !important; }
 .card:hover { border-color:var(--line-2); background:var(--bg-3); }
 .card.faded  { opacity:.28; }
 .card.active { border-color:var(--accent); background:color-mix(in oklch, var(--accent) 8%, var(--bg-2)); box-shadow:0 0 0 1px color-mix(in oklch, var(--accent) 45%, transparent); }
@@ -951,8 +975,8 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .force-svg { width:100%; height:auto; display:block; }
 
 /* ---------- WHAT ---------- */
-.what-grid { background:#0F1A33 !important; border:1px solid #1A2A4D; border-radius:12px; overflow:hidden; }
-.what-row:hover { background:#1A2A4D !important; }
+.what-grid { background:var(--surface-1) !important; border:1px solid var(--line-1); border-radius:12px; overflow:hidden; }
+.what-row:hover { background:var(--line-1) !important; }
 .what-head {
   display:grid;
   grid-template-columns: 1.6fr 0.7fr 0.9fr 2.8fr;
@@ -1077,7 +1101,15 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 /* ---------- MODAL ---------- */
 .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.72); backdrop-filter:blur(8px); z-index:100; display:grid; place-items:center; padding:40px 20px; animation:fade 200ms; }
 @keyframes fade { from { opacity:0 } to { opacity:1 } }
-.modal { width:100%; max-width:960px; background:var(--bg-1); border:1px solid var(--line-2); border-radius:10px; padding:32px; display:flex; flex-direction:column; gap:24px; max-height:90vh; overflow-y:auto; animation:slide 250ms cubic-bezier(.4,0,.2,1); }
+.modal { width:100%; max-width:960px;
+  background:
+    linear-gradient(165deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 30%, transparent 60%),
+    var(--sheet-bg);
+  -webkit-backdrop-filter:blur(42px) saturate(1.45);
+  backdrop-filter:blur(42px) saturate(1.45);
+  border:1px solid rgba(255,255,255,0.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 32px 80px rgba(0,0,0,0.5);
+  border-radius:10px; padding:32px; display:flex; flex-direction:column; gap:24px; max-height:90vh; overflow-y:auto; animation:slide 250ms cubic-bezier(.4,0,.2,1); }
 @keyframes slide { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
 .modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
 .modal-eyebrow { font-size:13px; color:var(--text-3); margin-bottom:6px; }
@@ -1103,11 +1135,15 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 /* ---------- TWEAKS ---------- */
 .tweaks {
   position:fixed; right:16px; bottom:16px; z-index:60;
-  background:rgba(30,31,42,.94); backdrop-filter:blur(10px);
-  border:1px solid var(--line-2); border-radius:8px;
+  background:
+    linear-gradient(165deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 30%, transparent 60%),
+    var(--sheet-bg);
+  -webkit-backdrop-filter:blur(42px) saturate(1.45);
+  backdrop-filter:blur(42px) saturate(1.45);
+  border:1px solid rgba(255,255,255,0.18); border-radius:8px;
   padding:16px 18px; width:320px;
   display:flex; flex-direction:column; gap:14px;
-  box-shadow: 0 20px 40px rgba(0,0,0,.5);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 32px 80px rgba(0,0,0,0.5);
 }
 .tw-head { font-size:14px; color:var(--text); padding-bottom:10px; border-bottom:1px dashed var(--line); display:flex; align-items:center; font-weight:500; }
 .tw-head .tw-meta { margin-left:auto; color:var(--text-4); font-size:11px; font-weight:400; font-style:italic; }
@@ -1142,7 +1178,7 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .problems { display:flex; flex-direction:column; }
 .prob-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
 .prob {
-  background:#0F1A33 !important; border:1px solid #1A2A4D;
+  background:var(--surface-1) !important; border:1px solid var(--line-1);
   border-left:3px solid var(--bad);
   border-radius:12px; padding:20px; text-align:left; cursor:pointer;
   display:flex; flex-direction:column; gap:10px; color:var(--text-1); font:inherit;
@@ -1166,8 +1202,8 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 
 /* ---------- MISSION CARD ---------- */
 .mission-card {
-  background:#0F1A33 !important;
-  border:1px solid #1A2A4D; border-left:3px solid #9ACBFF;
+  background:var(--surface-1) !important;
+  border:1px solid var(--line-1); border-left:3px solid #9ACBFF;
   border-radius:12px; padding:24px; cursor:pointer;
   display:flex; flex-direction:column; gap:6px;
   transition:all 200ms; margin-bottom:20px;
@@ -1182,9 +1218,9 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 
 /* ---------- GOALS GRID ---------- */
 .goals-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(270px, 1fr)); gap:12px; margin-top:18px; }
-.goal-card { background:#0F1A33 !important; border:1px solid #1A2A4D; border-radius:12px; padding:20px; cursor:pointer; display:flex; flex-direction:column; gap:10px; transition:all 200ms; }
-.goal-card:hover { border-color:var(--line-2); background:#17284A !important; }
-.bar { height:4px; background:#1A2A4D; border-radius:2px; overflow:hidden; }
+.goal-card { background:var(--surface-1) !important; border:1px solid var(--line-1); border-radius:12px; padding:20px; cursor:pointer; display:flex; flex-direction:column; gap:10px; transition:all 200ms; }
+.goal-card:hover { border-color:var(--line-2); background:var(--surface-3) !important; }
+.bar { height:4px; background:var(--line-1); border-radius:2px; overflow:hidden; }
 .bar-fill { height:100%; background:linear-gradient(90deg, #3B82F6, #9ACBFF) !important; border-radius:2px; transition:width 400ms cubic-bezier(.4,0,.2,1); }
 .goal-title { font-size:16px; color:#E8EFFF; }
 .goal-kpi .kpi-val { font-family:var(--sans); font-size:18px; font-weight:500; color:#E8EFFF; }
@@ -1213,11 +1249,11 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .metrics { display:flex; flex-direction:column; }
 .metric-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; }
 .metric {
-  background:#0F1A33 !important; border:1px solid #1A2A4D; border-radius:12px;
+  background:var(--surface-1) !important; border:1px solid var(--line-1); border-radius:12px;
   padding:16px; text-align:left; cursor:pointer; color:var(--text-1); font:inherit;
   display:flex; flex-direction:column; gap:8px; transition:all 200ms;
 }
-.metric:hover { border-color:var(--azure); background:#17284A !important; }
+.metric:hover { border-color:var(--azure); background:var(--surface-3) !important; }
 .metric-val { color:#E8EFFF; font-size:24px; }
 .metric-label { color:#9BB0D6; }
 .metric-top { display:flex; align-items:baseline; gap:8px; }
@@ -1241,11 +1277,11 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .team-sec { display:flex; flex-direction:column; }
 .team-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:14px; }
 .team-card {
-  background:#0F1A33 !important; border:1px solid #1A2A4D; border-radius:12px;
+  background:var(--surface-1) !important; border:1px solid var(--line-1); border-radius:12px;
   padding:20px; cursor:pointer; transition:all 200ms;
   display:flex; flex-direction:column; gap:12px;
 }
-.team-card:hover { border-color:var(--line-2); background:#17284A !important; }
+.team-card:hover { border-color:var(--line-2); background:var(--surface-3) !important; }
 .team-card.agent { border-left:3px solid var(--accent-2); }
 .team-card.human { border-left:3px solid var(--sky); }
 .team-top { display:flex; gap:14px; align-items:center; }
@@ -1272,11 +1308,11 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .budget-col { display:flex; flex-direction:column; gap:10px; }
 .budget-kind { font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-3); font-weight:500; padding-bottom:6px; border-bottom:1px dashed var(--line); }
 .budget-row {
-  background:#0F1A33 !important; border:1px solid #1A2A4D; border-radius:12px;
+  background:var(--surface-1) !important; border:1px solid var(--line-1); border-radius:12px;
   padding:16px; cursor:pointer; transition:all 200ms;
   display:flex; flex-direction:column; gap:8px;
 }
-.budget-row:hover { border-color:var(--line-2); background:#17284A !important; }
+.budget-row:hover { border-color:var(--line-2); background:var(--surface-3) !important; }
 .budget-label { color:#E8EFFF; }
 .budget-val { color:#E8EFFF; font-size:16px; font-weight:500; }
 .budget-row.warn { border-left:2px solid var(--bad); }
@@ -1292,7 +1328,7 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .recs-list { display:flex; flex-direction:column; gap:10px; }
 .rec {
   display:grid; grid-template-columns:auto 1fr auto; gap:18px;
-  background:#0F1A33 !important; border:1px solid #1A2A4D; border-radius:12px;
+  background:var(--surface-1) !important; border:1px solid var(--line-1); border-radius:12px;
   padding:20px 24px; border-left:3px solid #9ACBFF;
 }
 .rec-action { color:#E8EFFF; }
@@ -1319,7 +1355,7 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .rec-impact.low  { color:var(--text-3); }
 
 /* ---------- PREFERENCES ---------- */
-.prefs { background:#0F1A33 !important; border:1px dashed #1A2A4D; border-radius:12px; }
+.prefs { background:var(--surface-1) !important; border:1px dashed var(--line-1); border-radius:12px; }
 .pref-item { background:rgba(59,130,246,0.12) !important; color:#9ACBFF !important; border:1px solid rgba(154,203,255,0.2) !important; border-radius:999px !important; padding:2px 8px !important; font-size:11px !important; }
 .prefs-toggle { width:100%; display:flex; align-items:center; gap:14px; padding:14px 20px; background:none; border:none; color:inherit; font:inherit; cursor:pointer; text-align:left; }
 .prefs-toggle:hover { background:var(--bg-2); }
@@ -1355,7 +1391,7 @@ button.synth-tok-work:hover      { border-bottom-color: rgba(154,203,255,0.95); 
 .tree-count { font-size:12px; color:var(--text-4); font-family:var(--mono); }
 .tree-row-body { display:flex; flex-wrap:wrap; gap:6px; }
 .tree-node {
-  background:#0F1A33 !important; border:1px solid #1A2A4D;
+  background:var(--surface-1) !important; border:1px solid var(--line-1);
   color:var(--text-2); padding:5px 10px; border-radius:4px;
   font-size:12px; cursor:pointer; transition:all 180ms;
   display:inline-flex; align-items:baseline; gap:6px;
@@ -1439,7 +1475,7 @@ html[data-density="spacious"] .narrative { font-size:24px; line-height:1.55; }
   align-items: center;
   gap: 12px;
   padding: 10px 24px;
-  border-bottom: 1px solid var(--border, #1A2A4D);
+  border-bottom: 1px solid var(--border, var(--line-1));
   background: var(--bg, #0B1226);
   position: sticky;
   top: 0;
@@ -1462,7 +1498,7 @@ html[data-density="spacious"] .narrative { font-size:24px; line-height:1.55; }
   gap: 6px;
   padding: 10px 24px;
   background: var(--bg, #0B1226);
-  border-bottom: 1px solid var(--border, #1A2A4D);
+  border-bottom: 1px solid var(--border, var(--line-1));
 }
 .telos-section-nav .tsn-tab {
   appearance: none;
@@ -1503,12 +1539,12 @@ html[data-density="spacious"] .narrative { font-size:24px; line-height:1.55; }
   display: inline-flex; align-items: center; gap: 6px;
   color: var(--text-2, #9BB0D6); text-decoration: none;
   font-size: 13px; padding: 6px 12px; border-radius: 7px;
-  border: 1px solid var(--border, #1A2A4D); background: rgba(59,130,246,0.06);
+  border: 1px solid var(--border, var(--line-1)); background: rgba(59,130,246,0.06);
   transition: background .15s ease, color .15s ease;
 }
 .telos-item-back:hover { color: var(--text, #E8EFFF); background: rgba(59,130,246,0.14); }
 .telos-item-card {
-  background: #0F1A33; border: 1px solid var(--border, #1A2A4D);
+  background: var(--surface-1); border: 1px solid var(--border, var(--line-1));
   border-radius: 14px; padding: 28px 30px;
 }
 .telos-item-eyebrow {
@@ -1528,7 +1564,7 @@ html[data-density="spacious"] .narrative { font-size:24px; line-height:1.55; }
 .telos-item-fact dd { margin: 0; font-size: 15px; color: var(--text, #E8EFFF); }
 .telos-item-relations {
   display: flex; flex-direction: column; gap: 14px;
-  margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border, #1A2A4D);
+  margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border, var(--line-1));
 }
 .telos-item-rel { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
 .telos-item-rel-label {
@@ -1656,7 +1692,7 @@ html[data-density="spacious"] .narrative { font-size:24px; line-height:1.55; }
 
 /* Brighten active mission gradient */
 .telos-card.mission-card {
-  background: linear-gradient(135deg, rgba(183,148,244,0.10), rgba(52,211,153,0.06) 50%, #141C38 100%) !important;
+  background: linear-gradient(135deg, rgba(183,148,244,0.10), rgba(52,211,153,0.06) 50%, var(--surface-2) 100%) !important;
   border-left: 3px solid #B794F4 !important;
 }
 
@@ -1698,7 +1734,7 @@ html[data-density="spacious"] .narrative { font-size:24px; line-height:1.55; }
 
 .telos-card.goal-card:hover {
   transform: translateY(-1px);
-  border-color: #2E3E6E !important;
+  border-color: var(--line-3) !important;
   background: linear-gradient(180deg, #1A2347 0%, #161E3C 100%) !important;
   box-shadow: 0 6px 24px -12px rgba(59, 130, 246, 0.35);
 }
@@ -1850,3 +1886,6 @@ html[data-density="spacious"] .narrative { font-size:24px; line-height:1.55; }
   .goals-grid { gap: 16px !important; }
 }
 
+
+/* Numeric readouts share the instrument typography with chrome StatTile. */
+.frame .kpi-val, .frame .metric-val, .frame .stat-value { font-family: "triplicate-a-code", monospace; font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "zero"; letter-spacing: -.04em; }

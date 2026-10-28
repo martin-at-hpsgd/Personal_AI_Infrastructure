@@ -1,3 +1,6 @@
+/**
+ * @version 1.7.10
+ */
 // isa-utils.ts -- Shared ISA functions for hooks
 //
 // Used by: ISASync.hook.ts (PostToolUse), and any other hook that reads or
@@ -17,17 +20,18 @@
 // module reads ISA.md first and falls back to PRD.md for sessions created
 // before the rename. New sessions always write ISA.md.
 
-import { writeFileSync, readdirSync, statSync, existsSync, mkdirSync, appendFileSync } from 'fs';
+import { writeFileSync, readFileSync, readdirSync, statSync, existsSync, mkdirSync, appendFileSync } from 'fs';
 import { join, basename } from 'path';
 import { createHash } from 'crypto';
-import { paiPath } from './paths';
+import { parseIsaClaimsText, isaBody, claimText, stripBulletPrefix, BRIDGE_HEADING_RE } from '../../LIFEOS/TOOLS/lib/IsaClaims';
+import { lifeosPath } from './paths';
 import { appendWorkEvents, diffRegistry, foldToSnapshot, readLiveRegistry, workEventsPath } from './work-events';
 import { PHASE_TO_ASCENT, ascentTag, deriveAscent, isRunActive } from '../../LIFEOS/TOOLS/ascent';
 
 // ── v6.9.0: Resume After Complete tunables ────────────────────────────────
 // Constants live here per v6.9.0 doctrine "Tunable Parameters" section.
 const BUMP_COMPLETE_TIME_BOUND_MS = 24 * 60 * 60 * 1000; // 24h — bumpLastToolActivity skip threshold for complete sessions
-const ISA_REWORK_JSONL = paiPath('MEMORY', 'OBSERVABILITY', 'isa-rework.jsonl');
+const ISA_REWORK_JSONL = lifeosPath('MEMORY', 'OBSERVABILITY', 'isa-rework.jsonl');
 
 /** SHA-256 of the post-frontmatter body. Stable input for v6.9.0 B2 diff gate. */
 export function hashBody(content: string): string {
@@ -41,12 +45,17 @@ export function hashBody(content: string): string {
 /** Append one Decisions row to the body. Inserts under `## Decisions` heading,
  *  creating the section if missing. v6.9.0 invariant: every auto-rewind logs
  *  one row so the principal can audit the rewind inline. */
-function appendDecisionRow(content: string, ts: string, newIteration: number): string {
+export function appendDecisionRow(content: string, ts: string, newIteration: number): string {
   const row = `- D-auto-${ts}: Auto-resumed from complete to learn at ${ts} — iteration ${newIteration}`;
   const decisionsRe = /(\n## Decisions\n)([\s\S]*?)(\n## |\n---\n|$)/;
   const match = content.match(decisionsRe);
   if (match) {
-    return content.replace(decisionsRe, `${match[1]}${match[2].trimEnd()}\n${row}\n${match[3]}`);
+    // Function replacer, not a string: the existing Decisions body (match[2]) is
+    // full of literal dollar amounts, and a string replacement would interpret
+    // `$1`/`$2`/`$&` inside them as regex backreferences — an amount starting
+    // `$1` had its `$1` replaced by the first capture group, duplicating and shredding the section (2026-09-01 incident).
+    // public PR #2045, @alexfry-axeai
+    return content.replace(decisionsRe, () => `${match[1]}${match[2].trimEnd()}\n${row}\n${match[3]}`);
   }
   // No Decisions section yet — append before the learning-trail section if present
   // (## Learning, or the legacy ## Changelog alias for pre-rename ISAs), else end.
@@ -60,13 +69,14 @@ function appendDecisionRow(content: string, ts: string, newIteration: number): s
  *  must never block the sync. */
 function appendISAReworkEvent(record: Record<string, unknown>): void {
   try {
-    mkdirSync(join(paiPath('MEMORY'), 'OBSERVABILITY'), { recursive: true });
+    mkdirSync(lifeosPath('MEMORY', 'OBSERVABILITY'), { recursive: true });
     appendFileSync(ISA_REWORK_JSONL, JSON.stringify(record) + '\n');
   } catch { /* silent — observability must not break sync */ }
 }
 
-export const WORK_DIR = paiPath('MEMORY', 'WORK');
-export const WORK_JSON = paiPath('MEMORY', 'STATE', 'work.json');
+export const WORK_DIR = lifeosPath('MEMORY', 'WORK');
+export const WORK_JSON = lifeosPath('MEMORY', 'STATE', 'work.json');
+const currentWorkJson = () => lifeosPath('MEMORY', 'STATE', 'work.json');
 
 // Canonical artifact filename (v4.1.0+) and the legacy fallback we still read.
 export const ARTIFACT_FILENAME = 'ISA.md';
@@ -165,16 +175,16 @@ export function writeFrontmatterField(content: string, field: string, value: str
 //   ## IDEAL STATE CRITERIA (Verification Criteria)
 //     ### Criteria               (sub-heading inside IDEAL STATE block)
 //   ## Claims                    (Algorithm v8 vocabulary)
-//   ## Features                  (spec v2.16.0 — feature-block ISAs: claims live
+//   ## Features                  (spec v2.16.0 — feature-block ISAs: criteria live
 //                                 in `### F<n>` blocks under `## Features`)
 // Case-insensitive. Section ends at the next `## ` (H2) heading, `---`, or EOF.
-// `## Claims` must anchor at "Claims" so `## Anti-claims` never matches as the
-// section start (anti-claims are a separate H2 in v8 ISAs and stay excluded).
+// `## Claims` (legacy) and `## Criteria` must anchor at the word so `## Anti-criteria` and
+// `## Anti-claims` never match as the section start (anti-criteria are a separate H2 and stay excluded).
 //
 // The regex INCLUDES `### Criteria` so ISAs using the v4.0 template layout
 // (`## IDEAL STATE CRITERIA` + `### Criteria` sub-heading) parse correctly.
 // Without the Claims variant, every v8-vocabulary ISA parsed as zero criteria:
-// no claim cards, no body-count progress, no criteria fallback on the board
+// no criterion cards, no body-count progress, no criteria fallback on the board
 // (found 2026-07-22 — the "essence of hill climbing" gap was largely this).
 //
 // `## Features` is LAST in the alternation and only wins when no earlier
@@ -188,26 +198,86 @@ export const CRITERIA_HEADING_RE =
 
 // Canonical heading the template emits and migrations target.
 // Short, unambiguous, what most live ISAs already use.
-export const CANONICAL_CRITERIA_HEADING = '## ISC Criteria';
+export const CANONICAL_CRITERIA_HEADING = '## Criteria';
 
-// Returns the criteria-section body (without the heading line), or null if no
-// recognized heading was found. Used by both countCriteria and parseCriteriaList
-// so they stay in lockstep.
-export function extractCriteriaSection(content: string): string | null {
-  const headingMatch = CRITERIA_HEADING_RE.exec(content);
-  if (!headingMatch || headingMatch.index === undefined) return null;
-  const startOfBody = headingMatch.index + headingMatch[0].length;
-  const rest = content.slice(startOfBody);
-  // End at the next H2 (`## ` but not `### `), a YAML doc terminator, or EOF.
-  const endMatch = rest.match(/\n##\s+(?!#)|\n---\s*\n/);
-  const body = endMatch ? rest.slice(0, endMatch.index) : rest;
-  return body;
+// Char spans (body start, body end) of every counted section: the first criteria
+// heading plus each `## Bridge Criteria` H2. A span ends at the next H2 (`## `
+// but not `### `), a YAML doc terminator, or EOF. Anti-criteria sections are not
+// spans, by design. public issue #2186, @Bowlerjim
+const SECTION_END_RE = /\n##\s+(?!#)|\n---\s*\n/;
+function criteriaSectionSpans(text: string): Array<[number, number]> {
+  const starts: number[] = [];
+  const primary = CRITERIA_HEADING_RE.exec(text);
+  if (primary) starts.push(primary.index + primary[0].length);
+  for (const m of text.matchAll(new RegExp(BRIDGE_HEADING_RE.source, 'gim'))) starts.push(m.index! + m[0].length);
+  return starts.map((start): [number, number] => {
+    const end = text.slice(start).match(SECTION_END_RE);
+    return [start, end ? start + end.index! : text.length];
+  });
 }
 
+// Returns the criteria-section body (without the heading line), or null if no
+// recognized heading was found. Bridge Criteria bodies are appended. Used by both
+// countCriteria and parseCriteriaList so they stay in lockstep.
+export function extractCriteriaSection(content: string): string | null {
+  const spans = criteriaSectionSpans(content);
+  if (spans.length === 0) return null;
+  return spans.map(([s, e]) => content.slice(s, e)).join('\n');
+}
+
+// Checkbox lines at ANY indent, minus parents: a line whose next non-blank line
+// is a deeper-indented checkbox is an aggregation, not an atomic criterion
+// (ISAFormat § nesting: "leaves are atomic testable criteria; parents are
+// aggregations"). Column-anchored `/^- \[/` counted the parents and dropped every
+// leaf, so a nested ISA reported 1/2 for three criteria. Lines come back trimmed so
+// the ID parsers below keep their `^- \[` anchors. public issue #1938, @mj-deving
+export function leafCheckboxLines(body: string): string[] {
+  const lines = body.split('\n');
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)- \[[ x~]\]/);
+    if (!m) continue;
+    let j = i + 1;
+    while (j < lines.length && !lines[j].trim()) j++;
+    const next = j < lines.length ? lines[j].match(/^(\s*)- \[[ x~]\]/) : null;
+    if (next && next[1].length > m[1].length) continue;
+    out.push(lines[i].trimStart());
+  }
+  return out;
+}
+
+// The historical contract (regression-locked by test/hooks/lib/isa-claims-parse.test.ts,
+// "## Anti-claims is not the section start"): countCriteria/parseCriteriaList count ONLY
+// the Claims (legacy)/Criteria/Features section body — a separate `## Anti-criteria` (or legacy `## Anti-claims`) H2 section is
+// never counted, even though the canonical parser (LIFEOS/TOOLS/lib/IsaClaims.ts)
+// deliberately DOES recognize criteria living there (so H9/coverageOf can see them). Scope
+// both consumer functions back down to the traditional section's line range so they stay
+// byte-compatible with every existing caller (CheckpointPerISC, SessionCleanup,
+// WorkReconcile, Checkpoint) instead of silently absorbing anti-criteria-section entries.
+function criteriaSectionLineRanges(content: string): Array<[number, number]> {
+  const body = isaBody(content);
+  return criteriaSectionSpans(body).map(([s, e]): [number, number] => [
+    body.slice(0, s).split(/\r?\n/).length,
+    body.slice(0, e).split(/\r?\n/).length,
+  ]);
+}
+
+function inCriteriaSection(content: string, line: number): boolean {
+  const ranges = criteriaSectionLineRanges(content);
+  return ranges.length === 0 || ranges.some(([s, e]) => line >= s && line <= e);
+}
+
+// Deliberately NOT migrated onto the canonical parser: this consumer's historical
+// contract (SessionCleanup, hooks/SessionCleanup.hook.ts) counts ANY checkbox line in
+// the section regardless of whether its text carries a recognizable criterion id — the
+// canonical parser requires an id match even for checkbox lines, which silently dropped
+// plain-text checkbox fixtures (`- [x] a`) that SessionCleanup's tests depend on.
+// parseCriteriaList below, by contrast, has always required an id match, so it migrates
+// cleanly (see inCriteriaSection for why the Anti-criteria-section scoping still applies).
 export function countCriteria(content: string): { checked: number; total: number } {
   const body = extractCriteriaSection(content);
   if (body === null) return { checked: 0, total: 0 };
-  const lines = body.split('\n').filter(l => l.match(/^- \[[ x]\]/));
+  const lines = leafCheckboxLines(body);
   const checked = lines.filter(l => l.startsWith('- [x]')).length;
   return { checked, total: lines.length };
 }
@@ -252,7 +322,7 @@ export interface CriterionEntry {
   id: string;
   description: string;
   type: 'criterion' | 'anti-criterion';
-  status: 'pending' | 'completed';
+  status: 'pending' | 'completed' | 'partial';
   createdInPhase?: string;  // Phase when first added to ISA
   /**
    * Legacy category code from pre-v5.3.0 ISAs ([F]/[S]/[B]/[N]/[E]/[A]).
@@ -274,68 +344,22 @@ export interface CriterionEntry {
 const VALID_CATEGORIES = new Set(['F', 'S', 'B', 'N', 'E', 'A']);
 
 export function parseCriteriaList(content: string): CriterionEntry[] {
-  const body = extractCriteriaSection(content);
-  if (body === null) return [];
-  return body.split('\n')
-    .filter(l => l.match(/^- \[[ x]\]/))
-    .map((line): CriterionEntry | null => {
-      const checked = line.startsWith('- [x]');
-
-      // Primary parse (Algorithm v5.3.0+): `- [x] ISC-1: description` — bare ISC ID, `:` required.
-      // Backward-compat: also accepts pre-v5.3.0 bracketed format `- [x] ISC-1 [F]: description`
-      // and legacy nested `- [x] ISC-1 [F][grep]: description`.
-      // Algorithm v8 vocabulary (2026-07-22): short claim IDs — `C1`, `R3`,
-      // `EQ-12` — are the live convention (`- [x] C1: description`). Without
-      // them every v8 ISA parsed as all-dropped: zero claim cards, no body
-      // progress, the climb invisible on the board.
-      // ISC-N | domain-prefixed (ADM-1, CH-10, H-AVAIL, CRS-PAGE) | short (C1, A3).
-      // The domain-prefixed alt accepts a LETTER suffix (H-AVAIL) not just digits
-      // — H3/Vector use alphabetic claim IDs that the digits-only pattern missed.
-      // Dots included (ISC-2.1, C4.2): split-claim IDs are blessed by the
-      // ID-Stability Rule (`ISC-N.M`) but the dot-less pattern dropped them, so
-      // a split claim was frontier-visible yet invisible on the board
-      // (2026-08-13, Forge F5 on the IsaFrontier build).
-      const ID_RE = '(ISC-[\\w.-]+|[A-Z]{1,6}-[A-Z0-9][\\w.-]*|[A-Z]{1,4}-?\\d+(?:\\.\\d+)*)';
-      let textMatch = line.match(new RegExp(`^- \\[[ x]\\]\\s*${ID_RE}(?:\\s+\\[([A-Za-z]+)\\](?:\\[\\w+\\])?)?:\\s*(.*)`));
-
-      // Fallback: no trailing `:` — e.g. `- [x] ISC-1 description`,
-      // `- [x] C1 — description` (em-dash separator), or
-      // `- [x] ISC-1 [COMPLETE] description` (status word in brackets, no colon).
-      // Accept the line but strip separator dashes and non-category bracket tokens.
-      if (!textMatch) {
-        const loose = line.match(new RegExp(`^- \\[[ x]\\]\\s*${ID_RE}\\s+(.*)`));
-        if (loose) {
-          const rest = loose[2]
-            .replace(/^[—–-]\s*/, '')
-            .replace(/\[[A-Za-z]+\]\s*/g, '')
-            .trim();
-          if (rest.length > 0) {
-            textMatch = [line, loose[1], undefined as unknown as string, rest] as RegExpMatchArray;
-          }
-        }
-      }
-      if (!textMatch) return null;
-
-      const id = textMatch[1];
-      const rawCategory = textMatch[2];
-      // Only accept real category codes; drop captured status words like COMPLETE/DONE/WIP.
-      const category = rawCategory && VALID_CATEGORIES.has(rawCategory.toUpperCase())
-        ? rawCategory.toUpperCase()
-        : undefined;
-      const description = textMatch[3].trim();
-      // Algorithm v5.5.0+: anti-criteria detected by `Anti:` prose prefix on the description.
-      // Backward-compat: legacy ISAs (v5.3.0–v5.4.0) used `ISC-A-N` numbering; the `id.includes('-A-')`
-      // fallback keeps those classified correctly. Domain-prefixed IDs like `ISC-CLI-3` are unaffected.
-      const isAnti = /^Anti:\s/i.test(description) || id.includes('-A-');
-      return {
-        id,
-        description,
-        type: isAnti ? 'anti-criterion' as const : 'criterion' as const,
-        status: checked ? 'completed' as const : 'pending' as const,
-        category,
-      };
-    })
-    .filter((c): c is CriterionEntry => c !== null);
+  const lines = isaBody(content).split(/\r?\n/);
+  return parseIsaClaimsText(content).claims.filter(claim => inCriteriaSection(content, claim.line)).map(claim => {
+    const raw = lines[claim.line - 1]!;
+    const parsed = claimText(stripBulletPrefix(raw));
+    const rest = claim.source === 'table'
+      ? raw.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).filter(cell => claimText(cell)?.id !== claim.id).join(' | ').trim()
+      : parsed!.body;
+    const categoryToken = rest.match(/^\[([A-Za-z]+)\](?:\[\w+\])?:/)?.[1]?.toUpperCase();
+    const category = categoryToken && VALID_CATEGORIES.has(categoryToken) ? categoryToken : undefined;
+    const description = rest.replace(/^(?:\[[A-Za-z]+\](?:\[\w+\])?:?\s*)+/, '').trim();
+    return {
+      id: claim.id, description, category,
+      type: claim.anti || claim.id.includes('-A-') ? 'anti-criterion' : 'criterion',
+      status: claim.status === 'partial' ? 'partial' : claim.checked ? 'completed' : 'pending',
+    };
+  });
 }
 
 // ── Intent/context extraction (empty-state UI fallback) ──────────────────
@@ -390,9 +414,12 @@ export type CriteriaParseWarning =
   | null;
 
 export function diagnoseCriteria(content: string): CriteriaParseWarning {
+  const canonical = parseIsaClaimsText(content);
+  if (canonical.claims.length > 0) return null;
+  if (canonical.diagnostics.length > 0) return 'all-dropped';
   const body = extractCriteriaSection(content);
   if (body === null) return 'missing-section';
-  const checkboxLines = body.split('\n').filter(l => l.match(/^- \[[ x]\]/));
+  const checkboxLines = leafCheckboxLines(body);
   if (checkboxLines.length === 0) return 'empty-section';
   const parsed = parseCriteriaList(content);
   if (parsed.length === 0) return 'all-dropped';
@@ -498,65 +525,78 @@ export function parseCapabilities(content: string): string[] {
  */
 export function getSessionAgents(sessionUUID: string): AgentEntry[] {
   try {
-    const eventsPath = paiPath('MEMORY', 'OBSERVABILITY', 'subagent-events.jsonl');
+    const eventsPath = lifeosPath('MEMORY', 'OBSERVABILITY', 'subagent-events.jsonl');
     if (!existsSync(eventsPath)) return [];
-
-    // Use execSync with tail for performance — only read last 200 lines
-    const { execSync } = require('child_process');
-    const raw: string = execSync(`tail -200 "${eventsPath}"`, {
-      encoding: 'utf-8',
-      timeout: 30, // 30ms hard cap
-    });
-
-    const agents: Map<string, AgentEntry> = new Map();
-
-    for (const line of raw.split('\n')) {
-      if (!line.trim()) continue;
-      try {
-        const event = JSON.parse(line);
-        if (event.session_id !== sessionUUID) continue;
-
-        // Build a unique key from subagent_id (or fallback to timestamp for unknown)
-        const agentKey = event.subagent_id && event.subagent_id !== 'unknown'
-          ? event.subagent_id
-          : `agent-${event.timestamp}`;
-
-        const name = event.subagent_id && event.subagent_id !== 'unknown'
-          ? event.subagent_id
-          : (event.prompt_preview ? event.prompt_preview.slice(0, 40) : 'Subagent');
-
-        const agentType = event.subagent_type && event.subagent_type !== 'unknown'
-          ? event.subagent_type
-          : (event.subagent_model && event.subagent_model !== 'unknown' ? event.subagent_model : 'agent');
-
-        // Determine status based on event type
-        let status: 'active' | 'idle' | 'completed' = 'active';
-        if (event.event === 'subagent_complete' || event.event === 'subagent_end') {
-          status = 'completed';
-        }
-
-        // Infer phase from the timestamp relative to the session's phase history
-        // For now, use the event type as a proxy
-        const phase = event.phase || 'BUILD';
-
-        agents.set(agentKey, {
-          name,
-          agentType,
-          status,
-          task: event.prompt_preview && event.prompt_preview.length > 0
-            ? event.prompt_preview.slice(0, 80)
-            : undefined,
-          phase,
-        });
-      } catch {
-        // Skip malformed lines
-      }
-    }
-
-    return Array.from(agents.values());
+    return agentsFromEvents(readAgentEventTail(eventsPath), sessionUUID);
   } catch {
     return [];
   }
+}
+
+/**
+ * Event names that close an agent on the board. The producers write `subagent_stop`
+ * (hooks/AgentInvocation.hook.ts, the LifeOSHooks poller and its Skill-return mark); the
+ * two older names are kept for old log lines. `subagent_spawned_async` is a launch, never a stop.
+ * Until 2026-10-11 only the two older names counted, and no producer wrote them, so every
+ * agent on the Pulse work board stayed "active" forever.
+ */
+export const AGENT_STOP_EVENTS: ReadonlySet<string> = new Set(['subagent_stop', 'subagent_complete', 'subagent_end']);
+
+/**
+ * The session's agents from raw subagent-event lines, last event per agent wins its status.
+ * A stop line carries no prompt_preview, type or phase, so those are kept from the agent's
+ * earlier lines rather than blanked.
+ */
+export function agentsFromEvents(raw: string, sessionUUID: string): AgentEntry[] {
+  const agents: Map<string, AgentEntry> = new Map();
+
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.session_id !== sessionUUID) continue;
+
+      // Build a unique key from subagent_id (or fallback to timestamp for unknown)
+      const agentKey = event.subagent_id && event.subagent_id !== 'unknown'
+        ? event.subagent_id
+        : `agent-${event.timestamp}`;
+      const prev = agents.get(agentKey);
+
+      const name = event.subagent_id && event.subagent_id !== 'unknown'
+        ? event.subagent_id
+        : (event.prompt_preview ? event.prompt_preview.slice(0, 40) : 'Subagent');
+
+      const agentType = event.subagent_type && event.subagent_type !== 'unknown'
+        ? event.subagent_type
+        : (event.subagent_model && event.subagent_model !== 'unknown' ? event.subagent_model : (prev?.agentType ?? 'agent'));
+
+      const status: 'active' | 'idle' | 'completed' = AGENT_STOP_EVENTS.has(event.event) ? 'completed' : 'active';
+
+      // Infer phase from the timestamp relative to the session's phase history
+      // For now, use the event type as a proxy
+      const phase = event.phase || prev?.phase || 'BUILD';
+
+      agents.set(agentKey, {
+        name,
+        agentType,
+        status,
+        task: event.prompt_preview && event.prompt_preview.length > 0
+          ? event.prompt_preview.slice(0, 80)
+          : prev?.task,
+        phase,
+      });
+    } catch {
+      // Skip malformed lines
+    }
+  }
+
+  return Array.from(agents.values());
+}
+
+export function readAgentEventTail(eventsPath: string, spawnSync = Bun.spawnSync): string {
+  const result = spawnSync(["tail", "-200", eventsPath], { stdout: "pipe", stderr: "pipe", timeout: 3000 });
+  if (result.exitCode !== 0) throw new Error(`tail exited ${result.exitCode}`);
+  return result.stdout.toString();
 }
 
 // Pre-write baseline for diff-based event emission (2026-06-10, work-events).
@@ -587,7 +627,7 @@ export function applyAscent(session: Record<string, any>): boolean {
   // is a TRAVERSE row, and hardcoding true derived 📐 Marking for it. That was
   // harmless only by evaluation order — SessionCleanup stamps phase=complete
   // first, and deriveAscent's cairn early-return precedes its tracked check, so
-  // a coincidence was carrying a correctness burden (Max review 2026-07-30, F2).
+  // a coincidence was carrying a correctness burden (Astra review 2026-07-30, F2).
   //
   // `active` likewise comes from the row's own recency, through the table's
   // shared thresholds. Hardcoding it true made ⛺ Camped unreachable on the
@@ -614,7 +654,7 @@ export function applyAscent(session: Record<string, any>): boolean {
 export function readRegistry(): { sessions: Record<string, any> } {
   // Live view: derived snapshot + replay of appended-but-unfolded events.
   // Read-only — never appends, never folds.
-  const live = readLiveRegistry(WORK_JSON, workEventsPath());
+  const live = readLiveRegistry(currentWorkJson(), workEventsPath());
   registryBaselines.set(live, JSON.parse(JSON.stringify(live)));
   return live;
 }
@@ -667,13 +707,14 @@ export function findActiveSessionByUUID(
 }
 
 export function writeRegistry(reg: { sessions: Record<string, any> }, src?: string): void {
-  mkdirSync(join(paiPath('MEMORY'), 'STATE'), { recursive: true });
+  mkdirSync(join(lifeosPath('MEMORY'), 'STATE'), { recursive: true });
   // Event-sourced write path (2026-06-10): emit field-level diff events to
   // work-events.jsonl, then fold log → snapshot under the lock. work.json is
   // now a DERIVED view — hand-edits to it are erased by the next fold.
   const writer = src || basename(process.argv[1] || '') || 'unknown';
   const baseline = registryBaselines.get(reg);
-  const prev = baseline ?? readLiveRegistry(WORK_JSON, workEventsPath());
+  const workJson = currentWorkJson();
+  const prev = baseline ?? readLiveRegistry(workJson, workEventsPath());
   let events = diffRegistry(prev, reg, writer);
   if (!baseline) {
     // FALLBACK BASELINE (caller wrote a registry object it didn't get from
@@ -688,7 +729,7 @@ export function writeRegistry(reg: { sessions: Record<string, any> }, src?: stri
     if (suppressed.length > 0) {
       try {
         appendFileSync(
-          join(paiPath('MEMORY'), 'OBSERVABILITY', 'work-anomalies.jsonl'),
+          lifeosPath('MEMORY', 'OBSERVABILITY', 'work-anomalies.jsonl'),
           JSON.stringify({
             ts: new Date().toISOString(),
             type: 'work-events.fallback-baseline-suppressed',
@@ -702,7 +743,7 @@ export function writeRegistry(reg: { sessions: Record<string, any> }, src?: stri
   if (events.length > 0) appendWorkEvents(events);
   // A lock-contended fold is safely skipped: events are durable in the log,
   // every reader replays the suffix, and the next writer folds them in.
-  foldToSnapshot(WORK_JSON, workEventsPath());
+  foldToSnapshot(workJson, workEventsPath());
   registryBaselines.set(reg, JSON.parse(JSON.stringify(reg)));
 }
 
@@ -717,8 +758,8 @@ export function writeRegistry(reg: { sessions: Record<string, any> }, src?: stri
 
 export function syncToWorkJson(fm: Record<string, string>, isaPath: string, content?: string, sessionId?: string): void {
   if (!fm.slug) return;
-  const paiDir = paiPath();
-  const relativeIsa = isaPath.replace(paiDir + '/', '');
+  const lifeosDir = lifeosPath();
+  const relativeIsa = isaPath.replace(lifeosDir + '/', '');
   const registry = readRegistry();
 
   // Wave 1 (2026-05-23): frontmatter field-name normalization. ISAs in the wild
@@ -731,7 +772,7 @@ export function syncToWorkJson(fm: Record<string, string>, isaPath: string, cont
   // Migration: if there's a 'starting' or 'native' placeholder entry for this session UUID,
   // remove it. ISASync replaces it with the full ISA-based entry keyed by fm.slug.
   // This prevents duplicates when Algorithm sessions initially get a lightweight entry
-  // from SessionAutoName, then get a full entry from ISASync.
+  // from PromptProcessing's naming step, then get a full entry from ISASync.
   if (sessionId) {
     for (const [slug, session] of Object.entries(registry.sessions) as [string, any][]) {
       if (session.sessionUUID === sessionId && (session.phase === 'starting' || session.phase === 'native') && slug !== fm.slug) {
@@ -744,6 +785,24 @@ export function syncToWorkJson(fm: Record<string, string>, isaPath: string, cont
   const existing = registry.sessions[fm.slug] || {};
   let newPhase = fm.phase || 'observe';
   const timestamp = new Date().toISOString();
+
+  // Cross-session slug contention — the hazard #1466/#1521 were about: THIS
+  // slug is being written by a session other than the one that owns the row,
+  // while that owner is still active. Several ISAs under one UUID (one session
+  // working several items) is supported by current-work-dir.ts and is not
+  // logged. Best-effort observability; never blocks the sync.
+  // public issue #1948, @pybe
+  if (sessionId && existing.sessionUUID && existing.sessionUUID !== sessionId
+      && (existing.phase || '').toLowerCase() !== 'complete' && isRunActive(existing)) {
+    try {
+      const observabilityDir = lifeosPath('MEMORY', 'OBSERVABILITY');
+      mkdirSync(observabilityDir, { recursive: true });
+      console.error('[work-anomaly] slug contention', fm.slug, existing.sessionUUID, '→', sessionId);
+      appendFileSync(join(observabilityDir, 'work-anomalies.jsonl'), JSON.stringify({
+        ts: timestamp, kind: 'slug-contention', slug: fm.slug, owner_uuid: existing.sessionUUID, writer_uuid: sessionId,
+      }) + '\n');
+    } catch { /* silent — observability must not break sync */ }
+  }
 
   // ── v6.9.0: Resume After Complete ────────────────────────────────────────
   // Edit landed on a complete ISA AND body content changed → auto-rewind to
@@ -806,8 +865,12 @@ export function syncToWorkJson(fm: Record<string, string>, isaPath: string, cont
   // Frontmatter is authoritative for sessionName. The session-names.json file
   // is keyed by the harness conversation UUID, which can span multiple Algorithm
   // runs / multiple ISAs; reading it here clobbered the ISA's own sessionName
-  // with the most-recent Haiku-derived prompt title. session-names.json remains
-  // in use by PromptProcessing for the Pulse tab title — just not here.
+  // with the most-recent Haiku-derived prompt title. work.json `sessionName`
+  // (written here) is the SINGLE source of record for a session's name: the
+  // Pulse board reads it, and since 2026-09-07 the kitty tab reads it too
+  // (tab-setter `resolveSessionRow`/`readCanonicalName`), so the tab label is a
+  // short form of the SAME name Pulse shows. session-names.json is now only the
+  // fallback the tab uses when no work.json row exists yet.
   //
   // Wave 1 (2026-05-23): fallback chain extended to derive a sessionName from
   // fm.task / fm.title when no explicit sessionName is present. Previously most
@@ -817,14 +880,7 @@ export function syncToWorkJson(fm: Record<string, string>, isaPath: string, cont
   // 2026-07-20: H1 fallback added. Quick ISAs often carry neither task: nor
   // title: frontmatter; without this, rows ship nameless and the dashboard
   // falls back to slugs (or worse — it used to leak the intent snippet).
-  const h1Title = content ? (content.match(/^#\s+(.+)$/m)?.[1]?.trim() || '') : '';
-  const sessionName =
-    fm.sessionName ||
-    existing.sessionName ||
-    fm.task ||
-    fm.title ||
-    h1Title ||
-    '';
+  const sessionName = isaSessionName(fm, existing.sessionName, content);
 
 
   // Parse criteria from ISA content if available, with createdInPhase tracking
@@ -840,7 +896,7 @@ export function syncToWorkJson(fm: Record<string, string>, isaPath: string, cont
     // stderr on miss; never silently no-op. Same principle here.
     if (criteriaParseWarning) {
       const reason = {
-        'missing-section': 'no `## ISC Criteria` / `## Criteria` / `## IDEAL STATE CRITERIA` heading found',
+        'missing-section': 'no `## Criteria` / `## ISC Criteria` / `## Claims` (legacy) / `## IDEAL STATE CRITERIA` heading found',
         'empty-section':   'criteria heading present but no `- [ ]` / `- [x]` lines inside it',
         'all-dropped':     'checkbox lines present but all failed to parse (regex miss — investigate line format)',
       }[criteriaParseWarning];
@@ -890,9 +946,9 @@ export function syncToWorkJson(fm: Record<string, string>, isaPath: string, cont
           // sink so the disagreement is inspectable. (public issue #1839,
           // @jacobo-ortiz)
           try {
-            mkdirSync(join(paiPath('MEMORY'), 'OBSERVABILITY'), { recursive: true });
+            mkdirSync(lifeosPath('MEMORY', 'OBSERVABILITY'), { recursive: true });
             appendFileSync(
-              paiPath('MEMORY', 'OBSERVABILITY', 'isa-progress-mismatch.jsonl'),
+              lifeosPath('MEMORY', 'OBSERVABILITY', 'isa-progress-mismatch.jsonl'),
               JSON.stringify({
                 ts: new Date().toISOString(), slug: fm.slug, isa: relativeIsa,
                 frontmatter: `${fmDone}/${fmTotal}`, body: `${bodyDone}/${bodyTotal}`,
@@ -943,6 +999,10 @@ export function syncToWorkJson(fm: Record<string, string>, isaPath: string, cont
     task: taskValue,
     sessionName: sessionName || undefined,
     sessionUUID: sessionId || existing.sessionUUID || undefined,
+    // The session that first wrote this row; only it is named by a WORK ISA
+    // (tab-setter resolveSessionRow). A row from before the field takes the
+    // session it was bound to before this sync.
+    createdBy: existing.createdBy || existing.sessionUUID || sessionId || undefined,
     phase: newPhase,
     progress: progressValue,
     started: fm.started || timestamp,
@@ -1010,37 +1070,9 @@ export function syncToWorkJson(fm: Record<string, string>, isaPath: string, cont
     }
   }
 
-  // UUID-collision detection — surface when multiple ISA-mode rows share one
-  // sessionUUID. ISA-mode = mode !== 'native' && mode !== 'starting'. Native
-  // and starting rows legitimately share the harness UUID with their ISA
-  // counterpart, so they are excluded. Native sessions themselves use the
-  // deterministic slug `native-${UUID}` and cannot collide.
-  // Best-effort observability — failure here MUST NOT break the sync.
-  try {
-    const uuidSlugs = new Map<string, string[]>();
-    for (const [slug, session] of Object.entries(registry.sessions) as [string, any][]) {
-      if (!session.sessionUUID) continue;
-      if (session.phase === 'native' || session.phase === 'starting') continue;
-      const slugs = uuidSlugs.get(session.sessionUUID) || [];
-      slugs.push(slug);
-      uuidSlugs.set(session.sessionUUID, slugs);
-    }
-
-    const collisionGroups = Array.from(uuidSlugs.entries()).filter(([, slugs]) => slugs.length >= 2);
-    if (collisionGroups.length > 0) {
-      const observabilityDir = join(paiPath('MEMORY'), 'OBSERVABILITY');
-      mkdirSync(observabilityDir, { recursive: true });
-      for (const [uuid, slugs] of collisionGroups) {
-        console.error('[work-anomaly] UUID collision', uuid, '→', slugs.join(', '));
-        appendFileSync(join(observabilityDir, 'work-anomalies.jsonl'), JSON.stringify({
-          ts: new Date().toISOString(),
-          kind: 'uuid-collision',
-          uuid,
-          slugs,
-        }) + '\n');
-      }
-    }
-  } catch { /* silent — observability must not break sync */ }
+  // The per-UUID "collision" detector that lived here logged the supported
+  // several-ISAs-per-session state on every sync, flooding its log. It
+  // is replaced by the write-time slug-contention check above (#1948, @pybe).
 
   writeRegistry(registry);
 }
@@ -1064,7 +1096,7 @@ const BUMP_DEBOUNCE_MS = 30 * 1000;
  */
 export function slugFromPath(filePath: string): string | null {
   if (!filePath) return null;
-  const workDir = paiPath('MEMORY', 'WORK') + '/';
+  const workDir = lifeosPath('MEMORY', 'WORK') + '/';
   if (!filePath.startsWith(workDir)) return null;
   const rest = filePath.slice(workDir.length);
   const slug = rest.split('/')[0];
@@ -1127,6 +1159,34 @@ export function bumpLastToolActivityBySlug(slug: string, sessionUUID?: string): 
 }
 
 /**
+ * Refresh the body-hash on an ISA row by slug. Reads the artifact, hashes the
+ * post-frontmatter body, and writes it to work.json (public PR #2130, @pai-scaffolde).
+ * Returns true if the hash was updated.
+ */
+export function refreshBodyHashBySlug(slug: string): boolean {
+  if (!slug) return false;
+  try {
+    const registry = readRegistry();
+    const session = registry.sessions[slug];
+    if (!session) return false;
+
+    // Find the ISA for this slug
+    const isaPath = findArtifactPath(slug);
+    if (!isaPath || !existsSync(isaPath)) return false;
+
+    const content = readFileSync(isaPath, 'utf-8');
+    const newHash = hashBody(content);
+
+    if (session.bodyHash === newHash) return false; // no write on an unchanged body
+    session.bodyHash = newHash;
+    writeRegistry(registry);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Bump `lastToolActivity` on the session row owned by this harness UUID.
  * The per-tool-call heartbeat for TRACKED runs (2026-07-14): without it, a
  * run doing real work between ISA edits went "inactive" after 10 minutes and
@@ -1135,18 +1195,39 @@ export function bumpLastToolActivityBySlug(slug: string, sessionUUID?: string): 
  * Debounced via the row's own timestamp; prefers the tracked row when a
  * UUID owns both a tracked row and a placeholder.
  */
+/**
+ * The row a session is bound to: of the rows carrying its harness UUID, an ISA row
+ * over a placeholder, then the one it last worked in (`lastToolActivity`, else
+ * `started`). Never `updatedAt`: renames, ISA syncs and monitoring move it on rows
+ * the session is not working in, so the workspace and the tab could each pick a
+ * different row of one session (2026-10-09). Pure.
+ */
+export function boundRowSlug(sessions: Record<string, any>, sessionUUID: string): string | null {
+  let best: string | null = null;
+  let bestRank: [number, number] = [-1, -1];
+  for (const [slug, s] of Object.entries(sessions)) {
+    if (!sessionUUID || s?.sessionUUID !== sessionUUID) continue;
+    const t = Date.parse(s.lastToolActivity || s.started || '') || 0;
+    const rank: [number, number] = [s.isa ? 1 : 0, t];
+    if (rank[0] > bestRank[0] || (rank[0] === bestRank[0] && rank[1] > bestRank[1])) { best = slug; bestRank = rank; }
+  }
+  return best;
+}
+
+/** The row the per-tool heartbeat bumps: the bound row, or none once it is complete,
+ *  so a finished ISA never reads as active again. Pure. */
+export function heartbeatSlug(sessions: Record<string, any>, sessionUUID: string): string | null {
+  const slug = boundRowSlug(sessions, sessionUUID);
+  return slug && sessions[slug]?.phase !== 'complete' ? slug : null;
+}
+
 export function bumpLastToolActivityByUUID(sessionUUID: string): boolean {
   if (!sessionUUID) return false;
   try {
     const registry = readRegistry();
-    let target: any = null;
-    for (const session of Object.values(registry.sessions) as any[]) {
-      if (session.sessionUUID !== sessionUUID) continue;
-      if (session.phase === 'complete') continue;
-      if (typeof session.isa === 'string') { target = session; break; }
-      if (!target) target = session;
-    }
-    if (!target) return false;
+    const slug = heartbeatSlug(registry.sessions, sessionUUID);
+    if (!slug) return false;
+    const target: any = registry.sessions[slug];
 
     const current = target.lastToolActivity;
     if (current && Date.now() - new Date(current).getTime() < BUMP_DEBOUNCE_MS) return false;
@@ -1160,11 +1241,34 @@ export function bumpLastToolActivityByUUID(sessionUUID: string): boolean {
 }
 
 /** Update sessionName in work.json for a NATIVE session by UUID.
- *  Called by SessionAutoName when the Haiku-derived label upgrades the fallback.
+ *  Called from session-identity.ts (PromptProcessing's naming step) when the model-derived label upgrades the fallback.
  *  ISA-owned sessions are skipped — their sessionName comes from frontmatter,
  *  not from the per-prompt autonamer (which would cross-pollinate across the
  *  multiple ISAs that can share one conversation UUID). */
+/** A session name is a title, never a paragraph. A project ISA's `task:` can be a
+ *  very long history (2026-09-23); used whole it became the session name and the
+ *  statusline printed it as a wall of capitals. Keep the first line, then the first
+ *  sentence or dash clause, then a word boundary under the cap. */
+export const SESSION_NAME_MAX = 80;
+export function clampSessionName(raw: string | null | undefined): string {
+  let name = (raw || '').split('\n')[0].trim();
+  if (name.length <= SESSION_NAME_MAX) return name;
+  const clause = name.split(/(?<=[.!?])\s|\s[—–]\s/)[0].trim();
+  if (clause && clause.length <= SESSION_NAME_MAX) return clause;
+  name = name.slice(0, SESSION_NAME_MAX);
+  return name.replace(/\s+\S*$/, '').trim() || name;
+}
+
+/** An ISA's session name: its own `name:` first (ISA 20260911-session-identity-unify
+ * F6), then the legacy `sessionName:`, the row's stored name, the task, the title and
+ * the H1. `task:` is a description, so a name taken from it often ends mid-phrase. Pure. */
+export function isaSessionName(fm: Record<string, string>, existingName?: string, content?: string): string {
+  const h1Title = content ? (content.match(/^#\s+(.+)$/m)?.[1]?.trim() || '') : '';
+  return clampSessionName(fm.name || fm.sessionName || existingName || fm.task || fm.title || h1Title || '');
+}
+
 export function updateSessionNameInWorkJson(sessionUUID: string, sessionName: string): void {
+  sessionName = clampSessionName(sessionName);
   try {
     const registry = readRegistry();
     let bestSlug: string | null = null;
@@ -1233,7 +1337,7 @@ export function upsertSession(sessionUUID: string, sessionName: string, task: st
     if (existingSlug) {
       const session = registry.sessions[existingSlug];
       // Debounced bump (2026-07-15 efficiency pass): per-prompt updatedAt
-      // writes were ~half of all work-events volume (444/920 measured).
+      // writes were a large share of all work-events volume.
       // A bare aliveness bump within the debounce window carries no new
       // information — skip the write entirely. Name upgrades always land.
       const nameChanged = !!sessionName && session.sessionName !== sessionName;
@@ -1331,4 +1435,34 @@ export function addRatingPulse(sessionUUID: string, pulse: RatingPulse): void {
 
     writeRegistry(registry);
   } catch {}
+}
+
+/**
+ * Identify an ISA file by name and path patterns.
+ * Shared utility for StopGates, ISAGate, ISAStaleWriteGuard, and ISASync.
+ *
+ * Matches:
+ * - `ISA.md` (exact, any location)
+ * - `<name>.isa.md` (e.g., `myapp.isa.md`, any location)
+ *
+ * Case-insensitive on the filename itself for robustness (some filesystems vary).
+ *
+ * @param filePath Full or relative file path to check
+ * @returns true if the path refers to an ISA file
+ */
+export function isIsaPath(filePath: string): boolean {
+  if (!filePath) return false;
+  const name = basename(filePath).toLowerCase();
+  return name === "isa.md" || name.endsWith(".isa.md");
+}
+
+/**
+ * Compute a deterministic SHA256 hash of file content for revision tracking.
+ * Used by obligation persistence to detect ISA changes.
+ *
+ * @param content File content as UTF-8 string
+ * @returns hex-encoded SHA256 hash
+ */
+export function isaRevision(content: string): string {
+  return createHash("sha256").update(content, "utf-8").digest("hex");
 }

@@ -1,3 +1,4 @@
+<!-- isa-example claims=36 probes=7 era=legacy -->
 <!-- Fictitious example. "duck" is a teaching placeholder for an existing CLI tool whose --help output we are redesigning. -->
 
 ---
@@ -12,6 +13,29 @@ mode: interactive
 started: 2026-04-11T02:15:00Z
 updated: 2026-04-15T18:00:00Z
 ---
+
+## Ideal State
+
+### L3 · One sentence
+
+A `duck --help` that a first-time user reads in thirty seconds, leaving knowing what duck does, how to run it, and where to look next.
+
+### L2 · Summary
+
+The redesigned help puts orientation first and the full flag reference after it, with every piece of reference content preserved.
+
+- It opens with a one-sentence summary of what duck does, then the two most common invocations as examples.
+- The flag reference follows, grouped by category instead of declaration order, in 100 lines or fewer.
+- All reference content is preserved and every flag stays grep-able, with a footer pointing at man and the docs.
+- Median help-to-first-command time for new users drops from 95 seconds to 30 or less.
+
+### L1 · Full articulation
+
+The `duck` CLI's `--help` output is 187 lines, one block per flag in declaration order, with usage examples buried at line 142. New users land on it, scan for four seconds, hit Ctrl-C, and open `man duck` instead. Median help-to-first-command time for new installs is 95 seconds, and the biggest share of it is scrolling through `--help` and giving up. The reference content is fine; the layout is the problem.
+
+The redesigned help is a template of 100 lines or fewer, safe at 80 columns, that a first-time user reads top to bottom in thirty seconds. It opens with a one-sentence summary of what duck does, shows the two most common usages as concrete examples, lists the flag reference grouped by category instead of declaration order, and ends with a see-also footer pointing at the man page and the docs URL. All reference content is preserved and every flag stays grep-able.
+
+The moment it is right: a new user lands on the help, types one of the example invocations within fifteen seconds, and it works. They never visit the man page in their first session, and median help-to-first-command time drops from 95 seconds to 30 or less.
 
 ## Problem
 
@@ -46,10 +70,6 @@ A `duck --help` that a first-time user can read top-to-bottom in 30 seconds and 
 - Build process: `duck --help` reads from a single template file at compile time; the redesign updates that template, not the runtime renderer.
 - Backwards-compat: `duck --help | rg <flag-name>` continues to find each flag (so existing scripts that grep --help don't break).
 
-## Goal
-
-Ship a redesigned `duck --help` template (≤ 100 lines, 80-col safe) that opens with a one-sentence project summary, shows the two most-common usages as concrete examples, lists the flag reference grouped by category (not declaration order), and ends with a "see also" footer pointing at man + docs URL — all reference content preserved, all flags still grep-able, first-time-user help-to-first-command time drops from 95s median to ≤ 30s median.
-
 ## Criteria
 
 ### Length and layout
@@ -79,7 +99,7 @@ Ship a redesigned `duck --help` template (≤ 100 lines, 80-col safe) that opens
 ### Backwards-compat
 
 - [x] ISC-13: `duck --help | rg "\-\-each-flag-name"` returns ≥ 1 line for every flag (verified across all flags).
-- [x] ISC-14: `duck --help` exit code stays 0 (probe: `duck --help; echo $?`).
+- [x] ISC-14: `duck --help` exit code stays 0 (probe: `duck --help >/dev/null` exits 0).
 - [ ] ISC-15: Pre-existing `man duck` still references "see `--help` for usage" — and the reference still resolves to a useful Examples block.
 
 ### Performance
@@ -102,7 +122,7 @@ Ship a redesigned `duck --help` template (≤ 100 lines, 80-col safe) that opens
 ### Anti-criteria
 
 - [ ] ISC-24: Anti: out of scope — no new flag was introduced (probe: flag count is unchanged from baseline).
-- [ ] ISC-25: Anti: regression — `duck --help -h` and `duck -h` and `duck help` all still produce the same output (probe: `diff <(duck --help) <(duck -h) <(duck help)` returns identical).
+- [ ] ISC-25: Anti: regression — `duck --help -h` and `duck -h` and `duck help` all still produce the same output (probe: `diff <(duck --help) <(duck -h) && diff <(duck --help) <(duck help)` returns identical).
 - [ ] ISC-26: Anti: footer drift — version + build sha line is automatically generated, not hand-edited (probe: source template uses `{{VERSION}}` `{{SHA}}` placeholders, build pipeline injects).
 - [ ] ISC-27: Anti: density creep — no flag description is split across two description lines (probe: every description is exactly 1 line of ≤ 80 chars).
 
@@ -112,7 +132,7 @@ Ship a redesigned `duck --help` template (≤ 100 lines, 80-col safe) that opens
 - [ ] ISC-29: A blog post or release note draft (≤ 300 words) explaining the redesign exists at `docs/release-notes/help-redesign.md`.
 - [ ] ISC-30: The 5 user-test session recordings (anonymized) are saved at `research/user-tests/help-redesign-2026-04/`.
 
-### Bitter Pill discipline
+### Bitter Lesson discipline
 
 - [ ] ISC-31: No section of the new help is shorter than 4 lines or longer than 70 lines (probe: per-section line count).
 - [ ] ISC-32: Examples block does NOT include a "useful flag combinations" appendix (probe: human review — the discipline is two examples, not five).
@@ -129,49 +149,16 @@ Ship a redesigned `duck --help` template (≤ 100 lines, 80-col safe) that opens
 
 ## Test Strategy
 
-```yaml
-- isc: ISC-1
-  type: line-count
-  check: --help line count
-  threshold: ≤ 100
-  tool: duck --help | wc -l
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-1 | bash | --help line count | ≤ 100 | test "$(duck --help \| wc -l)" -le 100 |  |
+| ISC-6 | bash | each example actually runs | exit 0 on all | bash test/help-examples.sh |  |
+| ISC-10 | bash | every old flag is in new help | empty diff | diff <(rg "^\s*--" old-help.txt \| sort -u) <(rg "^\s*--" new-help.txt \| sort -u) |  |
+| ISC-16 | eval | median help-to-first-command time | ≤ 30s median across 5 users | 5 user-test sessions, time-stamped recordings |  |
+| ISC-18 | manual | one-sentence description is hard-to-vary | 3 paraphrase attempts all detectably worse | human review by 3 unfamiliar reviewers |  |
+| ISC-20 | manual | category names are intuitive | ≥ 70% guess accuracy across 5 users × 10 flags | structured user test |  |
+| ISC-25 | bash | --help -h and help all match | identical output | diff <(duck --help) <(duck -h) && diff <(duck --help) <(duck help) |  |
 
-- isc: ISC-6
-  type: integration
-  check: each example actually runs
-  threshold: exit 0 on all
-  tool: bash test/help-examples.sh
-
-- isc: ISC-10
-  type: completeness
-  check: every old flag is in new help
-  threshold: empty diff
-  tool: diff <(rg "^\s*--" old-help.txt | sort -u) <(rg "^\s*--" new-help.txt | sort -u)
-
-- isc: ISC-16
-  type: usability-test
-  check: median help-to-first-command time
-  threshold: ≤ 30s median across 5 users
-  tool: 5 user-test sessions, time-stamped recordings
-
-- isc: ISC-18
-  type: antecedent
-  check: one-sentence description is hard-to-vary
-  threshold: 3 paraphrase attempts all detectably worse
-  tool: human review by 3 unfamiliar reviewers
-
-- isc: ISC-20
-  type: antecedent
-  check: category names are intuitive
-  threshold: ≥ 70% guess accuracy across 5 users × 10 flags
-  tool: structured user test
-
-- isc: ISC-25
-  type: backwards-compat
-  check: --help -h and help all match
-  threshold: identical output
-  tool: diff <(duck --help) <(duck -h) <(duck help)
-```
 
 ## Features
 
@@ -217,7 +204,7 @@ Ship a redesigned `duck --help` template (≤ 100 lines, 80-col safe) that opens
 - 2026-04-15 16:00: refined: ISC-16 added a 30-day post-ship probe (ISC-30) — without it, the redesign passes its launch test but could regress in 90 days as new flags are added without category discipline.
 
 <!--
-E3 design ISA. Required sections: Problem, Vision, Out of Scope, Constraints, Goal, Criteria, Features, Test Strategy.
+E3 design ISA. Required sections: Ideal State (L3, L2, L1), Problem, Vision, Out of Scope, Constraints, Criteria, Features, Test Strategy.
 Optional Principles included — the design has experiential goals (first 30 seconds, recognition, intuition) and principles do real work in the design pass.
 ISC count of 36 exceeds the E3 floor of 32. Three Antecedent ISCs (ISC-18, 19, 20) carry the experiential contract: hard-to-vary one-sentence summary, telemetry-grounded examples, and intuitive categories. Anti-criteria (ISC-24, 25, 26, 27) cover scope, regression, drift, and density. The Decisions section shows two ❌ DEAD ENDs and three refinements — typical for a redesign where every aesthetic temptation needs to be tested against actual users.
 -->

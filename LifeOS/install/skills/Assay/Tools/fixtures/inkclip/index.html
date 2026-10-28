@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<!-- Thin bars over ink that is not painted (mark-undeclared false fails, 2026-10-10): a progress bar crossing
+     digits of a rolling counter that sit outside its overflow:hidden window, a bar crossing text at 8% opacity, and a
+     bar crossing a line clipped out by clip-path. #real is the control: a bar across visible caps still fails. -->
+<html><head><meta charset="UTF-8">
+<style>
+html, body { margin: 0; background: #0b0d12; }
+#root { position: relative; width: 800px; height: 600px; overflow: hidden; color: #e3e9f4; font: 700 80px sans-serif; }
+.roll { position: absolute; left: 40px; top: 40px; width: 120px; height: 100px; overflow: hidden; }
+.col { position: absolute; left: 0; top: -300px; line-height: 100px; }
+.col div { height: 100px; }
+#prog { position: absolute; left: 0; top: 575px; width: 800px; height: 2px; background: #58a6ff; }
+#faded { position: absolute; left: 300px; top: 40px; opacity: 0.08; }
+#fbar { position: absolute; left: 280px; top: 80px; width: 300px; height: 6px; background: #58a6ff; }
+#cut { position: absolute; left: 300px; top: 200px; clip-path: inset(0 0 100% 0); }
+#cbar { position: absolute; left: 280px; top: 240px; width: 300px; height: 6px; background: #58a6ff; }
+#real { position: absolute; left: 300px; top: 360px; }
+#rbar { position: absolute; left: 280px; top: 410px; width: 340px; height: 6px; background: #58a6ff; }
+</style></head>
+<body><div id="root" data-composition-id="fx" data-width="800" data-height="600" data-duration="2">
+<div class="roll"><div class="col"><div>0</div><div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div></div></div>
+<div id="prog"></div>
+<div id="faded">GHOST</div><div id="fbar"></div>
+<div id="cut">HIDDEN</div><div id="cbar"></div>
+<div id="real">AGENCY</div><div id="rbar"></div>
+</div>
+<script>window.__timelines = { fx: { seek: function () {} } };</script></body></html>

@@ -1,7 +1,5 @@
 # RootCauseAnalysis — Method Selection Guide
 
-When to use which workflow. The method matters — using 5 Whys on a safety-critical problem or FTA on a simple defect both produce bad outcomes.
-
 ## Decision Flow
 
 ```
@@ -38,47 +36,11 @@ Is this an incident or a defect?
 | Defensible for regulatory | No | Partial | Yes | Yes | Partial |
 | Outputs | Causal chain + fix | Category map + Pareto | Cut sets + probabilities | Causal graph + evidence | Distinction + change |
 
-## Combining Methods
+## Combining and Switching
 
-RCA methods nest and combine — they are not mutually exclusive.
+Fishbone combines breadth with Pareto prioritization and FiveWhys depth; KT can hand its identified change to FiveWhys to investigate why defenses missed it. Safety analysis pairs FTA with FMEA; see [Foundation.md](Foundation.md) for RPN/AP caveats and Apollo's evidence-graph contract. Apollo and FMEA are supporting methods, not separate intent files here.
 
-### The standard software-ops combination
-
-**Postmortem** (wrapper) → **5 Whys** (per thread) → **Swiss Cheese** (defensive layers review) → **Action item strength ranking**
-
-### The quality-investigation combination
-
-**Fishbone** (breadth) → **Pareto** (prioritize vital few) → **5 Whys** (depth on top causes) → **Verification**
-
-### The subtle-defect combination
-
-**Kepner-Tregoe** (IS/IS-NOT identifies the change) → **5 Whys** (go deeper into *why* the change wasn't caught) → **Corrective action**
-
-### The safety-critical combination
-
-**FTA** (top-down deductive map) → **FMEA** (failure modes ranked by RPN/AP) → **Postmortem** (if incident occurred) → **Action items at multiple layers**
-
-## Anti-Patterns
-
-**Using 5 Whys when Fishbone is right.**
-- Signal: you keep getting stuck because the answer to "why?" has three valid parallel answers
-- Switch to Fishbone so you can explore all branches
-
-**Using Fishbone when 5 Whys is right.**
-- Signal: you already know the category; you need depth, not breadth
-- Use 5 Whys directly
-
-**Using FTA when you have no probability data.**
-- Signal: the quantitative benefit is lost; you're just drawing a tree
-- Use Fishbone + 5 Whys instead
-
-**Using Kepner-Tregoe when there's no baseline.**
-- Signal: no "worked before" state exists; nothing to deviate from
-- Use Apollo or Fishbone
-
-**Skipping the Postmortem wrapper for "small" incidents.**
-- Signal: you're making exceptions for "it wasn't a big one"
-- Run the postmortem anyway — the discipline compounds; the exception never recovers the learning
+Switch from FiveWhys to Fishbone when parallel branches outgrow a chain; switch back when the category is known and depth is missing. Without probability data, FTA loses its quantitative advantage; Fishbone plus FiveWhys may suffice. Without a known-good baseline, use Apollo or Fishbone instead of KT. Incident size alone is not a reason to skip the Postmortem wrapper.
 
 ## Method-to-Domain Map
 
@@ -103,10 +65,3 @@ RCA methods nest and combine — they are not mutually exclusive.
 | Half day | Postmortem + multiple methods |
 | Days | Postmortem + FTA + FMEA |
 | Regulatory deadline | Apollo with full evidence |
-
-## Integration With Other Skills
-
-- **SystemsThinking** — When multiple postmortems reveal the same structural cause, escalate to Iceberg / FindArchetype. RCA stops at contributing factors; SystemsThinking continues to structure and mental models.
-- **FirstPrinciples** — Decompose a contributing factor to its fundamental truths before designing a fix.
-- **RedTeam** — "How would we cause this again?" is adversarial RCA. Stress-test remediations.
-- **Science** — RCA *is* the scientific method applied to failures. Use Science for hypothesis generation during investigation.

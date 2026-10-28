@@ -5,12 +5,12 @@
 version: 1.0.0
 last_updated: 2025-12-09
 
-# Default ElevenLabs settings
+# Default voice settings (Fish Audio)
 defaults:
-  model: eleven_turbo_v2_5
+  model: drama-3
   default_rate_wpm: 175
   volume: 0.80
-  output_format: mp3_44100_128
+  output_format: mp3
 
 # Stability philosophy
 stability:

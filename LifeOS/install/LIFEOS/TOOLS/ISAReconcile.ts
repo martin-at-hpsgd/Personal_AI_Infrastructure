@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.3.3
+ */
 //
 // ISAReconcile.ts — Sweep every MEMORY/WORK/<slug>/ISA.md and reconcile work.json.
 //

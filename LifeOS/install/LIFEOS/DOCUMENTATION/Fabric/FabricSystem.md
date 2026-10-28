@@ -2,8 +2,8 @@
 name: FabricReference
 description: Reference document for Fabric pattern system. For full functionality, use the Fabric skill directly.
 created: 2025-12-17
-updated: 2026-01-18
-version: 1.2.0
+updated: 2026-10-14
+version: 1.2.3
 ---
 
 # Fabric Pattern System Reference
@@ -18,7 +18,7 @@ This document provides a quick reference. For full functionality, invoke the Fab
 
 ## Quick Reference
 
-**Patterns Location:** `~/.claude/skills/Fabric/Patterns/` (240+ patterns)
+**Patterns Location:** `~/.claude/skills/Fabric/Patterns/` (233 patterns at v8.24.0)
 
 ### Invoke Fabric Skill
 
@@ -27,7 +27,7 @@ This document provides a quick reference. For full functionality, invoke the Fab
 | "use fabric to [X]" | Execute pattern matching intent |
 | "run fabric pattern [name]" | Execute specific pattern |
 | "update fabric patterns" | Sync patterns from upstream |
-| "extract wisdom from [content]" | Run extract_wisdom pattern |
+| "use fabric to extract wisdom from [content]" | Run extract_wisdom pattern (a bare "extract wisdom" with no mention of Fabric goes to the ExtractWisdom skill) |
 | "summarize with fabric" | Run summarize pattern |
 
 ### Native Pattern Execution
@@ -36,13 +36,14 @@ LifeOS executes patterns natively (no CLI spawning):
 1. Reads `Patterns/{pattern_name}/system.md`
 2. Applies pattern instructions directly as prompt
 3. Returns structured output
-4. Extracted insights may be captured in the Knowledge Archive (`MEMORY/KNOWLEDGE/`) by the Algorithm LEARN phase or KnowledgeHarvester as People, Companies, Ideas, or Research
+4. A summarize-family pattern (`summarize`, `create_5_sentence_summary`, `create_micro_summary`, `summarize_paper`, `summarize_lecture`, `summarize_meeting`, `summarize_debate`, `youtube_summary`) run on a URL or on text of 200 characters or more also fires the installed harvest skill on the same input, which writes a KNOWLEDGE note (Intents/ExecutePattern.md, Tool contract)
+5. Extracted insights may be captured in the Knowledge Archive (`MEMORY/KNOWLEDGE/`) by the Algorithm LEARN phase or KnowledgeHarvester as a person, company, idea, blog, research or book note
 
 **Example:**
 ```
 User: "Use fabric to extract wisdom from this article"
 -> Fabric skill invoked
--> ExecutePattern workflow selected
+-> ExecutePattern intent selected
 -> Reads Patterns/extract_wisdom/system.md
 -> Applies pattern to content
 -> Returns IDEAS, INSIGHTS, QUOTES, etc.
@@ -52,7 +53,9 @@ User: "Use fabric to extract wisdom from this article"
 
 Only use `fabric` command for:
 - **`-y URL`** - YouTube transcript extraction
-- **`-U`** - Update patterns (or use skill workflow)
+- **`-u URL`** - fetch a public URL when the native fetch fails to retrieve it; it does not bypass a site's access controls, and a page that refuses automated access stays unread
+
+Never use `fabric -U` to update: patterns are updated only through the UpdatePatterns intent, from a fresh upstream clone.
 
 ---
 
@@ -62,7 +65,7 @@ Only use `fabric` command for:
 |----------|-------|--------------|
 | **Extraction** | 30+ | extract_wisdom, extract_insights, extract_main_idea |
 | **Summarization** | 20+ | summarize, create_5_sentence_summary |
-| **Analysis** | 35+ | analyze_claims, analyze_code, analyze_threat_report |
+| **Analysis** | 30+ | analyze_claims, analyze_logs, analyze_threat_report |
 | **Creation** | 50+ | create_threat_model, create_prd, create_mermaid_visualization |
 | **Improvement** | 10+ | improve_writing, improve_prompt, review_code |
 | **Security** | 15 | create_stride_threat_model, create_sigma_rules |
@@ -75,15 +78,12 @@ Only use `fabric` command for:
 **Via Skill (Recommended):**
 ```
 User: "Update fabric patterns"
--> Fabric skill > UpdatePatterns workflow
--> Runs fabric -U
--> Syncs to ~/.claude/skills/Fabric/Patterns/
+-> Fabric skill > UpdatePatterns intent
+-> Clones upstream fabric, copies data/patterns/ into ~/.claude/skills/Fabric/Patterns/
+-> Keeps local-only patterns and reports them
 ```
 
-**Manual:**
-```bash
-fabric -U && rsync -av ~/.config/fabric/patterns/ ~/.claude/skills/Fabric/Patterns/
-```
+The source is always a fresh upstream clone, never `fabric -U` or `~/.config/fabric/patterns/`, which mixes in local patterns (`skills/Fabric/Intents/UpdatePatterns.md`).
 
 ---
 
@@ -104,7 +104,7 @@ That is the entire point of a pattern: a reusable move you apply to content, not
 Because a pattern is just a packaged transformation, the same piece of content can go through several:
 
 - Feed a written argument to `analyze_claims` and get each claim rated for evidence.
-- Feed a system description to `create_mermaid` and get a diagram back.
+- Feed a system description to `create_mermaid_visualization` and get a diagram back.
 - Feed a rough draft to `improve_writing` and get a cleaner version.
 
 Same content, different move, different structured result — and each result comes out the same way every time you run it.
@@ -121,7 +121,7 @@ flowchart TD
     C[Incoming content: article, transcript, code] --> P{Which pattern fits the intent?}
     P -->|distill the lessons| W[extract_wisdom]
     P -->|check an argument| A[analyze_claims]
-    P -->|draw the system| M[create_mermaid]
+    P -->|draw the system| M[create_mermaid_visualization]
     W --> R[Read Patterns/name/system.md]
     A --> R
     M --> R
@@ -137,7 +137,7 @@ The diagram shows why patterns compose: the *content* is the variable, the *patt
 ## See Also
 
 - **Full Skill:** `~/.claude/skills/Fabric/SKILL.md`
-- **Pattern Execution:** `~/.claude/skills/Fabric/Workflows/ExecutePattern.md`
-- **Pattern Updates:** `~/.claude/skills/Fabric/Workflows/UpdatePatterns.md`
+- **Pattern Execution:** `~/.claude/skills/Fabric/Intents/ExecutePattern.md`
+- **Pattern Updates:** `~/.claude/skills/Fabric/Intents/UpdatePatterns.md`
 - **All Patterns:** `~/.claude/skills/Fabric/Patterns/`
 - **Architecture:** `~/.claude/LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md` — Master LifeOS architecture reference

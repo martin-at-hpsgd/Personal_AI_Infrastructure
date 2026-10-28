@@ -16,7 +16,7 @@ export type ObserverScope = "full" | "fine" | "open";
 
 const SCOPES: Record<string, ObserverScope> = {
   // ── Mixed pages with [data-sensitive] markers — structure visible ──────────
-  "/": "fine", // TELOS home — all content sections marked in _v7/app.tsx
+  "/": "full", // Today — calendar, health, mood, blockers: personal throughout
   "/telos": "fine",
   "/finances": "fine", // deliberately instrumented (22 markers)
   "/health": "fine",
@@ -28,6 +28,7 @@ const SCOPES: Record<string, ObserverScope> = {
   // ── Wholly or heavily personal — full-page blur ────────────────────────────
   "/telos/item": "full", // raw TELOS item bodies
   "/life": "full", // mood, sleep, meals, location
+  "/today": "full", // agenda, blockers, health, mood
   "/business": "full", // revenue, deals
   "/growth": "full", // audience/business numbers
   "/gear": "full", // possessions + home network IPs
@@ -44,6 +45,7 @@ const SCOPES: Record<string, ObserverScope> = {
   "/content": "full", // unpublished draft titles
   "/security": "full", // attack surface, findings, risk register
   "/atlas": "full", // estate inventory, DNS
+  "/velocity": "full", // commit counts by repo category
   "/assets": "full", // redirect → /gear
   "/bunker": "full", // per-app paths + failing security checks
   "/usage": "full", // spend
@@ -51,16 +53,37 @@ const SCOPES: Record<string, ObserverScope> = {
   "/synapse": "full", // private reading/bookmark titles
   "/system/graph": "full", // named entities from knowledge archive
   "/projects": "full", // redirect → /work
-  "/hypotheses": "full", // redirect → /upgrades
+  "/hypotheses": "full", // redirect → /upgrades → /review
 
   // ── System surface — stays readable, that's the demo ───────────────────────
   "/algorithm": "open",
   "/hooks": "open",
-  "/arbol": "open",
   "/ledger": "open",
-  "/upgrades": "open",
+  "/prioritize": "full", // work prioritization recommendations
+  "/review": "full", // self-review decisions
   "/docs": "open",
 };
+
+/**
+ * Retired page paths and where they live now. The Pulse server answers each with
+ * a permanent redirect before any page is served (observability.ts), so observer
+ * mode never classifies them. It sits beside SCOPES because this file is the one
+ * route map both the server and the browser read. `/arbol` (Cloud Workflows) folded
+ * into /workflows on 2026-09-29; its ?name=<worker> opens that worker's source.
+ */
+const RETIRED_PAGES: Record<string, { to: string; carry?: { param: string; tab: string } }> = {
+  "/arbol": { to: "/workflows", carry: { param: "name", tab: "workers" } },
+  "/upgrades": { to: "/review" }, // folded into Review, 2026-10-10; /api/upgrades keeps serving Review's queue
+};
+
+/** The redirect target for a retired page path, or null when the path is live. */
+export function retiredPageRedirect(pathname: string, search: URLSearchParams): string | null {
+  const page = RETIRED_PAGES[pathname.replace(/\/+$/, "") || "/"];
+  if (!page) return null;
+  const carried = page.carry ? search.get(page.carry.param) : null;
+  if (!page.carry || !carried) return page.to;
+  return `${page.to}?tab=${page.carry.tab}&${page.carry.param}=${encodeURIComponent(carried)}`;
+}
 
 export function observerScopeFor(pathname: string): ObserverScope {
   const clean = pathname.replace(/\/+$/, "") || "/";
@@ -74,10 +97,14 @@ export function observerScopeFor(pathname: string): ObserverScope {
   return "full"; // fail closed
 }
 
-/** Serialized for the pre-paint inline script in layout.tsx. */
+/**
+ * Serialized for the pre-paint inline script in layout.tsx. It reads the shared obfuscation switch synchronously
+ * (one local request) so the first frame is already blurred while OBS runs, even with empty localStorage.
+ */
 export function observerScopeScript(): string {
   return `(function(){try{
 var on=localStorage.getItem("pulse-observer-mode")==="1";
+try{var x=new XMLHttpRequest();x.open("GET","/api/obfuscate",false);x.send();if(x.status===200){var r=JSON.parse(x.responseText);if(typeof r.on==="boolean"){on=r.on;localStorage.setItem("pulse-observer-mode",on?"1":"0");}}}catch(e){}
 var m=${JSON.stringify(SCOPES)};
 var p=location.pathname.replace(/\\/+$/,"")||"/";
 var s=m[p];

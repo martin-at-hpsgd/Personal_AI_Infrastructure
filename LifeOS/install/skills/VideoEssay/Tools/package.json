@@ -1,0 +1,15 @@
+{
+  "name": "videoessay-composition",
+  "private": true,
+  "type": "module",
+  "description": "Tools for the video-essay skill. The composition renders on HyperFrames through LIFEOS/TOOLS/HyperFrames (Compose.ts); node_modules and public/ are gitignored.",
+  "scripts": {
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "shiki": "^3.12.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

@@ -41,11 +41,20 @@ case "$1" in
       echo "LifeOS Pulse started"
     else
       if [ ! -f "$PLIST_DST" ]; then
+        mkdir -p "$(dirname "$PLIST_DST")"
         # Substitute __HOME__ + __BUN_PATH__ placeholders (public template);
         # no-op on plists that already have literal paths.
         sed -e "s|__HOME__|$HOME|g" -e "s|__BUN_PATH__|$BUN_PATH|g" "$PLIST_SRC" > "$PLIST_DST"
       fi
       launchctl load "$PLIST_DST" 2>/dev/null
+      # `launchctl load` is a silent no-op when the agent is still registered
+      # (2026-09-06: restart printed "started" and left nothing on :31337 for
+      # a minute). Ask launchd, not the port — boot takes 10-15 s and a port
+      # poll would kickstart a healthy Pulse mid-start.
+      sleep 1
+      if ! launchctl print "gui/$(id -u)/$PLIST_NAME" 2>/dev/null | grep -q "state = running"; then
+        launchctl kickstart -k "gui/$(id -u)/$PLIST_NAME" 2>/dev/null
+      fi
       echo "LifeOS Pulse started"
     fi
     ;;
@@ -136,8 +145,20 @@ case "$1" in
 
       # Substitute __HOME__ + __BUN_PATH__ placeholders (public template);
       # no-op on plists that already have literal paths.
+      mkdir -p "$(dirname "$PLIST_DST")"
       sed -e "s|__HOME__|$HOME|g" -e "s|__BUN_PATH__|$BUN_PATH|g" "$PLIST_SRC" > "$PLIST_DST"
-      launchctl load "$PLIST_DST"
+      # A failed load must not fall through to the port poll below: it reported
+      # "did not bind" and pointed at a stderr log that never existed
+      # (public issue #2256, @coygeek). Legacy `launchctl load` exits 0 on failure
+      # (verified: a missing plist prints "Load failed: 5" and returns 0), so the
+      # output is checked as well as the status.
+      LOAD_RC=0
+      LOAD_ERR=$(launchctl load "$PLIST_DST" 2>&1) || LOAD_RC=$?
+      if [ "$LOAD_RC" -ne 0 ] || printf '%s' "$LOAD_ERR" | grep -q "Load failed"; then
+        echo "ERROR: launchctl load failed for $PLIST_DST — Pulse was not started." >&2
+        [ -n "$LOAD_ERR" ] && echo "  $LOAD_ERR" >&2
+        exit 1
+      fi
     fi
 
     # Verify pulse actually binds :31337 within 10s. Fail loud if not — prior

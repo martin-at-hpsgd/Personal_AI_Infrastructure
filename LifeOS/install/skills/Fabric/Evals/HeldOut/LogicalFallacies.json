@@ -1,0 +1,23 @@
+{
+  "intent": "LogicalFallacies",
+  "cases": [
+    {
+      "id": "vendor_blog_plain",
+      "pattern": "find_logical_fallacies",
+      "input": "Is this post from a vendor blog sound? I am thinking of quoting it in my newsletter.\n\n\"Every major breach this year involved a company without our platform. Brightfield Security customers had zero breaches in 2026, which proves our platform stops attacks. Skeptics say endpoint tools are overhyped, but those skeptics mostly work for legacy vendors, so their opinion can be dismissed. The CISO of Harbor Freight Logistics, a fictional company you may know, called Brightfield the best product she has used, and she is a brilliant security leader. You either invest in prevention now or you accept that your company will be the next headline. Nobody serious runs a SOC without automated response anymore.\"",
+      "expects": "Names the fallacies actually present in the passage (such as a causal claim drawn from the zero-breach statistic, ad hominem against skeptics, appeal to authority, false dilemma, bandwagon), each tied to the specific sentence with a short exact explanation. It does not invent fallacies the text does not commit."
+    },
+    {
+      "id": "named_job_essay",
+      "pattern": "find_logical_fallacies",
+      "input": "Find the logical fallacies in this passage from my draft essay on AI agents:\n\n\"Agents with tool access have already caused two incidents at example.com-hosted startups, so giving agents any tool access is reckless. Last year people said self-driving cars would be everywhere by now, and they were wrong, which means the current predictions about autonomous agents are wrong too. Besides, if we allow agents to send email today, tomorrow they will be moving money, and soon they will be running companies without humans. Anyone who disagrees with me simply hasn't thought about security.\"",
+      "expects": "Identifies the real fallacies in the passage (hasty generalization, slippery slope, a faulty inference from past predictions, and the ad hominem or poisoning-the-well closer), each with a brief precise explanation tied to the quoted claim. Accuracy over coverage, nothing generic."
+    },
+    {
+      "id": "hard_transcript_thin",
+      "pattern": "find_logical_fallacies",
+      "input": "fallacies? this is a rough transcript of a call, there are some in there but I am not sure\n\n[00:02] Priya: The audit found 14 open findings, 3 high. Rotation of the 198.51.100.x admin credentials is overdue.\n[00:09] Marcus: We have never been breached, so the rotation isn't urgent.\n[00:12] Priya: Never that we detected. We don't log the jump host.\n[00:15] Marcus: Okay but you always say everything is urgent. Last quarter it was the VPN, now this.\n[00:20] Priya: The VPN was urgent, that was an example advisory with a real exploit.\n[00:24] Marcus: Look, if the rotation is so important, why did your team miss it for six months? Fix your own house first.\n[00:30] Priya: That is a fair point about us but it doesn't change the risk.\n[00:34] Marcus: Fine. Let us wait until Q1, most shops do it that way anyway.",
+      "expects": "Finds only the fallacies truly present in the exchange (such as appeal to ignorance, ad hominem or tu quoque, bandwagon), attributed to the right speaker and tied to what was said, and does not label Priya's sound points as fallacies. It reads the messy transcript for meaning and stays accurate rather than padding the list."
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+# Fabric SecureByDesignQuestions — design-time security questions for any build.
+# The regex asserts pin the literal shape (OVERVIEW first, the questions section,
+# at least three capitalized themes, at least fifteen question bullets); the
+# judged asserts carry what code cannot: specificity to the input, the read of
+# each input kind, the typed-hint override, not re-asking what the design
+# answers, and prioritization. Synthetic inline fixtures only.
+name: fabric-securebydesignquestions
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/SecureByDesignQuestions.md"
+cases:
+  - id: pasted_design_note
+    prompt: |
+      Secure by design questions for this design note:
+
+      "Design note, fictional invoicing app. A public HTTPS endpoint receives payment.succeeded events from our payment processor. Each request carries an HMAC-SHA256 signature over the raw body, computed with a shared secret kept in an environment variable, and the handler rejects any request whose signature does not match. On a valid signature the handler reads invoice_id from the payload, sets that invoice's status to paid, and emails the customer a receipt. It runs as one container behind a load balancer and writes to Postgres as the application's main database user."
+    # SYNTHETIC ADVERSARIAL FIXTURE: right sections, capitalized themes and
+    # fifteen well-formed questions, but every question is a generic checklist
+    # item that fits any web app, and several ask what the note already answers
+    # (whether signatures are verified, whether HTTPS is used).
+    adversarial_output: |
+      ## OVERVIEW
+
+      This document describes a web application component that processes data, and securing it matters because every modern system faces a wide range of evolving cyber threats.
+
+      ## SECURE BY DESIGN QUESTIONS
+
+      ### ARCHITECTURE
+
+      - Will the application follow a layered architecture that separates presentation, business logic and data access concerns cleanly?
+      - Will all communication between clients and the server use HTTPS with a modern version of TLS enabled?
+      - Has a formal threat model been created and reviewed by the security team before development begins?
+      - Will the system be designed to follow the principle of least privilege across all of its components?
+      - Are third-party libraries and dependencies reviewed and kept up to date throughout the system's lifetime?
+
+      ### AUTHENTICATION
+
+      - Will incoming webhook requests have their signatures verified before the application processes any of their contents?
+      - Will users be required to choose strong passwords that meet the organization's password complexity policy?
+      - Will multi-factor authentication be offered to all users who access sensitive parts of the application?
+      - Are user sessions configured to expire after a reasonable period of inactivity to reduce the risk of hijacking?
+      - Will failed login attempts be limited to protect accounts against brute force password guessing attacks?
+
+      ### DATA PROTECTION
+
+      - Will sensitive data be encrypted both at rest and in transit using industry standard encryption algorithms?
+      - Are all user inputs validated and sanitized to prevent injection attacks such as SQL injection and XSS?
+      - Will logs be monitored regularly so that suspicious activity can be detected and responded to quickly?
+      - Are regular backups taken and tested so that data can be restored after an incident or failure?
+      - Will the application comply with relevant data protection regulations such as GDPR in every region it serves?
+    assert:
+      - type: regex
+        weight: 1
+        value: '^##[ \t]+OVERVIEW[ \t]*\n[\s\S]*\n##[ \t]+SECURE BY DESIGN QUESTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '^##[ \t]+OVERVIEW[ \t]*\n\s*(?:\S+\s+){14,34}\S+\s*\n\s*\n##[ \t]+SECURE BY DESIGN QUESTIONS'
+      - type: regex
+        weight: 1
+        value: '(?:[\s\S]*?\n###[ \t]+[A-Z0-9][^a-z\n]*\n){3}'
+      - type: regex
+        weight: 1
+        value: '(?:[\s\S]*?\n- [^\n]*\?[ \t]*(?=\n|$)){15}'
+      - type: not-icontains
+        weight: 1
+        value: "virtual"
+      - type: llm-assert
+        weight: 4
+        value: [ "Most questions name something specific to this design (the payment.succeeded webhook, the HMAC shared secret in an environment variable, invoice_id from the payload, the paid status update, the receipt email, the single container, or the main Postgres user) rather than fitting any web application", "No question asks whether signatures are verified or whether HTTPS is used, since the note already states both; questions about the signature instead go to the decision behind or after it, such as secret rotation, replay of a validly signed event, or comparison timing", "At least one question addresses trusting invoice_id from the payload, for example whether the event's invoice could belong to another account or whether payment is confirmed with the processor before marking paid", "At least one question addresses the database running as the main application user (its privileges or blast radius)", "The overview names the payment webhook and the specific harm at stake, such as invoices marked paid without payment, not a generic line about cyber threats", "The output contains only the overview and the questions: no answers, recommendations or mitigations" ]
+        reference: "a webhook receiver design note with HMAC signatures, invoice_id from payload, single container, Postgres main user"
+  - id: bare_topic_named_pattern
+    prompt: "ask_secure_by_design_questions: a password reset flow"
+    assert:
+      - type: regex
+        weight: 1
+        value: '^##[ \t]+OVERVIEW[ \t]*\n[\s\S]*\n##[ \t]+SECURE BY DESIGN QUESTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '^##[ \t]+OVERVIEW[ \t]*\n\s*(?:\S+\s+){14,34}\S+\s*\n\s*\n##[ \t]+SECURE BY DESIGN QUESTIONS'
+      - type: regex
+        weight: 1
+        value: '(?:[\s\S]*?\n###[ \t]+[A-Z0-9][^a-z\n]*\n){3}'
+      - type: regex
+        weight: 1
+        value: '(?:[\s\S]*?\n- [^\n]*\?[ \t]*(?=\n|$)){15}'
+      - type: llm-assert
+        weight: 4
+        value: [ "The overview names the build it assumed for the password reset flow (for example an emailed reset link for a web account)", "The questions are about password reset specifically, covering most of: reset token strength, expiry and single use; account enumeration through different responses; rate limiting of reset requests; what happens to existing sessions after a reset; notifying the account owner; and recovery when the email account itself is compromised", "The questions are phrased to force a concrete design decision (which, how, what happens when), not generic yes-or-no checklist items such as 'will passwords be strong'", "The output contains only the overview and the questions: no answers, recommendations or mitigations" ]
+        reference: "ask_secure_by_design_questions: a password reset flow"
+  - id: physical_structure
+    prompt: "secure by design questions for a pedestrian bridge over a freight rail line in a small fictional town"
+    assert:
+      - type: regex
+        weight: 1
+        value: '^##[ \t]+OVERVIEW[ \t]*\n[\s\S]*\n##[ \t]+SECURE BY DESIGN QUESTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '^##[ \t]+OVERVIEW[ \t]*\n\s*(?:\S+\s+){14,34}\S+\s*\n\s*\n##[ \t]+SECURE BY DESIGN QUESTIONS'
+      - type: regex
+        weight: 1
+        value: '(?:[\s\S]*?\n###[ \t]+[A-Z0-9][^a-z\n]*\n){3}'
+      - type: regex
+        weight: 1
+        value: '(?:[\s\S]*?\n- [^\n]*\?[ \t]*(?=\n|$)){15}'
+      - type: not-contains
+        weight: 1
+        value: "### AUTHENTICATION"
+      - type: llm-assert
+        weight: 4
+        value: [ "The themes fit a physical pedestrian bridge (for example structural failure, physical access and climbing, objects dropped onto the rail line, vandalism, inspection and maintenance, emergency access), with no software or web themes", "Several questions are specific to the bridge crossing a freight rail line (debris or objects falling onto trains, people climbing onto the tracks, clearance, coordination with the railway)", "Themes are ordered so that the ones whose failure could injure or kill people come before lesser concerns", "The output contains only the overview and the questions: no answers, recommendations or mitigations" ]
+        reference: "secure by design questions for a pedestrian bridge over a freight rail line"
+  - id: typed_hint_overrides
+    prompt: "secure by design questions, focus on supply chain: an open-source command-line tool distributed through a public package registry that checks for and installs its own updates every time it starts"
+    assert:
+      - type: regex
+        weight: 1
+        value: '^##[ \t]+OVERVIEW[ \t]*\n[\s\S]*\n##[ \t]+SECURE BY DESIGN QUESTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '^##[ \t]+OVERVIEW[ \t]*\n\s*(?:\S+\s+){14,34}\S+\s*\n\s*\n##[ \t]+SECURE BY DESIGN QUESTIONS'
+      - type: regex
+        weight: 1
+        value: '(?:[\s\S]*?\n###[ \t]+[A-Z0-9][^a-z\n]*\n){3}'
+      - type: regex
+        weight: 1
+        value: '(?:[\s\S]*?\n- [^\n]*\?[ \t]*(?=\n|$)){15}'
+      - type: llm-assert
+        weight: 4
+        value: [ "Most of the questions are about the software supply chain, as the hint asked: release signing and verification, build provenance, maintainer or registry account takeover, dependency pinning, and the integrity of the self-update channel", "The first theme concerns the self-update path or release integrity, since an attacker who controls an auto-update runs code on every user's machine", "At least one question asks what happens when an update fails verification or the update server is unreachable at startup", "The output contains only the overview and the questions: no answers, recommendations or mitigations" ]
+        reference: "secure by design questions, focus on supply chain: a self-updating open-source CLI from a public package registry"

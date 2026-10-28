@@ -1,0 +1,24 @@
+{
+  "lane": "low",
+  "windowDays": 3,
+  "maxAgeHours": 12,
+  "staleSourceHours": 6,
+  "budgetChars": 14000,
+  "maxRecommendations": 12,
+  "limits": { "work": 20, "captures": 20, "knowledge": 20, "upgrades": 10 },
+  "context": "Alex Example runs a small newsletter business called Example Press. Prefer recommendations that move a stated goal, especially goals with no open work.",
+  "routes": {
+    "work": "the issue tracker skill you use for Example Press tasks",
+    "lifeos": "Upgrade",
+    "research": "Research",
+    "telos": "Telos",
+    "content": "your drafting skill"
+  },
+  "categories": {
+    "work": "An open task in the work queue that should be done next, unblocked or closed. Cite its reference.",
+    "lifeos": "A change to the personal AI system itself that a capture, note or open upgrade record points at.",
+    "research": "A question several inputs point at, where the answer would change a decision.",
+    "telos": "A goal whose status, wording or next step should change.",
+    "content": "A newsletter issue, post or video idea grounded in the recent inputs."
+  }
+}

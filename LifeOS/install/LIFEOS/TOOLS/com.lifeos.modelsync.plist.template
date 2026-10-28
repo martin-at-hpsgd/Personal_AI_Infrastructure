@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.lifeos.modelsync.plist.template - Source template. Install via:
+    bun ~/.claude/LIFEOS/TOOLS/InstallModelSync.ts
+  Daily 05:10 local: ModelSync --daily pulls the Claude lineup + price table from
+  Anthropic's public docs (no key), bumps models.ts CURRENT forward, rewrites
+  model-pricing.json, and re-runs CarrierProbe when its fact is >25d old.
+  HEADLESS: LIFEOS_NOTIFICATION_CHANNEL=headless — a scheduled job never voices.
+  The installer substitutes {{BUN}}/{{BUN_DIR}}/{{HOME}}; this template ships clean.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeos.modelsync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{BUN}}</string>
+    <string>{{HOME}}/.claude/LIFEOS/TOOLS/ModelSync.ts</string>
+    <string>--daily</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>5</integer>
+    <key>Minute</key>
+    <integer>10</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/OBSERVABILITY/model-sync-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{HOME}}/.claude/LIFEOS/MEMORY/OBSERVABILITY/model-sync-launchd.log</string>
+  <key>WorkingDirectory</key>
+  <string>{{HOME}}/.claude</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{BUN_DIR}}:{{HOME}}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>LIFEOS_NOTIFICATION_CHANNEL</key>
+    <string>headless</string>
+  </dict>
+</dict>
+</plist>

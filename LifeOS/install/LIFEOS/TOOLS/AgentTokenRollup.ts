@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.1
  * AgentTokenRollup.ts — per-agent token accounting for a session (2026-07-22).
  *
  * Closes the observability gap the 3-week execution audit named: subagent-events.jsonl
@@ -20,9 +21,9 @@
 
 import { readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
+import { getClaudeDir } from './Paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const PROJECTS = join(homedir(), '.claude', 'projects');
+const PROJECTS = join(getClaudeDir(), 'projects');
 
 interface Usage {
   input_tokens?: number;

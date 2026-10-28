@@ -1,7 +1,7 @@
 # Custom tab bar: on the TOP edge, tabs share the full window width evenly —
 # few tabs = long titles, many tabs = shorter, recomputed on every redraw
-# (window resize, tab open/close). Vertical (left/right) bars keep the default
-# powerline drawing; TabBar.ts drives those.
+# (window resize, tab open/close). Any other edge falls through to the stock
+# powerline drawing.
 # Loaded because kitty.conf sets tab_bar_style custom (kitty >= 0.48).
 #
 # Sizing is boundary-targeted, not share-estimated: tab i pads its title so the
@@ -14,7 +14,6 @@ from kitty.tab_bar import (
     DrawData,
     ExtraData,
     TabBarData,
-    as_rgb,
     draw_tab_with_powerline,
 )
 
@@ -67,21 +66,6 @@ def draw_tab(
             budget = avail - SEPARATOR_CELLS
             tab = tab._replace(title=_fit(tab.title, budget))
             max_tab_length = avail
-        else:
-            # Vertical bar: each tab owns a full row. kitty reserves
-            # tab_title_max_length + 8 sidebar columns (state.c
-            # vertical_tab_bar_cols) but draw_title clips the rendered title at
-            # tab_title_max_length, so the stock powerline path can never reach
-            # the pane edge. Draw the row manually — no draw_title, no clip —
-            # filling every column, with the powerline slant in the last cell.
-            # update_vertical has already set cursor fg/bg to this tab's colors.
-            budget = max(MIN_TITLE, max_tab_length - 1)
-            screen.draw(_fit(tab.title, budget))
-            tab_bg = screen.cursor.bg
-            screen.cursor.fg = tab_bg
-            screen.cursor.bg = as_rgb(int(draw_data.default_bg))
-            screen.draw("")  # powerline angled separator
-            return screen.cursor.x
     except Exception:
         pass  # fall through to stock powerline drawing
     return draw_tab_with_powerline(

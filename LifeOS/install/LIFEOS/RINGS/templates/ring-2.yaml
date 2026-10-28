@@ -1,0 +1,19 @@
+# Ring 2: people the principal knows who are not inner circle.
+ring: 2
+name: Known
+description: A plain acknowledgement and their message passed to the principal. No model acts for them.
+members: []
+pending: []
+answers:
+  can: []
+  never: ["Anything: a plain acknowledgement only, and their message passed to the principal"]
+skills: []
+data: []
+actions: ["pass-message-to-principal"]
+model:
+  lane: none
+caps:
+  messages_per_day: 20
+logging:
+  stream: relay
+  record_text: true

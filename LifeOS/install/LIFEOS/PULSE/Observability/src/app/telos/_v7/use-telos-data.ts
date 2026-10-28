@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ApiError, useApi } from "@/lib/api";
 import { TELOS as FALLBACK, type Telos } from "./data";
 
 // Type-stable skeleton for personalized installs where the API returns null
@@ -111,39 +112,32 @@ export function useTelosData(): {
   // meta.isPersonalized === false (a genuine fresh install).
   const [telos, setTelos] = useState<Telos | null>(null);
   const [isPersonalized, setIsPersonalized] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [version, setVersion] = useState<number>(0);
+  const [payloadError, setPayloadError] = useState<string | null>(null);
+  const query = useApi<any>("/api/telos/overview");
+  const { refetch: queryRefetch, data: payload, error: fetchError } = query;
 
   const refetch = useCallback(() => {
-    setVersion((v) => v + 1);
-  }, []);
+    void queryRefetch();
+  }, [queryRefetch]);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/telos/overview", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
-      .then((data) => {
-        if (cancelled) return;
-        if (data && typeof data === "object" && !data.error) {
-          const merged = mergeTelos(data as ApiTelos);
-          setTelos(merged.telos);
-          setIsPersonalized(merged.isPersonalized);
-          setError(null);
-        } else {
-          // Error from the API: keep telos null so the page shows the error
-          // state — never the sample fixture.
-          setError(data?.error ?? "empty response");
-        }
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        // Fetch failure (daemon restarting, network): error state, not fixture.
-        setError(String(err?.message ?? err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [version]);
+    if (payload === undefined) return;
+    if (payload && typeof payload === "object" && !payload.error) {
+      const merged = mergeTelos(payload as ApiTelos);
+      setTelos(merged.telos);
+      setIsPersonalized(merged.isPersonalized);
+      setPayloadError(null);
+    } else {
+      // Error from the API: keep telos null so the page shows the error
+      // state — never the sample fixture.
+      setPayloadError(payload?.error ?? "empty response");
+    }
+  }, [payload]);
+
+  // Fetch failure (daemon restarting, network): error state, not fixture. The last good telos stays.
+  const error = fetchError
+    ? fetchError instanceof ApiError ? `status ${fetchError.status}` : fetchError.message
+    : payloadError;
 
   return { telos, refetch, error, isPersonalized };
 }

@@ -20,9 +20,9 @@
 
 import { readFileSync, statSync } from "fs";
 import { globSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
 import { getEncoding } from "js-tiktoken";
+import { getClaudeDir, lifeosPath } from "../Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const enc = getEncoding("cl100k_base");
 
@@ -105,11 +105,11 @@ function* readJsonl(path: string): IterableIterator<Record<string, unknown>> {
 }
 
 function mainLogs(): string[] {
-  return glob(join(homedir(), ".claude/projects/*/*.jsonl"));
+  return glob(join(getClaudeDir(), "projects", "*", "*.jsonl"));
 }
 
 function sideLogs(): string[] {
-  return glob(join(homedir(), ".claude/projects/*/*/subagents/*.jsonl"));
+  return glob(join(getClaudeDir(), "projects", "*", "*", "subagents", "*.jsonl"));
 }
 
 function fmtNum(n: number, w = 0): string {
@@ -136,6 +136,54 @@ function hms(s: number): string {
 // cost — port of cost.py
 // ────────────────────────────────────────────────────────────────────
 
+/**
+ * One API call is written to the transcript as SEVERAL JSONL records — one per
+ * content block — and each carries a `usage`, so summing every block found
+ * multiplies real spend. Across this machine's 17k transcripts, 199,192 assistant
+ * records collapse to 93,017 API calls: a 2.65x over-count (the reporter measured
+ * ~2.1x against `ccusage`). `requestId` identifies the call, so it is the key.
+ *
+ * The catch, measured on the same corpus: those records are STREAMING PARTIALS,
+ * not copies. `output_tokens` grows across a call's records in 19,218 of 32,933
+ * multi-record calls — `[2, 2, 216]` — with the final record carrying the true
+ * total (last === max in 32,930 of them). Counting the FIRST record and skipping
+ * the rest therefore trades a 2.65x over-count for a 2.8x UNDER-count on output.
+ * Input-side fields do not stream (they vary in ~0.02% of calls, and their sums
+ * are identical either way), but one rule for every field is simpler than three.
+ *
+ * So the rule is not "count once", it is "count the high-water mark once": each
+ * record contributes only the part of the value not already counted for its
+ * requestId. Idempotent for copies, correct for partials, one pass.
+ *
+ * Records with no `requestId` count in full — trading an over-count for an
+ * under-count is not a fix. (28 such records locally.)
+ *
+ * The ledger belongs to one command run, never to the module, so two queries in a
+ * process cannot leak state into each other.
+ *
+ * Community fix: PR #1894 by @asdf8675309. The dedup key is the PR's; the
+ * high-water-mark rule replaces its first-wins Set, which the partials break.
+ */
+export function makeUsageLedger() {
+  const counted = new Map<string, number>();
+  return {
+    /** The part of `value` not yet counted for this record's call. */
+    delta(o: Record<string, unknown>, field: string, value: number): number {
+      const rid = o.requestId;
+      if (typeof rid !== "string" || rid.length === 0) return value;
+      const key = `${rid}\u0000${field}`;
+      const prior = counted.get(key) ?? 0;
+      if (value <= prior) return 0;
+      counted.set(key, value);
+      return value - prior;
+    },
+    /** True exactly once per call — for counting calls and events, not tokens. */
+    firstRecord(o: Record<string, unknown>): boolean {
+      return this.delta(o, "\u0000call", 1) === 1;
+    },
+  };
+}
+
 interface CostTotals {
   rows: { key: string; label: string; tokens: number; cost: number }[];
   total: number;
@@ -151,17 +199,18 @@ function computeCostTotals(): CostTotals {
     write_1h: 0,
     write_5m: 0,
   };
+  const led = makeUsageLedger(); // count each call once, not once per block (PR #1894)
   for (const f of mainLogs()) {
     for (const o of readJsonl(f)) {
       const m = o.message as Record<string, unknown> | undefined;
       if (!m || typeof m !== "object" || m.role !== "assistant") continue;
       const u = (m.usage as Record<string, unknown>) ?? {};
-      T.cache_read += Number(u.cache_read_input_tokens ?? 0);
-      T.uncached += Number(u.input_tokens ?? 0);
-      T.output += Number(u.output_tokens ?? 0);
       const cc = (u.cache_creation as Record<string, unknown>) ?? {};
-      T.write_1h += Number(cc.ephemeral_1h_input_tokens ?? 0);
-      T.write_5m += Number(cc.ephemeral_5m_input_tokens ?? 0);
+      T.cache_read += led.delta(o, "cache_read", Number(u.cache_read_input_tokens ?? 0));
+      T.uncached += led.delta(o, "uncached", Number(u.input_tokens ?? 0));
+      T.output += led.delta(o, "output", Number(u.output_tokens ?? 0));
+      T.write_1h += led.delta(o, "write_1h", Number(cc.ephemeral_1h_input_tokens ?? 0));
+      T.write_5m += led.delta(o, "write_5m", Number(cc.ephemeral_5m_input_tokens ?? 0));
     }
   }
 
@@ -228,7 +277,7 @@ interface ApiCostSnapshot {
 }
 
 function loadLatestApiCostSnapshot(): ApiCostSnapshot | null {
-  const path = join(homedir(), ".claude/LIFEOS/MEMORY/OBSERVABILITY/anthropic-cost.jsonl");
+  const path = lifeosPath("MEMORY", "OBSERVABILITY", "anthropic-cost.jsonl");
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
@@ -329,6 +378,7 @@ function runBreakdown(jsonOut: boolean): void {
   let gen = 0;
 
   const addMap = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) ?? 0) + v);
+  const led = makeUsageLedger(); // PR #1894 — see makeUsageLedger
 
   for (const f of mainLogs()) {
     type Ev = [number, "A" | "H" | "T"];
@@ -357,7 +407,10 @@ function runBreakdown(jsonOut: boolean): void {
 
       if (role === "assistant") {
         kind = "A";
-        out_total += Number(u.output_tokens ?? 0);
+        // Only the token sum is ledgered. The content blocks below differ from
+        // record to record and every one of them must be walked. `scaffold` is
+        // already once-per-file, and cache_creation does not stream, so it stands.
+        out_total += led.delta(o, "output", Number(u.output_tokens ?? 0));
         if (first) {
           scaffold += Number(u.cache_creation_input_tokens ?? 0);
           first = false;
@@ -518,6 +571,12 @@ function analyze(files: string[]): SplitResult {
     per_session: [],
   };
   const bump = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) ?? 0) + v);
+  // Scoped to this analyze() call, so the main-log and sidecar passes keep
+  // separate tallies instead of one shadowing the other. (PR #1894.)
+  const led = makeUsageLedger();
+  // Where each call's row lives in the per_call_* arrays, so a later record of the
+  // same call updates that row instead of adding a second one.
+  const row = new Map<string, number>();
   for (const f of files) {
     let fc = 0;
     for (const o of readJsonl(f)) {
@@ -526,21 +585,32 @@ function analyze(files: string[]): SplitResult {
       const role = m.role as string | undefined;
       const u = m.usage as Record<string, unknown> | undefined;
       if (u && typeof u === "object" && role === "assistant") {
-        R.calls += 1;
-        fc += 1;
         const ui = Number(u.input_tokens ?? 0);
         const cr = Number(u.cache_read_input_tokens ?? 0);
         const cw = Number(u.cache_creation_input_tokens ?? 0);
         const ot = Number(u.output_tokens ?? 0);
-        R.billed.uncached += ui;
-        R.billed.cache_read += cr;
-        R.billed.cache_write += cw;
-        R.billed.output += ot;
         const model = String(m.model ?? "?");
-        bump(R.model_out, model, ot);
-        bump(R.model_calls, model, 1);
-        R.per_call_prompt.push(ui + cr + cw);
-        R.per_call_out.push(ot);
+        R.billed.uncached += led.delta(o, "uncached", ui);
+        R.billed.cache_read += led.delta(o, "cache_read", cr);
+        R.billed.cache_write += led.delta(o, "cache_write", cw);
+        const dOut = led.delta(o, "output", ot);
+        R.billed.output += dOut;
+        bump(R.model_out, model, dOut);
+        // `calls` and the per-call distributions are per API call, so a call gets
+        // one row; later records of it overwrite that row with the final numbers.
+        const rid = typeof o.requestId === "string" ? o.requestId : "";
+        if (led.firstRecord(o)) {
+          R.calls += 1;
+          fc += 1;
+          bump(R.model_calls, model, 1);
+          if (rid) row.set(rid, R.per_call_out.length);
+          R.per_call_prompt.push(ui + cr + cw);
+          R.per_call_out.push(ot);
+        } else {
+          const i = row.get(rid)!;
+          R.per_call_prompt[i] = ui + cr + cw;
+          R.per_call_out[i] = ot;
+        }
       }
       const c = m.content;
       if (typeof c === "string") {
@@ -715,6 +785,7 @@ function runReread(jsonOut: boolean): void {
   const cumu = new Map<string, number>();
   let measured = 0;
   const bump = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) ?? 0) + v);
+  const led = makeUsageLedger(); // PR #1894 — see makeUsageLedger
 
   for (const f of mainLogs()) {
     const ctx = new Map<string, number>();
@@ -747,11 +818,17 @@ function runReread(jsonOut: boolean): void {
           first = false;
         }
         measured +=
-          Number(u.cache_read_input_tokens ?? 0) +
-          Number(u.cache_creation_input_tokens ?? 0) +
-          Number(u.input_tokens ?? 0);
-        for (const [k, v] of ctx) bump(cumu, k, v);
-        const ot = Number(u.output_tokens ?? 0);
+          led.delta(o, "cache_read", Number(u.cache_read_input_tokens ?? 0)) +
+          led.delta(o, "cache_write", Number(u.cache_creation_input_tokens ?? 0)) +
+          led.delta(o, "uncached", Number(u.input_tokens ?? 0));
+        // The whole context is re-read once per API call, not once per block.
+        if (led.firstRecord(o)) for (const [k, v] of ctx) bump(cumu, k, v);
+        // NOTE: `rn` below still splits one call's output across its records, so a
+        // record whose visible text exceeds its share of the ledgered output has
+        // that excess clamped away. The reasoning bucket keeps a small residual
+        // over-count that a per-call key alone cannot remove — closing it needs
+        // the blocks of a call aggregated before the subtraction.
+        const ot = led.delta(o, "output", Number(u.output_tokens ?? 0));
         let tc = 0;
         let sm = 0;
         if (Array.isArray(c)) {
@@ -913,7 +990,8 @@ function main(): void {
   }
 }
 
-main();
+// Guarded so the module can be imported by its test without running a command.
+if (import.meta.main) main();
 
 // silence unused-import linters for statSync (kept available for future probes)
 void statSync;

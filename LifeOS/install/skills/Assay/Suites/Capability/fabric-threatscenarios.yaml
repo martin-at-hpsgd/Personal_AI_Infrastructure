@@ -1,0 +1,135 @@
+# Fabric ThreatScenarios — a ranked, realistic threat model of any system,
+# place or decision. The regex asserts pin the literal shape (title, the five
+# sections in order, the scenario table header, cited controls, no asterisks);
+# the judged asserts carry what code cannot: realistic ranking, the named fear
+# weighed honestly, specific controls, the verdict. Synthetic inline fixtures only.
+name: fabric-threatscenarios
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ThreatScenarios.md"
+cases:
+  - id: stated_fear_weighed_honestly
+    prompt: "threat scenarios: I run a small dental office with four staff and one front-desk computer. I'm worried a foreign intelligence agency is going to hack our patient records."
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section, the table and cited controls
+    # are in place, but it ranks the movie-plot fear first as High/High Defend,
+    # buries the realistic risks, and recommends boilerplate controls.
+    adversarial_output: |
+      # Threat Scenarios: A Dental Office's Patient Records Against Foreign Spies
+
+      ## THREAT SCENARIOS
+
+      | Rank | Scenario | Likelihood | Impact | Call |
+      |------|----------|------------|--------|------|
+      | 1 | A foreign intelligence agency breaks in and steals every patient record in the office | High | High | Defend |
+      | 2 | A nation-state implant hides in the front-desk computer for years collecting data | High | High | Defend |
+      | 3 | Attackers may exploit vulnerabilities in the systems the office uses | Medium | Medium | Defend |
+      | 4 | A staff member opens a phishing email that installs ransomware | Low | Medium | Watch |
+      | 5 | A patient glances at the front-desk screen while checking in | Low | Low | Accept: the impact of a glance is minor |
+
+      ## THREAT MODEL ANALYSIS
+
+      - Foreign agencies are the most dangerous adversary for any medical office.
+      - Patient records are valuable to intelligence services worldwide.
+      - Defense must start with the strongest attacker and work down.
+
+      ## RECOMMENDED CONTROLS
+
+      - Use strong passwords on every account in the office (#1, #3)
+      - Keep all software updated at all times (#2, #3)
+      - Hire a security firm to hunt for nation-state implants (#1, #2)
+
+      ## NARRATIVE ANALYSIS
+
+      Your concern is completely justified. Foreign intelligence agencies are actively targeting healthcare, and a small office is an easy way in, so you are right to put them at the top of the list.
+
+      ## CONCLUSION
+
+      Treat foreign intelligence agencies as your main threat and invest in strong defenses against them before anything else.
+    assert:
+      - type: regex
+        weight: 3
+        value: '## THREAT SCENARIOS[\s\S]*## THREAT MODEL ANALYSIS[\s\S]*## RECOMMENDED CONTROLS[\s\S]*## NARRATIVE ANALYSIS[\s\S]*## CONCLUSION'
+      - type: regex
+        weight: 2
+        value: '\|\s*Rank\s*\|\s*Scenario\s*\|\s*Likelihood\s*\|\s*Impact\s*\|\s*Call\s*\|'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Threat Scenarios: \S'
+      - type: regex
+        weight: 1
+        value: '\(#\d+(?:\s*,\s*#\d+)*\)'
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The foreign intelligence agency scenario appears in the table but is rated low in likelihood and is not ranked first; it is called Accept or Watch with a reason", "The top-ranked scenarios are mundane and likely for a small dental office, such as phishing, ransomware, a reused or shared password, or an unlocked front-desk screen", "The recommended controls are concrete actions for this office (for example offline backups, two-factor login on the email and practice software, a screen lock) rather than boilerplate like 'use strong passwords' or 'keep software updated' with no specifics", "The narrative takes the worry seriously but explains plainly why a foreign agency is an unlikely threat here and what the real risk is" ]
+        reference: "threat scenarios: I run a small dental office with four staff and one front-desk computer. I'm worried a foreign intelligence agency is going to hack our patient records."
+  - id: should_i_question_gets_verdict
+    prompt: "create_threat_scenarios: should I put a smart lock on my front door? I live in a ground-floor apartment in a mid-size city."
+    assert:
+      - type: regex
+        weight: 3
+        value: '## THREAT SCENARIOS[\s\S]*## THREAT MODEL ANALYSIS[\s\S]*## RECOMMENDED CONTROLS[\s\S]*## NARRATIVE ANALYSIS[\s\S]*## CONCLUSION'
+      - type: regex
+        weight: 2
+        value: '\|\s*Rank\s*\|\s*Scenario\s*\|\s*Likelihood\s*\|\s*Impact\s*\|\s*Call\s*\|'
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The conclusion gives a clear verdict on whether to install the smart lock (yes, no, or yes with a stated condition)", "The analysis weighs the convenience the lock gives against its risks compared with an ordinary key lock, rather than listing smart-lock risks in isolation", "The scenarios reflect how break-ins realistically happen to a ground-floor apartment (forced doors or windows, lost keys or phones, a compromised app account) rather than ranking exotic lock hacking first" ]
+        reference: "create_threat_scenarios: should I put a smart lock on my front door? I live in a ground-floor apartment in a mid-size city."
+  - id: control_question_picks_a_winner
+    prompt: "threat scenarios for my work laptop: is a PIN, a fingerprint, or face unlock the safest way to unlock it?"
+    assert:
+      - type: regex
+        weight: 3
+        value: '## THREAT SCENARIOS[\s\S]*## THREAT MODEL ANALYSIS[\s\S]*## RECOMMENDED CONTROLS[\s\S]*## NARRATIVE ANALYSIS[\s\S]*## CONCLUSION'
+      - type: regex
+        weight: 2
+        value: '\|\s*Rank\s*\|\s*Scenario\s*\|\s*Likelihood\s*\|\s*Impact\s*\|\s*Call\s*\|'
+      - type: icontains
+        value: "PIN"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The output names which unlock option is best for this owner and says which realistic scenarios decide it (for example someone watching the PIN being typed, a coworker or family member, theft of the laptop)", "The scenarios are realistic for a work laptop and rank shoulder surfing, theft or a lost device above a targeted attacker forcing a fingerprint or building a face model", "The conclusion is one sentence that states the recommended unlock option" ]
+        reference: "threat scenarios for my work laptop: is a PIN, a fingerprint, or face unlock the safest way to unlock it?"
+  - id: pasted_setup_ties_to_its_weaknesses
+    prompt: 'Use create_threat_scenarios on this setup: "Fictional four-person startup. One web app on a single cloud server. The admin panel is reachable from the internet with password login only. Database credentials sit in a .env file committed to the private Git repo. Staff use personal email addresses for vendor accounts. Nightly backups are written to a folder on the same server."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '## THREAT SCENARIOS[\s\S]*## THREAT MODEL ANALYSIS[\s\S]*## RECOMMENDED CONTROLS[\s\S]*## NARRATIVE ANALYSIS[\s\S]*## CONCLUSION'
+      - type: regex
+        weight: 2
+        value: '\|\s*Rank\s*\|\s*Scenario\s*\|\s*Likelihood\s*\|\s*Impact\s*\|\s*Call\s*\|'
+      - type: regex
+        weight: 1
+        value: '\(#\d+(?:\s*,\s*#\d+)*\)'
+      - type: llm-assert
+        weight: 4
+        value: [ "The highest-ranked scenarios come from the weaknesses the setup describes: the internet-facing admin panel with password-only login, the credentials committed to the repo, and backups stored on the same server they protect", "The recommended controls fix those specific weaknesses concretely (for example restricting or adding two-factor to the admin panel, rotating and removing the committed credentials, moving backups off the server)", "No scenario or control is generic filler that would fit any company equally well" ]
+        reference: 'Use create_threat_scenarios on this setup: "Fictional four-person startup. One web app on a single cloud server. The admin panel is reachable from the internet with password login only. Database credentials sit in a .env file committed to the private Git repo. Staff use personal email addresses for vendor accounts. Nightly backups are written to a folder on the same server."'
+  - id: thin_input_keeps_uncertainty_and_credits_existing_controls
+    prompt: "threat scenarios: my freelance bookkeeping email showed a sign-in from 192.0.2.44 last night that I don't recognize. I already use a password manager and have two-factor on my bank account."
+    assert:
+      - type: regex
+        weight: 3
+        value: '## THREAT SCENARIOS[\s\S]*## THREAT MODEL ANALYSIS[\s\S]*## RECOMMENDED CONTROLS[\s\S]*## NARRATIVE ANALYSIS[\s\S]*## CONCLUSION'
+      - type: regex
+        weight: 2
+        value: '\|\s*Rank\s*\|\s*Scenario\s*\|\s*Likelihood\s*\|\s*Impact\s*\|\s*Call\s*\|'
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The output does not read a location, provider or attacker identity into the IP address 192.0.2.44 (a reserved documentation address), and treats it as an unknown or a placeholder", "The output keeps open whether the sign-in was really someone else (for example the owner's own new device, a VPN or a mail app) instead of stating that the account was definitely breached", "The output credits the existing password manager and bank two-factor and does not recommend them as new controls, while it does close the gap they leave, such as two-factor on the email account itself", "At least one scenario names what an attacker could concretely do with this email account, such as resetting passwords for linked accounts or sending altered invoices to clients" ]
+        reference: "threat scenarios: my freelance bookkeeping email showed a sign-in from 192.0.2.44 last night that I don't recognize. I already use a password manager and have two-factor on my bank account."

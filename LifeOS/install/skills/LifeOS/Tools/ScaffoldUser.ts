@@ -8,8 +8,10 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 /**
- * ScaffoldUser — Setup step 5. existsSync-GUARDED copy of the shipped
- * `install/USER` template tree into the user's data home (`<configDir>/USER`,
+ * ScaffoldUser — Setup step 5. existsSync-GUARDED copy of the USER template
+ * tree (the shipped `install/USER`, or `pulse_templates_dir` from
+ * `<configRoot>/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/LifeOS/Config.md` when set and
+ * no --skill-root is given) into the user's data home (`<configDir>/USER`,
  * default ~/.config/LIFEOS/USER). Never overwrites a populated file — existing
  * user content always wins. Refuses on a dev tree unless --allow-dev.
  *
@@ -20,7 +22,8 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { copyMissing, detectDevTree } from "./InstallEngine";
+import { copyMissing, refuseDevInstallWrites } from "./InstallEngine";
+import { configuredTemplatesDir } from "./lib/skill-config";
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -42,26 +45,34 @@ function main(): void {
   const apply = a.includes("--apply");
   const allowDev = a.includes("--allow-dev");
 
-  if (detectDevTree(configRoot) && !allowDev) {
-    console.log(JSON.stringify({ ok: false, refused: "dev-tree", detail: `${configRoot} is a source tree — refusing to scaffold.` }, null, 2));
-    process.exit(2);
-  }
+  // Checks the resolved USER target too: a clean config root with LIFEOS_CONFIG_DIR
+  // at a maintainer's data home must not receive the template tree.
+  refuseDevInstallWrites(configRoot, [join(configDir, "USER")], allowDev);
 
-  const templateUser = join(skillRoot, "install", "USER");
+  // Template tree: an explicit --skill-root wins; else `pulse_templates_dir` in the skill's USER
+  // Config.md (a release unpacked by hand, or a source tree that builds releases); else the
+  // shipped payload beside this tool. A configured tree that does not exist is an error naming the
+  // file and key, never a silent fall back to the shipped copy.
+  const configured = get("--skill-root") ? undefined : configuredTemplatesDir(configRoot, home);
+  const templateUser = configured?.dir ?? join(skillRoot, "install", "USER");
+  const templateFrom = configured?.from ?? (get("--skill-root") ? "--skill-root" : "shipped install/USER");
   const dataUser = join(configDir, "USER");
   if (!existsSync(templateUser)) {
-    console.log(JSON.stringify({ ok: false, error: `template USER not found at ${templateUser}` }, null, 2));
+    const error = configured
+      ? `template USER not found at ${templateUser}, set by ${configured.from}; fix or remove that key`
+      : `template USER not found at ${templateUser}`;
+    console.log(JSON.stringify({ ok: false, error }, null, 2));
     process.exit(1);
   }
 
   if (!apply) {
     // Dry-run: count what WOULD copy by diffing against a non-existent target view.
-    console.log(JSON.stringify({ ok: true, dryRun: true, from: templateUser, to: dataUser, note: "re-run with --apply to copy missing template files" }, null, 2));
+    console.log(JSON.stringify({ ok: true, dryRun: true, from: templateUser, templateFrom, to: dataUser, note: "re-run with --apply to copy missing template files" }, null, 2));
     process.exit(0);
   }
 
   const { copied, failures } = copyMissing(templateUser, dataUser);
-  console.log(JSON.stringify({ ok: failures.length === 0, written: true, from: templateUser, to: dataUser, copied, failures }, null, 2));
+  console.log(JSON.stringify({ ok: failures.length === 0, written: true, from: templateUser, templateFrom, to: dataUser, copied, failures }, null, 2));
   process.exit(failures.length === 0 ? 0 : 1);
 }
 

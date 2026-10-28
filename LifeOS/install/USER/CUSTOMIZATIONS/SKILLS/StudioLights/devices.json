@@ -1,0 +1,14 @@
+{
+  "devices": {
+    "key": {
+      "node_id": "00000-PLACEHOLDER1",
+      "model": "Example Key Light",
+      "supportsCct": false
+    },
+    "fill": {
+      "node_id": "00000-PLACEHOLDER2",
+      "model": "Example Bi-Color Light",
+      "supportsCct": true
+    }
+  }
+}

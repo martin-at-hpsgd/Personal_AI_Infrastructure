@@ -1,0 +1,59 @@
+# Shared check library: image.
+# Checks every still image needs: header images, share cards, diagrams, thumbnails. An ISA pulls
+# them in with `output: image` (or Compile infers it from an `artifact:` path with an image
+# extension) and binds `artifact:` to the file. Format: ISAFormat § `## Evals` stages; `{{artifact}}`
+# is replaced by the bound path. Switch one off with `disable: image.<check> because <reason>`.
+#
+# Origin: Proof's built-in image profile (nondegenerate, the mark checks, layout-judge). The code
+# checks below are the parts of that profile a command can decide; the layout judge stays in Proof.
+library: image
+version: 1
+bindings:
+  artifact: the image file, relative to where the ISA's checks run
+match:
+  extensions: [png, jpg, jpeg, webp, gif, avif]
+checks:
+  - id: decodes
+    title: the file decodes as an image
+    reason: >-
+      A truncated or mislabelled file renders as a broken-image icon everywhere it is used.
+    stages:
+      - code: |-
+          ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 {{artifact}} | awk -F, 'NF == 2 && $1 > 0 && $2 > 0 { ok = 1 } END { exit !ok }'
+
+  - id: nondegenerate
+    title: not a flat or empty canvas
+    reason: >-
+      A render that failed often still writes a file: one flat color, or nearly so. A luma range
+      under 16 levels means nothing is drawn.
+    stages:
+      - code: |-
+          out=$(ffmpeg -hide_banner -nostats -i {{artifact}} -vf signalstats,metadata=print -f null - 2>&1) && printf '%s\n' "$out" | rg -o 'signalstats\.(YMIN|YMAX)=[0-9]+' | awk -F= '/YMIN/ { lo = $2 } /YMAX/ { hi = $2 } END { exit !(hi != "" && hi - lo >= 16) }'
+
+  - id: min-resolution
+    title: large enough not to pixelate
+    reason: >-
+      An image under 512 pixels on its shorter side pixelates on a modern display. Icons and favicons
+      are the exception; disable this check with that reason.
+    stages:
+      - code: |-
+          ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 {{artifact}} | awk -F, '{ s = ($1 < $2 ? $1 : $2) } END { exit !(s >= 512) }'
+
+  - id: text-spelling
+    title: no misspellings in the image's text
+    reason: >-
+      Text baked into an image cannot be fixed with an edit once it is posted. codespell flags only
+      known common misspellings, so OCR noise does not trip it.
+    stages:
+      - code: |-
+          set -o pipefail; test -s {{artifact}} && tesseract {{artifact}} - 2>/dev/null | codespell -
+
+  - id: no-text-overlap
+    title: no text drawn over other text
+    reason: >-
+      Two pieces of text on top of each other cannot be read. The check compares OCR word boxes on
+      different lines; it only sees overlaps where both words still read, so Proof's layout judge
+      remains the backstop.
+    stages:
+      - code: |-
+          set -o pipefail; test -s {{artifact}} && tesseract {{artifact}} - tsv 2>/dev/null | awk -F'\t' '$1 == 5 && $11 >= 60 && $12 ~ /[[:alnum:]]/ { n++; k[n] = $3 "." $4 "." $5; x[n] = $7; y[n] = $8; w[n] = $9; h[n] = $10 } END { for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (k[i] != k[j]) { r = (x[i] + w[i] < x[j] + w[j] ? x[i] + w[i] : x[j] + w[j]); l = (x[i] > x[j] ? x[i] : x[j]); b = (y[i] + h[i] < y[j] + h[j] ? y[i] + h[i] : y[j] + h[j]); t = (y[i] > y[j] ? y[i] : y[j]); a = (w[i] * h[i] < w[j] * h[j] ? w[i] * h[i] : w[j] * h[j]); if (r > l && b > t && (r - l) * (b - t) > 0.2 * a) bad++ } exit (bad > 0) }'

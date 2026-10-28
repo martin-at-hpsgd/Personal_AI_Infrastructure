@@ -1,25 +1,23 @@
 #!/usr/bin/env bun
 /**
- * @version 1.4.0
- * DocIntegrity.hook.ts — Check cross-refs if system docs/hooks were modified
+ * @version 1.5.0
+ * DocIntegrity.hook.ts — session-end doc housekeeping
  *
  * PURPOSE:
- * Runs deterministic + inference-powered doc integrity checks when system
- * files (hooks, LifeOS docs, skills, components) were modified during the session.
- * Self-gating: returns instantly when no system files changed.
+ * Rebuilds the generated architecture summary and knowledge schema, and reports
+ * memory-dir and knowledge-note drift, once per session. The per-file cross-reference
+ * check moved to MicroIntegrity.hook.ts (Stop, async), which syncs docs after every
+ * turn instead of after the session (ISA 20261024-micro-integrity).
  *
  * TRIGGER: SessionEnd
  *
- * NEEDS TRANSCRIPT: Yes (to detect which files were modified via tool_use entries)
- *
- * HANDLERS: handlers/DocCrossRefIntegrity.ts, handlers/RebuildArchSummary.ts,
+ * HANDLERS: handlers/RebuildArchSummary.ts,
  *   handlers/MemoryDirIntegrity.ts, handlers/RebuildKnowledgeSchema.ts,
  *   handlers/KnowledgeConformance.ts — each isolated in its own try/catch so one
  *   failure never costs the others their pass.
  */
 
-import { readHookInput, parseTranscriptFromInput } from './lib/hook-io';
-import { handleDocCrossRefIntegrity } from './handlers/DocCrossRefIntegrity';
+import { readHookInput } from './lib/hook-io';
 import { handleRebuildArchSummary } from './handlers/RebuildArchSummary';
 import { handleMemoryDirIntegrity } from './handlers/MemoryDirIntegrity';
 import { handleRebuildKnowledgeSchema } from './handlers/RebuildKnowledgeSchema';
@@ -28,18 +26,6 @@ import { handleKnowledgeConformance } from './handlers/KnowledgeConformance';
 async function main() {
   const input = await readHookInput();
   if (!input) { process.exit(0); }
-
-  const parsed = await parseTranscriptFromInput(input);
-
-  // Always runs. The old effort gate skipped the cross-ref scan at "e1 |
-  // standard | low" — retired tier names that collide with the harness's LIVE
-  // CLAUDE_EFFORT dial, so `/effort low` silently disabled this check
-  // (Forge cross-vendor audit, 2026-07-24). Verification is not tier-scaled.
-  try {
-    await handleDocCrossRefIntegrity(parsed, input);
-  } catch (err) {
-    console.error('[DocIntegrity] Cross-ref handler failed:', err);
-  }
 
   try {
     await handleRebuildArchSummary();

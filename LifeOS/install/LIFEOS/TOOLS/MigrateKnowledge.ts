@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.3
  * MigrateKnowledge — one-time (idempotent) migration of the Knowledge Archive
  * onto the kb-v3 Core Envelope (see KnowledgeSchema.ts + the design doc).
  *
@@ -25,15 +26,21 @@
  *   bun MigrateKnowledge.ts --apply         # WRITE (after a git checkpoint)
  */
 
-import { readdirSync, readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
-import { resolve as pathResolve, join as pathJoin } from "node:path";
-import { homedir } from "node:os";
+import { readdirSync, readFileSync, renameSync, existsSync, lstatSync, realpathSync, openSync, writeSync, fsyncSync, closeSync, unlinkSync, constants as fsConstants } from "node:fs";
+import { resolve as pathResolve, join as pathJoin, dirname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { invariant } from "./Invariant.ts";
 import {
   parseNote, serializeNote, normalize, validate,
   DIR_TO_TYPE, slugFromPath, type CanonicalType,
 } from "./KnowledgeSchema";
+import { userDataRoot } from "./lib/ForeignDataCheck";
 
-const KNOWLEDGE_DIR = pathResolve(homedir(), ".claude/LIFEOS/MEMORY/KNOWLEDGE");
+// Resolved through the one USER_DATA resolver rather than a hardcoded
+// `~/.claude/LIFEOS/MEMORY` literal, which only worked because that path happens
+// to be a symlink on the author's machine and silently migrated nothing anywhere
+// else (public issue #1882, @jacobo-ortiz, @CarbonRaven, @xg-gh-25).
+const KNOWLEDGE_DIR = pathResolve(userDataRoot(), "MEMORY", "KNOWLEDGE");
 const DIRS = ["People", "Companies", "Ideas", "Research", "Blogs"] as const;
 
 interface NoteOutcome {
@@ -44,12 +51,56 @@ interface NoteOutcome {
   residualViolations: number;
 }
 
-function listNotes(dir: string): string[] {
-  const abs = pathJoin(KNOWLEDGE_DIR, dir);
+/** True only for one of the archive's known directories; `--dir` is an enum, never a path. */
+export function isKnowledgeDir(dir: unknown): dir is (typeof DIRS)[number] {
+  return typeof dir === "string" && (DIRS as readonly string[]).includes(dir);
+}
+
+/**
+ * The migratable notes in one archive directory. The directory must be a known DIRS entry whose real path
+ * sits directly under the real archive root, and each note must be a regular file (never a symlink) whose
+ * real path sits in that directory, so neither `--dir` nor a planted link can reach outside the archive.
+ */
+export function listNotes(dir: string, root: string = KNOWLEDGE_DIR): string[] {
+  if (!isKnowledgeDir(dir)) throw new Error(`--dir must be one of ${DIRS.join(", ")}, not ${JSON.stringify(dir)}`);
+  const abs = pathJoin(root, dir);
   if (!existsSync(abs)) return [];
-  return readdirSync(abs)
-    .filter((f) => f.endsWith(".md") && !f.startsWith("_") && f !== "README.md")
-    .map((f) => pathJoin(abs, f));
+  const realRoot = realpathSync(root);
+  const realDir = realpathSync(abs);
+  if (realDir !== pathJoin(realRoot, dir)) throw new Error(`${abs} resolves outside the knowledge archive (${realDir})`);
+  const out: string[] = [];
+  for (const f of readdirSync(abs)) {
+    if (!f.endsWith(".md") || f.startsWith("_") || f === "README.md") continue;
+    const p = pathJoin(abs, f);
+    const st = lstatSync(p);
+    if (st.isSymbolicLink() || !st.isFile()) continue; // a link or special file is never rewritten
+    if (dirname(realpathSync(p)) !== realDir) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Replace `path` with `output` atomically, through a temp file this call creates exclusively (O_EXCL,
+ * O_NOFOLLOW, unpredictable name) and writes through its own descriptor, so a pre-planted file or link at
+ * a predictable temp path can never redirect the write. The original's permission
+ * bits carry over, and the rename happens only when the target is still a regular file.
+ */
+export function replaceFileAtomic(path: string, output: string): void {
+  const before = lstatSync(path);
+  invariant(before.isFile() && !before.isSymbolicLink(), `MigrateKnowledge: ${path} must be a regular file to rewrite`);
+  const tmp = `${path}.migrate.${process.pid}.${randomUUID()}.tmp`;
+  const fd = openSync(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, before.mode & 0o777);
+  let renamed = false;
+  try {
+    try { writeSync(fd, output); fsyncSync(fd); } finally { closeSync(fd); }
+    const now = lstatSync(path);
+    invariant(now.isFile() && !now.isSymbolicLink() && now.ino === before.ino, `MigrateKnowledge: ${path} changed under the migration`);
+    renameSync(tmp, path);
+    renamed = true;
+  } finally {
+    if (!renamed) { try { unlinkSync(tmp); } catch { /* already gone */ } }
+  }
 }
 
 function migrateOne(path: string, dir: string, apply: boolean): NoteOutcome {
@@ -77,11 +128,7 @@ function migrateOne(path: string, dir: string, apply: boolean): NoteOutcome {
 
   const residual = validate(parseNote(output), slug, dirType).length;
 
-  if (apply) {
-    const tmp = `${path}.migrate.tmp`;
-    writeFileSync(tmp, output, "utf8");
-    renameSync(tmp, path);
-  }
+  if (apply) replaceFileAtomic(path, output);
   return { path, dir, status: "migrated", changes: norm.changes, residualViolations: residual };
 }
 
@@ -93,7 +140,11 @@ function main() {
   const dirIdx = args.indexOf("--dir");
   const onlyDir = dirIdx >= 0 ? args[dirIdx + 1] : null;
 
-  const dirs = onlyDir ? [onlyDir] : [...DIRS];
+  if (dirIdx >= 0 && !isKnowledgeDir(onlyDir)) {
+    console.error(`[MigrateKnowledge] --dir must be one of ${DIRS.join(", ")}, not ${JSON.stringify(onlyDir)}`);
+    process.exit(2);
+  }
+  const dirs: string[] = onlyDir ? [onlyDir] : [...DIRS];
   const outcomes: NoteOutcome[] = [];
   const changeHistogram = new Map<string, number>();
   const samples: { path: string; before: string; after: string }[] = [];
@@ -166,4 +217,4 @@ function main() {
   process.exit(errParse > 0 || errBody > 0 ? 1 : 0);
 }
 
-main();
+if (import.meta.main) main();

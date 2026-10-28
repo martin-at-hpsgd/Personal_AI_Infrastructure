@@ -3,7 +3,9 @@
 // HERO: selecting a section tints the whole view in that section's dim color —
 // the date rails, group headers, and list markers shift with it.
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { ApiError, apiQuery, apiSend, invalidateApi, useApi } from "@/lib/api";
 import {
   Building2,
   Shield,
@@ -20,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { PageShell, PageHeader, Panel, Pill, TabBar, EmptyState, dimStyle, type Dim, type TabSpec } from "@/components/ui/chrome";
+import { fmtDateParts } from "@/lib/time";
 
 type SourceStatus = "ok" | "unavailable" | "empty";
 type Item = { title: string; source: string; url: string; date: string; summary?: string };
@@ -104,24 +107,21 @@ const STALE_AFTER_MS = 36 * 3600 * 1000;
 // The refresh includes an AI research pass for sections the fetchers can't
 // cover — allow minutes, not seconds, before giving up on the poll.
 const REFRESH_POLL_MS = 6 * 60_000;
+const DIGEST_PATH = "/api/local-intelligence";
 
 function fmtRangeDate(s: string | null, windowDays: number): string {
   if (!s) return "—";
-  const t = new Date(`${s}T12:00:00`);
-  if (!Number.isFinite(t.getTime())) return s;
   // Windows that can span a year boundary need the year or the strip reads
-  // backwards ("Jul 18 – Jul 17").
-  return t.toLocaleDateString("en-US", {
+  // backwards ("Jul 18 – Jul 17"). A day key has no zone: noon UTC keeps the day fixed.
+  return fmtDateParts(`${s}T12:00:00Z`, {
     month: "short",
     day: "numeric",
     ...(windowDays > 31 ? { year: "numeric" } : {}),
-  });
+  }, s);
 }
 
 function shortDate(s: string): string {
-  const t = new Date(s.length === 10 ? `${s}T12:00:00` : s);
-  if (!Number.isFinite(t.getTime())) return s;
-  return t.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return fmtDateParts(s.length === 10 ? `${s}T12:00:00Z` : s, { month: "short", day: "numeric" }, s);
 }
 
 function relativeTime(iso: string): string {
@@ -399,71 +399,50 @@ function SectionDetail({
 }
 
 export default function LocalPage() {
-  const [digest, setDigest] = useState<Digest | null>(null);
-  const [history, setHistory] = useState<Partial<Record<Range, History>>>({});
+  const queryClient = useQueryClient();
   const [range, setRange] = useState<Range>("day");
   const [section, setSection] = useState<SectionTab>("all");
-  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/local-intelligence", { cache: "no-store" });
-      if (!res.ok) {
-        setError(res.status === 404 ? "not-yet-generated" : `http_${res.status}`);
-        setDigest(null);
-        return;
-      }
-      const j = (await res.json()) as Digest;
-      setDigest(j);
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message);
-      setDigest(null);
-    }
-  }, []);
+  // The digest loads once and on tab focus; a failed refetch keeps the last good digest on screen.
+  const digestQuery = useApi<Digest>(DIGEST_PATH, { retry: false });
+  const digest = digestQuery.data ?? null;
+  const qErr = digestQuery.error;
+  const error: string | null = digest
+    ? null
+    : qErr
+      ? qErr instanceof ApiError
+        ? qErr.status === 404
+          ? "not-yet-generated"
+          : `http_${qErr.status}`
+        : qErr.message
+      : null;
 
-  const loadHistory = useCallback(async (r: Exclude<Range, "day">) => {
-    try {
-      const res = await fetch(`/api/local-intelligence/history?range=${r}`, { cache: "no-store" });
-      if (!res.ok) return;
-      const j = (await res.json()) as History;
-      setHistory((h) => ({ ...h, [r]: j }));
-    } catch {
-      /* history is additive — the Day view still works without it */
-    }
-  }, []);
+  // History is additive — the Day view still works without it, so a failed history read shows nothing.
+  const histQuery = useApi<History>(range === "day" ? null : `/api/local-intelligence/history?range=${range}`, { retry: false });
 
   const refreshNow = async () => {
     setRefreshing(true);
     try {
-      await fetch("/api/local-intelligence/refresh", { method: "POST" });
+      await apiSend(`${DIGEST_PATH}/refresh`, "POST").catch(() => {});
       const start = Date.now();
       while (Date.now() - start < REFRESH_POLL_MS) {
         await new Promise((r) => setTimeout(r, 5000));
-        const res = await fetch("/api/local-intelligence", { cache: "no-store" });
-        if (res.ok) {
-          const j = (await res.json()) as Digest;
+        try {
+          const j = await queryClient.fetchQuery({ ...apiQuery<Digest>(DIGEST_PATH), staleTime: 0 });
           if (!digest || j.meta.generated_at !== digest.meta.generated_at) {
-            setDigest(j);
-            setError(null);
-            setHistory({}); // invalidate range caches — today's digest changed
+            // fetchQuery already wrote the new digest into the cache
+            void invalidateApi(queryClient, "/api/local-intelligence/history"); // today's digest changed, drop the range caches
             break;
           }
+        } catch {
+          /* not generated yet or a transient failure: keep polling */
         }
       }
     } finally {
       setRefreshing(false);
     }
   };
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (range !== "day" && !history[range]) void loadHistory(range);
-  }, [range, history, loadHistory]);
 
   if (error === "not-yet-generated") {
     return (
@@ -509,7 +488,7 @@ export default function LocalPage() {
   const totalSources = meta.sources_used.length + meta.sources_failed.length;
   const generatedMs = new Date(meta.generated_at).getTime();
   const isStale = Number.isFinite(generatedMs) && Date.now() - generatedMs > STALE_AFTER_MS;
-  const hist = range === "day" ? null : history[range];
+  const hist = range === "day" ? null : histQuery.data;
 
   const itemsFor = (key: SectionKey): (Item | HistoryItem)[] =>
     range === "day" ? digest[key].items : (hist?.sections?.[key]?.items ?? []);

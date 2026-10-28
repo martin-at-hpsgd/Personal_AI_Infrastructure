@@ -1,0 +1,4 @@
+{
+  "_about": "The upstream LifeOS repo for the banner footer (LIFEOS/TOOLS/Banner.ts), the star-history chart (LIFEOS/TOOLS/GenerateStarHistory.ts) and the contributor credits (LIFEOS/TOOLS/Credits.ts, which falls back to its documented DEFAULT_REPO when nothing is set), used when LIFEOS_REPO is unset and the installer carries no release-stamped repo. A release install already has the stamped repo; set this only for a source checkout, as owner/name or github.com/owner/name.",
+  "repo": ""
+}

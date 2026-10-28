@@ -1,0 +1,98 @@
+# Fabric ExtractIdeas — the full list of ideas an input holds, one short
+# sentence per "- " bullet under "## Ideas", or the single "None found:" line.
+# The regex asserts pin the literal shape (the one heading, bullet lines, the
+# none line, a named count, no narration, no bold); the judged asserts carry
+# what code cannot: completeness, faithfulness to the source, ideas stated as
+# claims, specificity, the topic read. Synthetic inline fixtures only.
+name: fabric-extractideas
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExtractIdeas.md"
+cases:
+  - id: pasted_essay_full_and_faithful
+    prompt: 'extract_ideas from this: "Many managers believe open-plan offices boost collaboration. The fictional firm Larkfield tested this: after moving 300 staff onto one open floor, face-to-face conversation fell by about two thirds while email rose by half. People who can be overheard talk less, not more. Larkfield concluded that collaboration depends on choosing when to be reachable, so it rebuilt with small closable rooms beside shared tables, and within a year project handoffs sped up. Its leaders now argue that office design should be judged by measured behavior, not by how open it looks."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: right heading, clean bullets of the right
+    # length with distinct openings, but it states the belief the text rejects
+    # (open plans boost collaboration) as the text's idea, drops the measured
+    # results and the overheard-people point, and pads with generic advice the
+    # text never gives.
+    adversarial_output: |
+      ## Ideas
+
+      - Open-plan offices boost collaboration by keeping colleagues in constant contact.
+      - Workplace design strongly shapes how employees communicate with each other.
+      - Companies should ask employees before planning a new office.
+      - Small private rooms help people focus on demanding solo work.
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Ideas[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)- \S[^\n]*[.?!]["”)]*[ \t]*(?:\n|$)'
+      - type: not-regex
+        weight: 1
+        value: '(?:^|\n)- (?:The|This|In the) (?:author|writer|article|essay|text|piece|source)s?,? (?:\w+ )?(?:argues|says|discusses|explains|describes|notes|claims|suggests)'
+      - type: not-regex
+        weight: 1
+        value: '\*\*'
+      - type: llm-assert
+        weight: 4
+        value: [ "No bullet presents the belief that open-plan offices boost collaboration as the text's own idea; the text rejects that belief, and any bullet about it says it failed or was wrong", "The measured result is captured: after the move to an open floor, face-to-face conversation fell by about two thirds while email rose", "The idea that people who can be overheard talk less is captured", "The idea that collaboration depends on choosing when to be reachable, met by closable rooms beside shared tables that sped up handoffs, is captured", "The idea that office design should be judged by measured behavior rather than how open it looks is captured", "No bullet adds a claim or piece of advice the text does not make" ]
+        reference: 'extract_ideas from this: "Many managers believe open-plan offices boost collaboration. The fictional firm Larkfield tested this: after moving 300 staff onto one open floor, face-to-face conversation fell by about two thirds while email rose by half. People who can be overheard talk less, not more. Larkfield concluded that collaboration depends on choosing when to be reachable, so it rebuilt with small closable rooms beside shared tables, and within a year project handoffs sped up. Its leaders now argue that office design should be judged by measured behavior, not by how open it looks."'
+  - id: bare_topic_states_the_ideas
+    prompt: "extract ideas stoicism"
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Ideas[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)- \S[^\n]*[.?!]["”)]*[ \t]*(?:\n|$)'
+      - type: not-regex
+        weight: 1
+        value: '\*\*'
+      - type: llm-assert
+        weight: 4
+        value: [ "Each bullet states a Stoic idea as a claim Stoics hold, not a description of what Stoicism is, its history, or who founded it", "The core ideas an expert would expect are present, including that we control our judgments and choices but not external events, that virtue is the only true good, and that distress comes from our judgments about events rather than the events themselves", "No two bullets state the same idea in different words", "Each bullet is one short plain sentence" ]
+        reference: "extract ideas stoicism"
+  - id: no_ideas_gets_none_found
+    prompt: 'extract ideas from this: "Packing list: 3 shirts, 2 pairs of socks, phone charger, passport, toothbrush, rain jacket."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\s*## Ideas[ \t]*\n'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)(?:- )?None found: \S'
+      - type: not-regex
+        weight: 2
+        value: '(?:^|\n)- (?!None found)'
+      - type: llm-assert
+        weight: 2
+        value: [ "No ideas are invented from the packing list; the none line says the input is a list of items rather than claims or arguments" ]
+        reference: 'extract ideas from this: "Packing list: 3 shirts, 2 pairs of socks, phone charger, passport, toothbrush, rain jacket."'
+  - id: named_count_holds_and_ranks
+    prompt: 'extract the 3 most important ideas from this: "A fictional sleep lab followed 400 night-shift nurses for a year. Nurses who kept the same sleep window on days off made 30% fewer medication errors than those who switched back to a day schedule. The lab argues that consistent timing matters more than total hours, since both groups slept about seven hours. Blackout curtains helped only the nurses with consistent schedules. Caffeine after 3 a.m. was linked to shorter sleep, but the lab says its sample was too small to be sure. The lab recommends that hospitals publish fixed shift rotations months ahead so nurses can keep one sleep window."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*## Ideas[ \t]*\n(?:[ \t]*\n)*- [^\n]+\n(?:[ \t]*\n)*- [^\n]+\n(?:[ \t]*\n)*- [^\n]+\s*$'
+      - type: not-regex
+        weight: 1
+        value: '\*\*'
+      - type: llm-assert
+        weight: 4
+        value: [ "One bullet carries the central idea that a consistent sleep window matters more than total hours, tied to the fewer medication errors", "The three bullets are the most central ideas of the text, such as the timing claim, the advice to publish shift rotations ahead, and curtains helping only with consistent schedules, rather than minor details", "No bullet presents the caffeine finding as settled", "Every bullet is faithful to the text and adds no claim it does not make" ]
+        reference: 'extract the 3 most important ideas from this: "A fictional sleep lab followed 400 night-shift nurses for a year. Nurses who kept the same sleep window on days off made 30% fewer medication errors than those who switched back to a day schedule. The lab argues that consistent timing matters more than total hours, since both groups slept about seven hours. Blackout curtains helped only the nurses with consistent schedules. Caffeine after 3 a.m. was linked to shorter sleep, but the lab says its sample was too small to be sure. The lab recommends that hospitals publish fixed shift rotations months ahead so nurses can keep one sleep window."'
+  - id: question_about_the_pattern_answered_directly
+    prompt: "what does extract_ideas give me, and how is it different from extracting insights?"
+    assert:
+      - type: not-regex
+        weight: 2
+        value: '^\s*## Ideas'
+      - type: llm-assert
+        weight: 3
+        value: [ "The response answers the question directly in prose rather than producing an Ideas list", "It says extract_ideas gives the full list of ideas an input holds, one short sentence each, while extracting insights keeps only the non-obvious, highest-value points" ]
+        reference: "what does extract_ideas give me, and how is it different from extracting insights?"

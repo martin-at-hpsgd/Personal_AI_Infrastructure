@@ -7,7 +7,7 @@ import {
   type AscentState,
 } from "../../../../TOOLS/ascent";
 
-// The board's lanes ARE the ascent states — the same table Kitty tabs, the cmux
+// The board's lanes ARE the ascent states — the same table Kitty tabs, the
 // sidebar, the status line and the ISA HTML mirror read (LIFEOS/TOOLS/ascent.ts).
 // Before 2026-07-27 this file carried its own private vocabulary, which is why a
 // run could read "Climbing" in a tab and "Ascending" on the board while the

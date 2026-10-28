@@ -1,5 +1,7 @@
 # Phases and Events — Unified Structural Map
 
+**Contents:** The Three Acts · Act I: Setup (0-25%) · Act II-A: Ascending Action (25-50%) · Act II-B: Descending Action (50-75%) · Act III: Resolution (80-100%) · Master Event Table · Tension Curve · Using This Map
+
 The positional reference for story structure. This document maps WHERE every mandatory event falls in a story, organized by three acts and their internal phases. It synthesizes Syd Field, Blake Snyder (Save the Cat), Christopher Vogler (Hero's Journey), Steven Pressfield, Robert McKee, and Dan Harmon into a single unified timeline.
 
 For the PHILOSOPHY behind these positions (why each framework works), see `StoryStructures.md`. For Pressfield's storytelling philosophy specifically, see `PressfieldFramework.md`. For character psychology, see `StorrFramework.md`.
@@ -222,19 +224,7 @@ Tension
 
 ## Using This Map
 
-### During Story Bible Construction (BuildBible)
-
-1. Map your story's major events to this timeline
-2. For each phase, identify what happens across all seven layers (see `StoryLayers.md`)
-3. Verify every mandatory event is planned
-4. Check that the Pressfield elements are in place (concept → clothesline → hook → villain → all is lost → gift)
-
-### During Chapter Writing (WriteChapter)
-
-1. Identify which phase(s) the chapter covers
-2. Load the mandatory events for that phase
-3. Check the layer priorities for that phase
-4. Write with awareness of where you are on the tension curve
+A Story Bible built on this map places every major event on the timeline, says what each phase does across all seven layers (`StoryLayers.md`), plans every mandatory event, and has the Pressfield elements in place (concept → clothesline → hook → villain → all is lost → gift). A chapter is written knowing which phase it covers, that phase's mandatory events and layer priorities, and where it sits on the tension curve.
 
 ### Phase Checklist for Story Bible
 

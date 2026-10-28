@@ -1,0 +1,18 @@
+# gitleaks config for this repo: the default rules, plus documented placeholders that are not secrets.
+# Each exception names one exact value or one file and one rule. Add a real secret here never; rotate it instead.
+# Read by the Security workflow's gitleaks action and by the release candidate's pre-publish scan.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholder bearer token in the Workflows v1 curl examples"
+regexes = ['''^YOUR_TOKEN$''']
+
+[[allowlists]]
+description = "SecurityFilter self-test fixture: an alphabetic fake API key"
+regexes = ['''^sk-abc123def456ghi789jkl012mno345$''']
+
+[[allowlists]]
+description = "Example JWT from the nuclei template DSL docs (Fabric write_nuclei_template_rule pattern); this exact value only"
+regexes = ['''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJmb28iOiJiYXIiLCJuYW1lIjoiSm9obiBEb2UifQ\.EsrL8lIcYJR_Ns\-JuhF3VCllCP7xwbpMCCfHin_WT6U$''']

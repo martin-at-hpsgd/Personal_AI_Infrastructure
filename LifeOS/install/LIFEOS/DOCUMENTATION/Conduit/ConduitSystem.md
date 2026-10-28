@@ -1,8 +1,8 @@
 ---
-last_updated: 2026-07-04T00:00:00Z
+last_updated: 2026-10-13
 last_updated_by: da
-convention: pai-freshness-v1
-version: 1.3.4
+convention: lifeos-freshness-v1
+version: 1.4.5
 ---
 
 # Conduit — LifeOS's Sensory Layer
@@ -15,7 +15,9 @@ version: 1.3.4
 > In the sensory stack, Conduit is the **internal sense** — Feed is the external one, and
 > Synapse (`Synapse/SynapseSystem.md`) is the router that grades and routes captured signal.
 
-**Component version:** Conduit v1.0.0 · shipped in LifeOS 6.1.0.
+**Current-state split:** Atlas (`../Atlas/AtlasSystem.md`) is the state of owned assets, Conduit is the principal's observed activity, and Vigil (`../Vigil/VigilSystem.md`) carries events.
+
+**Component version:** Conduit v1.2.0 (`CONDUIT_VERSION` in `LIFEOS/PULSE/Conduit/version.ts`) · first shipped in LifeOS 6.1.0.
 
 ## Design principles
 
@@ -26,9 +28,19 @@ version: 1.3.4
   curation, WorkSweep, TELOS state, and Pulse smarter — not a second dashboard.
 - **Highest signal tier per source; watch the account, not the window.** Where a source
   has an API (Gmail, Calendar, GitHub), read the account, not the app's pixels.
-- **Stable by construction.** v1 is deterministic — no model, no cloud, no long-lived
-  daemon. Stateless launchd polls, fault-isolated adapters, a pure rollup.
-- **Privacy is absolute.** All data under `USER/`, on this machine, never leaves it.
+- **Stable by construction.** Capture and rollup are deterministic — no model, no
+  long-lived daemon. Stateless launchd polls, fault-isolated adapters, a pure rollup.
+  The one model call is the separate insight job, described below.
+- **Capture and storage are local; one bounded summary goes to the model.** Raw
+  events and daily records live under `USER/CONDUIT/` on this machine. The insight
+  job (`com.lifeos.conduit.insight`, installed and on by default with the capture
+  job) sends a metadata-only summary of the day to the configured model provider
+  through Inference: foreground app names with minutes, LifeOS session slugs, git
+  commit subjects, and pull-request titles. Never file contents, keystrokes,
+  screenshots, or diffs. Data sent for inference is subject to the provider's
+  data-handling terms. To keep everything on the machine, unload
+  `com.lifeos.conduit.insight` (`bun LIFEOS/TOOLS/Services.ts uninstall --only com.lifeos.conduit.insight`)
+  and the Insight tab reads its last cached file only. (public issue #2054, @ForgottenFates7)
 
 ## Where things live (the hard boundary)
 
@@ -49,6 +61,7 @@ launchd (com.lifeos.conduit, every 120s)
 │ appFocus (osascript front app)                          │
 │ git (new commits across configured repos)               │
 │ claudeSession (reads MEMORY/STATE/work-events.jsonl)    │
+│ github (opt-in: your commits and PRs through gh)        │
 └──────────────────────┬──────────────────────────────────┘
                        ▼
         USER/CONDUIT/events/<date>.jsonl  (append-only raw)
@@ -64,6 +77,16 @@ launchd (com.lifeos.conduit, every 120s)
    (/api/conduit) (daily context) (observed vs ideal) (untracked work)
 ```
 
+### The Cortex leg (v1.2, 2026-08-27)
+
+Every daily record mirrors into Cortex as a typed Knowledge note the moment it persists:
+`KNOWLEDGE/Research/conduit-day-<date>.md`, carrying the deterministic record, the hourly
+content-type read's narrative when one exists, and `source_conduit_date:` pointing back.
+The daily JSON carries the forward `cortexRef` — the same bidirectional-link contract the
+Synapse amber ledger uses (`routed_refs` ⟷ `source_amber_id`). Deterministic, idempotent,
+best-effort: a Cortex write failure never blocks the daily record, and the next rollup
+retries. Code: `Conduit/cortexNote.ts`, wired in `rollup.ts writeDailyRecord`.
+
 ### Event schema
 
 One JSONL line per captured signal. Spans + metadata only — never keystrokes or content.
@@ -71,7 +94,7 @@ One JSONL line per captured signal. Spans + metadata only — never keystrokes o
 ```ts
 interface ConduitEvent {
   ts: string;                    // ISO-8601 UTC
-  type: "app-focus" | "git-commit" | "claude-session";
+  type: "app-focus" | "git-commit" | "claude-session" | "github-pr";
   source: string;                // adapter id
   app?: string; repo?: string;   // dimension keys
   detail?: Record<string, unknown>;
@@ -90,16 +113,12 @@ v1 proxy for challenge C1. `narrative` and `telosTags` are reserved seams, null/
 
 - **Join key = TELOS IDs.** The v2 scoring layer tags each block with a goal/dimension/
   challenge ID; that tag is the foreign key between observed and ideal.
-- **Read side:** the daily rollup reads live TELOS as its rubric — no cached goal copy,
-  so a TELOS change is picked up on the next rollup (no drift).
-- **Write side:** Conduit writes the daily record; `UpdateLifeosState.ts` gains an
-  observed-time signal alongside the self-reported one.
+- **Read side (not built):** the rollup does not read TELOS yet; `telosTags` is still `{}` in `rollup.ts` and the v2 scoring layer is gated on the D-11 spike. Today TELOS-side code reads Conduit instead (see the write side).
+- **Write side:** Conduit writes the daily record under `USER/CONDUIT/daily/`. `LIFEOS/TOOLS/StateEvidence.ts` (`gatherActivity`) reads those files as the activity evidence (creation ratio, weekly computer time) that the TELOS renderer writes into TELOS Current State and `InterviewDue.ts` uses for staleness. `UpdateLifeosState.ts` does not read Conduit.
 - **Invariant:** TELOS owns ideal state, Conduit owns observed state; **neither writes
-  the other's file.** They meet only at the gap computation (`LIFEOS_STATE`/`ComputeGap`).
+  the other's file.** They meet only at the gap computation (`LIFEOS_STATE` and `IdealState.ts gap`).
   Conduit may never edit a goal.
-- **Update mechanism:** reuse `DerivedSync.ts` + launchd — the daily-record write triggers
-  the LIFEOS_STATE recompute. Three clocks: continuous capture, daily rollup, event-driven
-  derived refresh.
+- **Update mechanism:** two clocks. The launchd capture job polls continuously and rolls any past day that has raw events but no record; the insight job runs hourly. The TELOS evidence readers pull the daily records when they run. `DerivedSync.ts` does not watch `USER/CONDUIT/`, so a daily-record write does not trigger a LIFEOS_STATE recompute.
 
 ## CLI
 
@@ -136,6 +155,7 @@ bun LIFEOS/PULSE/Conduit/InstallConduit.ts --uninstall # unload + remove
      enabled, `pollIntervalSec`, `eventsToday`, `lastEventTs`. Deterministic — from config + events, no model.
    - `GET /api/conduit/insight` — the latest **content-type read** (falls back to the most recent
      day when today's is absent, `stale: true`; a failed/empty read serves `available: false`).
+   - `POST /api/conduit/insight/build` — run the insight job now; answers 202 and `GET /insight` then reports `building` (POST only, 405 otherwise).
    - `GET /api/conduit/status` — module health.
 
 All hold zero data in code — they render/serve the contents of USER data.
@@ -145,16 +165,16 @@ All hold zero data in code — they render/serve the contents of USER data.
 The "what kind of stuff is coming in?" question is the one genuinely non-deterministic part, so it —
 and only it — uses a model. `Conduit/BuildInsight.ts` runs **hourly** under launchd
 (`com.lifeos.conduit.insight`, `InstallConduitInsight.ts`), reads the day's events, builds a
-**metadata-only, bounded** summary (top-15 apps + counts, git subjects, session slugs — never content),
-and calls `LIFEOS/TOOLS/Inference.ts --level low` (haiku rung, **subscription billing** — Inference
-scrubs `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`). It writes `USER/CONDUIT/insights/<date>.json`
+**metadata-only, bounded** summary (top-15 apps + minutes, git commit subjects, session slugs, PR titles — never content),
+and calls the vendor-configurable `LIFEOS/TOOLS/Inference.ts --level low` lane, using that vendor's
+configured billing path. It writes `USER/CONDUIT/insights/<date>.json`
 (`narrative` + weighted `contentTypes[]`). **Cheap & sustainable by construction:** cheapest rung, one
 call per hour, **idempotent** — a `since` watermark skips the call entirely on an idle hour, and a
 failed read never clobbers a good one. The tab reads the cached file; it never calls a model on load.
 
 > launchd gives jobs a minimal PATH that lacks `claude`, so the installer bakes the installer's PATH
 > into the plist (`EnvironmentVariables`) — otherwise the scheduled job `spawn ENOENT`s and falls back
-> forever. This is macOS-only; a Linux install needs a cron equivalent for the hourly schedule.
+> forever. On Linux both installers write a `systemd --user` unit instead (`LIFEOS/TOOLS/lib/SystemdUser.ts`, same installer-PATH bake). The app-focus adapter is macOS-only (`osascript`); elsewhere rollup falls back to time derived from session cadence and labels it as derived.
 
 ## Configuration (`USER/CONDUIT/config.json`)
 
@@ -162,19 +182,23 @@ failed read never clobbers a good one. The tab reads the cached file; it never c
 {
   "enabled": true,
   "pollIntervalSec": 120,
-  "sources": { "appFocus": true, "git": true, "claudeSession": true },
+  "sources": { "appFocus": true, "git": true, "claudeSession": true, "github": false },
   "repos": [],
   "retentionDays": 30
 }
 ```
 
-Per-source opt-in is first-class. `repos` is the list of absolute paths watched for
+Per-source opt-in is first-class; `github` is off by default. When on, it reads your own commits and pull requests from GitHub's per-user event feed through the `gh` CLI (resolved from PATH, never from config). `githubUser` (default: the `gh`-authenticated login) and `githubConfigDir` (a `GH_CONFIG_DIR` for `gh`) are optional. `repos` is the list of absolute paths watched for
 commits. Raw event logs older than `retentionDays` are pruned after rollup; daily
 records are kept.
 
 ## Privacy contract
 
-- Local-only; all data under `USER/CONDUIT/`; nothing leaves the machine.
+- Capture and storage are local: all data under `USER/CONDUIT/`. The insight job is the
+  one outbound path — a bounded metadata summary (app names + minutes, session slugs,
+  git commit subjects, PR titles) to the model provider, hourly, on by default. Opt out by
+  unloading `com.lifeos.conduit.insight`; the only other outbound path is the opt-in `github` source (off by default), which reads your own activity from GitHub through `gh`.
+  (public issue #2054, @ForgottenFates7)
 - Per-source opt-in; disable any source in config.
 - Tiered retention: raw discarded after `retentionDays`; daily record kept.
 - Kill switch: `enabled: false`, or `InstallConduit.ts --uninstall`.
@@ -183,7 +207,7 @@ records are kept.
 ## Versioning
 
 `CONDUIT_VERSION` (`version.ts`) tracks the component; bump on any change to the event
-schema, adapter contract, or rollup format. Conduit v1.0.0 ships in LifeOS 6.1.0.
+schema, adapter contract, or rollup format. Conduit v1.0.0 first shipped in LifeOS 6.1.0; the current version is 1.2.0.
 
 ## Roadmap
 

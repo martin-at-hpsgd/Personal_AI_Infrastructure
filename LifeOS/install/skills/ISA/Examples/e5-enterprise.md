@@ -1,3 +1,4 @@
+<!-- isa-example claims=69 probes=17 era=legacy -->
 <!-- Fictitious example. "Beacon Health Alliance" is a teaching project name; any resemblance to real products or organizations is coincidental. The portal.beaconhealth.example.org domain is RFC 2606 reserved. -->
 
 ---
@@ -12,6 +13,29 @@ mode: interactive
 started: 2026-01-08T15:00:00Z
 updated: 2026-04-28T20:30:00Z
 ---
+
+## Ideal State
+
+### L3 · One sentence
+
+Beacon Health Alliance's patients, clinicians, and auditors get one multi-region portal with a complete longitudinal chart across all 50 hospitals, live before the legacy portal reaches end-of-life on 2027-06-30.
+
+### L2 · Summary
+
+The new portal at `portal.beaconhealth.example.org` is a multi-region active-active replacement that unifies records without loosening any HIPAA control.
+
+- Patients see one longitudinal chart across all 50 hospitals and all three source EHRs (Epic, MEDITECH, Cerner).
+- Appointments and secure messaging work across every region for patients and clinicians.
+- Auditors get an immutable, queryable audit log with six-year retention.
+- Data residency, BAA, encryption, and session rules hold in normal operation and during regional failover.
+
+### L1 · Full articulation
+
+Beacon Health Alliance runs 50 hospitals across three regions on a patient portal forked from a 2014 vendor codebase that reaches end-of-life on 2027-06-30. The replacement is a multi-region active-active patient portal at `portal.beaconhealth.example.org` that unifies records across all 50 hospitals (Epic, MEDITECH, and Cerner) into a single longitudinal view, including the 14 hospitals of the acquired Cascade Care Group.
+
+A patient logs in with SSO and step-up MFA, sees a complete chart regardless of which hospital generated which record, books an appointment with any in-network clinician in any region, messages their care team through a HIPAA-conformant inbox, sees lab results within four hours of resulting, and receives e-prescriptions handed off to their preferred pharmacy through Surescripts, with no portal-side copy of PHI persisted beyond the handoff window. Clinicians see one chart view independent of the source EHR. Auditors see an immutable, queryable audit log retained for six years that is authoritative for compliance attestation. The portal supports patient, clinician, admin, and auditor roles, provides authoritative read-only chart access, and stays inside the data-residency, BAA, encryption, and session-management constraints in normal operation and during regional failover.
+
+The moment it is right: a patient who moved from the Pacific Northwest region to the Midwest region in 2025 is admitted at a Cascade Care hospital in 2026 and sees her unified chart on day one without faxing records, and her primary care physician at the originating hospital sees the encounter note within 20 minutes of discharge. The portal never shows a "your records from another region are unavailable" error.
 
 ## Problem
 
@@ -56,10 +80,6 @@ A unified patient portal at `portal.beaconhealth.example.org` serving all 50 hos
 - **Performance:** Patient-facing pages p95 ≤ 1.2s on 4G; clinician chart view p95 ≤ 1.8s on hospital LAN; appointment-search autocomplete p95 ≤ 250ms.
 - **Accessibility:** WCAG 2.2 AA across all patient-facing surfaces; clinician surfaces meet WCAG 2.1 AA minimum.
 - **Code base:** TypeScript on the application tier (Node 22); FHIR adapters in TypeScript with a Rust shim where parsing throughput dominates; infrastructure as Terraform; secrets via AWS Secrets Manager; no roll-your-own crypto.
-
-## Goal
-
-Deliver a multi-region active-active patient portal at `portal.beaconhealth.example.org` that replaces the legacy 2014 forked codebase before the 2027-06-30 vendor end-of-life, unifies records across all 50 hospitals (Epic, MEDITECH, Cerner) into a single longitudinal view, supports patient/clinician/admin/auditor roles with HIPAA-conformant audit logging at 6-year retention, exposes appointment scheduling and secure messaging across all regions, provides authoritative read-only chart access plus e-prescription handoff to Surescripts, and stays inside the data-residency, BAA, encryption, and session-management constraints across both standard operations and regional failover.
 
 ## Criteria
 
@@ -149,300 +169,48 @@ Deliver a multi-region active-active patient portal at `portal.beaconhealth.exam
 
 ### Phase 1 Canary (2026-04-30 budget gate)
 
-- [x] ISC-52: Phase 1 scope shipped to canary at `portal.beaconhealth.example.org/canary`: identity + RBAC + read-only chart from Epic for 1 hospital + audit log + observability.
-- [x] ISC-53: Phase 1 canary serves ≥ 200 enrolled real-patient testers without P1 incident over a 14-day soak.
-- [x] ISC-54: Phase 1 canary passes a third-party HIPAA risk-assessment audit (HITRUST validated assessor) with zero open high-severity findings.
+- [x] ISC-52: Patient identity and login work end-to-end against prod Okta + Auth0 tenants (non-HIPAA pilot data).
+- [x] ISC-53: Session management follows the constraints; idle timeout and absolute lifetime enforced.
+- [x] ISC-54: HITRUST validated assessor clears Phase 1 for launch (zero high-severity findings).
+- [ ] ISC-55: Phase 1 postmortem published by 2026-05-07.
 
-### Phase 2 Cutover from Legacy MEDITECH (Q3 2026)
+### Multi-Region Readiness (2026-06-30 phase 2 gate)
 
-- [ ] ISC-55: 14 Cascade Care hospitals (MEDITECH Expanse) integrated via FHIR R4; chart unification across Epic + MEDITECH live for ≥ 1,000 enrolled patients.
-- [ ] ISC-56: Phase 2 cutover plan signed off by Cascade Care CMIO and Beacon CMIO with explicit rollback criteria.
-- [ ] ISC-57: Legacy MEDITECH portal entry points redirect to the new portal with no patient action required; redirect uptime ≥ 99.95% for 90 days.
+- [ ] ISC-56: Blue/green regional failover tested per region end-to-end; rollback ≤ 90s verified.
+- [ ] ISC-57: Replication lag p99 ≤ 60s for compliance tables across all three regions.
+- [ ] ISC-58: On-call has runbooks and dashboards for the top 12 multi-region outage scenarios.
+- [ ] ISC-59: Load test: 50% of peak patient concurrency at p95 latencies ≤ 1.2s across regions.
 
-### Phase 3 (Q4 2026)
+### Full Launch Readiness (2026-09-30 phase 3 gate)
 
-- [ ] ISC-58: 100% of patient population has access; legacy portal is decommissioned and the legacy database is sealed for archival retention.
-- [ ] ISC-59: Q4 audit by external HITRUST assessor returns "Certified" rating with no MRSAs (Major Required Supplemental Assessor) findings.
-
-### Anti-criteria
-
-- [x] ISC-60: Anti: PHI in URL — PHI never appears in URL query strings logged by the edge proxy or the WAF (probe: rg "patient_id=|mrn=|dob=" cloudflare-edge.log returns zero matches over a 7-day window).
-- [x] ISC-61: Anti: audit log retention floor — audit log retention never falls below 6 years; the daily integrity-check job verifies the oldest retained event is ≥ 6y - 7d (alarm fires before retention is lost).
-- [x] ISC-62: Anti: BAA gap — no vendor in the PHI data path operates without a signed BAA; the architecture log enumerates every vendor with their BAA SHA reference and the reconciliation job alerts on any unrecognized vendor in the data path.
-- [x] ISC-63: Anti: session timeout — session idle timeout never exceeds 15 minutes for clinician/admin/auditor roles; a config drift that exceeds 15 fails the deploy preflight.
-- [x] ISC-64: Anti: PHI in non-US region — no PHI persists in any non-US AWS region, edge cache, or non-BAA service (probe: monthly audit of all KMS-encrypted volumes' AWS regions).
-- [x] ISC-65: Anti: cross-region transit without BAA — PHI in transit between regions traverses only AWS-internal (BAA-covered) network paths; no public internet hops.
-- [x] ISC-66: Anti: patient password — no patient password is ever stored, hashed or otherwise; passwordless-only is enforced at the auth layer with a deploy-time test that asserts the password column does not exist.
-- [x] ISC-67: Anti: silent role escalation — no code path elevates a session role without re-authentication; a static analysis rule blocks any in-process role mutation.
-- [x] ISC-68: Anti: audit-log writability — audit events are never updated or deleted by application code; only the retention-compliance job (running under a separate IAM role) can prune events that have exceeded the 6-year window, and only by writing a tombstone, never by deletion.
+- [ ] ISC-60: URL query strings in edge-cache logs contain zero PHI (multi-7-day roll).
+- [ ] ISC-61: Oldest retained audit event is within 6y - 7d of now (retention floor verified).
+- [ ] ISC-62: Every vendor in the PHI data path has a recorded BAA SHA in the architecture log.
+- [ ] ISC-63: Session config is 15 minutes idle for clinician/admin/auditor and 30 minutes idle for patient (ISC-6); absolute lifetime ≤ 12 hours for every role.
+- [ ] ISC-64: Appointment search returns results in p95 ≤ 250ms under peak load (500 concurrent patients across 50 hospitals).
+- [ ] ISC-65: Chart view renders in p95 ≤ 1.8s on hospital LAN (simulated via tc on staging).
+- [ ] ISC-66: No password column exists in the identity database (SQL grep + code review).
+- [ ] ISC-67: Anti: RoleTransition criterion ISC-14 ensures clinician/admin cannot use both roles without re-login (code review + manual test).
+- [ ] ISC-68: Anti: Audit log table has no UPDATE or DELETE statements issued from app role (pg_stat_statements).
+- [ ] ISC-69: Cerner and MEDITECH integrations pass parity-test (read 1000 records from each EHR, assert field-for-field match with legacy portal output).
 
 ## Test Strategy
-
-```yaml
-- isc: ISC-1
-  type: auth
-  check: magic-link arrives + callback creates session
-  threshold: ≤ 60s end-to-end
-  tool: integration test bun run scripts/auth-magic-link.ts
-
-- isc: ISC-6
-  type: session
-  check: session expires after 15m idle for clinician role
-  threshold: 16th-minute request returns 401
-  tool: bun run scripts/session-idle-timeout.ts --role clinician
-
-- isc: ISC-15
-  type: identity-resolution
-  check: same patient across 3 hospitals resolves to a single eMPI ID
-  threshold: 1 patient_id returned
-  tool: bun run scripts/empi-cross-region-probe.ts --test-fixture mrn-set-A
-
-- isc: ISC-18
-  type: performance
-  check: appointment-search autocomplete p95
-  threshold: ≤ 250ms across 50-hospital corpus
-  tool: k6 run load/appointment-autocomplete.js --vus 200 --duration 5m
-
-- isc: ISC-23
-  type: latency
-  check: lab result publish-to-portal-visible latency
-  threshold: p95 ≤ 4h, internal SLA p95 ≤ 1h
-  tool: bun run scripts/lab-latency-audit.ts --window 7d
-
-- isc: ISC-34
-  type: audit-completeness
-  check: every PHI read produces an audit event
-  threshold: |reads| == |audit_events| within 60s window
-  tool: SELECT COUNT(*) FROM phi_reads vs audit_events GROUP BY 1m bucket
-
-- isc: ISC-35
-  type: audit-integrity
-  check: hash chain verifies for full 30-day window
-  threshold: 0 chain breaks
-  tool: bun run scripts/audit-chain-verify.ts --window 30d
-
-- isc: ISC-36
-  type: retention
-  check: daily snapshot lands in S3 with object-lock compliance mode
-  threshold: lock_mode == COMPLIANCE && retain_until >= now+6y
-  tool: aws s3api get-object-retention --bucket audit-logs --key <today>.parquet
-
-- isc: ISC-39
-  type: failover-drill
-  check: regional outage drains in ≤ 5 min with zero committed-write loss
-  threshold: drain_time ≤ 300s; data-loss-events == 0
-  tool: bun run scripts/regional-outage-drill.ts --target us-west-2
-
-- isc: ISC-49
-  type: deployment
-  check: failed canary auto-rollback + page on-call
-  threshold: rollback ≤ 90s; pager fired ≤ 60s
-  tool: bun run scripts/canary-failure-injection.ts
-
-- isc: ISC-54
-  type: third-party-audit
-  check: HITRUST validated assessor returns zero high-severity findings on Phase 1
-  threshold: 0 high; ≤ 3 medium with mitigation plans
-  tool: external assessor report (manual evidence)
-
-- isc: ISC-60
-  type: anti-probe / phi-in-url
-  check: URL query strings in edge logs do not contain PHI markers
-  threshold: 0 matches over 7-day rolling window
-  tool: rg "patient_id=|mrn=|dob=|ssn=" /var/log/cloudflare-edge/*.log
-
-- isc: ISC-61
-  type: anti-probe / retention
-  check: oldest audit event retained
-  threshold: oldest_event_age ≥ 6y - 7d
-  tool: SELECT MIN(timestamp) FROM audit_log_archive
-
-- isc: ISC-62
-  type: anti-probe / baa
-  check: every vendor in PHI data path has a recorded BAA SHA
-  threshold: |vendors_in_data_path| == |vendors_with_baa_sha|
-  tool: bun run scripts/baa-reconciliation.ts
-
-- isc: ISC-63
-  type: anti-probe / session-timeout
-  check: clinician/admin/auditor session config <= 15min idle
-  threshold: parsed config value ≤ 900s for those roles
-  tool: deploy-preflight assertion in CI
-
-- isc: ISC-66
-  type: anti-probe / password
-  check: no password column exists in identity DB
-  threshold: 0 columns matching ^password
-  tool: SELECT column_name FROM information_schema.columns WHERE column_name ~ 'password'
-
-- isc: ISC-68
-  type: anti-probe / audit-log-immutability
-  check: no UPDATE or DELETE statements against audit_log table from app role
-  threshold: 0 occurrences in 30 days of pg_stat_statements
-  tool: SELECT * FROM pg_stat_statements WHERE query ~ '(UPDATE|DELETE).+audit_log'
-```
-
-## Features
-
-```yaml
-- name: IdentityPatient
-  description: Patient passwordless auth with magic link + step-up MFA (TOTP, WebAuthn, SMS-fallback)
-  satisfies: [ISC-1, ISC-2, ISC-5, ISC-6, ISC-7, ISC-8, ISC-66]
-  depends_on: []
-  parallelizable: true
-
-- name: IdentitySSO
-  description: Okta SAML for clinician / admin / auditor with role-claim mapping
-  satisfies: [ISC-3, ISC-4, ISC-6, ISC-7, ISC-8]
-  depends_on: []
-  parallelizable: true
-
-- name: RBACAndRelationships
-  description: Patient/clinician/admin/auditor RBAC with relationship-based access + break-glass
-  satisfies: [ISC-9, ISC-10, ISC-11, ISC-12, ISC-13, ISC-14, ISC-67]
-  depends_on: [IdentityPatient, IdentitySSO]
-  parallelizable: false
-
-- name: PatientMatchingEMPI
-  description: eMPI-driven longitudinal record resolution across 50 hospitals
-  satisfies: [ISC-15, ISC-16, ISC-17]
-  depends_on: []
-  parallelizable: true
-
-- name: AppointmentScheduling
-  description: Cross-region scheduling with FHIR R4 booking + cancellation
-  satisfies: [ISC-18, ISC-19, ISC-20, ISC-21, ISC-22]
-  depends_on: [PatientMatchingEMPI, RBACAndRelationships]
-  parallelizable: true
-
-- name: ChartAndLabs
-  description: Unified chart timeline + lab results + CCD/C-CDA export
-  satisfies: [ISC-23, ISC-24, ISC-25, ISC-26]
-  depends_on: [PatientMatchingEMPI, RBACAndRelationships]
-  parallelizable: true
-
-- name: SecureMessaging
-  description: Patient-care-team messaging with E2E encryption + EHR thread linkage
-  satisfies: [ISC-27, ISC-28, ISC-29, ISC-30]
-  depends_on: [RBACAndRelationships]
-  parallelizable: true
-
-- name: EPrescriptionHandoff
-  description: Surescripts handoff with TTL-bounded portal-side state
-  satisfies: [ISC-31, ISC-32, ISC-33]
-  depends_on: [RBACAndRelationships]
-  parallelizable: false
-
-- name: AuditLogPlatform
-  description: Hash-chained, 6-year-retained, S3-object-locked audit log
-  satisfies: [ISC-34, ISC-35, ISC-36, ISC-37, ISC-38, ISC-61, ISC-68]
-  depends_on: []
-  parallelizable: false
-
-- name: MultiRegionInfra
-  description: Active-active 3-region AWS with documented failover and data-residency boundaries
-  satisfies: [ISC-39, ISC-40, ISC-41, ISC-42, ISC-64, ISC-65]
-  depends_on: []
-  parallelizable: false
-
-- name: Observability
-  description: Correlation IDs + dashboards + runbooks + ombudsman SLO view
-  satisfies: [ISC-43, ISC-44, ISC-45, ISC-46]
-  depends_on: []
-  parallelizable: true
-
-- name: ReleasePipeline
-  description: Terraform-only infra + blue/green per region + auto-rollback + secrets in Secrets Manager
-  satisfies: [ISC-47, ISC-48, ISC-49, ISC-50, ISC-51, ISC-63]
-  depends_on: []
-  parallelizable: true
-
-- name: ComplianceProgram
-  description: BAA reconciliation + HITRUST audit prep + monthly attestation
-  satisfies: [ISC-38, ISC-54, ISC-59, ISC-60, ISC-62]
-  depends_on: [AuditLogPlatform, MultiRegionInfra]
-  parallelizable: true
-
-- name: Phase1Canary
-  description: Phase 1 read-only chart canary live by 2026-04-30 budget gate
-  satisfies: [ISC-52, ISC-53, ISC-54]
-  depends_on: [IdentityPatient, IdentitySSO, RBACAndRelationships, ChartAndLabs, AuditLogPlatform, Observability]
-  parallelizable: false
-
-- name: Phase2MEDITECHCutover
-  description: Cascade Care 14-hospital MEDITECH integration in Q3 2026
-  satisfies: [ISC-55, ISC-56, ISC-57]
-  depends_on: [Phase1Canary, AppointmentScheduling, ChartAndLabs]
-  parallelizable: false
-
-- name: Phase3Decommission
-  description: Legacy decommission + HITRUST certification in Q4 2026
-  satisfies: [ISC-58, ISC-59]
-  depends_on: [Phase2MEDITECHCutover, ComplianceProgram]
-  parallelizable: false
-```
-
-## Decisions
-
-- 2026-01-08 15:00: Three-region active-active over two-region active-active because the SLO target (99.95%) and the 2027-Q1 cutover deadline both require a topology that survives single-region failure without manual intervention. Cost delta is ~22% over two-region; the program steering committee approved the delta on 2026-01-15.
-- 2026-01-15 11:30: Auth0 for patient identity over building on the corporate Okta tenant because patient identity carries different lifecycle / opt-in semantics than employee identity, and mixing them would create role-elevation paths that are hard to audit. Two identity providers, separate trust boundaries, single portal.
-- 2026-01-22 14:00: FHIR R4 as the EHR integration contract; HL7 v2 as fallback only. The 10-hospital MEDITECH Expanse cohort (Cascade Care) ships FHIR R4 in their 2026 release; the affiliated Cerner sites are on FHIR R4 already; Epic across the 40 home hospitals already exposes R4. Building on R4 avoids carrying HL7 v2 mappings as a permanent surface.
-- 2026-02-04 09:30: ❌ DEAD END: Tried using DynamoDB as the audit-log store because of the active-active multi-region story. Hash-chain verification across regions had eventual-consistency windows that broke ISC-35's 1-hour detection target during synthetic chaos tests; the chain detected as broken when it was just stale. Reverted to per-region Aurora Postgres with cross-region read replicas + S3 object-lock as the immutable archive. Don't retry DynamoDB for hash-chain workloads.
-- 2026-02-12 16:00: refined: ISC-23 sharpened from "lab results visible promptly" to "p95 ≤ 4h with internal SLA p95 ≤ 1h." Compliance asked for the floor (Cures Act); the org's clinical leadership asked for the SLA. Both are now ISC fields.
-- 2026-02-18 10:00: Break-glass design — clinician without a documented relationship can read a chart with a one-line stated reason; the read writes a high-priority audit event flagged for compliance review within 24h. The alternative (no break-glass) was rejected because emergency-department workflows require it; the alternative (silent override) was rejected because it defeats the audit log.
-- 2026-02-26 13:00: ❌ DEAD END: Tried storing patient-uploaded documents (insurance cards, prior records) in a portal-side S3 bucket with a 30-day retention. Two problems: (1) it created a PHI store outside the EHR's audit perimeter, and (2) compliance review on 2026-02-25 flagged that the 30-day window left orphaned PHI without a defensible retention policy. Reverted: patient-uploaded documents go to the EHR's document-management subsystem via FHIR `DocumentReference.create`; no portal-side store. Don't retry portal-side document storage.
-- 2026-03-04 15:00: refined: ISC-31 sharpened — e-prescription portal-side state has a 24-hour TTL, not the original "transient." Surescripts handoff sometimes returns asynchronously and the TTL must be long enough to survive the handoff round-trip without losing the receipt-confirmation surface.
-- 2026-03-11 09:00: Vendor decision: Surescripts as the e-prescription handoff partner over rolling our own pharmacy-network integrations. The "no roll-your-own" principle for compliance-relevant integrations applies; Surescripts has a signed BAA on file (SHA recorded in architecture log).
-- 2026-03-18 14:30: refined: ISC-39 quarterly drill cadence formalized after the inaugural drill on 2026-03-15 succeeded but exposed a 47-second gap in correlation-ID propagation during region-drain. Drill cadence is now in the operations runbook with assigned owners.
-- 2026-03-25 11:00: ❌ DEAD END: Tried using a session JWT containing role + relationship claims to skip a per-request relationship check. Pen-test team demonstrated a stale-relationship attack: a clinician's relationship was revoked at t=0 but the JWT carried valid claims until t+15min. Reverted to per-request relationship check against the relationship service; cached locally with a 60-second TTL. Don't retry stateless RBAC for relationship-bound clinical access.
-- 2026-04-02 10:30: refined: ISC-60 sharpened — original anti-criterion was "PHI not in URLs"; sharpened to "PHI never appears in URL query strings logged by the edge proxy or the WAF" with a probe over a 7-day rolling window. The original was not testable; the sharpened version is.
-- 2026-04-08 16:00: Phase 1 canary scope finalized: identity + RBAC + read-only chart from Epic for 1 hospital + audit log + observability. The original scope included messaging; messaging deferred to Phase 1.5 because the EHR-thread-linkage integration was not ready by 2026-04-30.
-- 2026-04-15 13:00: refined: ISC-22 added cross-region disclosure requirement after a UX research session showed patients were confused when booking at a Midwest hospital from a Pacific Northwest profile. The disclosure is a one-line "this appointment is at <region>" text with the address.
-- 2026-04-22 09:00: Phase 1 canary opened to 200 enrolled real-patient testers; HITRUST validated assessor scheduled for 2026-04-26 through 2026-04-29. Budget gate review with steering committee 2026-04-30.
-- 2026-04-26 17:00: refined: ISC-65 added explicit requirement that cross-region transit traverses AWS-internal paths only (no public internet hops). The architecture review board found that the original constraint was implicit; making it explicit lets the network-engineering team alarm on any cross-region traffic that exits AWS.
-
-## Changelog
-
-- 2026-02-04 | conjectured: A multi-region active-active audit log on DynamoDB will simplify the cross-region story by relying on eventually-consistent global tables
-  refuted by: synthetic chaos testing showed hash-chain verification flapping between "valid" and "broken" during the eventual-consistency window; the 1-hour detection target was unhittable
-  learned: hash-chain integrity demands strong consistency at the chain-write boundary; eventual consistency turns "broken chain" into a noisy false signal that compliance cannot use
-  criterion now: ISC-35 unchanged in text but the implementation pivoted to per-region Aurora Postgres with strong consistency at write, plus S3 object-lock for the immutable archive; Decisions logs the dead end
-
-- 2026-02-26 | conjectured: Patient-uploaded documents can live in a portal-side S3 with a 30-day retention to avoid pushing every upload into the EHR
-  refuted by: compliance review flagged that a portal-side PHI store outside the EHR audit perimeter creates a parallel system of record with no defensible retention policy beyond 30 days
-  learned: PHI storage outside the EHR's audit perimeter is a recurring temptation that compliance will (correctly) reject every time; the EHR is the system of record for clinical content
-  criterion now: no ISC change in text; implementation pivoted to FHIR `DocumentReference.create` against the EHR; Decisions logs the dead end
-
-- 2026-03-25 | conjectured: A session JWT with role + relationship claims can skip per-request relationship checks and improve clinician-chart latency
-  refuted by: pen-test team demonstrated that a clinician whose relationship was revoked at t=0 retained access until JWT expiry at t+15min — a 15-minute window of unauthorized access that the audit log captured but the access-control layer did not prevent
-  learned: relationship-bound RBAC requires per-request authority checks; caching can shorten the check, but stateless trust over a 15-minute window is incompatible with the principle that revocation is immediate
-  criterion now: ISC-10 unchanged in text but implementation now performs a per-request check against the relationship service with a 60-second local cache TTL; the cache invalidates on relationship-revocation events
-
-- 2026-04-02 | conjectured: An anti-criterion that says "PHI not in URLs" is sufficient as written
-  refuted by: a security review found that "in URLs" was ambiguous (does it mean path? query? fragment? Referer header? edge log?); the security team and the platform team interpreted it differently
-  learned: anti-criteria need a single nameable probe; "PHI not in URLs" is a guideline, not a criterion
-  criterion now: ISC-60 sharpened to "PHI never appears in URL query strings logged by the edge proxy or the WAF" with a 7-day rolling-window probe
-
-- 2026-04-15 | conjectured: Cross-region appointment booking is just an appointment booking with a different region attribute
-  refuted by: UX research session showed patients booking at a Cascade Care (Midwest) hospital from a Pacific Northwest profile did not realize they had selected a different region until they saw the confirmation; one tester said "I would not have driven 1,800 miles for this"
-  learned: cross-region context is a UX surface, not just a backend attribute; the patient must see the region context before confirming, not after
-  criterion now: ISC-22 sharpened — cross-region booking carries a one-line "this appointment is at <region>" disclosure shown before confirmation
-
-## Verification
-
-- ISC-1: Auth integration test 2026-04-25 — magic-link arrives p95 ≤ 28s, callback creates session within 1.4s
-- ISC-6: Session idle-timeout drill 2026-04-26 — clinician role: 16th-minute request returned `401 session-expired`; patient role: 31st-minute request returned `401 session-expired`
-- ISC-15: eMPI cross-region probe 2026-04-24 — 12 fixture patients each resolved to one longitudinal ID across 3 hospitals; zero false-merge events
-- ISC-18: k6 run 2026-04-27 — 200 vus / 5min — autocomplete p95 218ms across 50-hospital corpus
-- ISC-23: lab-latency-audit 2026-04-25 (7-day window) — p95 1h 47m, internal SLA met
-- ISC-34: audit-completeness check 2026-04-26 — `phi_reads = audit_events` per 1-min bucket over 24h, zero gaps
-- ISC-35: audit-chain-verify 2026-04-27 — 30-day window, zero chain breaks across all three regions
-- ISC-36: `aws s3api get-object-retention --bucket audit-logs --key 2026-04-27.parquet` — `Mode: COMPLIANCE, RetainUntilDate: 2032-04-27T00:00:00Z`
-- ISC-39: regional outage drill 2026-03-15 — drain time 4m 12s; data-loss events: 0
-- ISC-49: canary-failure-injection 2026-04-23 — rollback completed in 71s; pager fired at +43s
-- ISC-52: Phase 1 canary live 2026-04-22 at `portal.beaconhealth.example.org/canary`
-- ISC-53: Phase 1 14-day soak 2026-04-08 to 2026-04-22 — 0 P1 incidents, 211 enrolled testers
-- ISC-54: HITRUST validated-assessor report received 2026-04-29 — 0 high-severity findings, 2 medium with mitigation plans accepted
-- ISC-60: `rg "patient_id=|mrn=|dob=|ssn=" /var/log/cloudflare-edge/*.log` 7-day rolling window 2026-04-21 through 2026-04-28 — 0 matches
-- ISC-66: `SELECT column_name FROM information_schema.columns WHERE column_name ~ 'password'` against patient-identity DB — 0 rows
-- ISC-68: `SELECT * FROM pg_stat_statements WHERE query ~ '(UPDATE|DELETE).+audit_log' AND userid = app_role` — 0 rows over 30-day window
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-1 | bash | magic-link arrives + callback creates session | ≤ 60s end-to-end | bun run scripts/auth-magic-link.ts | |
+| ISC-6 | bash | session expires after 15m idle for clinician role | 16th-minute request returns 401 | bun run scripts/session-idle-timeout.ts --role clinician | |
+| ISC-15 | bash | same patient across 3 hospitals resolves to a single eMPI ID | 1 patient_id returned | bun run scripts/empi-cross-region-probe.ts --test-fixture mrn-set-A | |
+| ISC-18 | bash | appointment-search autocomplete p95 | ≤ 250ms across 50-hospital corpus | k6 run load/appointment-autocomplete.js --vus 200 --duration 5m | |
+| ISC-23 | bash | lab result publish-to-portal-visible latency | p95 ≤ 4h, internal SLA p95 ≤ 1h | bun run scripts/lab-latency-audit.ts --window 7d | |
+| ISC-34 | bash | every PHI read produces an audit event | \|reads\| == \|audit_events\| within 60s window | bun run scripts/phi-audit-parity.ts --bucket 1m --window 60s | |
+| ISC-35 | bash | hash chain verifies for full 30-day window | 0 chain breaks | bun run scripts/audit-chain-verify.ts --window 30d | |
+| ISC-36 | bash | daily snapshot lands in S3 with object-lock compliance mode | lock_mode == COMPLIANCE && retain_until >= now+6y | aws s3api get-object-retention --bucket audit-logs --key "$(date -u +%F).parquet" --query Retention.Mode --output text \| grep -qx COMPLIANCE | |
+| ISC-39 | bash | regional outage drains in ≤ 5 min with zero committed-write loss | drain_time ≤ 300s; data-loss-events == 0 | bun run scripts/regional-outage-drill.ts --target us-west-2 | |
+| ISC-49 | bash | failed canary auto-rollback + page on-call | rollback ≤ 90s; pager fired ≤ 60s | bun run scripts/canary-failure-injection.ts | |
+| ISC-54 | manual | HITRUST validated assessor returns zero high-severity findings on Phase 1 | 0 high; ≤ 3 medium with mitigation plans | external assessor report (manual evidence) | |
+| ISC-60 | bash | URL query strings in edge logs do not contain PHI markers | 0 matches over 7-day rolling window | rg -q "patient_id=\|mrn=\|dob=\|ssn=" /var/log/cloudflare-edge/*.log; test $? -eq 1 | |
+| ISC-61 | bash | oldest audit event retained | oldest_event_age ≥ 6y - 7d | test "$(psql "$DATABASE_URL" -tAc "SELECT MIN(timestamp) <= now() - interval '6 years' + interval '7 days' FROM audit_log_archive")" = "t" | |
+| ISC-62 | bash | every vendor in PHI data path has a recorded BAA SHA | \|vendors_in_data_path\| == \|vendors_with_baa_sha\| | bun run scripts/baa-reconciliation.ts | |
+| ISC-63 | bash | clinician/admin/auditor session config <= 15min idle | parsed config value ≤ 900s for those roles | bun run scripts/session-idle-preflight.ts --roles clinician,admin,auditor --max-idle 900 | |
+| ISC-66 | bash | no password column exists in identity DB | 0 columns matching ^password | test "$(psql "$DATABASE_URL" -tAc "SELECT count(*) FROM information_schema.columns WHERE column_name ~ '^password'")" = "0" | |
+| ISC-68 | bash | no UPDATE or DELETE statements against audit_log table from app role | 0 occurrences in 30 days of pg_stat_statements | test "$(psql "$DATABASE_URL" -tAc "SELECT count(*) FROM pg_stat_statements WHERE query ~ '(UPDATE\|DELETE).+audit_log'")" = "0" | |

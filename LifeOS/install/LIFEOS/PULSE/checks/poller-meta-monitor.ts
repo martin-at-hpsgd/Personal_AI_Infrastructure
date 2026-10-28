@@ -83,7 +83,8 @@ function loadPulseSchedules(): Record<string, string> {
   if (!existsSync(PULSE_TOML)) return {};
   const toml = readFileSync(PULSE_TOML, "utf-8");
   const schedules: Record<string, string> = {};
-  const jobRegex = /\[\[job\]\]\s*([\s\S]*?)(?=\[\[job\]\]|\Z)/g;
+  // `\Z` is a literal Z in JS; without /m, `$` is end of input (class of public issue #2063, @markb0).
+  const jobRegex = /\[\[job\]\]\s*([\s\S]*?)(?=\[\[job\]\]|$)/g;
   let m: RegExpExecArray | null;
   while ((m = jobRegex.exec(toml)) !== null) {
     const block = m[1];

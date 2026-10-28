@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.6
  * current-work-dir.ts
  *
  * Prints the work directory (absolute path) of the principal's current active
@@ -13,7 +14,7 @@
  * it was a read-only contract on a nonexistent producer. The canonical
  * session-state registry is MEMORY/STATE/work.json, written by the hook
  * pipeline (SessionStart, ToolActivityTracker, ISASync, etc.) and consumed
- * by Pulse, ULWorkSync, SessionCleanup, and WorkCompletionLearning.
+ * by Pulse, the maintainer-side work-sync hook, SessionCleanup, and WorkCompletionLearning.
  *
  * Resolution precedence:
  *   1. CLAUDE_SESSION_ID env var → exact sessionUUID match, phase != complete
@@ -35,7 +36,7 @@
 
 import { readFileSync, existsSync } from 'fs';
 import { dirname } from 'path';
-import { paiPath } from '../../hooks/lib/paths';
+import { lifeosPath } from "./Paths";
 
 interface SessionEntry {
   isa?: string;
@@ -108,7 +109,7 @@ function main(): void {
     return;
   }
 
-  const workJsonPath = paiPath('MEMORY', 'STATE', 'work.json');
+  const workJsonPath = lifeosPath('MEMORY', 'STATE', 'work.json');
   if (!existsSync(workJsonPath)) {
     die(`work.json not found at ${workJsonPath}`);
   }
@@ -126,7 +127,7 @@ function main(): void {
   const [slug, session] = resolveActiveSession(work);
   // isa is guaranteed non-empty by resolveActiveSession's filter
   const isaRelative = session.isa as string;
-  const isaPath = paiPath(isaRelative);
+  const isaPath = lifeosPath(isaRelative);
   const workDir = dirname(isaPath);
 
   if (args.includes('--json')) {

@@ -3,30 +3,29 @@ name: DelegationReference
 description: Comprehensive delegation and agent parallelization patterns. Reference material extracted from SKILL.md for on-demand loading.
 created: 2025-12-17
 extracted_from: SKILL.md lines 535-627
-version: 1.5.2
+version: 1.8.0
 ---
 
-> **RETIRED 2026-07-21 (BPE capability-surfacing cleanup).** The Delegation skill and this
+> **RETIRED 2026-07-21 (BLE capability-surfacing cleanup).** The Delegation skill and this
 > reference are gone: they hand-maintained a manual of harness capabilities (`Task()`,
 > `TeamCreate`/`team_name`, `max_turns`, effort tiers) that rotted against the live tool
 > surface. Capability existence is surfaced natively — tool schemas ride in context every
 > turn, skills list their USE WHEN, agent types their descriptions, ToolSearch loads the
 > rest. What LifeOS keeps is only what the harness can't know: election rules and spend
-> facts (Algorithm §Spend), the fork-reviewer clause (claim 11), dispatch/model rules
-> (OPERATIONAL_RULES § Model selection). The `retired-tokens` /ic check blocks this rot
-> class from returning. This document is kept as history only — nothing below is operative.
+> facts (Algorithm §Spend), the fork-reviewer clause (criterion 11), dispatch/model rules
+> (OPERATIONAL_PREFERENCES § Model selection). The `retired-tokens` /ic check blocks this rot
+> class from returning. One exception is current: `## Dispatch practice` below (added 2026-09-24),
+> which Algorithm § Routing points to for how a leg is sent. Everything else is history.
 
 # Delegation & Parallelization Reference
 
 > Delegation exists so the LifeOS hill-climb (`LifeOs/LifeOsThesis.md`) doesn't serialize: independent gap-closing work runs in parallel, matched to the cheapest model that can do it.
 
-**Quick reference in SKILL.md** → For full details, see this file
+No skill fronts this file any more (the Delegation skill was retired 2026-07-21). Only § Dispatch practice below is current.
 
 ---
 
-## 🤝 Delegation & Parallelization (Always Active)
-
-**WHENEVER A TASK CAN BE PARALLELIZED, USE MULTIPLE AGENTS!**
+## History: Delegation & Parallelization (retired 2026-07-21, not current guidance)
 
 ### Model Selection for Agents (CRITICAL FOR SPEED)
 
@@ -34,38 +33,36 @@ version: 1.5.2
 
 **Resuming agents:** To continue a previously spawned agent, use `SendMessage({to: agentId})`. This auto-resumes stopped background agents. Do NOT use `Agent(resume=...)` — the `resume` parameter no longer exists.
 
-Agents that omit `model` inherit the session model (harness behavior — the AgentInvocation model injector was removed v1.3.0, 2026-07-11 baseline; the hook now only logs each dispatch's resolved model to subagent-events.jsonl). Model choice is per-dispatch judgment: pass `model` explicitly when a different rung fits the work — Sonnet/Haiku for utility or mechanical fan-outs, the strongest available for intelligence-hungry dispatches (note `model: fable` on Agent executed Opus at last probe, 2026-07-07 — genuine Fable off the main loop is the `Inference.ts --level max` subprocess). Each inference with 30K+ context takes 5-15 seconds on a frontier model; a simple 10-tool-call task = 1-2+ minutes of pure thinking time.
+Agents that omit `model` inherit the session model (harness behavior — the AgentInvocation model injector was removed v1.3.0, 2026-07-11 baseline; the hook now only logs each dispatch's resolved model to subagent-events.jsonl). Model choice is per-dispatch judgment: pass `model` explicitly when a different rung fits the work — the light worker (or Sonnet on a Claude-only install) for utility or mechanical fan-outs, the strongest available for intelligence-hungry dispatches (note `model: fable` on Agent executed Opus at last probe, 2026-07-07 — genuine Fable off the main loop is the `Inference.ts --level max` subprocess). Each inference with 30K+ context takes 5-15 seconds on a frontier model; a simple 10-tool-call task = 1-2+ minutes of pure thinking time.
 
 **Model Selection Matrix:**
 
 | Task Type | Model | Why |
 |-----------|-------|-----|
+| *(This table is the Claude-tier ladder, the default for an install with no other vendor. Where `WORK_LADDER` in `LIFEOS/TOOLS/models.ts` names worker agents, send the leg to the worker for that level instead; `OPERATIONAL_PREFERENCES § Model selection` decides.)* | | |
 | Deep reasoning, complex architecture, strategic decisions | `opus` | Maximum intelligence needed |
 | Standard implementation, moderate complexity, most coding | `sonnet` | Good balance of speed + capability |
-| Simple lookups, file reads, quick checks, parallel grunt work | `haiku` | 10-20x faster, sufficient intelligence |
+| Simple lookups, file reads, quick checks, parallel grunt work | the light worker, else `sonnet` | Fast and cheap. Never the smallest Claude tier: it cannot hold a brief, and as a worker wrapper it did the work itself and returned nothing |
 
 **Examples:**
 
 ```typescript
-// WRONG - defaults to Opus, takes minutes
+// Inherits the session model for a simple visual check
 Agent({ prompt: "Check if blue bar exists on website", subagent_type: "general-purpose" })
 
-// RIGHT - Haiku for simple visual check
-Agent({ prompt: "Check if blue bar exists on website", subagent_type: "general-purpose", model: "haiku" })
-
-// RIGHT - Sonnet for standard coding task
-Agent({ prompt: "Senior engineer, TDD. Implement the login form validation", subagent_type: "general-purpose", model: "sonnet" })
+// Inherits the session model for standard coding work
+Agent({ prompt: "Senior engineer, TDD. Implement the login form validation", subagent_type: "general-purpose" })
 
 // RIGHT - Opus for complex architectural planning
 Agent({ prompt: "System design / distributed systems. Design the distributed caching strategy", subagent_type: "general-purpose", model: "opus" })
 ```
 
 **Rule of Thumb:**
-- If it's grunt work or verification → `haiku`
+- If it's grunt work or verification → the light worker, else `sonnet`
 - If it's implementation or research → `sonnet`
 - If it requires deep strategic thinking → `opus` (or let it default)
 
-**Parallel tasks especially benefit from haiku** - launching 5 haiku agents is faster AND cheaper than 1 Opus agent doing sequential work.
+**Parallel tasks especially benefit from the light lane** - launching 5 light agents is faster AND cheaper than 1 Opus agent doing sequential work.
 
 ### Agent Types
 
@@ -83,7 +80,7 @@ Compose task-specific agents by writing the role/perspective/voice directly into
 - **Architecture/design** → Use `general-purpose` with a system-design / distributed-systems brief in the prompt
 - **Everything else** → Write a distinct inline brief per agent → `subagent_type: "general-purpose"`
 
-### 🚨 AGENT ROUTING (Always Active)
+### History: Agent routing (Agent Teams as the default is retired; `TeamCreate` and `team_name` no longer exist, and routing is Algorithm § Routing)
 
 **Three Agent Systems — preference order:**
 
@@ -95,7 +92,7 @@ Compose task-specific agents by writing the role/perspective/voice directly into
 
 **These are three distinct systems:**
 - **Agent Teams** = persistent local teammates with shared task lists, messaging, and multi-turn coordination via `TeamCreate`. DEFAULT for all parallel work.
-- **Custom Agents** = one-shot parallel workers with unique identities written as inline briefs. ONLY when {{PRINCIPAL_NAME}} explicitly says "custom agents".
+- **Custom Agents** = one-shot parallel workers with unique identities written as inline briefs. ONLY when the principal explicitly says "custom agents".
 - **Managed Agents** = cloud-hosted agents with durable sessions that survive disconnects. For unattended/overnight work only.
 
 **Additional routing by task type:**
@@ -115,9 +112,11 @@ Compose task-specific agents by writing the role/perspective/voice directly into
 **For Custom Agents (only when explicitly requested):**
 1. Write a distinct inline brief for EACH agent — role, perspective, voice, expertise in the prompt itself
 2. Launch each brief as `subagent_type: "general-purpose"`
-3. Each agent gets a personality-matched ElevenLabs voice (described in the brief)
+3. Each agent's voice is described in the brief
 
-**For research specifically:** Use the Research skill, which has dedicated researcher agents (ClaudeResearcher, GeminiResearcher, etc.)
+**For research specifically:** Use the Research skill. Quick and Standard run each vendor's search as a tool call in the session, with no agent; Extensive and Deep fan out the dedicated researcher agents (ClaudeResearcher, GeminiResearcher, etc.) as parallel legs.
+
+**Before spawning any agent:** Router rules 27–28 (Algorithm § Routing) apply. A subagent on the session's own model earns its place only through parallel width, a fresh-eyes review, or context the session can't hold, and a skill (the how) or a tool (the doing) comes before a new agent (Router ISA F12, 2026-10-24).
 
 **Reference:** agent routing (`LIFEOS/DOCUMENTATION/Agents/AgentSystem.md`) | Managed Agents: https://www.anthropic.com/engineering/managed-agents
 
@@ -137,14 +136,14 @@ Every agent prompt MUST include a `## Scope` section that matches the validated 
 
 | Timing | Model | Agent Output | Example |
 |--------|-------|-------------|---------|
-| **fast** | `haiku` | <500 words, direct answer | "Check if server is running" |
+| **fast** | `sonnet` | <500 words, direct answer | "Check if server is running" |
 | **standard** | `sonnet` | <1500 words, focused work | "Implement login validation" |
 | **deep** | `opus` | No limit, thorough analysis | "Comprehensive security audit" |
 
 **Examples:**
 
 ```typescript
-// FAST — simple check, haiku model, minimal output
+// FAST — simple check, sonnet model, minimal output
 Agent({
   prompt: `Check if the auth middleware exports are correct.
 ## Scope
@@ -152,7 +151,6 @@ Timing: FAST — direct answer only.
 - Under 500 words
 - Answer the question, report the result, done`,
   subagent_type: "Explore",
-  model: "haiku"
 })
 
 // STANDARD — typical implementation work
@@ -163,7 +161,6 @@ Timing: STANDARD — focused implementation.
 - Under 1500 words
 - Stay on task, deliver the work, verify it works`,
   subagent_type: "general-purpose",
-  model: "sonnet"
 })
 
 // DEEP — comprehensive analysis
@@ -179,6 +176,18 @@ Timing: DEEP — comprehensive analysis.
   model: "opus"
 })
 ```
+
+---
+
+## Dispatch practice
+
+Which lane a leg gets is Algorithm § Routing. These say how the leg is sent; they moved here from the routing rules on 2026-09-24.
+
+- A leg goes down in one call: `bun ~/.claude/LIFEOS/TOOLS/Worker.ts <sol|astra> --slug <slug> --cwd <absolute task dir>`, in the background. Without `--cwd` the codex child runs in the caller's directory, and the helper refuses that when it is the LifeOS install. A Workflow agent waits on the run with `Worker.ts wait <sol|astra> --slug <slug>`.
+- The `Haiku` agent (at its routed effort, passed as the Agent tool's `effort` parameter) runs in session; the `Sol` wrapper only when the leg needs a Claude-side tool.
+- A worker facing an undecided choice returns `needs-judgment` instead of guessing.
+- Fully specified work gets a script, not a model.
+- Two stalls on one problem: re-dispatch one rung up. A stall at the top goes to the principal.
 
 ---
 
@@ -204,7 +213,7 @@ Three primitives for non-blocking work. Pick the right one:
 - Poll intervals: 30s+ for remote APIs (rate limits), 0.5-1s for local checks
 - Handle transient failures in poll loops (`curl ... || true`)
 - Only stdout triggers notifications — stderr goes to output file (readable via Read)
-- Set `persistent: true` for session-length watches (PR monitoring, log tails)
+- Watches end at 30 min (10 in `-p`); re-arm on the deadline notice
 - Use `TaskStop` to cancel a monitor early
 - Selective filters only — never pipe raw logs. Monitors producing too many events get auto-stopped.
 
@@ -212,7 +221,7 @@ Three primitives for non-blocking work. Pick the right one:
 
 ## Knowledge Archive Access
 
-Delegated agents can query the **Knowledge Archive** (`~/.claude/LIFEOS/MEMORY/KNOWLEDGE/`) for accumulated knowledge organized by 4 entity types: People (human beings), Companies (organizations), Ideas (insights/theses/analyses), Research (longer-form research notes). Topic is a tag, not a domain. Managed by Algorithm LEARN phase (direct writes), `LIFEOS/TOOLS/KnowledgeHarvester.ts` (validation/maintenance), and the `/knowledge` skill. Include archive query instructions in agent prompts when the task benefits from prior research or domain context.
+Delegated agents can query the **Knowledge Archive** (`~/.claude/LIFEOS/MEMORY/KNOWLEDGE/`) for accumulated knowledge organized by 6 entity types: People, Companies, Ideas, Blogs, Research and Books (`KNOWLEDGE/_schema.md`). Topic is a tag, not a domain. Managed by Algorithm LEARN phase (direct writes), `LIFEOS/TOOLS/KnowledgeHarvester.ts` (validation/maintenance), and the Cortex skill. Include archive query instructions in agent prompts when the task benefits from prior research or domain context.
 
 ---
 
@@ -224,7 +233,7 @@ Delegation at its smallest: **a task that splits cleanly into independent parts,
 
 Say a small site has four sections and you need to know which ones have a broken link. The parts don't depend on each other — checking section two tells you nothing about section three. So you fan out: four agents in a *single* message, each handed one section, each on `haiku` because the work is mechanical lookup, not reasoning. They run at the same time and report back. Then one spotcheck agent confirms the four results line up.
 
-Four `haiku` agents finishing together is faster *and* cheaper than one `opus` agent walking the sections in sequence. The model is matched to the work (grunt work → `haiku`), and the parallelism is matched to the structure (independent parts → fan out).
+Four light agents finishing together is faster *and* cheaper than one `opus` agent walking the sections in sequence. The model is matched to the work (grunt work → the light lane), and the parallelism is matched to the structure (independent parts → fan out).
 
 ### When not to fan out
 
@@ -243,9 +252,9 @@ flowchart TD
     A[Task with independent parts] --> B{Parallelizable?}
     B -->|no, serial dependency| C[Run in sequence]
     B -->|yes| D[One message, many Agent calls]
-    D --> E1[haiku: part 1]
-    D --> E2[haiku: part 2]
-    D --> E3[haiku: part 3]
+    D --> E1[light: part 1]
+    D --> E2[light: part 2]
+    D --> E3[light: part 3]
     E1 --> F[Spotcheck agent]
     E2 --> F
     E3 --> F
@@ -258,7 +267,5 @@ The diagram is the pattern in one frame: split only what's genuinely independent
 
 **See Also:**
 - `~/.claude/LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md` — Master architecture reference (system-of-systems)
-- SKILL.md > Delegation (Quick Reference) - Condensed trigger table
-- Workflows/Delegation.md - Operational delegation procedures
-- Workflows/BackgroundDelegation.md - Background agent patterns
+- LIFEOS/DOCUMENTATION/Router/RouterSystem.md - Who runs what, on which model and effort
 - LIFEOS/DOCUMENTATION/Agents/AgentSystem.md - Agent routing and composition

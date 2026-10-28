@@ -1,0 +1,4 @@
+{
+  "default": "anthropic",
+  "fallback": "openai"
+}

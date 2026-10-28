@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "required": [ "how-it-works", "gotchas" ],
+  "sections": {
+    "what-it-does": { "file": "References/CompleteGuide.md", "heading": "What It Does" },
+    "how-it-works": { "file": "References/CompleteGuide.md", "heading": "How It Works" },
+    "intent-routing": { "file": "References/CompleteGuide.md", "heading": "Intent Routing" },
+    "command-status": { "file": "References/CompleteGuide.md", "heading": "status (default, no args)" },
+    "command-search": { "file": "References/CompleteGuide.md", "heading": "search <query>" },
+    "command-add": { "file": "References/CompleteGuide.md", "heading": "add <type>", "requires": ["canonical-linking-requirement-mandatory"] },
+    "canonical-linking-requirement-mandatory": { "file": "References/CompleteGuide.md", "heading": "Canonical Linking Requirement (MANDATORY)" },
+    "command-harvest": { "file": "References/CompleteGuide.md", "heading": "harvest", "requires": ["canonical-linking-requirement-mandatory"] },
+    "command-develop": { "file": "References/CompleteGuide.md", "heading": "develop", "requires": ["canonical-linking-requirement-mandatory"] },
+    "command-ingest": { "file": "References/CompleteGuide.md", "heading": "ingest <url-or-file>", "requires": ["canonical-linking-requirement-mandatory"] },
+    "command-contradictions": { "file": "References/CompleteGuide.md", "heading": "contradictions", "requires": ["canonical-linking-requirement-mandatory"] },
+    "command-graph": { "file": "References/CompleteGuide.md", "heading": "graph [slug]" },
+    "command-retrieve": { "file": "References/CompleteGuide.md", "heading": "retrieve <query>" },
+    "command-mine": { "file": "References/CompleteGuide.md", "heading": "mine" },
+    "command-distill": { "file": "References/CompleteGuide.md", "heading": "distill" },
+    "command-recall": { "file": "References/CompleteGuide.md", "heading": "recall <query>" },
+    "gotchas": { "file": "References/CompleteGuide.md", "heading": "Gotchas" },
+    "examples": { "file": "References/CompleteGuide.md", "heading": "Examples" },
+    "complete-guide": { "file": "References/CompleteGuide.md" }
+  },
+  "bundles": {
+    "status": ["command-status"],
+    "search": ["command-search"],
+    "add": ["command-add"],
+    "harvest": ["command-harvest"],
+    "develop": ["command-develop"],
+    "ingest": ["command-ingest"],
+    "contradictions": ["command-contradictions"],
+    "graph": ["command-graph"],
+    "retrieve": ["command-retrieve"],
+    "mine": ["command-mine"],
+    "distill": ["command-distill"],
+    "recall": ["command-recall"],
+    "full": ["complete-guide"]
+  }
+}

@@ -1,0 +1,1 @@
+(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[3776],{31887:(e,n,o)=>{"use strict";o.r(n),o.d(n,{default:()=>s});var c=o(12115);function s(){return(0,c.useEffect)(()=>{window.location.replace("/workflows".concat(window.location.search))},[]),null}},77090:(e,n,o)=>{Promise.resolve().then(o.bind(o,31887))}},e=>{e.O(0,[8441,1255,7358],()=>e(e.s=77090)),_N_E=e.O()}]);

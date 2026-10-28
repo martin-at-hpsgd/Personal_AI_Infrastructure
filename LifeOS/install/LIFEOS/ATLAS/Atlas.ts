@@ -10,17 +10,21 @@
  *   atlas exposed <key>                               which credentials <key> would leak if compromised
  *   atlas stale                                       assets no longer observed
  *   atlas unregistered                                active domains missing security-plane coverage
+ *   atlas injection                                   ingestion surfaces by trust class + control coverage
+ *   atlas reach <key>                                 what an injection at <key> could ultimately drive
+ *   atlas models [--json] [--scope <s>] [--stale]      every model, where it is used, each use's status, source coverage
  *   atlas sql "<select>"                              read-only SQL passthrough
  *   atlas export                                      write the redacted Pulse snapshot
  *
  * Atlas is DERIVED EVIDENCE. For destructive ops the provider's authority API remains
- * the authority; `atlas owns` runs alongside it, never instead of it (Algorithm claim 16).
+ * the authority; `atlas owns` runs alongside it, never instead of it (Algorithm criterion 16).
  */
 
 import { existsSync, readFileSync, renameSync } from "node:fs";
 // ported from public PR #1740, @elhoim
 import { atomicWriteText } from "../PULSE/lib/atomic-write";
 import { EVENTS_PATH, SNAPSHOT_PATH, Store, type Collector } from "./Store";
+import { logObserve, runCollector } from "./Observe";
 import { cloudflare } from "./collectors/Cloudflare";
 import { github } from "./collectors/Github";
 import { projects } from "./collectors/Projects";
@@ -29,6 +33,11 @@ import { launchd } from "./collectors/Launchd";
 import { systemd } from "./collectors/Systemd";
 import { gear } from "./collectors/Gear";
 import { secrets } from "./collectors/Secrets";
+import { injection } from "./collectors/Injection";
+import { docker } from "./collectors/Docker";
+import { modelCollectors } from "./collectors/Models";
+import { modelsView, renderModels, type UseStatus } from "./ModelsView";
+import { atlasModelsEvent, emitSafe } from "../TOOLS/ModelEstateVigil";
 
 // The two service collectors are platform-exclusive: exactly one is ever registered,
 // so a macOS install's collector set is byte-for-byte what it was before systemd
@@ -37,8 +46,15 @@ import { secrets } from "./collectors/Secrets";
 // ported from public PR #1743, @schmetti-dev
 const SERVICE_COLLECTOR = process.platform === "linux" ? systemd : launchd;
 
+// Docker registers only when the CLI is on PATH: a machine without docker gets
+// no docker rows at all rather than a permanently PARTIAL sync, and
+// `atlas sync docker` there fails loud as an unknown collector — the same
+// shape as the platform-exclusive service collectors above.
+// ported from public PR #2046, @asdf8675309
+const OPTIONAL_COLLECTORS: Collector[] = Bun.which("docker") ? [docker] : [];
+
 const COLLECTORS: Record<string, Collector> = Object.fromEntries(
-  [cloudflare, github, projects, infraInventory, SERVICE_COLLECTOR, gear, secrets].map((c) => [c.name, c]),
+  [cloudflare, github, projects, infraInventory, SERVICE_COLLECTOR, gear, secrets, injection, ...modelCollectors, ...OPTIONAL_COLLECTORS].map((c) => [c.name, c]),
 );
 
 const FULL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
@@ -54,20 +70,25 @@ async function runSync(names: string[], scope: string): Promise<number> {
         failures++;
         continue;
       }
-      try {
-        const result = await collector.collect(scope === "full" ? undefined : scope);
-        const { runId, swept } = store.applyRun(name, scope, result);
-        console.log(
+      // Collect and apply; a failed collector writes NOTHING, so prior graph state stays intact. Once the run has
+      // applied, the CENSVS observe step (F10) can never fail it: an observe failure is a STATVS event (ISC-65).
+      const run = await runCollector(store, collector, scope, {
+        onApplied: ({ runId, swept, result }) => console.log(
           `✓ ${name}: ${result.assets.length} assets, ${result.edges.length} edges ` +
           `(run ${runId}, ${result.complete ? "complete" : "PARTIAL"}${swept ? ", swept" : ""})`,
-        );
-      } catch (err) {
-        // A failed collector writes NOTHING — prior graph state stays intact.
+        ),
+      });
+      if (!run.ok) {
         failures++;
-        console.error(`✗ ${name}: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`✗ ${name}: ${run.error}`);
+        continue;
       }
+      logObserve(name, run.observe);
     }
     atomicWriteText(SNAPSHOT_PATH, JSON.stringify(store.exportSnapshot()));
+    // Every run that included the model collectors leaves one Vigil line, quiet runs included (Model Estate ISC-47).
+    const modelRuns = names.filter((n) => n.startsWith("models-"));
+    if (modelRuns.length) emitSafe(atlasModelsEvent(modelsView(store), modelRuns, `${scope}:${new Date().toISOString().slice(0, 13)}:${modelRuns.join(",")}`));
   } finally {
     store.close();
   }
@@ -107,7 +128,9 @@ switch (cmd) {
   case "sync": {
     const targetedIdx = rest.indexOf("--targeted");
     const scope = targetedIdx >= 0 ? `targeted:${rest[targetedIdx + 1] ?? "manual"}` : "full";
-    const names = rest.filter((a, i) => !a.startsWith("--") && (targetedIdx < 0 || i !== targetedIdx + 1));
+    // `models` names the whole model-estate group (one collector per source, so each sweeps on its own).
+    const names = rest.filter((a, i) => !a.startsWith("--") && (targetedIdx < 0 || i !== targetedIdx + 1))
+      .flatMap((n) => (n === "models" ? modelCollectors.map((c) => c.name) : [n]));
     process.exit(await runSync(names.length ? names : Object.keys(COLLECTORS), scope));
   }
   case "tick": {
@@ -168,6 +191,57 @@ switch (cmd) {
     store.close();
     break;
   }
+  case "injection": {
+    const store = new Store(undefined, { readonly: true });
+    const surfaces = store.injectionSurfaces();
+    if (surfaces.length === 0) {
+      console.error("no ingestion surfaces in graph — run `atlas sync injection` first");
+      store.close();
+      process.exit(1);
+    }
+    const band = (r: Record<string, unknown>) =>
+      Number(r.blocking) > 0 ? "governed" : Number(r.advisory) > 0 ? "advisory-only" : "UNGOVERNED";
+    const rows = surfaces.map((r) => ({
+      surface: r.canonical_key,
+      trust: r.trust,
+      channel: r.channel,
+      persists: !!r.persists,
+      band: band(r),
+      controls: r.controls ?? "—",
+      notes: r.notes,
+    }));
+    console.log(JSON.stringify({ surfaces: rows, capabilities: store.injectionCapabilities() }, null, 2));
+    const untrusted = rows.filter((r) => r.trust === "untrusted");
+    const ungoverned = untrusted.filter((r) => r.band === "UNGOVERNED");
+    const durable = untrusted.filter((r) => r.persists && r.band !== "governed");
+    console.log(`${rows.length} surface(s), ${untrusted.length} untrusted, ${ungoverned.length} ungoverned.`);
+    console.log(`${durable.length} untrusted+persistent surface(s) with nothing blocking — injected text there outlives the session.`);
+    console.log("Every surface reaches every capability; the control column is the only thing that varies. Rank remediation by it.");
+    store.close();
+    break;
+  }
+  case "reach": {
+    const key = rest[0];
+    if (!key) { console.error("usage: atlas reach <ingest:...|capability:...>"); process.exit(2); }
+    const store = new Store(undefined, { readonly: true });
+    if (!store.assetByKey(key)) console.error(`⚠️ ${key} not in graph — check the key, or sync first`);
+    const rows = store.injectionReach(key);
+    console.log(JSON.stringify(rows, null, 2));
+    const caps = rows.filter((r) => r.kind === "capability");
+    const irrev = caps.filter((r) => String(r.attrs ?? "").includes('"reversible":false')).length;
+    console.log(`${caps.length} capability/ies reachable, ${irrev} of them irreversible.`);
+    store.close();
+    break;
+  }
+  case "models": {
+    const flag = (f: string) => { const i = rest.indexOf(f); return i >= 0 ? rest[i + 1] : undefined; };
+    const store = new Store(undefined, { readonly: true });
+    const view = modelsView(store, { scope: flag("--scope"), status: rest.includes("--stale") ? "stale" : (flag("--status") as UseStatus | undefined) });
+    store.close();
+    if (Object.keys(view.coverage).length === 0) { console.error("no model sources in graph — run `atlas sync models` first"); process.exit(1); }
+    console.log(rest.includes("--json") ? JSON.stringify(view, null, 2) : renderModels(view));
+    break;
+  }
   case "sql": {
     const q = rest.join(" ");
     if (!q) { console.error('usage: atlas sql "SELECT ..."'); process.exit(2); }
@@ -190,6 +264,6 @@ switch (cmd) {
     break;
   }
   default:
-    console.log("atlas: sync | tick | status | owns <key> | blast <key> | exposed <key> | stale | unregistered | insights | sql | export");
+    console.log("atlas: sync | tick | status | models | owns <key> | blast <key> | exposed <key> | injection | reach <key> | stale | unregistered | insights | sql | export");
     process.exit(cmd ? 2 : 0);
 }

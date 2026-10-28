@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.0.0
+ */
 // Normalize env path vars Claude Code may inject unexpanded (LifeOS#1404).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
   const __v = process.env[__k];

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.0.1
+ * @version 1.4.3
  * FormatGate.hook.ts — deterministic Stop-hook teeth for the LifeOS output
  * format (system prompt § Output Format).
  *
@@ -8,26 +8,21 @@
  * (DriftReminder, UserPromptSubmit) but that fires one turn LATE and has no
  * teeth. This gate CHECKS, at Stop, the STRUCTURAL rules that are
  * deterministically verifiable without an LLM:
- *   1. Banner `════ LifeOS` is the first visible line.
+ *   1. (retired 2026-10-01, system prompt v3.16.0) the banner is no longer required.
  *   2. `🗣️` closer is the last visible line.
  *   3. When a <lifeos-memory-delta> arrived this turn, a `🧠 MEMORY:` line exists.
  *   3b. When a <lifeos-system-delta> arrived this turn, a `⚙️ SYSTEM:` line exists.
  *   4. No more than 2 em-dashes in prose (code/blockquote stripped).
+ *   5. A blank line between bullets at the same level (2026-10-26).
  *
- * OBSERVATION-ONLY (2026-07-12): this gate does NOT block. A Stop hook fires
- * AFTER the message is on screen and cannot edit emitted text — its only
- * enforcement move is decision:block, which forces a FULL re-emit of the whole
- * response to add one banner line or drop one em-dash. That re-emit prints the
- * response twice, which is the duplicated-output failure {{PRINCIPAL_NAME}} escalated on
- * hard (blocked ~10× no-banner / ~14× em-dash in a single session before this
- * change). A cosmetic format concern must never cost a doubled response. So the
- * gate logs every violation to format-gate.jsonl (decision:"flag") and returns
- * null. Format compliance reverts to model behavior + the DriftReminder nudge;
- * the telemetry keeps drift visible so we can tune the nudge, not the teeth.
+ * FLAG-ONLY (2026-09-21, hook minimization, principal-ratified): the gate never
+ * blocks. It ran observation-only from 07-12 to 08-17, then blocked on the third
+ * consecutive missing banner or closer; that block kept holding finished answers
+ * over their frame and is gone. Every violation is a flag in the log, which
+ * DriftReminder reads on the next prompt.
  *
  * NON-GOALS: length, paragraph density, voice/vocabulary — not reliably
- * deterministic; those stay DriftReminder + judgment. Never touches
- * WritingGate/VerificationGate/security hooks (those legitimately block).
+ *deterministic; those stay DriftReminder + judgment.
  *
  * SAFETY: honors stop_hook_active (loop guard → continue). Fails OPEN on any
  * error or empty message. Never re-emits. Hot-path, no network, no LLM.
@@ -36,9 +31,13 @@
  */
 
 import { readHookInput, parseTranscriptFromInput } from "./lib/hook-io";
-import { appendFileSync, existsSync, mkdirSync } from "fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
-import { homedir } from "node:os";
+import { getLifeosDir } from "./lib/paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { hookDrawn } from "./lib/function-hooks";
+import { EM_DASH_MAX, packedBulletPairs } from "./lib/format-caps"; // public issue #2166, @IvanLeontev-stack
+import { stripVoiceTags } from "../LIFEOS/TOOLS/VoiceTags";
+import { recordGateRun } from "../LIFEOS/TOOLS/GateReach";
 
 // Normalize env path vars Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -46,12 +45,62 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
   if (v && /^\$\{?HOME\}?(\/|$)/.test(v)) process.env[k] = v.replace(/^\$\{?HOME\}?/, process.env.HOME ?? "~");
 }
 
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(homedir(), ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const OBS_PATH = join(LIFEOS_DIR, "MEMORY", "OBSERVABILITY", "format-gate.jsonl");
 
 export interface FormatViolation {
-  code: "no-banner" | "no-closer" | "missing-memory-line" | "missing-system-line" | "too-many-emdashes";
+  code: "no-closer" | "closer-too-long" | "missing-memory-line" | "missing-system-line" | "too-many-emdashes" | "da-placeholder" | "open-item-length" | "agents-line" | "packed-bullets";
   detail: string;
+}
+
+/**
+ * The 🗣️ closer is spoken verbatim by Fish (VoiceCompletion → VoiceServer).
+ * A long spoken line is dead air, so the text after the
+ * `🗣️ <DA>:` prefix is capped. Doctrine home: DA_IDENTITY.md § "The 🗣️ closer".
+ */
+export const CLOSER_MAX_CHARS = 110;
+
+/**
+ * ❓ OPEN items are 4–8 words each. Doctrine home: system
+ * prompt § Output Format. Words are whitespace-separated tokens after the
+ * `N.` marker and markdown emphasis are stripped.
+ */
+export const OPEN_ITEM_MIN_WORDS = 4;
+export const OPEN_ITEM_MAX_WORDS = 8;
+
+/**
+ * The 🤖 AGENTS field is one line of at most this many characters, label included, so agent activity stays
+ * compact (2026-10-11). Doctrine home: system prompt § Output Format.
+ */
+export const AGENTS_LINE_MAX_CHARS = 120;
+
+/** Why the 🤖 AGENTS field breaks its one-short-line contract, or null when it holds or is absent. Pure. */
+export function agentsLineProblem(message: string): string | null {
+  const lines = stripNonProse(message).split("\n").map((l) => l.trim());
+  // Only the field itself (label plus colon) counts; prose that merely names the field is not the field.
+  const at = lines.map((l, i) => (l.startsWith("🤖 AGENTS:") ? i : -1)).filter((i) => i >= 0);
+  if (at.length === 0) return null;
+  if (at.length > 1) return `${at.length} 🤖 AGENTS lines (one allowed)`;
+  const line = lines[at[0]];
+  if (!/^🤖 AGENTS:\s*\S/.test(line)) return "the 🤖 AGENTS label has no content on its own line";
+  if ([...line].length > AGENTS_LINE_MAX_CHARS) return `the 🤖 AGENTS line is ${[...line].length} chars (cap ${AGENTS_LINE_MAX_CHARS})`;
+  // The field is followed by a blank line or by the next field (the closer, SPOKEN, or a hook line); anything else is a spill.
+  const next = lines[at[0] + 1] ?? "";
+  if (next && !/^(🗣️|🎙️|⚙️|🧠)/u.test(next)) return "the 🤖 AGENTS field runs onto a second line";
+  return null;
+}
+
+/** Word counts of the numbered items under the final `❓ OPEN` field. Pure. */
+export function openItemWordCounts(message: string): number[] {
+  const at = message.lastIndexOf("❓ OPEN");
+  if (at < 0) return [];
+  return message
+    .slice(at)
+    .split("\n")
+    .slice(1)
+    .map((l) => l.trim())
+    .filter((l) => /^\d+\.\s/.test(l))
+    .map((l) => l.replace(/^\d+\.\s+/, "").replace(/[*_`]/g, "").split(/\s+/).filter(Boolean).length);
 }
 
 /**
@@ -72,9 +121,11 @@ function visibleLines(text: string): string[] {
   return text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
 }
 
-const BANNER = /════\s*LifeOS/;
 const CLOSER = /🗣️/;
-const MEMORY_LINE = /🧠\s*MEMORY\s*:/;
+// The 🧠 line is action-first since 2026-09-06 ("Do next:" / a delta / a quiet
+// "memory N/M fresh"), not the old "MEMORY:" report card. Accept every shape the
+// line can take; the legacy prefix stays valid for in-flight transcripts.
+const MEMORY_LINE = /🧠\s*(MEMORY\s*:|Do next:|memory\b|\+\d+\s+(learned|dropped))/;
 const SYSTEM_LINE = /⚙️?\s*SYSTEM\s*:/;
 
 /**
@@ -113,17 +164,34 @@ function deltaThisTurn(rawTranscript: string, suffix: string): boolean {
  */
 export function checkFormat(
   message: string,
-  opts: { memoryDelta: boolean; systemDelta?: boolean },
+  opts: { memoryDelta: boolean; systemDelta?: boolean; hookDrawn?: boolean },
 ): FormatViolation | null {
   const lines = visibleLines(message);
   if (lines.length === 0) return null; // nothing to gate — fail open
 
-  if (!BANNER.test(lines[0])) {
-    return { code: "no-banner", detail: `first visible line is not the LifeOS banner: ${JSON.stringify(lines[0].slice(0, 48))}` };
-  }
+  // No banner check since 2026-10-01 (system prompt v3.16.0): the typed banner was
+  // retired after it kept going missing from answers. `hookDrawn` gates only the 🧠/⚙️ lines.
   if (!CLOSER.test(lines[lines.length - 1])) {
     return { code: "no-closer", detail: "last visible line is not the 🗣️ closer" };
   }
+  // A literal <DA> in the closer's NAME position means identity substitution failed
+  // (public PR #2134, @zephyr91). Only the name slot, never the spoken text.
+  if (/^🗣️\s*<DA>\s*:/.test(lines[lines.length - 1])) {
+    return { code: "da-placeholder", detail: "closer contains literal <DA> placeholder instead of the DA name" };
+  }
+  // Spoken-length cap: measure only the text after the `🗣️ <name>:` prefix,
+  // since that is exactly what extractVoiceCompletion hands to the voice server.
+  // Drama 3 tags in the closer are performed, never spoken, so they never count (2026-10-14).
+  const spoken = stripVoiceTags(lines[lines.length - 1].replace(/^🗣️\s*[^:]{0,24}:\s*/u, "").trim());
+  if (spoken.length > CLOSER_MAX_CHARS) {
+    return { code: "closer-too-long", detail: `closer is ${spoken.length} chars spoken aloud (cap ${CLOSER_MAX_CHARS})` };
+  }
+  const badOpen = openItemWordCounts(message).find((n) => n < OPEN_ITEM_MIN_WORDS || n > OPEN_ITEM_MAX_WORDS);
+  if (badOpen !== undefined) {
+    return { code: "open-item-length", detail: `an ❓ OPEN item is ${badOpen} words (allowed ${OPEN_ITEM_MIN_WORDS}–${OPEN_ITEM_MAX_WORDS})` };
+  }
+  const agents = agentsLineProblem(message);
+  if (agents) return { code: "agents-line", detail: agents };
   if (opts.memoryDelta && !MEMORY_LINE.test(message)) {
     return { code: "missing-memory-line", detail: "a memory-delta arrived this turn but no 🧠 MEMORY: line was rendered" };
   }
@@ -131,8 +199,12 @@ export function checkFormat(
     return { code: "missing-system-line", detail: "a system-delta arrived this turn but no ⚙️ SYSTEM: line was rendered" };
   }
   const emdashes = (stripNonProse(message).match(/—/g) || []).length;
-  if (emdashes > 2) {
-    return { code: "too-many-emdashes", detail: `${emdashes} em-dashes in prose (max 2)` };
+  if (emdashes > EM_DASH_MAX) {
+    return { code: "too-many-emdashes", detail: `${emdashes} em-dashes in prose (max ${EM_DASH_MAX})` };
+  }
+  const packed = packedBulletPairs(message);
+  if (packed > 0) {
+    return { code: "packed-bullets", detail: `${packed} bullets with no blank line before them` };
   }
   return null;
 }
@@ -152,8 +224,17 @@ export async function run(
   input: NonNullable<Awaited<ReturnType<typeof readHookInput>>>,
 ): Promise<object | null> {
   try {
+    recordGateRun("hook:FormatGate.hook", { result: "executed" });
     if (input.stop_hook_active === true) {
       appendObs({ session_id: input.session_id, decision: "skip-recovery", stop_hook_active: true });
+      return null;
+    }
+    // The banner/closer contract is the TERMINAL format. Headless spawns (scheduled
+    // jobs, the texting bridge) deliver plain text to a phone or an email, and a
+    // forced re-emit here pushed "════ LifeOS ════" and 🗣️ lines into iMessage
+    // replies (2026-09-03 texting probes). Their own output contracts govern.
+    if (process.env.LIFEOS_TEXTING_SESSION || process.env.LIFEOS_NOTIFICATION_CHANNEL === "headless") {
+      appendObs({ session_id: input.session_id, decision: "skip-headless" });
       return null;
     }
 
@@ -164,13 +245,15 @@ export async function run(
     const message = (parsed.lastMessage || "").trim();
     if (!message) return null;
 
-    const memoryDelta = memoryDeltaThisTurn(parsed.raw);
-    const systemDelta = systemDeltaThisTurn(parsed.raw);
-    const violation = checkFormat(message, { memoryDelta, systemDelta });
+    const drawn = hookDrawn(input.session_id);
+    const memoryDelta = memoryDeltaThisTurn(parsed.raw) && !drawn;
+    const systemDelta = systemDeltaThisTurn(parsed.raw) && !drawn;
+    const violation = checkFormat(message, { memoryDelta, systemDelta, hookDrawn: drawn });
 
+    // Flag-only since 2026-09-21: a finished answer is never held over its frame.
+    // The flag feeds DriftReminder and the format-gate log.
     if (violation) {
-      // Observation-only: log the drift, never re-emit (see header WHY 2026-07-12).
-      appendObs({ session_id: input.session_id, decision: "flag", code: violation.code, detail: violation.detail });
+      appendObs({ session_id: input.session_id ?? "unknown", decision: "flag", code: violation.code, detail: violation.detail });
       return null;
     }
 

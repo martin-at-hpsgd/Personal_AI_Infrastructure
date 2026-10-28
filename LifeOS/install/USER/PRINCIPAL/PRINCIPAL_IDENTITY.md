@@ -2,7 +2,7 @@
 provenance: template
 last_updated: 1970-01-01T00:00:00Z
 last_updated_by: bootstrap-template
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 ---
 
 # Principal Identity — User
@@ -20,7 +20,7 @@ Loaded at every session startup via CLAUDE.md `@` import. Gives the DA a concise
 - **Name:** User
 - **Pronunciation:** User
 - **Location:** (interview)
-- **Timezone:** America/Los_Angeles
+- **Timezone:** {{TIMEZONE}}
 - **Role:** Human operator of this LifeOS instance
 - **Focus:** (interview — what you work on day-to-day)
 

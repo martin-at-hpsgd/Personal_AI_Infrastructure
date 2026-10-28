@@ -1,5 +1,5 @@
 ---
-version: 1.3.1
+version: 1.3.4
 ---
 
 # CLI-First Architecture Pattern
@@ -236,7 +236,7 @@ evals run --use-case newsletter-summary \
 
 **7. Configuration Flags (Behavioral Control)**
 
-**Inspired by indydevdan's variable-centric patterns.** CLI tools should expose configuration through flags that control execution behavior, enabling workflows to adapt without code changes.
+**Inspired by indydevdan's variable-centric patterns.** CLI tools should expose configuration through flags that control execution behavior, enabling intents to adapt without code changes.
 
 ```bash
 # Execution mode flags
@@ -251,7 +251,7 @@ tool run --quiet             # Minimal output
 tool run --verbose           # Detailed logging
 
 # Resource selection flags
-tool run --model haiku       # Use fast/cheap model
+tool run --model sonnet      # Use fast/cheap model
 tool run --model opus        # Use powerful/expensive model
 
 # Post-processing flags
@@ -274,20 +274,18 @@ tool process --no-cache      # Bypass cache, force fresh execution
 4. **Value flags**: `--flag <value>` for choices (model, format, etc.)
 5. **Combinable**: Flags should work together logically
 
-### Workflow-to-Tool Integration
+### Intent-to-Tool Integration
 
-**Workflows should map user intent to CLI flags, exposing the tool's full flexibility.**
+**Intents should map user intent to CLI flags, exposing the tool's full flexibility.**
 
-The gap in many systems: CLI tools have rich configuration options, but workflows hardcode a single invocation pattern. Instead, workflows should:
+The gap in many systems: CLI tools have rich configuration options, but intents hardcode a single invocation pattern. Instead, an intent documents the tool's flag options under `## Tool contract` as a request→flag table, and the model maps each request onto flags. That section sits after the intent's `## Ideal State` and `## Anti-criteria` (`LIFEOS/DOCUMENTATION/Skills/SkillSystem.md` § Intent anatomy).
 
-1. **Interpret user intent** → Map to appropriate flags
-2. **Document flag options** → Show what configurations are available
-3. **Use flag tables** → Clear mapping from intent to command
-
-**Example: Art Generation Workflow**
+**Example: the Tool contract section of an Art generation intent**
 
 ```markdown
-## Model Selection (based on user request)
+## Tool contract
+
+### Model selection
 
 | User Says | Flag | When to Use |
 |-----------|------|-------------|
@@ -295,7 +293,7 @@ The gap in many systems: CLI tools have rich configuration options, but workflow
 | "high quality", "best" | `--model flux` | Maximum quality |
 | (default) | `--model nano-banana-pro` | Balanced default |
 
-## Post-Processing Options
+### Post-processing options
 
 | User Says | Flag | Effect |
 |-----------|------|--------|
@@ -303,9 +301,7 @@ The gap in many systems: CLI tools have rich configuration options, but workflow
 | "transparent background" | `--remove-bg` | Removes background after generation |
 | "with reference" | `--reference-image <path>` | Style guidance from image |
 
-## Workflow Command Construction
-
-Based on user request, construct the CLI command:
+### Command shape
 
 \`\`\`bash
 bun run Generate.ts \
@@ -321,8 +317,8 @@ bun run Generate.ts \
 
 **The Pattern:**
 - Tool has comprehensive flags
-- Workflow has intent→flag mapping tables
-- User speaks naturally, workflow translates to precise CLI
+- Intent has request→flag mapping tables
+- User speaks naturally, intent translates to precise CLI
 
 ### Prompting Layer Best Practices
 
@@ -427,7 +423,7 @@ The stateless MCP redesign (sessions removed, Sampling/Roots/Logging deprecated,
 
 - **Consume via CLI.** Any capability *our own harness* uses gets a deterministic CLI, not an MCP server. Schemas stay out of context, behavior is testable without a protocol layer, and the tool survives spec revisions untouched. Wrapping a third-party API for our own use = CLI, every time (a third-party PM tool's API, a vendor SaaS API — same answer).
 
-- **Serve via MCP.** Any capability we expose to *external clients* — claude.ai connectors, other people's harnesses, anything that isn't this system — speaks MCP (Vector's `/mcp` gateway is the canonical example). A CLI can't serve a remote client, and MCP owns the things a CLI never will: per-user OAuth, interactive apps, enterprise-managed auth.
+- **Serve via MCP.** Any capability we expose to *external clients* — claude.ai connectors, other people's harnesses, anything that isn't this system — speaks MCP (a project's `/mcp` gateway is the canonical example). A CLI can't serve a remote client, and MCP owns the things a CLI never will: per-user OAuth, interactive apps, enterprise-managed auth.
 
 The test is one question: **who calls it?** Us → CLI. Not us → MCP. A consumed MCP server is migrated to a CLI only when it costs us something real (maintenance risk, reliability, a forced upstream rewrite) — never on principle; managed connectors the harness maintains stay as they are.
 
@@ -501,7 +497,7 @@ When building a new CLI-First system:
 
 ### Testing Phase
 - [ ] Unit test CLI commands
-- [ ] Integration test CLI workflows
+- [ ] Integration test CLI intents
 - [ ] Test prompting layer with real user requests
 - [ ] Verify deterministic behavior
 - [ ] Check error handling
@@ -664,21 +660,21 @@ The Configuration Flags pattern was added after analyzing indydevdan's "fork-rep
 
 **Key insight from analysis:**
 - Indydevdan's variables are powerful but belong at the **tool layer** (as CLI flags), not the skill layer
-- LifeOS's Skill → Workflow → Tool hierarchy is architecturally superior
+- LifeOS's Skill → Intent → Tool hierarchy is architecturally superior
 - Variables become CLI flags, maintaining CLI-First determinism
-- Workflows map user intent to flags, exposing tool flexibility
+- Intents map user intent to flags, exposing tool flexibility
 
 **What we adopted:**
 - Configuration flags for behavioral control
-- Workflow-to-tool intent mapping tables
+- Intent-to-tool request mapping tables
 - Natural language → flag translation pattern
 
 **What we didn't adopt:**
 - Skill-level variables (skills remain intent-focused)
 - IF-THEN conditional routing (implicit routing works fine)
-- Feature flag toggles (separate workflows instead)
+- Feature flag toggles (separate intents instead)
 
-**The principle:** Tools are configurable via flags. Workflows interpret intent and construct flag-enriched commands. Skills define capability domains.
+**The principle:** Tools are configurable via flags. Intents interpret intent and construct flag-enriched commands. Skills define capability domains.
 
 ---
 

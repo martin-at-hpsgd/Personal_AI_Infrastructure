@@ -25,7 +25,9 @@ import { homedir } from "os";
 
 const LIFEOS_ROOT = process.env.LIFEOS_ROOT || join(homedir(), ".claude");
 const HERMES_HOME = process.env.HERMES_HOME || join(homedir(), ".hermes");
-const STATE_DIR = join(HERMES_HOME, "state", "heartbeat");
+// HEARTBEAT_STATE_DIR: set by the native AgentJob runner (LifeOS scheduling, no Hermes);
+// absent → the Hermes-cron layout it was born in.
+const STATE_DIR = process.env.HEARTBEAT_STATE_DIR || join(HERMES_HOME, "state", "heartbeat");
 const CONFIG_PATH = join(LIFEOS_ROOT, "LIFEOS", "USER", "CONFIG", "heartbeat.json");
 const MUSIC_PATH = join(LIFEOS_ROOT, "LIFEOS", "USER", "MUSIC", "MusicReference.md");
 

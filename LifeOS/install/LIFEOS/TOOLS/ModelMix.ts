@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.1
  * ============================================================================
  * MODELMIX — session-scoped intelligence-rung mix for the statusline
  * ============================================================================
@@ -18,6 +19,10 @@
  * analysis are not equal "uses" of intelligence; tokens generated is the
  * honest measure of how much work each rung actually did.
  *
+ * PER-LANE SPLIT (2026-09-17):
+ * Cross-vendor codex tokens now track per lane (astra/sol) extracted
+ * from rollout model IDs, instead of lumping all into astra.
+ *
  * GROUND TRUTH is the harness transcript (`message.model` + `message.usage`
  * on each assistant message), not our own logging — the harness records what
  * the API actually billed, so a silently-downgraded dispatch shows up as the
@@ -26,14 +31,14 @@
  * RUNG LABELS come from EFFORT_MODEL/CURRENT in models.ts. A lineup change
  * re-labels this automatically; no edit here.
  *
- * CROSS-VENDOR (Forge/CodexResearcher → OpenAI) spends tokens outside any
+ * CROSS-VENDOR (Astra/CodexResearcher → OpenAI) spends tokens outside any
  * Claude transcript. Its ground truth is the codex CLI's own rollout logs
  * (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl), whose token_count events are
  * cumulative — the last one is the rollout's total. Attribution: a rollout
  * belongs to this session when its lifetime overlaps a cross-vendor subagent
  * transcript's [birth, mtime] window (±slop) — the transcripts never capture
  * the codex session id, so window overlap is the strongest available link.
- * The forge share joins the rung percentages in ONE denominator, so all five
+ * The astra share joins the rung percentages in ONE denominator, so all five
  * sum to 100 (principal 2026-08-06: SOL renders a percentage like the rungs).
  *
  * KNOWN GAPS (deliberate, do not "fix" by guessing):
@@ -56,13 +61,24 @@
  * ============================================================================
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, rmSync, openSync, readSync, closeSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync, rmSync, openSync, readSync, closeSync, lstatSync, realpathSync, renameSync, unlinkSync, writeSync, constants as fsConstants } from 'fs';
+import { randomUUID } from 'crypto';
+import { join, dirname, resolve } from 'path';
+import { invariant, InvariantViolation } from './Invariant.ts';
 import { EFFORT_MODEL, CURRENT, CROSS_VENDOR, type EffortLevel, type ClaudeTier } from './models.ts';
 import { homedir } from "node:os";
+import { getClaudeDir, getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { rolloutRoots as codexRolloutRoots } from "./CodexUsage.ts";
+import { codexHomesRoot } from "./lib/CacheDir";
+import { readModelUse, laneForUse, USE_LANES, type UseLane } from "./lib/ModelUse";
+
+/** Ladder lanes that only the per-session model-use log measures (direct and agent calls alike). */
+export type LoggedLane = Exclude<UseLane, "astra" | "sol">;
+export const LOGGED_LANES: LoggedLane[] = USE_LANES.filter((l): l is LoggedLane => l !== "astra" && l !== "sol");
+const zeroLogged = (): Record<LoggedLane, number> => Object.fromEntries(LOGGED_LANES.map((l) => [l, 0])) as Record<LoggedLane, number>;
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const PROJECTS_DIR = join(HOME, '.claude', 'projects');
+const PROJECTS_DIR = join(getClaudeDir(), 'projects');
 
 /**
  * Resolved per call, not at import: the statusline and the tests both set
@@ -70,19 +86,30 @@ const PROJECTS_DIR = join(HOME, '.claude', 'projects');
  * pinned every caller to whatever it was at import time.
  */
 const stateDir = () =>
-  join(process.env.LIFEOS_DIR || join(HOME, '.claude', 'LIFEOS'), 'MEMORY', 'STATE', 'model-mix');
+  join(getLifeosDir(), 'MEMORY', 'STATE', 'model-mix');
+
+/** A session id usable as a filename: a plain token, no separators, no leading dot. */
+export const isSafeSessionId = (id: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) && !id.includes('..');
 
 /** Rungs in display order, low → max, matching the statusline ladder. */
 export const RUNGS: EffortLevel[] = ['low', 'medium', 'high', 'max'];
 
-/** tier → rung, derived by inverting EFFORT_MODEL so models.ts stays the one edit point. */
-const TIER_RUNG: Partial<Record<ClaudeTier, EffortLevel>> = Object.fromEntries(
-  (Object.entries(EFFORT_MODEL) as [EffortLevel, ClaudeTier][]).map(([level, tier]) => [tier, level])
-);
+/**
+ * tier → rung, derived by inverting EFFORT_MODEL so models.ts stays the one edit point.
+ * Several levels may share a tier (low and medium both resolve to sonnet since 2026-09-28);
+ * the tier's tokens land on its HIGHEST level, so the ladder draws one SONNET rung, not two.
+ */
+const TIER_RUNG: Partial<Record<ClaudeTier, EffortLevel>> = {};
+for (const level of RUNGS) TIER_RUNG[EFFORT_MODEL[level]] = level;
+// Haiku (2026-10-07, HAI-4) carries the cheap decided work as the Haiku/HaikuMedium subagents. EFFORT_MODEL has no haiku
+// level (Sonnet is its floor), so the otherwise empty low rung is Haiku's: its tokens are counted, not "unknown".
+TIER_RUNG.haiku = 'low';
+/** The tier each rung's tokens are attributed to, for labels: EFFORT_MODEL's, except low, which is Haiku's. */
+export const RUNG_TIER: Record<EffortLevel, ClaudeTier> = { ...EFFORT_MODEL, low: 'haiku' };
 
 /**
  * OpenAI-family subset ONLY, by pinned model prefix. crossVendorUsage() feeds
- * the SOL (forge) mix and measures tokens from codex rollout logs — a Gemini
+ * the ASTRA (astra) mix and measures tokens from codex rollout logs — a Gemini
  * or Grok dispatch matching the broad set would light SOL "used" for work
  * OpenAI never did (latent since geminiResearcher; material once the Grok
  * lane landed 2026-08-12).
@@ -95,10 +122,18 @@ export interface Mix {
   tokens: Record<EffortLevel, number>;
   calls: Record<EffortLevel, number>;
   pct: Record<EffortLevel, number>;
-  /** OpenAI output tokens measured from attributed codex rollouts. */
-  forgeTokens: number;
-  /** Forge's share of the SAME denominator as pct — all five sum to 100. */
-  forgePct: number;
+  /** OpenAI output tokens per lane measured from attributed codex rollouts. */
+  lanes: Record<'astra' | 'sol', number>;
+  /** Per-lane percentages, sharing ONE denominator with pct — all rungs + lanes sum to 100. */
+  lanePct: Record<'astra' | 'sol', number>;
+  /** OpenAI output tokens measured from attributed codex rollouts (astra lane only). */
+  astraTokens: number;
+  /** The OpenAI flagship rung's share of the SAME denominator as pct — all five sum to 100. */
+  astraPct: number;
+  /** Output tokens per lane measured only from the model-use log (lib/ModelUse.ts). */
+  logged: Record<LoggedLane, number>;
+  /** Their shares, in the same denominator as pct and lanePct. */
+  loggedPct: Record<LoggedLane, number>;
   total: number;
   crossVendor: boolean;
   unknownModels: string[];
@@ -107,7 +142,7 @@ export interface Mix {
 const zero = (): Record<EffortLevel, number> => ({ max: 0, high: 0, medium: 0, low: 0 });
 
 /**
- * Model ID → rung. Matches the tier NAME inside the ID (claude-opus-5 → opus),
+ * Model ID → rung. Matches the tier NAME inside the ID (the tier name inside the id → opus),
  * which survives version bumps without touching CURRENT. Falls back to an exact
  * CURRENT lookup for IDs that don't carry their tier name.
  * Returns null for anything unrecognized — never guess a rung.
@@ -250,11 +285,33 @@ function findTranscript(sessionId: string): string | null {
  */
 const WINDOW_SLOP_MS = 120_000;
 
-/** Overridable so tests never read the real codex logs. */
-const codexSessionsDir = () =>
-  process.env.CODEX_SESSIONS_DIR || join(HOME, '.codex', 'sessions');
+/**
+ * Rollout roots: the real codex home PLUS every isolated per-agent home under the cache root,
+ * through CodexUsage.rolloutRoots() — the one resolver every reader shares (Router ISA R13).
+ * Sol and Astra build runs execute in the isolated homes; until 2026-09-17 this
+ * function scanned only ~/.codex/sessions unless a TEST env var was set, so every worker
+ * dispatch measured 0 tokens and the ladder read FABLE 100%.
+ *
+ * Test overrides: CODEX_SESSIONS_DIR replaces the real home's sessions dir; CODEX_HOMES_DIR
+ * replaces the isolated-homes root.
+ */
+const getRolloutRoots = (): string[] => {
+  const home = process.env.CODEX_HOME || join(HOME, '.codex');
+  // rolloutRoots(): [<home>/sessions, <homes>/<agent>/sessions …] — real home first, then every
+  // isolated agent home (astra/, sol/, audit/ … plus the retired terra/ and luna/ homes, whose old rollouts are history and attribute to no lane). CODEX_HOMES_DIR swaps the homes root.
+  const roots = codexRolloutRoots(home, process.env.CODEX_HOMES_DIR || codexHomesRoot());
+  if (process.env.CODEX_SESSIONS_DIR) {
+    // Test override: the real home's sessions dir is replaced, never added to.
+    const real = join(home, 'sessions');
+    return [process.env.CODEX_SESSIONS_DIR, ...roots.filter((r) => r !== real)].filter((r) => existsSync(r));
+  }
+  return roots;
+};
 
-interface CrossVendorUsage { used: boolean; outputTokens: number }
+interface CrossVendorUsage {
+  used: boolean;
+  lanes: Record<'astra' | 'sol', number>;
+}
 
 /**
  * Cross-vendor work is invisible to transcripts. The USED flag comes from the
@@ -263,7 +320,8 @@ interface CrossVendorUsage { used: boolean; outputTokens: number }
  * (the transcripts never capture the codex session id).
  */
 function crossVendorUsage(subagentDir: string): CrossVendorUsage {
-  if (!existsSync(subagentDir)) return { used: false, outputTokens: 0 };
+  const emptyLanes: Record<'astra' | 'sol', number> = { astra: 0, sol: 0 };
+  if (!existsSync(subagentDir)) return { used: false, lanes: emptyLanes };
   let used = false;
   const windows: Array<[number, number]> = [];
   for (const f of readdirSync(subagentDir)) {
@@ -281,50 +339,97 @@ function crossVendorUsage(subagentDir: string): CrossVendorUsage {
       windows.push([(st.birthtimeMs || st.mtimeMs) - WINDOW_SLOP_MS, st.mtimeMs + WINDOW_SLOP_MS]);
     } catch { /* unreadable meta is not evidence of anything */ }
   }
-  if (windows.length === 0) return { used, outputTokens: 0 };
-  return { used, outputTokens: rolloutTokensIn(windows) };
+  if (windows.length === 0) return { used, lanes: emptyLanes };
+  return { used, lanes: rolloutTokensIn(windows) };
 }
 
 /**
- * Sum output tokens of every codex rollout whose lifetime overlaps a window.
+ * Sum output tokens per lane of every codex rollout whose lifetime overlaps a window,
+ * across all rollout roots (main home + isolated agent homes).
  * Rollout filenames stamp their start in LOCAL time (rollout-<ts>-<uuid>.jsonl,
  * verified 2026-08-06: an 18-26-03 filename opens with an 01:26Z first event),
  * and the day dirs are local dates — iterate days by calendar date, not 24h
  * steps, so a DST boundary cannot skip a dir.
  */
-function rolloutTokensIn(windows: Array<[number, number]>): number {
-  const root = codexSessionsDir();
-  if (!existsSync(root)) return 0;
+function rolloutTokensIn(windows: Array<[number, number]>): Record<'astra' | 'sol', number> {
+  const roots = getRolloutRoots();
+  const lanes: Record<'astra' | 'sol', number> = { astra: 0, sol: 0 };
+  if (roots.length === 0) return lanes;
   const lo = Math.min(...windows.map(w => w[0]));
   const hi = Math.max(...windows.map(w => w[1]));
-  let sum = 0;
-  const day = new Date(lo);
-  day.setHours(0, 0, 0, 0);
-  for (; day.getTime() <= hi; day.setDate(day.getDate() + 1)) {
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const dir = join(root, String(day.getFullYear()), pad(day.getMonth() + 1), pad(day.getDate()));
-    if (!existsSync(dir)) continue;
-    for (const f of readdirSync(dir)) {
-      const m = f.match(/^rollout-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})-[0-9a-f-]{36}\.jsonl$/);
-      if (!m) continue;
-      const start = new Date(m[1].replace(/T(\d{2})-(\d{2})-(\d{2})$/, 'T$1:$2:$3')).getTime();
-      const p = join(dir, f);
-      let mtime: number;
-      try { mtime = statSync(p).mtimeMs; } catch { continue; }
-      if (!windows.some(([a, b]) => start <= b && mtime >= a)) continue;
-      sum += lastRolloutOutputTokens(p);
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
+    const day = new Date(lo);
+    day.setHours(0, 0, 0, 0);
+    for (; day.getTime() <= hi; day.setDate(day.getDate() + 1)) {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dir = join(root, String(day.getFullYear()), pad(day.getMonth() + 1), pad(day.getDate()));
+      if (!existsSync(dir)) continue;
+      for (const f of readdirSync(dir)) {
+        const m = f.match(/^rollout-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})-[0-9a-f-]{36}\.jsonl$/);
+        if (!m) continue;
+        const start = new Date(m[1].replace(/T(\d{2})-(\d{2})-(\d{2})$/, 'T$1:$2:$3')).getTime();
+        const p = join(dir, f);
+        let mtime: number;
+        try { mtime = statSync(p).mtimeMs; } catch { continue; }
+        if (!windows.some(([a, b]) => start <= b && mtime >= a)) continue;
+        const result = lastRolloutOutputTokens(p);
+        if (result) lanes[result.lane] += result.outputTokens;
+      }
     }
   }
-  return sum;
+  return lanes;
+}
+
+type Lane = 'astra' | 'sol';
+const LANES: Lane[] = ['astra', 'sol'];
+
+/**
+ * Lane from a rollout's model ID. Exact match against the CROSS_VENDOR lane pins first, then the
+ * lane name inside the id (survives a version bump). Anything else returns null and is NOT
+ * counted: window overlap is coarse, and booking an unrelated or conformance rollout that
+ * happens to overlap a dispatch window under ASTRA would count tokens OpenAI's flagship never spent.
+ */
+export function laneFromModel(model: string): Lane | null {
+  const m = model.toLowerCase();
+  if (!m) return null;
+  for (const lane of LANES) {
+    if (CROSS_VENDOR[lane] && m === CROSS_VENDOR[lane].toLowerCase()) return lane;
+  }
+  for (const lane of LANES) {
+    if (m.includes(`-${lane}`)) return lane;
+  }
+  return null;
+}
+
+/**
+ * The model id lives in the rollout's FIRST line (session_meta), which carries the full
+ * instructions payload — 20 KB+ on a real codex run (verified 2026-09-17: first "model" at byte
+ * 22152). A fixed 4 KB head read never reached it, so every rollout fell to the astra default.
+ * Read the whole first line (capped), then fall back to any "model" in the text handed in.
+ */
+const HEAD_CAP = 1024 * 1024;
+function rolloutModel(path: string, size: number, tailText: string): string {
+  const fd = openSync(path, 'r');
+  try {
+    const buf = Buffer.alloc(Math.min(HEAD_CAP, size));
+    const read = readSync(fd, buf, 0, buf.length, 0);
+    const text = buf.subarray(0, read).toString('utf-8');
+    const firstLine = text.slice(0, text.indexOf('\n') >= 0 ? text.indexOf('\n') : text.length);
+    const m = firstLine.match(/"model":"([^"]+)"/) ?? text.match(/"model":"([^"]+)"/) ?? tailText.match(/"model":"([^"]+)"/);
+    return m ? m[1] : '';
+  } finally { closeSync(fd); }
 }
 
 /**
  * A rollout's token_count events are CUMULATIVE — the last one is the total.
  * Read only the tail: rollouts reach MB and the statusline ticks every 5s.
+ * Returns { lane, outputTokens } or null if not found.
  */
-function lastRolloutOutputTokens(path: string): number {
+function lastRolloutOutputTokens(path: string): { lane: Lane; outputTokens: number } | null {
   try {
     const size = statSync(path).size;
+    // Tail first: the last token_count is the rollout's total.
     const offset = Math.max(0, size - 128 * 1024);
     const fd = openSync(path, 'r');
     let text: string;
@@ -339,11 +444,14 @@ function lastRolloutOutputTokens(path: string): number {
       try {
         const e = JSON.parse(lines[i]);
         const out = Number(e?.payload?.info?.total_token_usage?.output_tokens ?? 0);
-        if (out > 0) return out;
+        if (out > 0) {
+          const lane = laneFromModel(rolloutModel(path, size, text));
+          return lane ? { lane, outputTokens: out } : null;
+        }
       } catch { /* clipped line at the tail boundary — keep scanning back */ }
     }
   } catch { /* rollout unreadable — count nothing rather than guess */ }
-  return 0;
+  return null;
 }
 
 /**
@@ -353,6 +461,42 @@ function lastRolloutOutputTokens(path: string): number {
  * but a re-read if the session somehow resumes.
  */
 const PRUNE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Replace one session's cache file inside `dir`, by physical destination. The
+ * directory is realpath'd before the boundary check; a destination that is a symlink (or anything but a
+ * regular file) is refused, never followed; the bytes go to a temp file this call creates exclusively
+ * with O_NOFOLLOW, and a rename swaps it in. Returns false when the write was refused.
+ */
+export function writeStateCache(dir: string, fileName: string, content: string): boolean {
+  invariant(isSafeSessionId(fileName.replace(/\.json$/, '')) && fileName.endsWith('.json'), `ModelMix cache name is not a plain token: ${fileName}`);
+  mkdirSync(dir, { recursive: true });
+  const realDir = realpathSync(dir);
+  const dest = join(realDir, fileName);
+  invariant(dirname(dest) === realDir, `ModelMix state path escapes its directory: ${dest}`);
+  try {
+    const st = lstatSync(dest);
+    if (st.isSymbolicLink() || !st.isFile()) return false;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code !== 'ENOENT') return false;
+  }
+  const tmp = join(realDir, `.${fileName}.${process.pid}.${randomUUID()}.tmp`);
+  const fd = openSync(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
+  let renamed = false;
+  try {
+    try { writeSync(fd, content); } finally { closeSync(fd); }
+    renameSync(tmp, dest);
+    renamed = true;
+  } finally {
+    if (!renamed) { try { unlinkSync(tmp); } catch { /* already gone */ } }
+  }
+  return true;
+}
+
+/** A cache read follows no link: only a regular file at the destination is state. */
+function isRegularFile(p: string): boolean {
+  try { const st = lstatSync(p); return st.isFile() && !st.isSymbolicLink(); } catch { return false; }
+}
 
 function pruneState(dir: string): void {
   const cutoff = Date.now() - PRUNE_AFTER_MS;
@@ -364,13 +508,34 @@ function pruneState(dir: string): void {
 }
 
 export function computeMix(sessionId: string, transcriptOverride?: string): Mix {
-  const empty: Mix = { tokens: zero(), calls: zero(), pct: zero(), forgeTokens: 0, forgePct: 0, total: 0, crossVendor: false, unknownModels: [] };
+  const emptyLanes = { astra: 0, sol: 0 };
+  const empty: Mix = {
+    tokens: zero(),
+    calls: zero(),
+    pct: zero(),
+    lanes: emptyLanes,
+    lanePct: { astra: 0, sol: 0 },
+    astraTokens: 0,
+    astraPct: 0,
+    logged: zeroLogged(),
+    loggedPct: zeroLogged(),
+    total: 0,
+    crossVendor: false,
+    unknownModels: [],
+  };
+  // A session id becomes a filename under STATE_DIR: only a plain token may pass,
+  // never path separators or "..".
+  if (sessionId !== '' && !isSafeSessionId(sessionId)) return empty;
   const main = transcriptOverride ?? findTranscript(sessionId);
   if (!main || !existsSync(main)) return empty;
 
   const STATE_DIR = stateDir();
   const statePath = join(STATE_DIR, `${sessionId}.json`);
-  const state = loadState(statePath);
+  invariant(
+    dirname(resolve(statePath)) === resolve(STATE_DIR),
+    `ModelMix state path escapes its directory: ${statePath}`,
+  );
+  const state = isRegularFile(statePath) ? loadState(statePath) : freshState();
 
   const subagentDir = join(dirname(main), sessionId, 'subagents');
   const files = [main];
@@ -387,26 +552,64 @@ export function computeMix(sessionId: string, transcriptOverride?: string): Mix 
   }
 
   try {
-    mkdirSync(STATE_DIR, { recursive: true });
-    writeFileSync(statePath, JSON.stringify(state), 'utf-8');
+    writeStateCache(STATE_DIR, `${sessionId}.json`, JSON.stringify(state));
     pruneState(STATE_DIR);
-  } catch { /* best-effort cache; correctness does not depend on the write */ }
+  } catch (e) {
+    if (e instanceof InvariantViolation) throw e; // an impossible state fails loud, never as a skipped cache
+    /* best-effort cache; correctness does not depend on the write */
+  }
 
   const cv = crossVendorUsage(subagentDir);
-  // ONE denominator across all five buckets (principal 2026-08-06): SOL's
-  // share and the Claude rungs' shares sum to 100 together.
-  const combined = toPct({ ...state.tokens, forge: cv.outputTokens });
-  const { forge: forgePct, ...rungPct } = combined;
+  // Calls outside every transcript, direct or from an agent's Bash (lib/ModelUse.ts). A Claude id adds to its rung
+  // (Inference subprocesses never reach the transcript). Astra and Sol take the larger of rollout and log, since an
+  // agent's Worker run appears in both; every other lane is measured by the log alone.
+  const rungs = { ...state.tokens };
+  const logged: Record<LoggedLane, number> = zeroLogged();
+  const loggedCodex = { astra: 0, sol: 0 };
+  const seen = new Set<string>();
+  for (const use of readModelUse(sessionId)) {
+    const rung = rungForModel(use.model);
+    const lane = rung ? null : laneForUse(use.model);
+    if (rung) rungs[rung] += use.output;
+    else if (lane === "astra" || lane === "sol") loggedCodex[lane] += use.output;
+    else if (lane) logged[lane] += use.output;
+    if (rung || lane) seen.add(rung ?? lane!);
+  }
+  const lanes = { astra: Math.max(cv.lanes.astra, loggedCodex.astra), sol: Math.max(cv.lanes.sol, loggedCodex.sol) };
+  // ONE denominator across all rungs + lanes (principal 2026-08-06 / 2026-09-17): every share sums to 100 together.
+  const combined = toPct({ ...rungs, ...lanes, ...logged });
+  const astraPct = combined.astra;
+  const lanePct = { astra: combined.astra, sol: combined.sol };
+  const loggedPct = Object.fromEntries(LOGGED_LANES.map((l) => [l, combined[l]])) as Record<LoggedLane, number>;
+  const rungPct = Object.fromEntries(RUNGS.map((r) => [r, combined[r]])) as Record<EffortLevel, number>;
+  const totalLaneTokens = lanes.astra + lanes.sol + LOGGED_LANES.reduce((s, l) => s + logged[l], 0);
   return {
-    tokens: state.tokens,
+    tokens: rungs,
     calls: state.calls,
     pct: rungPct as Record<EffortLevel, number>,
-    forgeTokens: cv.outputTokens,
-    forgePct,
-    total: RUNGS.reduce((s, r) => s + state.tokens[r], 0) + cv.outputTokens,
-    crossVendor: cv.used,
+    lanes,
+    lanePct,
+    astraTokens: lanes.astra,
+    astraPct,
+    logged,
+    loggedPct,
+    total: RUNGS.reduce((s, r) => s + rungs[r], 0) + totalLaneTokens,
+    crossVendor: cv.used || seen.has("astra") || seen.has("sol"),
     unknownModels: state.unknownModels,
   };
+}
+
+/**
+ * The shell-eval text the CLI prints: mix_* are PERCENTAGES (same denominator); mix_*_used keeps the
+ * used-flag so an attributed-but-unmeasured dispatch still lights the rung. No trailing newline.
+ */
+export function mixKvText(mix: Mix): string {
+  const rungLines = RUNGS.map(r => `mix_${r}=${mix.pct[r]}`).join('\n');
+  const laneLines = Object.entries(mix.lanePct)
+    .map(([lane, pct]) => `mix_${lane}=${pct}`)
+    .join('\n');
+  const loggedLines = LOGGED_LANES.map(l => `mix_${l}=${mix.loggedPct[l]}`).join('\n');
+  return `${rungLines}\n${laneLines}\n${loggedLines}\nmix_total=${mix.total}\nmix_astra_used=${mix.crossVendor ? 1 : 0}`;
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -426,10 +629,7 @@ if (import.meta.main) {
   if (argv.includes('--json')) {
     console.log(JSON.stringify(mix, null, 2));
   } else {
-    // Shell-eval contract consumed by LIFEOS_StatusLine.sh. mix_forge is a
-    // PERCENTAGE (same denominator as the rungs); mix_forge_used keeps the
-    // used-flag so an attributed-but-unmeasured dispatch still lights the rung.
-    const out = RUNGS.map(r => `mix_${r}=${mix.pct[r]}`).join('\n');
-    console.log(`${out}\nmix_total=${mix.total}\nmix_forge=${mix.forgePct}\nmix_forge_used=${mix.crossVendor ? 1 : 0}`);
+    // Shell-eval contract consumed by the statusline.
+    console.log(mixKvText(mix));
   }
 }

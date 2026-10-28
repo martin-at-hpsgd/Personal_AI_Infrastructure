@@ -3,7 +3,7 @@
  *
  * PURPOSE:
  * Sends completion messages to the voice server for TTS playback.
- * Extracts the 🗣️ voice line from responses and sends to ElevenLabs via voice server.
+ * Extracts the 🗣️ voice line from responses and sends to Fish Audio via voice server.
  *
  * Pure handler: receives pre-parsed transcript data, sends to voice server.
  * No I/O for transcript reading - that's done by VoiceCompletion.hook.ts.
@@ -11,7 +11,7 @@
 
 import { existsSync, appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { paiPath } from '../lib/paths';
+import { lifeosPath } from '../lib/paths';
 import { getIdentity, type VoicePersonality } from '../lib/identity';
 import { getISOTimestamp } from '../lib/time';
 import { isValidVoiceCompletion, getVoiceFallback } from '../lib/output-validators';
@@ -22,20 +22,15 @@ import { PULSE_BASE } from '../../LIFEOS/PULSE/endpoint';
 
 const DA_IDENTITY = getIdentity();
 
-// ElevenLabs voice notification payload
-interface ElevenLabsNotificationPayload {
+// Voice notification payload; the voice server speaks it on Fish with the clone behind voice_id
+interface NotificationPayload {
   message: string;
   title?: string;
   voice_enabled?: boolean;
   voice_id?: string;
-  voice_settings?: {
-    stability: number;
-    similarity_boost: number;
-    style: number;
-    speed: number;
-    use_speaker_boost: boolean;
-  };
   volume?: number;
+  /** Voice mode: the server stops this clip when a talk mic opens, and answers once it is queued. */
+  interruptible?: boolean;
 }
 
 interface VoiceEvent {
@@ -44,13 +39,13 @@ interface VoiceEvent {
   event_type: 'sent' | 'failed' | 'skipped';
   message: string;
   character_count: number;
-  voice_engine: 'elevenlabs';
+  voice_engine: 'fish';
   voice_id: string;
   status_code?: number;
   error?: string;
 }
 
-const VOICE_LOG_PATH = paiPath('MEMORY', 'VOICE', 'voice-events.jsonl');
+const VOICE_LOG_PATH = lifeosPath('MEMORY', 'VOICE', 'voice-events.jsonl');
 
 /**
  * Resolve the active session's work dir for echoing voice events into a
@@ -62,7 +57,7 @@ function getActiveWorkDir(sessionId: string): string | null {
   try {
     const active = findActiveSessionByUUID(sessionId);
     if (!active) return null;
-    const workPath = paiPath('MEMORY', 'WORK', active.slug);
+    const workPath = lifeosPath('MEMORY', 'WORK', active.slug);
     return existsSync(workPath) ? workPath : null;
   } catch {
     return null;
@@ -73,7 +68,7 @@ function logVoiceEvent(event: VoiceEvent): void {
   const line = JSON.stringify(event) + '\n';
 
   try {
-    const dir = paiPath('MEMORY', 'VOICE');
+    const dir = lifeosPath('MEMORY', 'VOICE');
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
@@ -92,7 +87,7 @@ function logVoiceEvent(event: VoiceEvent): void {
   }
 }
 
-async function sendNotification(payload: ElevenLabsNotificationPayload, sessionId: string): Promise<void> {
+async function sendNotification(payload: NotificationPayload, sessionId: string): Promise<void> {
   const voiceId = payload.voice_id || DA_IDENTITY.mainDAVoiceID;
 
   const baseEvent: Omit<VoiceEvent, 'event_type' | 'status_code' | 'error'> = {
@@ -100,17 +95,19 @@ async function sendNotification(payload: ElevenLabsNotificationPayload, sessionI
     session_id: sessionId,
     message: payload.message,
     character_count: payload.message.length,
-    voice_engine: 'elevenlabs',
+    voice_engine: 'fish',
     voice_id: voiceId,
   };
 
   try {
-    // Use ElevenLabs voice server /notify endpoint
+    // Use the voice server /notify endpoint
     const response = await fetch(`${PULSE_BASE}/notify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10000), // 10s timeout - ElevenLabs TTS takes ~4s, need headroom
+      // 10s: Fish TTS takes ~1s (8s server-side timeout). An interruptible clip is answered once queued, but a
+      // 480-char spoken field takes longer to generate than a closer, so it gets 20s.
+      signal: AbortSignal.timeout(payload.interruptible ? 20000 : 10000),
     });
 
     if (!response.ok) {
@@ -141,13 +138,17 @@ async function sendNotification(payload: ElevenLabsNotificationPayload, sessionI
 
 /**
  * Handle voice notification with pre-parsed transcript data.
- * Uses ElevenLabs TTS via the voice server.
+ * Uses Fish TTS via the voice server.
  */
-export async function handleVoice(parsed: ParsedTranscript, sessionId: string): Promise<void> {
+export async function handleVoice(parsed: ParsedTranscript, sessionId: string, opts?: { interruptible?: boolean; spoken?: boolean }): Promise<void> {
   let voiceCompletion = parsed.voiceCompletion;
 
-  // Validate voice completion
-  if (!isValidVoiceCompletion(voiceCompletion)) {
+  // Voice mode with nothing to say stays silent rather than speaking a stock fallback.
+  if (opts?.interruptible && !voiceCompletion?.trim()) return;
+
+  // Validate voice completion. A voice-mode SPOKEN field is prose written for the ear and is
+  // spoken as written; the closer validator's conversational-starter bans would replace it.
+  if (!opts?.spoken && !isValidVoiceCompletion(voiceCompletion)) {
     console.error(`[Voice] Invalid completion: "${voiceCompletion.slice(0, 50)}..."`);
     voiceCompletion = getVoiceFallback();
   }
@@ -158,22 +159,13 @@ export async function handleVoice(parsed: ParsedTranscript, sessionId: string): 
     return;
   }
 
-  // Get voice settings from DA identity in settings.json
-  const voiceId = DA_IDENTITY.mainDAVoiceID;
-  const voiceSettings = DA_IDENTITY.voice;
-
-  const payload: ElevenLabsNotificationPayload = {
+  // The voice id is the key the voice server resolves to the DA's Fish clone
+  const payload: NotificationPayload = {
     message: voiceCompletion,
     title: `${DA_IDENTITY.name} says`,
     voice_enabled: true,
-    voice_id: voiceId,
-    voice_settings: voiceSettings ? {
-      stability: voiceSettings.stability ?? 0.5,
-      similarity_boost: voiceSettings.similarityBoost ?? 0.75,
-      style: voiceSettings.style ?? 0.0,
-      speed: voiceSettings.speed ?? 1.0,
-      use_speaker_boost: voiceSettings.useSpeakerBoost ?? true,
-    } : undefined,
+    voice_id: DA_IDENTITY.mainDAVoiceID,
+    ...(opts?.interruptible ? { interruptible: true } : {}),
   };
 
   await sendNotification(payload, sessionId);

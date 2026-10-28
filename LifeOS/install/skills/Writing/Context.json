@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "required": [
+    "hard-formatting-rules",
+    "gotchas"
+  ],
+  "sections": {
+    "references": {
+      "file": "References/CompleteGuide.md",
+      "heading": "References"
+    },
+    "data-and-config": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Data & Config"
+    },
+    "tools": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Tools"
+    },
+    "hard-formatting-rules": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Hard Formatting Rules (every voice, every mode)"
+    },
+    "rewrite-and-detect": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Rewrite and Detect"
+    },
+    "integration": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Integration"
+    },
+    "gotchas": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Gotchas"
+    },
+    "examples": {
+      "file": "References/CompleteGuide.md",
+      "heading": "Examples"
+    },
+    "complete-guide": {
+      "file": "References/CompleteGuide.md"
+    },
+    "score-intent": {
+      "file": "Intents/ScoreAI.md"
+    },
+    "rewrite-intent": {
+      "file": "Intents/Rewrite.md"
+    },
+    "detect-intent": {
+      "file": "Intents/Detect.md"
+    },
+    "principal-intent": {
+      "file": "Intents/WriteAsPrincipal.md"
+    },
+    "assemble-intent": {
+      "file": "Intents/Assemble.md"
+    },
+    "preview-intent": {
+      "file": "Intents/Preview.md"
+    }
+  },
+  "bundles": {
+    "rewrite": [
+      "references",
+      "rewrite-intent",
+      "integration"
+    ],
+    "detect": [
+      "references",
+      "detect-intent",
+      "integration"
+    ],
+    "score": [
+      "score-intent"
+    ],
+    "principal": [
+      "references",
+      "data-and-config",
+      "tools",
+      "principal-intent"
+    ],
+    "assemble": [
+      "assemble-intent"
+    ],
+    "preview": [
+      "preview-intent"
+    ],
+    "full": [
+      "complete-guide",
+      "rewrite-intent",
+      "detect-intent",
+      "score-intent",
+      "principal-intent",
+      "assemble-intent",
+      "preview-intent"
+    ]
+  }
+}

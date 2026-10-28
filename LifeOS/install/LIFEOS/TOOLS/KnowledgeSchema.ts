@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.1.5
  * KnowledgeSchema — the single source of truth for the LifeOS Knowledge Archive
  * note schema (the "kb-v3" contract).
  *
@@ -145,6 +146,14 @@ export interface FmField {
   raw: string;
   /** For a scalar `key: value`, the value text (unquoted-preserving). Undefined for block fields. */
   scalar?: string;
+  /**
+   * Comment/blank lines that appeared BEFORE this field's key line, verbatim and
+   * with NO trailing newline. Held apart from `raw` on purpose: `raw` is what the
+   * shape checks (emptiness, block-vs-scalar) read, and a leading comment must not
+   * make an empty `quality:` look like a populated block field.
+   * Only ever set on the first field — a comment after a key attaches to that key.
+   */
+  lead?: string;
 }
 
 export interface ParsedNote {
@@ -165,6 +174,14 @@ export interface ParsedNote {
 }
 
 const KEY_LINE = /^([A-Za-z_][\w-]*):(.*)$/;
+/**
+ * A block-sequence item at column 0 — `- slug: foo` under a `related:` key. Legal
+ * YAML: a sequence nested in a mapping needs no indentation. `---` and `--- x`
+ * deliberately do NOT match (a Markdown thematic break is not a sequence item).
+ */
+const SEQ_ITEM = /^-(\s|$)/;
+/** A YAML comment at column 0. Legal anywhere in the block, including before any key. */
+const COMMENT_LINE = /^#/;
 
 /**
  * Parse a note into ordered frontmatter fields + a verbatim body. Only the FIRST
@@ -197,23 +214,58 @@ export function parseNote(content: string): ParsedNote {
   const fields: FmField[] = [];
   let cur: FmField | null = null;
   let malformed = false;
+  // Lines seen before the first `key:` (comments, blanks). Parked here so they can
+  // be handed to that first field as its `lead` — otherwise serializeNote drops
+  // them and parse → serialize is lossy.
+  let pendingLead: string[] = [];
+  // Indent of the CURRENT field's sequence ITEMS (`- …` lines), null until the
+  // first one. YAML lets a sequence nest at column 0 or indented, but every item
+  // in one sequence must agree; two different indents is a real conflict, not a
+  // dialect. Only item lines count — an item's own sub-keys are indented relative
+  // to the `-` and are perfectly normal.
+  let seqIndent: number | null = null;
   for (const line of fmLines) {
     if (line.trim().length === 0) {
       // Blank line: whitespace, not content. Attach to the current block field
       // if any; a leading blank (no cur) is harmless whitespace, not malformed.
       if (cur) cur.raw += "\n" + line;
+      else pendingLead.push(line);
       continue;
     }
     const m = line.match(KEY_LINE);
-    const isContinuation = /^\s/.test(line);
-    if (m && !isContinuation) {
+    const isIndented = /^\s/.test(line);
+    if (m && !isIndented) {
       if (cur) fields.push(cur);
       const valuePart = m[2].replace(/^ /, ""); // drop the single space after the colon if present
       cur = { key: m[1], raw: line, scalar: valuePart.length > 0 ? valuePart : undefined };
-    } else if (isContinuation && cur) {
+      if (pendingLead.length > 0) { cur.lead = pendingLead.join("\n"); pendingLead = []; }
+      seqIndent = null;
+    } else if (isIndented && cur) {
       // continuation line (block value like related:) — attach to current
+      const trimmed = line.trimStart();
+      if (SEQ_ITEM.test(trimmed)) {
+        const indent = line.length - trimmed.length;
+        if (seqIndent !== null && seqIndent !== indent) malformed = true;
+        else seqIndent = indent;
+      }
       cur.raw += "\n" + line;
       cur.scalar = undefined;
+    } else if (COMMENT_LINE.test(line)) {
+      // Legal YAML comment at column 0. Attaches to the key it follows (so it
+      // survives a round-trip) without disturbing that key's scalar; before any
+      // key it waits in pendingLead. (Community fix: PR #1895 by @asdf8675309.)
+      if (cur) cur.raw += "\n" + line;
+      else pendingLead.push(line);
+    } else if (SEQ_ITEM.test(line) && cur && cur.scalar === undefined) {
+      // Unindented block-sequence item under a key with an empty value — the
+      // `related:` / `- slug: foo` shape, which is legal YAML. Requires a parent
+      // key (a bare `- item` under a Markdown thematic break has none, and stays
+      // malformed) whose value is empty, since a sequence cannot hang off a
+      // scalar. If that sequence already has items at some other indent, this one
+      // conflicts. (Community fix: PR #1895 by @asdf8675309.)
+      if (seqIndent !== null && seqIndent !== 0) malformed = true;
+      else seqIndent = 0;
+      cur.raw += "\n" + line;
     } else {
       // Orphan: a non-blank, non-key line with no field to attach to → this is
       // NOT real YAML frontmatter. Flag it; the migrator must not rewrite.
@@ -222,12 +274,16 @@ export function parseNote(content: string): ParsedNote {
     }
   }
   if (cur) fields.push(cur);
+  // Comments but not one single key: nothing to hang `lead` on, so serializeNote
+  // could not reproduce this block. Refuse to call it well-formed rather than let
+  // a caller rewrite it and drop the content.
+  else if (pendingLead.some((l) => l.trim().length > 0)) malformed = true;
   return { fields, body, hadFrontmatter: true, malformed };
 }
 
 /** Re-emit a note from ordered fields + verbatim body. */
 export function serializeNote(fields: FmField[], body: string): string {
-  const fm = fields.map((f) => f.raw).join("\n");
+  const fm = fields.map((f) => (f.lead ? `${f.lead}\n${f.raw}` : f.raw)).join("\n");
   return `---\n${fm}\n${body}`;
 }
 
@@ -460,7 +516,12 @@ export function validate(parsed: ParsedNote, _slug: string, dirType: CanonicalTy
   // in list form) is never "empty". `scalar` is undefined for BOTH an empty value
   // and a block, so the raw-newline check is what disambiguates (Forge #5, and the
   // block-tags false-positive it would otherwise cause).
-  const isEmptyField = (f: FmField) => !f.raw.includes("\n") && (!f.scalar || f.scalar.trim() === "");
+  // A comment line is not block content — `quality:` followed by `# TODO` is still
+  // an empty required field. (Community fix: PR #1895 by @asdf8675309, which made
+  // parseNote keep those comments instead of flagging the note malformed.)
+  const hasBlockContent = (f: FmField) =>
+    f.raw.split("\n").slice(1).some((l) => l.trim().length > 0 && !l.trimStart().startsWith("#"));
+  const isEmptyField = (f: FmField) => !hasBlockContent(f) && (!f.scalar || f.scalar.trim() === "");
   const missingOrEmpty = (k: string) => {
     const f = field(k);
     return !f || isEmptyField(f);
@@ -484,6 +545,18 @@ export function validate(parsed: ParsedNote, _slug: string, dirType: CanonicalTy
   if (t && (CANONICAL_TYPES as readonly string[]).includes(t) && t !== dirType) {
     // type disagrees with directory
     v.push({ key: "type", problem: `type "${t}" ≠ dir type "${dirType}"` });
+  }
+
+  // Every other select in the envelope declares a closed enum too, so enforce
+  // them all. Checking only `type` left the other `values` lists as decoration:
+  // an off-vocabulary `source_kind` passed a fully clean lint.
+  // (public PR #2042, @hjbrandt)
+  for (const f of ENVELOPE) {
+    if (f.key === "type" || f.format !== "select" || !f.values) continue;
+    const val = deq(get(f.key));
+    if (val && !f.values.includes(val)) {
+      v.push({ key: f.key, problem: `"${val}" not a valid ${f.key} (${f.values.join(" | ")})` });
+    }
   }
 
   // per-type required (present AND non-empty)
@@ -634,6 +707,14 @@ Body.
   // #6 quoted/commented enum values pass (no false positive).
   const quoted = parseNote('---\nid: kb_x\ntype: "idea"\ntitle: X\ntags: [a]\nquality: 5\ncreated: 2026-01-01\nupdated: 2026-01-01\nconvention: "kb-v3"\n---\nb\n');
   check("#6 quoted type/convention not false-flagged", !validate(quoted, "x", "idea").some((v) => v.key === "type" || v.key === "convention"));
+
+  // #7 every select enum is enforced, not just `type` (public PR #2042, @hjbrandt).
+  const badKind = parseNote('---\nid: kb_x\ntype: idea\ntitle: X\ntags: [a]\nquality: 5\nsource_kind: external\ncreated: 2026-01-01\nupdated: 2026-01-01\nconvention: kb-v3\n---\nb\n');
+  check("#7 off-vocabulary source_kind flagged", validate(badKind, "x", "idea").some((v) => v.key === "source_kind"));
+  const badStatus = parseNote('---\nid: kb_x\ntype: idea\ntitle: X\ntags: [a]\nquality: 5\nstatus: sprouting\ncreated: 2026-01-01\nupdated: 2026-01-01\nconvention: kb-v3\n---\nb\n');
+  check("#7 off-vocabulary status flagged", validate(badStatus, "x", "idea").some((v) => v.key === "status"));
+  const goodKind = parseNote('---\nid: kb_x\ntype: idea\ntitle: X\ntags: [a]\nquality: 5\nsource_kind: "video"\nstatus: seedling\nquality_inferred: true\ncreated: 2026-01-01\nupdated: 2026-01-01\nconvention: kb-v3\n---\nb\n');
+  check("#7 in-vocabulary select values pass", !validate(goodKind, "x", "idea").some((v) => v.key === "source_kind" || v.key === "status" || v.key === "quality_inferred"));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   return fail === 0 ? 0 : 1;

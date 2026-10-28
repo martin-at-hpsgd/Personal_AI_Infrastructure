@@ -1,0 +1,19 @@
+# Tools — the skill's tool catalog
+
+Every command, flag, output and exit code of the tools in `Tools/`. Each intent's Tool contract carries the commands that intent runs; this is the whole catalog.
+
+| Tool | What it does |
+|---|---|
+| `Tools/Inventory.ts <repo> [--json]` | Lists every HTTP route, CLI command, package script, SQL table and test file the repo exposes. Read-only. |
+| `Tools/Inventory.ts sync <repo> <isa> [--json]` | Surfaces no criterion names, probes pointing at missing files, and the surface kinds the tool can't see. Exit 1 when it finds gaps. |
+| `Tools/IsaCheck.ts bar <isa> [--json]` | Compound criteria, probes that AND two checks, criteria with no row. Exit 1 on any finding. |
+| `Tools/Checkup.ts <repo> [--isa <path>] [--since 14d] [--name <alias>] [--json]` | One read-only evidence bundle for Checkup: ISA standard, code, Bunker monitor state, Vigil, Errata, open Achilles. Unavailable sources are listed, never read as clean. |
+| `Tools/IsaCheck.ts acceptance <isa> [--since YYYY-MM-DD] [--json]` | Reads every `acceptance:` line and takes the newest by date, wherever it sits in the list. Exit 0 when that date has a pass or waived verdict and is not before `--since`; exit 1 on no dated line, a fail, pending or not-run verdict, or a stale date; exit 2 on bad input. |
+| `Tools/IsaCheck.ts conform <isa> [--json]` | Whether the ISA meets the current template, computed from its sections and never from its `isa_format` stamp. Prints `Latest template (2.30.0): yes` or `no`, then one line per missing item as `<code> <detail>`: `section-missing` (Ideal State, Test Strategy, or Harness on a project ISA; an empty body counts as missing), `ladder-missing` (L3 always; L2 and L1 on project ISAs), `no-criteria`, `criterion-no-row` (no valid Test Strategy row), `harness-shape` (neither a yaml block nor a `None — <reason>` line), `retired-section` (`## Goal`, `## Changelog`, `## Articulation`), `order` (a known section out of the spec's fixed order, with `## Features` also allowed in the Criteria slot; unknown headings such as `## Status` are ignored), `stamp-unearned`, `stamp-unknown`, `checkup-shape`. A task ISA (real path under `LIFEOS/MEMORY/WORK/`) needs no Harness, L2 or L1. `--json` prints `{template, latest, missing, stamp, checkup}`. Read-only. Exit 0 latest, 1 not, 2 bad input. |
+| `Tools/IsaCheck.ts stamp <isa> --verdict <word> --before <n> --after <m> [--json]` | Checkup's last step and the only writer of `checkup:` and `isa_format:`. Writes frontmatter `checkup: <local YYYY-MM-DD> <verdict> <n>→<m>`, removes any `checkup:` line under `## Status`, runs conform on the result, and writes `isa_format: 2.30.0` only when it is clean and ISAGate gives the same hard verdict with and without the new stamp (else code `gate-parity`, because the stamp also turns on the invalid-row rule); otherwise `isa_format` stays as it was and the missing items print. Prints the checkup line, the `isa_format` outcome and the conform report; `--json` prints `{ok, checkup, wroteFormat, removedStatusLines, conform}`. Exit 0 when the checkup was written, 2 on bad input (missing flag, a verdict that is not one word, a count that is not a whole number, no file, no frontmatter), with nothing written. |
+| `Tools/IsaCheck.ts write-probes <isa> [--json]` | Test Strategy rows that would write to a non-local target (local is judged by the URL host only). Test runs this first and stops on any finding; the bunker row engine does not call it. |
+> The Bunker CLI is maintainer-private and not in the public release; run code rows with `bun test ./<path>` and suite rows with `bun skills/Assay/Tools/EvalRunner.ts`.
+
+## Gotchas
+
+- **ISAGate's `bundled-claim` finding is not an atomicity check.** It fires only on two conjunctions, two semicolons or "including", and it is advisory on purpose; `IsaCheck.ts bar` is the atomicity check (2026-09-24 review: three compound criteria passed ISAGate clean).

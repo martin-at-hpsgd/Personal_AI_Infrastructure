@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { conform } from "../../TOOLS/lib/IsaTemplate";
 
 const MODULE_NAME = "projects";
 const USER_DIR = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "LIFEOS", "USER");
@@ -44,6 +45,22 @@ export interface Project {
   stack: string; // stack / description
   badges: Badge[]; // derived status flags
   openSession: boolean; // has a matching "Open Sessions to Resume" row
+  /**
+   * The project ISA's standing against the current ISA template, computed from
+   * <path>/ISA.md at request time. null when the project has no local path or
+   * no ISA.md there. Optional so the pure parsers stay unchanged; read() fills it.
+   */
+  isa?: ProjectIsa | null;
+}
+
+/** One project ISA's template standing and last checkup (ISA 20261012, F4). */
+export interface ProjectIsa {
+  path: string; // absolute path of the ISA.md that was read
+  template: string; // the template it was checked against (ISA_TEMPLATE_VERSION)
+  latest: boolean; // computed from the file's own sections, never from its stamp
+  missing: string[]; // human-readable: what keeps it off the latest template
+  stamp: string | null; // isa_format read as a version (3 → 2.29.0), or null
+  checkup: string | null; // frontmatter checkup: value, e.g. "2026-10-11 red 5→2"
 }
 
 // ── Cell helpers ─────────────────────────────────────────────────────────────
@@ -130,7 +147,7 @@ function openSessionLabels(md: string): string[] {
 /**
  * A project has an open session when a session label equals its name OR begins
  * with its name followed by a word boundary. Session rows are verbose descriptors
- * ("The Real Internet of Things (book site)", "Surface category lockdown"), so the
+ * ("Example project (book site)", "Another project category review"), so the
  * project name is a PREFIX of the label — exact-only matching under-counts.
  */
 function hasOpenSession(name: string, labels: string[]): boolean {
@@ -196,8 +213,19 @@ export function parseTelosProjects(md: string): Project[] {
   for (const raw of m[1].split("\n")) {
     let line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith("<!--")) continue;
-    line = line.replace(/^[-*]\s+/, ""); // tolerate bulleted form
-    const name = cleanName(line);
+
+    // public issue #2140, @drpaulobernardy: use the same bullet regex as GenerateTelosSummary.ts
+    // which correctly parses "- **ID:** text" by extracting ID and name separately.
+    // The bullet form accepts "- **M0**: text", "- M0: text", or colon-inside-bold "- **M0:** text".
+    // ID-less prose and plain bullets (the live TELOS shape) keep the previous path.
+    const bullet = line.match(/^[-*]\s+\*?\*?([A-Z]+\d+\w?)\*?\*?:\s*(.+)/);
+    let name: string;
+    if (bullet) {
+      name = bullet[2].replace(/^\*+\s*/, "").trim();
+    } else {
+      line = line.replace(/^[-*]\s+/, ""); // tolerate bulleted form
+      name = cleanName(line);
+    }
     if (!name) continue;
     projects.push({
       name,
@@ -212,6 +240,55 @@ export function parseTelosProjects(md: string): Project[] {
     });
   }
   return projects;
+}
+
+// ── ISA standing (read at request time) ─────────────────────────────────────
+
+/** Expand a leading ~ to the home directory. */
+function expandHome(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/")) return join(homedir(), p.slice(2));
+  return p;
+}
+
+/**
+ * Read <path>/ISA.md and compute its standing against the current template.
+ * Returns null when the path is empty or holds no ISA.md, never latest:false,
+ * so "no ISA" and "off-template ISA" stay distinct. A path cell carrying prose
+ * after the path ("~/Projects/X (+ worker)") is also tried by its first token.
+ * Read-only and fail-soft: an unreadable ISA reads as null with a warning.
+ */
+export function readProjectIsa(pathCell: string): ProjectIsa | null {
+  const cell = stripBackticks(pathCell ?? "");
+  if (!cell || cell === "—" || cell === "-") return null;
+  // Every local path in the cell, then each one's parent (a row may name a subfolder
+  // such as Pulse's Observability while the ISA sits one level up).
+  const paths = [cell, ...(cell.match(/(?:~|\/)[^\s·,;()]+/g) ?? [])].map((p) => p.replace(/\/+$/, ""));
+  const candidates = [...new Set([...paths, ...paths.map((p) => p.replace(/\/[^/]+$/, ""))])].filter(Boolean);
+  for (const c of candidates) {
+    const isaPath = join(expandHome(c), "ISA.md");
+    if (!existsSync(isaPath)) continue;
+    try {
+      const r = conform(readFileSync(isaPath, "utf8"), isaPath);
+      return {
+        path: isaPath,
+        template: r.template,
+        latest: r.latest,
+        missing: r.missing.map((m) => m.detail),
+        stamp: r.stamp,
+        checkup: r.checkup,
+      };
+    } catch (err) {
+      console.warn(`[${MODULE_NAME}] could not read ${isaPath}: ${String(err)}`);
+      return null;
+    }
+  }
+  return null;
+}
+
+/** Attach the ISA standing to every project; a project with no path gets null. */
+export function withIsa(projects: Project[]): Project[] {
+  return projects.map((p) => ({ ...p, isa: p.path ? readProjectIsa(p.path) : null }));
 }
 
 // ── Module contract ──────────────────────────────────────────────────────────
@@ -241,7 +318,7 @@ function readGroup(src: (typeof SOURCES)[number]): Group {
   try {
     if (!existsSync(src.path)) return { ...base, count: 0, projects: [], error: `${src.source} not found` };
     const md = readFileSync(src.path, "utf8");
-    const projects = src.kind === "telos" ? parseTelosProjects(md) : parseProjects(md);
+    const projects = withIsa(src.kind === "telos" ? parseTelosProjects(md) : parseProjects(md));
     const group: Group = { ...base, count: projects.length, projects };
     // Drift signal: file has content but nothing parsed → heading/format changed.
     if (projects.length === 0 && md.trim().length > 0) {

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.0.2
  * RetagSweepTypes.ts — one-shot backfill of canonical Type:* labels onto the
  * auto-sweep / auto-native issues that WorkSweep created with the generic
  * Type:queue. Companion to the classifyType() fix in WorkSweep.ts: that stops

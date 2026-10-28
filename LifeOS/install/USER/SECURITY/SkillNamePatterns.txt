@@ -1,0 +1,14 @@
+# Name literals the skill hygiene gate must never find inside a skill.
+#
+# One pattern per line, matched case-insensitively as a ripgrep regex across
+# skills/. Blank lines and lines starting with # are ignored. Put the names
+# that identify you or your organization and must not appear in skill code:
+# your surname, your company, a private product name.
+#
+# Examples (delete the leading # to use one):
+# acme-corp
+# \bexample-product\b
+#
+# Empty (as shipped) means no name literals are checked. The gate then prints
+# "name-literals: ABSENT" in its header and still runs the deny-list scan.
+# Check with: bun LIFEOS/TOOLS/SkillHygieneGate.ts

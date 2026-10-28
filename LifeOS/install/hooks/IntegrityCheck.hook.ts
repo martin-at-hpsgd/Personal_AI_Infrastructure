@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 /**
- * @version 1.3.10
+ * @version 1.3.12
  * IntegrityCheck.hook.ts - LifeOS Integrity Check (SessionEnd)
+ *
+ * NOTE: despite the name, this hook runs IntegrityMaintenance (handleSystemIntegrity) — it is NOT
+ * the /ic check, which is LIFEOS/TOOLS/IntegrityCheck.ts and runs via /ic and the ReleaseCandidate intent (/rc). public issue #2016, @lgertel
  *
  * Runs system integrity check — detects LifeOS system file changes, spawns background maintenance.
  * Doc cross-ref integrity is handled by DocIntegrity.hook.ts (SessionEnd event) to avoid double execution.

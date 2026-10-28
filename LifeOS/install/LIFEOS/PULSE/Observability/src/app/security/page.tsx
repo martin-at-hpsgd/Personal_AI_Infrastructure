@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { useApi } from "@/lib/api";
 import {
   Shield, ShieldAlert, ShieldX, ShieldCheck, Eye, Lock,
   FileWarning, Server, Info, ChevronDown, ChevronRight, Terminal, Globe,
@@ -10,6 +11,7 @@ import {
   type Dim,
 } from "@/components/ui/chrome";
 import type { LucideIcon } from "lucide-react";
+import TelosRiskRegister from "@/components/TelosRiskRegister";
 
 // ── API shape (as of the 2026-05-06 minimal-v1 security model) ──
 // GET /api/security             → { model, description, denyList, hooks }
@@ -46,24 +48,6 @@ interface AttackSurfaceData {
   } | null;
 }
 
-// ── /api/threatmodel (PRIVATE — risk-register posture, redacted) ──
-interface RiskSummary {
-  id: string; title: string; threat: string;
-  level: "Critical" | "High" | "Medium" | "Low";
-  score: number; likelihood: number; impact: number;
-  status: string; assets: string[]; data_classes: string[];
-  owner: string; response: string; review_by: string; overdue: boolean;
-}
-interface ThreatModelData {
-  available: boolean;
-  grade?: "red" | "orange" | "green";
-  total?: number; open?: number; overdue_review?: number;
-  byLevel?: Record<string, number>;
-  byStatus?: Record<string, number>;
-  risks?: RiskSummary[];
-  updated?: string | null;
-}
-
 /**
  * State of a PRIVATE endpoint: null while the fetch is in flight, "unavailable"
  * once it has failed. The two private sections used to share `null` for both, so
@@ -73,12 +57,10 @@ interface ThreatModelData {
  */
 type PrivateData<T> = T | "unavailable" | null;
 
-/** Fetch a private endpoint, collapsing a bad status or a thrown error to "unavailable". */
-function fetchPrivate<T>(path: string, set: (v: PrivateData<T>) => void): void {
-  fetch(path)
-    .then((r) => (r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(String(r.status)))))
-    .then(set)
-    .catch(() => set("unavailable"));
+/** Read a private endpoint, collapsing a bad status or a thrown error to "unavailable". */
+function usePrivate<T>(path: string): PrivateData<T> {
+  const q = useApi<T>(path);
+  return q.data ?? (q.isError ? "unavailable" : null);
 }
 
 /** Shared body for a section whose private source isn't part of this install. */
@@ -90,8 +72,6 @@ function NotConfigured({ what }: { what: string }) {
   );
 }
 
-const LEVEL_DIM: Record<string, Dim> = { Critical: "err", High: "warn", Medium: "freedom", Low: "rhythms" };
-const GRADE_DIM: Record<string, Dim> = { red: "err", orange: "warn", green: "ok" };
 
 function relTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -265,6 +245,7 @@ function TypePill({ type, multiTenant }: { type: string; multiTenant?: boolean }
 
 function AttackSurfaceSection({ surface }: { surface: PrivateData<AttackSurfaceData> }) {
   const [showTargets, setShowTargets] = useState(false);
+  const [sev, setSev] = useState<string | null>(null);
   if (surface === "unavailable") {
     return (
       <div>
@@ -285,6 +266,9 @@ function AttackSurfaceSection({ surface }: { surface: PrivateData<AttackSurfaceD
   const scan = surface.scan;
   const fc = scan?.findingCounts;
   const critHigh = [...(scan?.findings?.critical ?? []), ...(scan?.findings?.high ?? [])];
+  // Severity tiles filter the findings panel: no tile → the default crit+high view;
+  // an active tile → that one severity (medium/low included, keyed straight off scan.findings).
+  const shown = sev ? (scan?.findings?.[sev] ?? []) : critHigh;
 
   return (
     <div>
@@ -303,15 +287,19 @@ function AttackSurfaceSection({ surface }: { surface: PrivateData<AttackSurfaceD
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <StatTile icon={ShieldX} label="Critical" value={fc?.critical ?? 0} dim={fc?.critical ? "err" : "ok"} />
-        <StatTile icon={ShieldAlert} label="High" value={fc?.high ?? 0} dim={fc?.high ? "warn" : "ok"} />
-        <StatTile icon={Eye} label="Medium" value={fc?.medium ?? 0} dim="freedom" />
-        <StatTile icon={Info} label="Low" value={fc?.low ?? 0} dim="rhythms" />
+        <StatTile icon={ShieldX} label="Critical" value={fc?.critical ?? 0} dim={fc?.critical ? "err" : "ok"}
+          active={sev === "critical"} onClick={() => setSev(sev === "critical" ? null : "critical")} />
+        <StatTile icon={ShieldAlert} label="High" value={fc?.high ?? 0} dim={fc?.high ? "warn" : "ok"}
+          active={sev === "high"} onClick={() => setSev(sev === "high" ? null : "high")} />
+        <StatTile icon={Eye} label="Medium" value={fc?.medium ?? 0} dim="freedom"
+          active={sev === "medium"} onClick={() => setSev(sev === "medium" ? null : "medium")} />
+        <StatTile icon={Info} label="Low" value={fc?.low ?? 0} dim="rhythms"
+          active={sev === "low"} onClick={() => setSev(sev === "low" ? null : "low")} />
       </div>
 
-      {critHigh.length > 0 ? (
+      {shown.length > 0 ? (
         <Panel className="p-2 mb-3">
-          {critHigh.map((f, i) => (
+          {shown.map((f, i) => (
             <div key={i} className="flex items-start gap-2 px-2 py-1.5 text-xs border-b last:border-b-0 border-[var(--hairline)]">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-err" />
               <span className="mono text-ink-1">{f.target}</span>
@@ -322,7 +310,7 @@ function AttackSurfaceSection({ surface }: { surface: PrivateData<AttackSurfaceD
         </Panel>
       ) : (
         <p className="text-xs mb-3 flex items-center gap-1.5 text-ink-2">
-          <ShieldCheck className="w-3.5 h-3.5 text-ok" /> No critical or high findings on the current surface.
+          <ShieldCheck className="w-3.5 h-3.5 text-ok" /> {sev ? `No ${sev} findings on the current surface.` : "No critical or high findings on the current surface."}
         </p>
       )}
 
@@ -352,110 +340,14 @@ function AttackSurfaceSection({ surface }: { surface: PrivateData<AttackSurfaceD
   );
 }
 
-function RiskRegisterSection({ tm }: { tm: PrivateData<ThreatModelData> }) {
-  if (tm === "unavailable") {
-    return (
-      <div>
-        <SectionHeader icon={FileWarning} title="Risk Register" accentClass="text-warn" />
-        <NotConfigured what="the risk register is served by the ThreatModel skill on the machine running Pulse." />
-      </div>
-    );
-  }
-  if (!tm) {
-    return (
-      <div>
-        <SectionHeader icon={FileWarning} title="Risk Register" accentClass="text-warn" />
-        <Panel><p className="text-xs text-center py-6 text-ink-3">Loading risk register…</p></Panel>
-      </div>
-    );
-  }
-  if (!tm.available) {
-    return (
-      <div>
-        <SectionHeader icon={FileWarning} title="Risk Register" accentClass="text-warn" />
-        <Panel>
-          <p className="text-xs text-center py-6 text-ink-3">
-            No risk register yet — run <code className="mono text-ink-2">bun ~/.claude/skills/ThreatModel/Tools/RiskRegister.ts init</code>
-          </p>
-        </Panel>
-      </div>
-    );
-  }
-  const bl = tm.byLevel ?? {};
-  const risks = (tm.risks ?? []).filter(r => r.status !== "closed");
-  const gradeDim = GRADE_DIM[tm.grade ?? "green"] ?? "neutral";
-  const gradeLabel = { red: "Red", orange: "Orange", green: "Green" }[tm.grade ?? "green"];
-
-  return (
-    <div>
-      <SectionHeader icon={FileWarning} title="Risk Register" count={tm.open ?? 0} accentClass="text-warn" />
-      <p className="text-xs mb-3 flex items-center gap-1.5 text-ink-2">
-        <Info className="w-3 h-3" /> Defensive threat-model risks, scored likelihood×impact. Managed via the ThreatModel skill; data is private.
-      </p>
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-3">
-        <StatTile icon={Shield} label="Grade" value={gradeLabel ?? "—"} dim={gradeDim} />
-        <StatTile icon={ShieldX} label="Critical" value={bl.Critical ?? 0} dim={bl.Critical ? "err" : "ok"} />
-        <StatTile icon={ShieldAlert} label="High" value={bl.High ?? 0} dim={bl.High ? "warn" : "ok"} />
-        <StatTile icon={Eye} label="Medium" value={bl.Medium ?? 0} dim="freedom" />
-        <StatTile icon={Info} label="Low" value={bl.Low ?? 0} dim="rhythms" />
-        <StatTile icon={Clock} label="Overdue" value={tm.overdue_review ?? 0} dim={tm.overdue_review ? "warn" : "ok"} />
-      </div>
-      {risks.length === 0 ? (
-        <Panel><p className="text-xs text-center py-6 text-ink-3">No open risks.</p></Panel>
-      ) : (
-        <Panel className="p-0 overflow-hidden">
-          {risks.map((r, i) => (
-            <div key={r.id} className={`flex items-start gap-3 p-3 ${i > 0 ? "border-t border-line" : ""}`}>
-              <Pill dim={LEVEL_DIM[r.level] ?? "neutral"} title={`score ${r.score} = L${r.likelihood}×I${r.impact}`}>
-                {r.level} · {r.score}
-              </Pill>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="mono text-xs text-ink-3">{r.id}</span>
-                  <span className="text-sm text-ink-1">{r.title}</span>
-                  {r.overdue && <Pill dim="warn" title="review overdue"><Clock className="w-3 h-3 inline" /> overdue</Pill>}
-                </div>
-                <p className="text-xs mt-1 text-ink-3">{r.threat}</p>
-                <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                  {r.data_classes.map(dc => <Pill key={dc} dim="creative">{dc}</Pill>)}
-                  {r.assets.slice(0, 3).map(a => <span key={a} className="mono text-[10px] text-ink-3">{a}</span>)}
-                  {r.assets.length > 3 && <span className="text-[10px] text-ink-3">+{r.assets.length - 3}</span>}
-                </div>
-              </div>
-              <div className="text-right shrink-0 text-[10px] text-ink-3">
-                <div>{r.owner || "—"}</div>
-                <div>review {r.review_by || "—"}</div>
-              </div>
-            </div>
-          ))}
-        </Panel>
-      )}
-      <p className="text-xs mt-3 ml-1 text-ink-3">
-        Skill: <code className="text-ink-2">skills/ThreatModel</code> · data: <code className="text-ink-2">LIFEOS/USER/SECURITY/THREATMODEL</code>
-      </p>
-    </div>
-  );
-}
-
 export default function SecurityPage() {
-  const [data, setData] = useState<SecurityData | null>(null);
-  const [hookDetails, setHookDetails] = useState<Record<string, HookDetail>>({});
-  const [surface, setSurface] = useState<PrivateData<AttackSurfaceData>>(null);
-  const [threatModel, setThreatModel] = useState<PrivateData<ThreatModelData>>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
-  const fetchData = useCallback(() => {
-    fetch("/api/security")
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => { setFailed(true); setLoading(false); });
-    fetch("/api/security/hooks-detail").then(r => r.json()).then(setHookDetails).catch(() => {});
-    fetchPrivate<AttackSurfaceData>("/api/security/attack-surface", setSurface);
-    fetchPrivate<ThreatModelData>("/api/threatmodel", setThreatModel);
-  }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const securityQ = useApi<SecurityData>("/api/security");
+  const data = securityQ.data ?? null;
+  const hookDetails = useApi<Record<string, HookDetail>>("/api/security/hooks-detail").data ?? {};
+  const surface = usePrivate<AttackSurfaceData>("/api/security/attack-surface");
+  const loading = securityQ.isPending;
+  const failed = securityQ.isError;
+  const [hookFilter, setHookFilter] = useState<"active" | "missing" | null>(null);
 
   if (loading) {
     return (
@@ -476,6 +368,9 @@ export default function SecurityPage() {
   const hooks = data.hooks ?? [];
   const activeHooks = hooks.filter(h => h.status === "active").length;
   const missingHooks = hooks.length - activeHooks;
+  const shownHooks = hookFilter
+    ? hooks.filter(h => (hookFilter === "active" ? h.status === "active" : h.status !== "active"))
+    : hooks;
 
   return (
     <PageShell>
@@ -490,15 +385,15 @@ export default function SecurityPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatTile icon={ShieldCheck} label="Defense Layers" value={3} dim="ok" />
         <StatTile icon={ShieldX} label="Deny Rules" value={data.denyList?.length ?? 0} dim="err" />
-        <StatTile icon={Server} label="Active Hooks" value={activeHooks} dim="freedom" />
-        {missingHooks > 0 && <StatTile icon={ShieldAlert} label="Missing Hooks" value={missingHooks} dim="warn" />}
+        <StatTile icon={Server} label="Active Hooks" value={activeHooks} dim="freedom"
+          active={hookFilter === "active"} onClick={() => setHookFilter(hookFilter === "active" ? null : "active")} />
+        {missingHooks > 0 && <StatTile icon={ShieldAlert} label="Missing Hooks" value={missingHooks} dim="warn"
+          active={hookFilter === "missing"} onClick={() => setHookFilter(hookFilter === "missing" ? null : "missing")} />}
       </div>
 
       {/* Attack Surface Monitoring (private, runtime-only) */}
       <AttackSurfaceSection surface={surface} />
-
-      {/* Risk Register (private — ThreatModel skill) */}
-      <RiskRegisterSection tm={threatModel} />
+      <TelosRiskRegister securityOnly readyToScroll={surface !== null} />
 
       {/* Three-layer model */}
       <div>
@@ -515,9 +410,9 @@ export default function SecurityPage() {
             body="Harness-enforced hard denials. The list below. Deterministic — the call never runs. Edit these in settings.json directly."
           />
           <LayerCard
-            n={3} icon={ShieldAlert} title="Safety Hook" dim="warn"
-            where="hooks/Safety.hook.ts"
-            body="One consolidated hook, two events. Its PostToolUse path tags every WebFetch/WebSearch result as data before it reaches the model; its PermissionRequest path shape-classifies outgoing tool calls. Advisory — the constitutional rule does the enforcing."
+            n={3} icon={ShieldAlert} title="Git Hooks" dim="warn"
+            where="LIFEOS/TOOLS/githooks/"
+            body="Git judges what actually lands, from any tool. pre-commit refuses a plaintext .env, secret-shaped values and identity content in system files; pre-push refuses any remote GitHub does not confirm private. No LifeOS hook reads a tool call to decide whether it may run."
           />
         </div>
         <p className="text-xs mb-2 ml-1 text-ink-2">
@@ -544,17 +439,17 @@ export default function SecurityPage() {
 
       {/* Hooks */}
       <div>
-        <SectionHeader icon={Server} title="Security Hooks" count={hooks.length} />
+        <SectionHeader icon={Server} title="Security Hooks" count={shownHooks.length} />
         <p className="text-xs mb-3 flex items-center gap-1.5 text-ink-2">
           <Info className="w-3 h-3" /> Click a hook to see what it does and whether it can block a call. Green = registered and the file exists.
         </p>
-        {hooks.length === 0 ? (
+        {shownHooks.length === 0 ? (
           <Panel>
-            <p className="text-xs text-center py-6 text-ink-3">No security hooks registered.</p>
+            <p className="text-xs text-center py-6 text-ink-3">{hookFilter ? "No hooks in this view." : "No security hooks registered."}</p>
           </Panel>
         ) : (
           <Panel className="p-2">
-            {hooks.map((hook, i) => (
+            {shownHooks.map((hook, i) => (
               <HookDetailRow key={i} hook={hook} detail={hookDetails[hook.command]} />
             ))}
           </Panel>

@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.5.0
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -14,7 +17,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  *   bumpTelosTimestamp()  → updates the per-section marker (and file frontmatter)
  *
  * Same data, two consumers:
- *   - skills/Interview workflow → opens `/interview` with the most-stale sections
+ *   - skills/Interview intent → opens `/interview` with the most-stale sections
  *   - LIFEOS/PULSE/modules/telos.ts → /api/telos/freshness, DA-panel surface
  *
  * Convention:
@@ -34,6 +37,10 @@ import { getDAName } from "../../hooks/lib/identity"
 
 import { basename, join } from "path";
 import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { linesOutsideRegions } from "./TelosRegions";
+import { invariant, InvariantViolation } from "./Invariant";
+import { withTelosLock, type TelosLockHandle } from "./TelosLock";
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -43,7 +50,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const TELOS_PATH = join(LIFEOS_DIR, "USER", "TELOS", "TELOS.md");
 const DA_IDENTITY_PATH = join(LIFEOS_DIR, "USER", "DIGITAL_ASSISTANT", "DA_IDENTITY.md");
 const PRINCIPAL_IDENTITY_PATH = join(LIFEOS_DIR, "USER", "PRINCIPAL", "PRINCIPAL_IDENTITY.md");
@@ -74,6 +81,7 @@ export const STALENESS_THRESHOLDS: Record<string, number> = {
   challenges: 60,
   narratives: 60,
   predictions: 60,
+  risks: 30,          // the `## Risks (RN)` register — prevent/detect/respond states move monthly
 
   // Slow-moving foundational — quarterly review cadence
   mission: 90,
@@ -256,7 +264,11 @@ export interface FileFreshness {
 
 export interface ContextFreshness {
   files: FileFreshness[];
+  /** Every file read, generated ones included. */
   total: number;
+  /** Files a human reviews: `total` minus auto-generated derivatives. Every count
+   *  and score below is over THIS population (public issue #2203, @bak3r). */
+  graded_total: number;
   fresh_count: number;
   stale_count: number;
   most_stale: FileFreshness | null;
@@ -320,6 +332,7 @@ const LEGACY_SECTION_FILES: Record<string, string> = {
   frames:      "FRAMES.md",
   wisdom:      "WISDOM.md",
   predictions: "PREDICTIONS.md",
+  risks:       "RISKS.md",
 
   // Read-tolerance only (public PR #1587, @asdf8675309). On a split-file TELOS
   // these sections live in their own sibling files, and freshness scored every
@@ -523,7 +536,12 @@ export function readTelosFreshness(path: string = TELOS_PATH): TelosFreshness {
   const now = new Date();
   const fileAgeDays = fileUpdated ? daysBetween(fileUpdated, now) : null;
 
-  const lines = raw.split("\n");
+  // Only hand-written lines count: the machine-owned AUTOMATED regions
+  // (TelosRegions.ts) are skipped, so a region render never moves a section's
+  // date, staleness or preview. `kept` holds each kept line's real
+  // 1-based number so `line` still points into the file on disk.
+  const kept = linesOutsideRegions(raw);
+  const lines = kept.map((l) => l.text);
   const sections: SectionFreshness[] = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -561,7 +579,7 @@ export function readTelosFreshness(path: string = TELOS_PATH): TelosFreshness {
     const ageDays = updated ? daysBetween(updated, now) : null;
     const stale = ageDays === null || ageDays > thresholdDays;
 
-    sections.push({ name, slug, updated, ageDays, thresholdDays, stale, preview, line: i + 1 });
+    sections.push({ name, slug, updated, ageDays, thresholdDays, stale, preview, line: kept[i].line });
   }
 
   const staleSections = sections
@@ -681,19 +699,28 @@ function fileFreshnessFor(entry: ContextFile, now: Date): FileFreshness {
     };
 }
 
+/** Derivatives (PRINCIPAL_TELOS, ARCHITECTURE_SUMMARY) are reviewed through their
+ *  source; they stay listed in `files` but are never scored or counted
+ *  (public issue #2203, @bak3r). */
+export function gradedFiles(files: FileFreshness[]): FileFreshness[] {
+  return files.filter((file) => !file.is_auto_generated);
+}
+
 function assembleContextFreshness(files: FileFreshness[], now: Date): ContextFreshness {
-  const staleFiles = files.filter((file) => file.stale);
+  const graded = gradedFiles(files);
+  const staleFiles = graded.filter((file) => file.stale);
   const most_stale = pickMostStale(files, staleFiles);
 
-  const overall_pct = files.length
-    ? Math.round(files.reduce((sum, f) => sum + f.pct, 0) / files.length)
+  const overall_pct = graded.length
+    ? Math.round(graded.reduce((sum, f) => sum + f.pct, 0) / graded.length)
     : 0;
-  const overall_grade = aggregateGrade(files.map((f) => f.grade));
+  const overall_grade = aggregateGrade(graded.map((f) => f.grade));
 
   return {
     files,
     total: files.length,
-    fresh_count: files.length - staleFiles.length,
+    graded_total: graded.length,
+    fresh_count: graded.length - staleFiles.length,
     stale_count: staleFiles.length,
     most_stale,
     generated_at: now,
@@ -748,7 +775,20 @@ export function bumpTelosTimestamp(
   path: string = TELOS_PATH,
 ): { changed: boolean; sectionFound: boolean } {
   if (!existsSync(path)) return { changed: false, sectionFound: false };
+  // The read and the write run under the shared TELOS lock, so a concurrent
+  // editor save or region write cannot land in between and be overwritten.
+  // A busy lock throws TelosLockTimeout and nothing is written.
+  const result = withTelosLock(path, (lock) => bumpTelosTimestampLocked(slug, by, path, lock));
+  if (result.changed) refreshFreshnessCache();
+  return result;
+}
 
+function bumpTelosTimestampLocked(
+  slug: string | undefined,
+  by: string,
+  path: string,
+  lock: TelosLockHandle,
+): { changed: boolean; sectionFound: boolean } {
   const today = new Date().toISOString().slice(0, 10);
   const isoNow = new Date().toISOString();
   let raw = readFileSync(path, "utf-8");
@@ -804,21 +844,24 @@ export function bumpTelosTimestamp(
     raw = lines.join("\n");
   }
 
+  invariant(lock.held(), `TELOS lock on ${path} was lost before the timestamp write`);
   writeFileSync(path, raw);
-  refreshFreshnessCache();
   return { changed: true, sectionFound };
 }
 
 export function bumpContextTimestamp(filePath: string, by: string = getDAName()): { changed: boolean } {
   if (!existsSync(filePath)) return { changed: false };
 
-  const raw = readFileSync(filePath, "utf-8");
-  const next = bumpFileFrontmatter(raw, new Date().toISOString(), by);
-  if (next === raw) return { changed: false };
-
-  writeFileSync(filePath, next);
-  refreshFreshnessCache();
-  return { changed: true };
+  const changed = withTelosLock(filePath, (lock) => {
+    const raw = readFileSync(filePath, "utf-8");
+    const next = bumpFileFrontmatter(raw, new Date().toISOString(), by);
+    if (next === raw) return false;
+    invariant(lock.held(), `lock on ${filePath} was lost before the timestamp write`);
+    writeFileSync(filePath, next);
+    return true;
+  });
+  if (changed) refreshFreshnessCache();
+  return { changed };
 }
 
 /**
@@ -830,7 +873,12 @@ export function bumpContextTimestamp(filePath: string, by: string = getDAName())
  */
 export function bumpReviewedTimestamp(filePath: string, by: string = "user"): { changed: boolean } {
   if (!existsSync(filePath)) return { changed: false };
+  const changed = withTelosLock(filePath, (lock) => bumpReviewedTimestampLocked(filePath, by, lock));
+  if (changed) refreshFreshnessCache();
+  return { changed };
+}
 
+function bumpReviewedTimestampLocked(filePath: string, by: string, lock: TelosLockHandle): boolean {
   const raw = readFileSync(filePath, "utf-8");
   const isoNow = new Date().toISOString();
 
@@ -857,10 +905,10 @@ export function bumpReviewedTimestamp(filePath: string, by: string = "user"): { 
       next;
   }
 
-  if (next === raw) return { changed: false };
+  if (next === raw) return false;
+  invariant(lock.held(), `lock on ${filePath} was lost before the review-timestamp write`);
   writeFileSync(filePath, next);
-  refreshFreshnessCache();
-  return { changed: true };
+  return true;
 }
 
 /**
@@ -877,7 +925,7 @@ export function bumpReviewedTimestamp(filePath: string, by: string = "user"): { 
  * in the header is what keeps the release audit honest. The key is never invented: a file
  * carrying no `provenance` keeps none, because the audit's missing-key case is already a
  * violation and inventing one would paper over it. `customized` (not `mixed`) matches
- * every existing writer of this transition — MarkCustomized.ts, provenance-watcher.ts.
+ * every existing writer of this transition — MarkCustomized.ts.
  *
  * `last_reviewed` is deliberately untouched — only a principal review bumps that
  * (see `bumpReviewedTimestamp`), and a machine write is not a review.
@@ -893,32 +941,44 @@ export function stampContextWrite(
 ): { changed: boolean; provenanceFlipped: boolean } {
   try {
     if (!existsSync(filePath)) return { changed: false, provenanceFlipped: false };
-
-    const raw = readFileSync(filePath, "utf-8");
-    let next = bumpFileFrontmatter(raw, new Date().toISOString(), by);
-
-    let provenanceFlipped = false;
-    const end = next.indexOf("\n---\n", 4);
-    if (next.startsWith("---\n") && end !== -1) {
-      const fmBlock = next.slice(4, end);
-      if (/^provenance:[ \t]*template[ \t]*$/m.test(fmBlock)) {
-        next =
-          "---\n" +
-          fmBlock.replace(/^provenance:[ \t]*template[ \t]*$/m, "provenance: customized") +
-          "\n---\n" +
-          next.slice(end + 5);
-        provenanceFlipped = true;
-      }
-    }
-
-    if (next === raw) return { changed: false, provenanceFlipped: false };
-    writeFileSync(filePath, next);
-    refreshFreshnessCache();
-    return { changed: true, provenanceFlipped };
-  } catch {
-    // Never fail a caller's write because the header could not be stamped.
+    const result = withTelosLock(filePath, (lock) => stampContextWriteLocked(filePath, by, lock));
+    if (result.changed) refreshFreshnessCache();
+    return result;
+  } catch (err) {
+    // Never fail a caller's write because the header could not be stamped, but a
+    // stamp skipped for a busy lock or a bad file is said out loud, never swallowed.
+    if (err instanceof InvariantViolation) throw err;
+    console.error(`[TelosFreshness] stamp skipped for ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
     return { changed: false, provenanceFlipped: false };
   }
+}
+
+function stampContextWriteLocked(
+  filePath: string,
+  by: string,
+  lock: TelosLockHandle,
+): { changed: boolean; provenanceFlipped: boolean } {
+  const raw = readFileSync(filePath, "utf-8");
+  let next = bumpFileFrontmatter(raw, new Date().toISOString(), by);
+
+  let provenanceFlipped = false;
+  const end = next.indexOf("\n---\n", 4);
+  if (next.startsWith("---\n") && end !== -1) {
+    const fmBlock = next.slice(4, end);
+    if (/^provenance:[ \t]*template[ \t]*$/m.test(fmBlock)) {
+      next =
+        "---\n" +
+        fmBlock.replace(/^provenance:[ \t]*template[ \t]*$/m, "provenance: customized") +
+        "\n---\n" +
+        next.slice(end + 5);
+      provenanceFlipped = true;
+    }
+  }
+
+  if (next === raw) return { changed: false, provenanceFlipped: false };
+  invariant(lock.held(), `lock on ${filePath} was lost before the stamp write`);
+  writeFileSync(filePath, next);
+  return { changed: true, provenanceFlipped };
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────

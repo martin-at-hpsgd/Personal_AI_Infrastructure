@@ -50,7 +50,7 @@ interface UnifiedTask {
   name: string;
   schedule: string;
   status: string;
-  source: "da" | "pulse" | "claude-code" | "launchd" | "arbol" | "hermes";
+  source: "da" | "pulse" | "claude-code" | "launchd" | "cloud" | "hermes";
   details?: Record<string, unknown>;
 }
 
@@ -71,7 +71,7 @@ interface HermesHealth {
 interface TasksResponse {
   tasks: UnifiedTask[];
   count: number;
-  by_source: { da: number; pulse: number; "claude-code": number; launchd: number; arbol?: number; hermes?: number };
+  by_source: { da: number; pulse: number; "claude-code": number; launchd: number; cloud?: number; hermes?: number };
   /** The sidecar process itself — null when the probe failed. */
   hermes?: HermesHealth | null;
 }
@@ -237,10 +237,10 @@ export default function AssistantPage() {
   const [activeTab, setActiveTab] = useState<"tasks" | "personality" | "hermes" | "diary">("tasks");
   // Which scheduler the Scheduled Tasks tab is showing. Pulse cron is the default
   // because it is the one Pulse actually owns and the one that gets edited.
-  const [scheduleTab, setScheduleTab] = useState<"pulse" | "launchd" | "claude-code" | "arbol" | "hermes">("pulse");
+  const [scheduleTab, setScheduleTab] = useState<"pulse" | "launchd" | "claude-code" | "cloud" | "hermes">("pulse");
 
   const { data: identity } = useQuery<Identity>({ queryKey: ["assistant-identity"], queryFn: () => localApiCall("/assistant/identity"), refetchInterval: 30_000 });
-  const { data: health } = useQuery<Health>({ queryKey: ["assistant-health"], queryFn: () => localApiCall("/assistant/health"), refetchInterval: 10_000 });
+  const { data: health, isError: backendMissing } = useQuery<Health>({ queryKey: ["assistant-health"], queryFn: () => localApiCall("/assistant/health"), refetchInterval: 10_000 });
   const { data: personality } = useQuery<Personality>({ queryKey: ["assistant-personality"], queryFn: () => localApiCall("/assistant/personality"), refetchInterval: 60_000 });
   const { data: tasksData } = useQuery<TasksResponse>({ queryKey: ["assistant-tasks"], queryFn: () => localApiCall("/assistant/tasks"), refetchInterval: 15_000 });
   const { data: diaryData } = useQuery<{ entries: DiaryEntry[] }>({ queryKey: ["assistant-diary"], queryFn: () => localApiCall("/assistant/diary"), refetchInterval: 60_000 });
@@ -318,7 +318,7 @@ export default function AssistantPage() {
 
   // Heuristic: is a Claude Code trigger actually a loop?
   // Triggers populated by `claude triggers list` may include /loop sessions —
-  // surface those distinctly so {{PRINCIPAL_NAME}} can tell them apart from one-shot crons.
+  // surface those distinctly so the principal can tell them apart from one-shot crons.
   function detectLoop(task: UnifiedTask): boolean {
     const name = (task.name ?? "").toLowerCase();
     const sched = (task.schedule ?? "").toLowerCase();
@@ -351,7 +351,7 @@ export default function AssistantPage() {
     { id: "pulse", label: "Pulse Cron", dim: "rhythms", hint: cronData ? `${cronData.counts.enabled}/${cronData.counts.total}` : undefined },
     { id: "launchd", label: "launchd", dim: "freedom", hint: tasksData?.by_source.launchd || undefined },
     { id: "claude-code", label: "Claude Code", dim: "freedom", hint: tasksData?.by_source["claude-code"] || undefined },
-    { id: "arbol", label: "Arbol", dim: "creative", hint: tasksData?.by_source.arbol || undefined },
+    { id: "cloud", label: "Cloud Workflows", dim: "creative", hint: tasksData?.by_source.cloud || undefined },
     { id: "hermes", label: "Hermes", dim: "relationships", hint: tasksData?.by_source.hermes || undefined },
   ];
 
@@ -362,7 +362,9 @@ export default function AssistantPage() {
     { id: "diary", label: "Diary", dim: "rhythms" },
   ];
 
-  const isFreshInstall = health ? !health.identity_loaded : !identity;
+  // PULSE/Assistant/ is stripped from the public release, so /assistant/* 404s
+  // there and the page cannot know the identity state. public issue #2217, @corobis
+  const isFreshInstall = health ? !health.identity_loaded : (!backendMissing && !identity);
 
   return (
     <PageShell fullBleed className="overflow-auto">
@@ -377,9 +379,16 @@ export default function AssistantPage() {
           <EmptyStateGuide
             section="DA Identity"
             description="Your DA's name, voice, personality, and the diary they keep about your work together."
-            userDir="DA"
+            userDir="DIGITAL_ASSISTANT"
             daPromptExample="set up my DA's identity and personality"
           />
+        )}
+
+        {/* The backend is stripped from the public release; say so instead of showing empty data. */}
+        {backendMissing && (
+          <div className="text-sm text-warn">
+            Unavailable: the Assistant backend (PULSE/Assistant) is not installed, so schedules, personality edits and the diary cannot be read or changed here.
+          </div>
         )}
 
         {/* Stats */}
@@ -391,11 +400,21 @@ export default function AssistantPage() {
               value={health.status === "ok" ? "Online" : health.status}
               dim={health.status === "ok" ? "ok" : "err"}
             />
-            <StatTile label="CC Scheduled" icon={Terminal} value={String(tasksData?.by_source["claude-code"] ?? 0)} />
-            <StatTile label="Cron Jobs" icon={Zap} value={String(tasksData?.by_source.pulse ?? 0)} />
-            <StatTile label="launchd" icon={Activity} value={String(tasksData?.by_source.launchd ?? 0)} />
-            <StatTile label="Arbol" icon={Cloud} value={String(tasksData?.by_source.arbol ?? 0)} />
-            <StatTile label="Hermes" icon={MessageSquare} value={String(tasksData?.by_source.hermes ?? 0)} />
+            <StatTile label="CC Scheduled" icon={Terminal} value={String(tasksData?.by_source["claude-code"] ?? 0)}
+              active={activeTab === "tasks" && scheduleTab === "claude-code"}
+              onClick={() => { setActiveTab("tasks"); setScheduleTab("claude-code"); }} />
+            <StatTile label="Cron Jobs" icon={Zap} value={String(tasksData?.by_source.pulse ?? 0)}
+              active={activeTab === "tasks" && scheduleTab === "pulse"}
+              onClick={() => { setActiveTab("tasks"); setScheduleTab("pulse"); }} />
+            <StatTile label="launchd" icon={Activity} value={String(tasksData?.by_source.launchd ?? 0)}
+              active={activeTab === "tasks" && scheduleTab === "launchd"}
+              onClick={() => { setActiveTab("tasks"); setScheduleTab("launchd"); }} />
+            <StatTile label="Cloud Workflows" icon={Cloud} value={String(tasksData?.by_source.cloud ?? 0)}
+              active={activeTab === "tasks" && scheduleTab === "cloud"}
+              onClick={() => { setActiveTab("tasks"); setScheduleTab("cloud"); }} />
+            <StatTile label="Hermes" icon={MessageSquare} value={String(tasksData?.by_source.hermes ?? 0)}
+              active={activeTab === "tasks" && scheduleTab === "hermes"}
+              onClick={() => { setActiveTab("tasks"); setScheduleTab("hermes"); }} />
           </div>
         )}
 
@@ -441,22 +460,22 @@ export default function AssistantPage() {
             </Section>
             )}
 
-            {scheduleTab === "arbol" && (
-            <Section title="Scheduled Tasks · Arbol (Cloudflare)" icon={Cloud} dimension="freedom">
+            {scheduleTab === "cloud" && (
+            <Section title="Scheduled Tasks · Workflows (Cloudflare)" icon={Cloud} dimension="freedom">
               <div className="text-xs mono mb-1 text-ink-2">
-                ARBOL/Workers/*/wrangler.jsonc <span className="text-ink-3">(cron triggers, read from each worker&apos;s deploy config)</span>
+                WORKFLOWS/Workers/*/wrangler.jsonc <span className="text-ink-3">(cron triggers, read from each worker&apos;s deploy config)</span>
               </div>
               <div className="text-xs mb-3 text-ink-3">
                 Cloud-side scheduled work on Cloudflare Workers. A cron here is scheduled by definition — whether its last run <em>succeeded</em> is a separate question this view does not answer.
               </div>
               {(() => {
-                const arbolTasks = tasksData?.tasks.filter((t) => t.source === "arbol") ?? [];
-                if (arbolTasks.length === 0) {
-                  return <div className="text-[13px] text-ink-3">No Arbol workers with cron triggers found.</div>;
+                const cloudTasks = tasksData?.tasks.filter((t) => t.source === "cloud") ?? [];
+                if (cloudTasks.length === 0) {
+                  return <div className="text-[13px] text-ink-3">No Workflows workers with cron triggers found.</div>;
                 }
                 return (
                   <div className="space-y-1">
-                    {arbolTasks.map((task, i) => (
+                    {cloudTasks.map((task, i) => (
                       <div key={i} className="flex items-center gap-4 px-4 py-2.5 rounded-md">
                         <Cloud className="w-4 h-4 shrink-0" style={{ color: "var(--freedom)" }} />
                         <span className="text-[13px] mono text-ink-1 flex-1 truncate">{task.name}</span>
@@ -626,7 +645,9 @@ export default function AssistantPage() {
                   )}
                   <button
                     onClick={() => setShowAddCron(!showAddCron)}
-                    className="flex items-center gap-1.5 text-sm"
+                    disabled={backendMissing}
+                    title={backendMissing ? "Unavailable: the Assistant backend (PULSE/Assistant) is not installed" : undefined}
+                    className="flex items-center gap-1.5 text-sm disabled:opacity-40"
                     style={{ color: "var(--rhythms)" }}
                   >
                     <Plus className="w-4 h-4" /> Add
@@ -647,19 +668,19 @@ export default function AssistantPage() {
                     placeholder='name (e.g. "my-monitor")'
                     value={newCronName}
                     onChange={(e) => setNewCronName(e.target.value)}
-                    className="w-full text-sm rounded px-4 py-2 mono bg-ground border border-line-1 text-ink-1"
+                    className="w-full text-sm rounded px-4 py-2 mono bg-surface-1 border border-line-1 text-ink-1"
                   />
                   <input
                     placeholder="cron schedule (5 fields, e.g. */5 * * * *)"
                     value={newCronSchedule}
                     onChange={(e) => setNewCronSchedule(e.target.value)}
-                    className="w-full text-sm rounded px-4 py-2 mono bg-ground border border-line-1 text-ink-1"
+                    className="w-full text-sm rounded px-4 py-2 mono bg-surface-1 border border-line-1 text-ink-1"
                   />
                   <input
                     placeholder='shell command (e.g. "bun run checks/foo.ts")'
                     value={newCronCommand}
                     onChange={(e) => setNewCronCommand(e.target.value)}
-                    className="w-full text-sm rounded px-4 py-2 mono bg-ground border border-line-1 text-ink-1"
+                    className="w-full text-sm rounded px-4 py-2 mono bg-surface-1 border border-line-1 text-ink-1"
                   />
                   <div className="flex justify-end gap-3">
                     <button
@@ -698,7 +719,7 @@ export default function AssistantPage() {
                 const jobs = [...(cronData?.jobs ?? [])].sort((a, b) =>
                   a.enabled === b.enabled ? 0 : a.enabled ? -1 : 1
                 );
-                if (jobs.length === 0) return <div className="text-sm text-ink-3">No cron jobs defined</div>;
+                if (jobs.length === 0) return <div className="text-sm text-ink-3">{backendMissing ? "Unavailable: the Assistant backend (PULSE/Assistant) is not installed" : "No cron jobs defined"}</div>;
                 const pageCount = Math.max(1, Math.ceil(jobs.length / CRON_PAGE_SIZE));
                 const safePage = Math.min(cronPage, pageCount - 1);
                 const start = safePage * CRON_PAGE_SIZE;
@@ -778,7 +799,7 @@ export default function AssistantPage() {
                                   value={(buf.schedule as string) ?? job.schedule}
                                   onChange={(e) => setEditBuffer((b) => ({ ...b, schedule: e.target.value }))}
                                   placeholder="* * * * *"
-                                  className="text-sm rounded px-3 py-1.5 mono w-full bg-ground border border-line-1 text-ink-1"
+                                  className="text-sm rounded px-3 py-1.5 mono w-full bg-surface-1 border border-line-1 text-ink-1"
                                 />
 
                                 {bufType === "script" ? (
@@ -787,7 +808,7 @@ export default function AssistantPage() {
                                     <input
                                       value={(buf.command as string) ?? job.command ?? ""}
                                       onChange={(e) => setEditBuffer((b) => ({ ...b, command: e.target.value }))}
-                                      className="text-sm rounded px-3 py-1.5 mono w-full bg-ground border border-line-1 text-ink-1"
+                                      className="text-sm rounded px-3 py-1.5 mono w-full bg-surface-1 border border-line-1 text-ink-1"
                                     />
                                   </>
                                 ) : (
@@ -797,17 +818,16 @@ export default function AssistantPage() {
                                       value={(buf.prompt as string) ?? job.prompt ?? ""}
                                       onChange={(e) => setEditBuffer((b) => ({ ...b, prompt: e.target.value }))}
                                       rows={4}
-                                      className="text-sm rounded px-3 py-1.5 mono w-full bg-ground border border-line-1 text-ink-1"
+                                      className="text-sm rounded px-3 py-1.5 mono w-full bg-surface-1 border border-line-1 text-ink-1"
                                       style={{ resize: "vertical" }}
                                     />
                                     <label className="text-[13px] uppercase tracking-wider text-ink-3">Model</label>
                                     <select
                                       value={(buf.model as string) ?? job.model ?? ""}
                                       onChange={(e) => setEditBuffer((b) => ({ ...b, model: e.target.value || null }))}
-                                      className="text-sm rounded px-3 py-1.5 mono w-full bg-ground border border-line-1 text-ink-1"
+                                      className="text-sm rounded px-3 py-1.5 mono w-full bg-surface-1 border border-line-1 text-ink-1"
                                     >
                                       <option value="">(default)</option>
-                                      <option value="haiku">haiku</option>
                                       <option value="sonnet">sonnet</option>
                                       <option value="opus">opus</option>
                                     </select>
@@ -1063,7 +1083,7 @@ export default function AssistantPage() {
         {activeTab === "diary" && (
           <Section title="Diary Entries" dimension="rhythms">
             {!diaryData || diaryData.entries.length === 0 ? (
-              <div className="text-sm text-ink-3">No diary entries</div>
+              <div className="text-sm text-ink-3">{backendMissing ? "Unavailable: the Assistant backend (PULSE/Assistant) is not installed" : "No diary entries"}</div>
             ) : (
               <div className="space-y-4">
                 {diaryData.entries.slice().reverse().map((entry) => (

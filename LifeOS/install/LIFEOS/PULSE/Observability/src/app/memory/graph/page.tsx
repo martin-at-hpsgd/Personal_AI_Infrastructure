@@ -6,7 +6,7 @@
 // design surfaced discovered communities named by one member's title — an
 // engineering artifact that read as noise (principal, 2026-07-19).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useApi } from "@/lib/api";
 import Link from "next/link";
 import KnowledgeGraph from "@/components/wiki/KnowledgeGraph";
 import { wikiPageUrl } from "@/lib/wiki-links";
@@ -93,15 +93,7 @@ export default function MemoryGraphPage() {
     return () => { window.removeEventListener("resize", measure); ro.disconnect(); roRef.current = null; timers.forEach(clearTimeout); };
   }, []);
 
-  const { data, isLoading } = useQuery<MemGraph>({
-    queryKey: ["memory-graph"],
-    queryFn: async () => {
-      const res = await fetch("/api/memory/graph");
-      if (!res.ok) throw new Error("Failed to fetch memory graph");
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
+  const { data, isLoading } = useApi<MemGraph>("/api/memory/graph", { staleTime: 60_000 });
 
   const nodeById = useMemo(() => new Map((data?.nodes ?? []).map((n) => [n.id, n])), [data]);
 

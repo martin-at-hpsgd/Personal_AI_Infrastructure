@@ -11,25 +11,18 @@
 import { readFileSync } from "fs"
 import { join } from "path"
 import { homedir } from "node:os";
+import { parseEnv } from "../../TOOLS/Env";
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir()
 const LOOKAHEAD_MS = 30 * 60 * 1000
 
 function loadEnv(): Record<string, string> {
-  const env: Record<string, string> = {}
   try {
     const content = readFileSync(join(HOME, ".claude", ".env"), "utf-8")
-    for (const line of content.split("\n")) {
-      const match = line.match(/^([^#=]+)=(.*)$/)
-      if (match) {
-        let val = match[2].trim()
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
-          val = val.slice(1, -1)
-        env[match[1].trim()] = val
-      }
-    }
+    // public issue #2100, @bowlax: use unified parseEnv to handle CRLF and export prefix
+    return parseEnv(content)
   } catch {}
-  return env
+  return {}
 }
 
 async function getAccessToken(env: Record<string, string>): Promise<string> {
@@ -52,8 +45,10 @@ async function main() {
   const env = loadEnv()
 
   if (!env.GOOGLE_CALENDAR_REFRESH_TOKEN) {
-    console.error("GOOGLE_CALENDAR_REFRESH_TOKEN not set")
-    console.log("NO_EVENTS")
+    // public PR #2208, @pai-scaffolde: an unconfigured check is not "no events". Exit 78
+    // (EX_CONFIG) so Pulse can tell it apart from a quiet calendar.
+    console.error("GOOGLE_CALENDAR_REFRESH_TOKEN not set; calendar check is not configured")
+    process.exitCode = 78
     return
   }
 
@@ -112,7 +107,9 @@ async function main() {
     console.log(parts.join(". ") + ".")
   } catch (e: unknown) {
     console.error("Calendar check failed:", e instanceof Error ? e.message : String(e))
-    console.log("NO_EVENTS")
+    // A failed fetch is not "no meetings": exit nonzero so Pulse counts it.
+    // public PR #2208, @pai-scaffolde
+    process.exitCode = 1
   }
 }
 

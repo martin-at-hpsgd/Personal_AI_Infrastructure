@@ -16,7 +16,7 @@ const CREATION = [
 ];
 
 const CONSUMPTION = [
-  "safari", "google chrome", "chrome", "arc", "dia", "firefox", "brave", "edge",
+  "safari", "google chrome", "chrome", "arc", "firefox", "brave", "edge",
   "mail", "spark", "superhuman", "outlook",
   "messages", "slack", "discord", "telegram", "whatsapp", "signal",
   "twitter", "x", "youtube", "reddit", "instagram", "tiktok", "news",

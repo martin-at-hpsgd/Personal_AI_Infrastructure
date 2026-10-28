@@ -1,0 +1,8 @@
+{
+  "_docs": "Remote assertions read by the maintainer's private two-repo sync tool, which is not part of this build; the file is harmless to leave as placeholders. All three keys are REQUIRED and public_forbidden must be non-empty or the tool refuses to push (exit 3). claude_remote / user_remote are substring-matched against `git remote get-url origin` of ~/.claude and ~/.config/LIFEOS/USER, so `owner/repo` works for both ssh and https remotes. public_forbidden[0] is the public LifeOS repo slug: if either remote contains it the push is refused. Replace claude_remote and user_remote with your own PRIVATE repos; replace public_forbidden[0] with the public repo slug you must never push to.",
+  "claude_remote": "YOUR_GITHUB_HANDLE/your-private-system-repo",
+  "user_remote": "YOUR_GITHUB_HANDLE/your-private-user-data-repo",
+  "public_forbidden": [
+    "the-public-lifeos-org/LifeOS"
+  ]
+}

@@ -1,3 +1,6 @@
+/**
+ * @version 1.4.19
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -8,25 +11,25 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 /**
  * work-config.ts — Single-source loader for the Work System repo binding.
  *
- * Repo identity comes from `LIFEOS/USER/WORK/work_repo.json` (privacy-attested,
- * gh-verified at write time by the work-tracking skill's setup tool).
+ * Repo identity comes from `LIFEOS/USER/WORK/work_repo.json` (privacy-attested
+ * and periodically re-verified with gh by this loader).
  * Kanban columns + poll interval come from `LIFEOS/USER/WORK/config.yaml`
  * (UX defaults, not privacy-sensitive).
  *
  * Privacy contract:
  *   - work_repo.json missing                          → disabled, reason="missing"
- *   - JSON has verified_private=false                 → disabled, reason="not_private"
+ *   - no loader_verified attestation                  → loader must verify with gh
  *   - verified_at older than half-TTL (12h default)   → loader attempts gh re-verify
  *       - on success: writes back fresh verified_at, continues enabled
  *       - on failure with cache < full-TTL: continues enabled with reason note (grace)
  *       - on failure with cache >= full-TTL: disabled, reason="stale_unverified"
  *
- * The loader NEVER trusts a manually-edited verified_private without a recent
- * verified_at. SetWorkRepo is the only sanctioned write path.
+ * The loader NEVER trusts a manually-edited verified_private. Only a separate
+ * state record written after this loader's successful gh check permits cached use.
  *
  * Consumers:
- *   - hooks/ULWorkSync.hook.ts     — SessionEnd capture
- *   - hooks/ReminderRouter.hook.ts — UserPromptSubmit reminder/research routing
+ *   - the maintainer-side session-sync hook (not shipped) — SessionEnd capture
+ *   - hooks/ReminderRouter.hook.ts — retired 2026-09-21; formerly handled UserPromptSubmit reminder/research routing
  *   - LIFEOS/PULSE/modules/work.ts    — kanban renderer
  *
  * Zero deps, zero throws — config breakage degrades to disabled state.
@@ -35,6 +38,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { atomicWriteText } from "../../LIFEOS/PULSE/lib/atomic-write";
 import { homedir } from "node:os";
+import { getLifeosDir } from "./paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -46,11 +50,12 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 declare const Bun: { spawnSync: (cmd: string[], opts?: any) => any };
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
-const REPO_JSON_PATH = join(LIFEOS_DIR, "USER", "WORK", "work_repo.json");
+const LIFEOS_DIR = getLifeosDir();
+export const REPO_JSON_PATH = join(LIFEOS_DIR, "USER", "WORK", "work_repo.json");
+const VERIFICATION_STATE_PATH = join(LIFEOS_DIR, "MEMORY", "STATE", "work-repo-verification.json");
 const COLUMNS_YAML_PATH = join(LIFEOS_DIR, "USER", "WORK", "config.yaml");
 
-// Slimmed kanban — {{PRINCIPAL_NAME}} asked for 5 lanes that map to how he actually moves work.
+// Slimmed kanban — the maintainer asked for 5 lanes that map to how work actually moves.
 const DEFAULT_COLUMNS = ["Queued", "Blocked", "In-Progress", "In-Review", "Complete"];
 const DEFAULT_POLL_SECONDS = 60;
 const REPO_REGEX = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
@@ -70,6 +75,10 @@ export interface WorkConfig {
   pollIntervalSeconds: number;
   captureNative: boolean;
   captureSweep: boolean;
+  /** TELOS goal → issue export. Opt-in: goal text is deliberately never
+   *  pattern-scrubbed, so it only leaves the machine on an explicit yes
+   *  (public issue #1825, @PaulWaldo). */
+  captureGoals: boolean;
   projectProperty: (project: string | undefined) => string;
   reason?: string;
   reasonCode?: DisabledReason;
@@ -85,7 +94,7 @@ export interface WorkConfig {
 interface RepoJson {
   $schema_version?: number;
   repo: string;
-  privacy: {
+  privacy?: {
     verified_private: boolean;
     verified_at: string;
     visibility: string;
@@ -94,15 +103,22 @@ interface RepoJson {
   };
 }
 
+interface VerificationState {
+  repo: string;
+  verified_at: string;
+}
+
 export function loadWorkConfig(): WorkConfig {
   const columns = loadKanbanColumns();
   const pollSeconds = loadPollSeconds();
   const captureNative = loadBool("CAPTURE_NATIVE", true);
   const captureSweep = loadBool("CAPTURE_SWEEP", true);
+  const captureGoals = loadBool("CAPTURE_GOALS", false);
   const projectMap = loadProjectPropertyMap();
   const projectProperty = (project: string | undefined): string => {
     if (!project) return "Property:internal";
-    const key = project.toLowerCase().replace(/\s+/g, "");
+    // Fold accents so "Educação" finds an ASCII map key (public issue #2261, @drpaulobernardy).
+    const key = project.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase().replace(/\s+/g, "");
     return projectMap[key] ?? "Property:internal";
   };
   const agentLabel = loadAgentLabel();
@@ -115,6 +131,7 @@ export function loadWorkConfig(): WorkConfig {
     pollIntervalSeconds: pollSeconds,
     captureNative,
     captureSweep,
+    captureGoals,
     projectProperty,
     reason,
     reasonCode: code,
@@ -123,7 +140,7 @@ export function loadWorkConfig(): WorkConfig {
   if (!existsSync(REPO_JSON_PATH)) {
     return disabled(
       "missing",
-      "USER/WORK/work_repo.json missing — run the work-tracking skill's SetWorkRepo tool with <owner/repo>",
+      'LIFEOS/USER/WORK/work_repo.json missing — create it as {"repo":"<owner/repo>"}; this loader runs `gh repo view` and enables the work system only after confirming the repo is private',
     );
   }
 
@@ -137,21 +154,22 @@ export function loadWorkConfig(): WorkConfig {
   if (!parsed?.repo || !REPO_REGEX.test(parsed.repo)) {
     return disabled("malformed", "work_repo.json `repo` missing or not owner/repo");
   }
-  if (!parsed.privacy || typeof parsed.privacy.verified_private !== "boolean") {
-    return disabled("malformed", "work_repo.json `privacy` block missing or malformed");
-  }
-  if (parsed.privacy.verified_private !== true) {
+  const verificationState = readVerificationState();
+  const loaderVerified = verificationState?.repo === parsed.repo;
+  if (loaderVerified && parsed.privacy?.verified_private !== true) {
     return disabled(
       "not_private",
-      `verified_private=false (last visibility: ${parsed.privacy.visibility ?? "unknown"})`,
+      `verified_private=false (last visibility: ${parsed.privacy?.visibility ?? "unknown"})`,
     );
   }
 
-  const ttlHours = Number.isFinite(parsed.privacy.ttl_hours) ? parsed.privacy.ttl_hours! : 24;
+  const ttlHours = Number.isFinite(parsed.privacy?.ttl_hours) ? parsed.privacy!.ttl_hours! : 24;
   const halfTtlMs = (ttlHours / 2) * 3600 * 1000;
   const fullTtlMs = ttlHours * 3600 * 1000;
-  const verifiedAt = Date.parse(parsed.privacy.verified_at || "");
-  const ageMs = Number.isFinite(verifiedAt) ? Date.now() - verifiedAt : Infinity;
+  const verifiedAt = Date.parse(verificationState?.verified_at || "");
+  // Timestamps and booleans in work_repo.json are user input. Without separate
+  // state from a prior successful gh check, force first-load verification.
+  const ageMs = loaderVerified && Number.isFinite(verifiedAt) ? Date.now() - verifiedAt : Infinity;
   const ageHours = Math.round((ageMs / 3600000) * 10) / 10;
 
   let revalidatedThisLoad = false;
@@ -169,15 +187,21 @@ export function loadWorkConfig(): WorkConfig {
             verified_at: new Date().toISOString(),
             visibility: result.visibility ?? "PRIVATE",
             ttl_hours: ttlHours,
-            verification_command: parsed.privacy.verification_command ??
+            verification_command: parsed.privacy?.verification_command ??
               `gh repo view ${parsed.repo} --json visibility,isPrivate`,
           },
         };
+        // The successful gh result is authoritative for this invocation even
+        // if either best-effort cache write fails.
+        parsed = updated;
         // Atomic — a truncated repo.json disables work routing (public PR #1643, @elhoim)
         // 0600 at create time — a chmod after rename leaves a 0644 window on
-        // every write and drops the prior mode (Max review, 2026-07-29).
+        // every write and drops the prior mode (Astra review, 2026-07-29).
         atomicWriteText(REPO_JSON_PATH, JSON.stringify(updated, null, 2) + "\n", 0o600);
-        parsed = updated;
+        atomicWriteText(VERIFICATION_STATE_PATH, JSON.stringify({
+          repo: parsed.repo,
+          verified_at: updated.privacy!.verified_at,
+        }, null, 2) + "\n", 0o600);
         revalidatedThisLoad = true;
       } catch {
         // ok — re-verification still succeeded in-memory for this load
@@ -207,11 +231,12 @@ export function loadWorkConfig(): WorkConfig {
     pollIntervalSeconds: pollSeconds,
     captureNative,
     captureSweep,
+    captureGoals,
     projectProperty,
     privacy: {
-      verified_private: parsed.privacy.verified_private,
-      verified_at: parsed.privacy.verified_at ?? "",
-      visibility: parsed.privacy.visibility ?? "unknown",
+      verified_private: parsed.privacy!.verified_private,
+      verified_at: parsed.privacy!.verified_at ?? "",
+      visibility: parsed.privacy!.visibility ?? "unknown",
       ageHours,
       revalidatedThisLoad,
     },
@@ -225,6 +250,16 @@ interface RevalidateResult {
   isPrivate?: boolean;
   visibility?: string;
   reason?: string;
+}
+
+function readVerificationState(): VerificationState | null {
+  try {
+    const state = JSON.parse(readFileSync(VERIFICATION_STATE_PATH, "utf8")) as VerificationState;
+    if (!state?.repo || typeof state.verified_at !== "string") return null;
+    return state;
+  } catch {
+    return null;
+  }
 }
 
 function revalidatePrivate(repo: string): RevalidateResult {

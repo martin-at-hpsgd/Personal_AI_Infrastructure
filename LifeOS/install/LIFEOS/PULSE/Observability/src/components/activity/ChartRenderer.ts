@@ -30,7 +30,8 @@ const AGENT_COLORS: Record<string, string> = {
   "gemini-researcher": "#EAB308",
   main: "#3B82F6",
   da: "#3B82F6",
-  pai: "#3B82F6",
+  pai: "#3B82F6", // legacy events
+  lifeos: "#3B82F6",
   "claude-code": "#3B82F6",
 };
 
@@ -189,8 +190,8 @@ export class ChartRenderer {
   drawBackground() {
     const area = this.getChartArea();
     const grad = this.ctx.createLinearGradient(area.x, area.y, area.x, area.y + area.height);
-    grad.addColorStop(0, "rgba(0,0,0,0.02)");
-    grad.addColorStop(1, "rgba(0,0,0,0.05)");
+    grad.addColorStop(0, "rgba(255,255,255,0.02)");
+    grad.addColorStop(1, "rgba(255,255,255,0.05)");
     this.ctx.fillStyle = grad;
     this.ctx.fillRect(area.x, area.y, area.width, area.height);
   }
@@ -198,9 +199,8 @@ export class ChartRenderer {
   drawAxes() {
     const area = this.getChartArea();
     this.ctx.save();
-    this.ctx.strokeStyle = "#444444";
+    this.ctx.strokeStyle = "rgba(255,255,255,0.10)";
     this.ctx.lineWidth = 0.5;
-    this.ctx.globalAlpha = 0.5;
     this.ctx.beginPath();
     this.ctx.moveTo(area.x, area.y + area.height);
     this.ctx.lineTo(area.x + area.width, area.y + area.height);
@@ -215,9 +215,8 @@ export class ChartRenderer {
 
     // Grid lines
     this.ctx.save();
-    this.ctx.strokeStyle = "#444444";
+    this.ctx.strokeStyle = "rgba(255,255,255,0.10)";
     this.ctx.lineWidth = 0.5;
-    this.ctx.globalAlpha = 0.5;
     labels.forEach((_, i) => {
       const x = area.x + i * spacing;
       this.ctx.beginPath();
@@ -228,7 +227,7 @@ export class ChartRenderer {
     this.ctx.restore();
 
     // Text labels
-    this.ctx.fillStyle = "#565f89";
+    this.ctx.fillStyle = "rgba(255,255,255,0.35)";
     this.ctx.font = '400 11px system-ui, -apple-system, sans-serif';
     this.ctx.textBaseline = "top";
     labels.forEach((label, i) => {
@@ -264,9 +263,8 @@ export class ChartRenderer {
 
       // Vertical guide line
       this.ctx.save();
-      this.ctx.strokeStyle = "#444444";
+      this.ctx.strokeStyle = "rgba(255,255,255,0.10)";
       this.ctx.lineWidth = 0.5;
-      this.ctx.globalAlpha = 0.5;
       this.ctx.beginPath();
       this.ctx.moveTo(x + barWidth / 2, area.y);
       this.ctx.lineTo(x + barWidth / 2, area.y + area.height);

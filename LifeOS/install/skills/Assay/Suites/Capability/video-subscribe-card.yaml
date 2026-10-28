@@ -1,0 +1,113 @@
+# Video subscribe corner card (kind "subscribe", skills/_VIDEO/Tools/Cards/SubscribeCard.tsx).
+# Grades rendered frames, never generates them. The producer is the private _VIDEO skill: an install
+# without it has no sheets and cannot run this suite, so skip it there. Nothing runs it automatically
+# (it runs only when named), and a run without sheets ends in "verifier unavailable — no verdict",
+# never a pass or a fail. With the skill installed, build the sheets first, then run:
+#   bun skills/_VIDEO/Tools/Cards/SubscribeFrames.ts
+#   bun skills/Assay/Tools/ImageEvalRunner.ts -s video-subscribe-card --json
+# SubscribeFrames renders the real card and the kit's sample book card and lays them
+# out as one labelled sheet (the judge sees one image per call):
+#   A card at 0.8 s · B card at 2.4 s · C reference brand mark · D reference channel
+#   name (printed from the subscribe config, so no channel name lives in this file)
+#   · E the kit's sample book card at 2.4 s.
+# One graded case carries every criterion as a required judged assert, so the suite
+# passes only when all of them pass on all three trials (pass^3). The decoy keeps C, D
+# and E but shows an off-brand card in A and B; every assert must reject it.
+# Score 4 of 5 (normalized 0.75) is the bar: 8 of 10 on the family judgment.
+# No faces or identity in any frame; private material, judged by the default OpenAI + Anthropic panel.
+# The sheets carry the install's channel name and brand mark, so build/ is a local symlink into the skill's USER
+# extension (Suites/Capability/video-subscribe-card/build there); see video-subscribe-card/.gitignore.
+name: video-subscribe-card
+type: regression
+pass_threshold: 0.75
+cases:
+  - id: subscribe_card_sheet
+    image: "video-subscribe-card/build/sheet.png"
+    assert:
+      - &mark_on_card
+        type: vision-rubric
+        derived_from: "example video-card ISA ISC-13"
+        value: "Panel C is the reference brand mark. Panel B is a frame of the subscribe card at 2.4 s. Judge only this: does the card in panel B show the exact mark from panel C (same strokes, same node dots, same arrangement, same orientation; colour and size may differ only by the card's rendering)? A different mark, a generic icon, initials, a mirrored or partial mark, or no mark fails."
+        anchors:
+          "1": "Panel B shows no mark, or a mark plainly different from panel C."
+          "3": "Panel B shows a similar mark but with a missing, extra or rearranged stroke or node."
+          "5": "Panel B shows the exact mark from panel C, every stroke and node in place."
+        threshold: 0.75
+        trials: 3
+        required: true
+        weight: 1
+      - &name_verbatim
+        type: vision-rubric
+        derived_from: "example video-card ISA ISC-14"
+        value: "Panel D prints the configured channel name. Panel B is a frame of the subscribe card at 2.4 s. Judge only this: does the card in panel B show the panel D text verbatim, every word and letter the same and in the same order? A line break between words is allowed; any spelling, word, or letter difference fails, as does a missing name."
+        anchors:
+          "1": "Panel B shows no channel name, or a different name."
+          "3": "Panel B shows nearly the panel D text but with a letter or word wrong, missing or added."
+          "5": "Panel B shows the panel D text verbatim and legibly."
+        threshold: 0.75
+        trials: 3
+        required: true
+        weight: 1
+      - &subscribed_button
+        type: vision-rubric
+        derived_from: "example video-card ISA ISC-15"
+        value: "Panel B is a frame of the subscribe card at 2.4 s. Judge only this: does the card in panel B carry a button whose text reads exactly \"Subscribed\" (that word alone, legible)? Any other text on the button (Subscribe, Follow, Join, Subscribed! or a blend of two words) fails."
+        anchors:
+          "1": "No button in panel B, or its text is a different word."
+          "3": "A button whose text is close to \"Subscribed\" but not exactly it, or partly illegible."
+          "5": "A button in panel B reading exactly \"Subscribed\", cleanly legible."
+        threshold: 0.75
+        trials: 3
+        required: true
+        weight: 1
+      - &bell_right
+        type: vision-rubric
+        derived_from: "example video-card ISA ISC-16"
+        value: "Panel B is a frame of the subscribe card at 2.4 s. Judge only this: is there a bell glyph (a notification bell) immediately to the right of the card's button, on the same row, with nothing between them? A bell elsewhere, another glyph, or no bell fails."
+        anchors:
+          "1": "No bell in panel B, or a different glyph beside the button."
+          "3": "A bell on the card but not directly right of the button."
+          "5": "A clear bell glyph directly right of the button, on the same row."
+        threshold: 0.75
+        trials: 3
+        required: true
+        weight: 1
+      - &subscribe_button_early
+        type: vision-rubric
+        derived_from: "example video-card ISA ISC-17"
+        value: "Panel A is a frame of the subscribe card at 0.8 s, before the button is pressed. Judge only panel A: does its button read exactly \"Subscribe\" (that word alone, legible)? \"Subscribed\", \"Follow\", \"Join\", any other word, or a blend of two words fails."
+        anchors:
+          "1": "No button in panel A, or its text is a different word."
+          "3": "A button whose text is close to \"Subscribe\" but not exactly it, or partly illegible."
+          "5": "A button in panel A reading exactly \"Subscribe\", cleanly legible."
+        threshold: 0.75
+        trials: 3
+        required: true
+        weight: 1
+      - &one_family
+        type: vision-rubric
+        derived_from: "example video-card ISA ISC-20"
+        value: "Panel E is the card kit's sample book card at 2.4 s; panel B is the subscribe card at 2.4 s. Both are composited over the same studio grey. Judge whether B reads as part of the same graphics family as E, as a viewer would see them in one video: shell shape and corner radius, ground colour and wash, typeface and weight, text colour, spacing rhythm and finish. Name any critical defect in B (clipping, illegible text, a green fringe or key residue, misalignment, a mismatched style). Grade on a 10-point quality scale mapped to 1-5 (score 4 = 8 of 10). Any critical defect caps the score at 2."
+        anchors:
+          "1": "B looks like it came from a different product: different shell, faces, palette, or finish, or carries a critical defect."
+          "2": "Some shared traits, but B has a critical defect or clearly clashes in type, palette or shell."
+          "3": "Recognisably related, but visible inconsistencies (spacing, type weight, colour) set B apart; about 6 of 10."
+          "4": "Same family: shell, ground, faces and finish match E with only minor differences and no critical defect; 8 of 10."
+          "5": "Indistinguishable craft: B and E read as designed together, with no defect at all; 10 of 10."
+        threshold: 0.75
+        trials: 3
+        required: true
+        weight: 1
+  # ADVERSARIAL FIXTURE: the same sheet with an off-brand card in panels A and B (a star
+  # icon, another name in an italic serif, a square blue "Follow" button, no bell, a white
+  # ground). It must load and be rejected by every judged assert above.
+  - id: off_brand_decoy
+    image: "video-subscribe-card/build/decoy.png"
+    expect: fail
+    assert:
+      - *mark_on_card
+      - *name_verbatim
+      - *subscribed_button
+      - *bell_right
+      - *subscribe_button_early
+      - *one_family

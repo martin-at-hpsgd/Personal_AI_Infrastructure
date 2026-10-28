@@ -1,3 +1,4 @@
+<!-- isa-example claims=73 probes=9 era=legacy -->
 <!-- Fictitious example. "ApiBridge" is a teaching project name; any resemblance to real products or organizations is coincidental. The example.org domain is RFC 2606 reserved. -->
 ---
 task: "Migrate ApiBridge public API from REST to GraphQL with deprecation runway"
@@ -11,6 +12,29 @@ mode: interactive
 started: 2026-01-12T17:15:00Z
 updated: 2026-04-22T03:48:00Z
 ---
+
+## Ideal State
+
+### L3 · One sentence
+
+ApiBridge's public API becomes GraphQL-first, with REST supported through a six-month deprecation runway and no external integration broken before its partner has migrated.
+
+### L2 · Summary
+
+The migration ships a GraphQL endpoint that covers everything the 14 REST endpoints do, and retires REST on a runway partners can plan around.
+
+- The GraphQL endpoint at `api.apibridge.example.org/graphql` covers the full read and write surface of the 14 REST endpoints, parity-tested under load.
+- REST stays supported for six months and emits RFC 8594 sunset headers.
+- Per-partner deprecation telemetry on an internal dashboard shows who has moved and who has not.
+- The cutover lands with none of the 47 known integrations broken before its partner-confirmed migration date.
+
+### L1 · Full articulation
+
+The ApiBridge public API at `api.apibridge.example.org` has a GraphQL endpoint at `/graphql` that lets a client ask for exactly the fields it needs in one round trip, and it covers the full read and write surface of the 14 REST endpoints it replaces. Parity is tested under load, so a partner can move a call from REST to GraphQL and get the same data.
+
+REST does not disappear on the day GraphQL ships. It is supported for a published six-month runway that emits RFC 8594 sunset headers, with per-partner deprecation telemetry on an internal dashboard that shows which of the 47 known integrations across 12 partners have moved and which have not. Partners migrate at their own pace, including the three that publish quarterly release trains. At the end of the window every active consumer has either migrated or opted into a paid extended-support track.
+
+The moment it is right: a partner integration team opens the docs, sees one GraphQL playground beside a dimmed REST reference labeled with its deprecation dates, runs three example queries, and realizes a nightly sync of 14 round trips can be one. They migrate staging in an afternoon. Six months later REST is under 2% of total API traffic, and the cutover has shipped without a single Sev-2.
 
 ## Problem
 
@@ -50,18 +74,14 @@ A partner integration team opens our docs, sees a single GraphQL playground next
 - The migration ships in 4 increments (schema → resolvers → REST adapter layer → deprecation telemetry); no big-bang cutover.
 - Documentation site at `docs.apibridge.example.org` must show GraphQL and REST side-by-side for the entire window; "REST docs deleted" is not an option until October 22, 2026.
 
-## Goal
-
-Ship the GraphQL endpoint at `api.apibridge.example.org/graphql` with full coverage of the 14 REST endpoints' read and write surface area, parity-tested under load, with a published 6-month deprecation runway for REST that emits RFC 8594 sunset headers, exposes per-partner deprecation telemetry on an internal dashboard, and lands the cutover without any external integration breaking before its partner-confirmed migration date.
-
 ## Criteria
 
 - [x] ISC-1: `schema/api.graphql` exists, validates against `graphql-schema-linter`, and covers all 14 REST endpoint shapes.
 - [x] ISC-2: GraphQL endpoint responds with `200` and a valid introspection result for `query { __schema { queryType { name } } }`.
 - [x] ISC-3: All 14 REST endpoints have a corresponding query or mutation in the schema (probe: `node scripts/coverage-check.ts` exits 0).
 - [x] ISC-4: Schema codegen produces typed resolver stubs at `src/generated/resolvers.ts`.
-- [x] ISC-5: 100% of read-side resolvers return data byte-identical to the matching REST endpoint for a 1,000-row golden fixture (probe: `bun test parity/read.test.ts`).
-- [ ] ISC-6: 100% of write-side resolvers produce identical database side-effects to the matching REST mutation for the golden fixture (probe: `bun test parity/write.test.ts`).
+- [x] ISC-5: 100% of read-side resolvers return data byte-identical to the matching REST endpoint for a 1,000-row golden fixture (probe: `bun test ./parity/read.test.ts`).
+- [ ] ISC-6: 100% of write-side resolvers produce identical database side-effects to the matching REST mutation for the golden fixture (probe: `bun test ./parity/write.test.ts`).
 - [x] ISC-7: GraphQL p95 latency for the 5 most common query shapes is ≤ matching REST p95 + 10ms under 200 rps load.
 - [ ] ISC-7.1: GraphQL p95 latency for the 20 next-most-common query shapes is ≤ matching REST p95 + 25ms under 200 rps load.
 - [ ] ISC-8: GraphQL p99 latency under 1000 rps load remains under 800ms.
@@ -75,9 +95,9 @@ Ship the GraphQL endpoint at `api.apibridge.example.org/graphql` with full cover
 - [ ] ISC-16: Migration emails sent to partner technical contacts at T-90, T-60, T-30, T-14, T-7, T-1 days from cutover.
 - [x] ISC-17: GraphQL playground at `api.apibridge.example.org/graphql` loads in a browser with example queries pre-populated.
 - [x] ISC-18: Documentation site shows GraphQL and REST side-by-side for every endpoint.
-- [ ] ISC-19: Anti: REST endpoints return shape-changed responses during the deprecation window (probe: `bun test parity/rest-stability.test.ts` runs daily).
+- [ ] ISC-19: Anti: REST endpoints return shape-changed responses during the deprecation window (probe: `bun test ./parity/rest-stability.test.ts` runs daily).
 - [ ] ISC-20: Anti: GraphQL endpoint accepts queries deeper than 8 levels (probe: depth-limit middleware blocks query at depth 9 with `400`).
-- [ ] ISC-21: Anti: GraphQL endpoint accepts queries with cost > 1000 (probe: cost analysis middleware blocks high-cost query with `400`).
+- [ ] ISC-21: Anti: GraphQL endpoint accepts a query whose cost exceeds the caller's tier limit — 500 free, 2000 paid, 5000 enterprise, as set in ISC-65 (probe: cost analysis middleware blocks a query one point over each tier's limit with `400`).
 - [ ] ISC-22: Anti: introspection is enabled in production (probe: `query { __schema { types { name } } }` returns `403` against `api.apibridge.example.org/graphql` with non-admin token).
 - [ ] ISC-23: Anti: any partner is silently cut off (probe: cutover script requires partner-confirmed migration date in `partner-status.json` for every active partner_id).
 - [x] ISC-24: Feature flag `graphql_endpoint_enabled` defaults to `false` and is explicitly enabled per environment.
@@ -85,8 +105,8 @@ Ship the GraphQL endpoint at `api.apibridge.example.org/graphql` with full cover
 - [ ] ISC-26: Rollback runbook at `docs/runbooks/graphql-rollback.md` exists and has been dry-run executed in staging.
 - [x] ISC-27: Schema changes go through PR review with at least one API-team approver (probe: `.github/CODEOWNERS` lists `schema/` under `@api-team`).
 - [x] ISC-28: Every resolver has a Datadog APM span tagged with `graphql.operation_name` and `graphql.field_name`.
-- [ ] ISC-29: Authorization middleware enforces the same scopes on GraphQL fields as the matching REST endpoint requires (probe: `bun test auth/scope-parity.test.ts`).
-- [ ] ISC-30: Rate limits applied per partner at the GraphQL layer match the REST layer (probe: `bun test rate-limit/parity.test.ts`).
+- [ ] ISC-29: Authorization middleware enforces the same scopes on GraphQL fields as the matching REST endpoint requires (probe: `bun test ./auth/scope-parity.test.ts`).
+- [ ] ISC-30: Rate limits applied per partner at the GraphQL layer match the REST layer (probe: `bun test ./rate-limit/parity.test.ts`).
 - [ ] ISC-31: Error responses follow the structured GraphQL error spec with `extensions.code` set per error class.
 - [x] ISC-32: REST request logs include `Accept-Migration` header value when partner sends it (used to track partners actively testing GraphQL).
 - [ ] ISC-33: Partner status file `partner-status.json` lists every `partner_id` with fields `confirmed_migration_date`, `last_rest_request`, `first_graphql_request`, `migration_pct`.
@@ -101,7 +121,7 @@ Ship the GraphQL endpoint at `api.apibridge.example.org/graphql` with full cover
 - [x] ISC-42: GraphQL endpoint enforces request body size limit of 100KB.
 - [x] ISC-43: GraphQL endpoint enforces query timeout of 10 seconds at the resolver layer.
 - [ ] ISC-44: Anti: REST endpoint `/v1/orgs/:id/projects` returns 404 before October 22, 2026 (probe: synthetic monitor pings every 5 minutes).
-- [ ] ISC-45: Anti: any GraphQL field returns PII not present in the matching REST endpoint (probe: `bun test parity/pii-coverage.test.ts`).
+- [ ] ISC-45: Anti: any GraphQL field returns PII not present in the matching REST endpoint (probe: `bun test ./parity/pii-coverage.test.ts`).
 - [ ] ISC-46: Cutover dry-run executed at T-30 against staging with all 47 partner integrations simulated.
 - [ ] ISC-47: Sentry release tag `graphql-cutover-v1` exists.
 - [ ] ISC-48: PagerDuty escalation policy `graphql-launch` is on-call rotation for the 2 weeks following October 22, 2026.
@@ -119,7 +139,7 @@ Ship the GraphQL endpoint at `api.apibridge.example.org/graphql` with full cover
 - [ ] ISC-60: GraphQL access logs are retained for 90 days in the existing log retention bucket.
 - [ ] ISC-61: Audit log for schema changes is queryable via `bun scripts/schema-history.ts`.
 - [x] ISC-62: Anti: a single resolver makes more than 3 sequential database calls without batching via DataLoader (probe: lint rule `no-sequential-db-calls` runs in CI).
-- [x] ISC-63: DataLoader instances are created per-request, not per-process (probe: `bun test dataloader/scope.test.ts`).
+- [x] ISC-63: DataLoader instances are created per-request, not per-process (probe: `bun test ./dataloader/scope.test.ts`).
 - [ ] ISC-64: Schema documentation generated from SDL comments and published to docs site.
 - [ ] ISC-65: Partner-specific cost limits enforced (cost ≤ 500 for free tier, cost ≤ 2000 for paid tier, cost ≤ 5000 for enterprise tier).
 - [x] ISC-66: GraphQL errors are scrubbed of internal stack traces in production responses.
@@ -131,62 +151,18 @@ Ship the GraphQL endpoint at `api.apibridge.example.org/graphql` with full cover
 - [ ] ISC-72: Final cutover postmortem published to docs site within 14 days of October 22, 2026.
 
 ## Test Strategy
+| isc | type | check | threshold | tool | anchors_to |
+|-----|------|-------|-----------|------|------------|
+| ISC-3 | bun-test | every REST endpoint maps to a GraphQL field | 14/14 | node scripts/coverage-check.ts | |
+| ISC-5 | bun-test | GraphQL response body byte-equal to REST response for 1000 fixtures | 1000/1000 | bun test ./parity/read.test.ts | |
+| ISC-7 | bash | GraphQL p95 vs REST p95 for top-5 query shapes | GraphQL p95 ≤ REST p95 + 10ms at 200 rps | k6 run loadtests/p95-parity.js | |
+| ISC-9 | manual | every REST 2xx response includes Sunset header | 100% of sampled responses | synthetic monitor + grep | |
+| ISC-19 | bun-test | REST shape diff vs frozen golden bodies | zero diffs | bun test ./parity/rest-stability.test.ts (daily cron) | |
+| ISC-20 | bash | depth-limit middleware blocks deep queries | 400 response on depth=9 | bash scripts/depth-limit-check.sh 9 400 | |
+| ISC-22 | bash | introspection disabled in production | 403 on __schema query with non-admin token | bun test ./security/introspection.test.ts | |
+| ISC-23 | bash | cutover requires partner confirmation | cutover.ts exits non-zero if any active partner_id missing confirmed_migration_date | bun scripts/cutover.ts --dry-run | |
+| ISC-41 | bash | 1-hour soak at 500 rps mixed workload | error rate < 0.5% | k6 run loadtests/soak.js | |
 
-```yaml
-- isc: ISC-3
-  type: coverage-probe
-  check: every REST endpoint maps to a GraphQL field
-  threshold: 14/14
-  tool: node scripts/coverage-check.ts
-
-- isc: ISC-5
-  type: parity-test
-  check: GraphQL response body byte-equal to REST response for 1000 fixtures
-  threshold: 1000/1000
-  tool: bun test parity/read.test.ts
-
-- isc: ISC-7
-  type: load
-  check: GraphQL p95 vs REST p95 for top-5 query shapes
-  threshold: GraphQL p95 ≤ REST p95 + 10ms at 200 rps
-  tool: k6 run loadtests/p95-parity.js
-
-- isc: ISC-9
-  type: header-probe
-  check: every REST 2xx response includes Sunset header
-  threshold: 100% of sampled responses
-  tool: synthetic monitor + grep
-
-- isc: ISC-19
-  type: regression-probe
-  check: REST shape diff vs frozen golden bodies
-  threshold: zero diffs
-  tool: bun test parity/rest-stability.test.ts (daily cron)
-
-- isc: ISC-20
-  type: anti-probe
-  check: depth-limit middleware blocks deep queries
-  threshold: 400 response on depth=9
-  tool: curl + jq
-
-- isc: ISC-22
-  type: anti-probe
-  check: introspection disabled in production
-  threshold: 403 on __schema query with non-admin token
-  tool: bun test security/introspection.test.ts
-
-- isc: ISC-23
-  type: anti-probe
-  check: cutover requires partner confirmation
-  threshold: cutover.ts exits non-zero if any active partner_id missing confirmed_migration_date
-  tool: bun scripts/cutover.ts --dry-run
-
-- isc: ISC-41
-  type: load
-  check: 1-hour soak at 500 rps mixed workload
-  threshold: error rate < 0.5%
-  tool: k6 run loadtests/soak.js
-```
 
 ## Features
 
@@ -264,7 +240,7 @@ Ship the GraphQL endpoint at `api.apibridge.example.org/graphql` with full cover
 - ISC-1: `graphql-schema-linter schema/api.graphql` exits 0; output `0 errors, 0 warnings`. Verified 2026-02-04.
 - ISC-2: `curl -s -X POST api.apibridge.example.org/graphql -H "Authorization: Bearer $T" -d '{"query":"{ __schema { queryType { name } } }"}' | jq -r '.data.__schema.queryType.name'` returns `Query`. Verified 2026-02-12 (staging) and 2026-03-04 (production behind feature flag).
 - ISC-3: `node scripts/coverage-check.ts` outputs `14/14 REST endpoints have a matching GraphQL field`. Verified 2026-02-15.
-- ISC-5: `bun test parity/read.test.ts` reports `1000 passed, 0 failed`. Verified 2026-03-08.
+- ISC-5: `bun test ./parity/read.test.ts` reports `1000 passed, 0 failed`. Verified 2026-03-08.
 - ISC-7: k6 run output for top-5 query shapes — REST p95: 87ms / GraphQL p95: 91ms (+4ms, well within +10ms budget). Verified 2026-03-22.
 - ISC-9, ISC-10, ISC-11: `curl -I api.apibridge.example.org/v1/orgs/test-org` shows `Sunset: Wed, 22 Oct 2026 00:00:00 GMT`, `Deprecation: true`, `Link: <https://docs.apibridge.example.org/graphql>; rel="successor-version"`. Verified 2026-04-22.
 - ISC-22: introspection probe with non-admin token returns `403 Forbidden` with body `{"errors":[{"message":"Introspection disabled in production","extensions":{"code":"INTROSPECTION_DISABLED"}}]}`. Verified 2026-03-04.

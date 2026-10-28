@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import type { Goal, Telos } from "./data";
 import { Icons } from "./icons";
-import { Spark } from "./subtabs";
 
 // Goal drill-down modal — warmer, sentence-led.
 
@@ -27,7 +26,6 @@ export function GoalModal({ telos, goal, onClose, showIds }: GoalModalProps) {
   const linkedS = telos.strategies.filter(s=>s.implements.includes(goal.id));
   const linkedP = telos.projects.filter(p=>linkedS.some(s=>s.id===p.strategy));
   const dim = telos.dimensions.find(d=>d.id===goal.dims[0]);
-  const seed = [goal.pct-18,goal.pct-14,goal.pct-11,goal.pct-9,goal.pct-6,goal.pct-4,goal.pct-1,goal.pct,goal.pct+0,goal.pct+1,goal.pct+2].map(v=>Math.max(0,Math.min(100,v)));
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -49,8 +47,11 @@ export function GoalModal({ telos, goal, onClose, showIds }: GoalModalProps) {
           <div className="mk"><div className="mk-l">progress</div><div className="mk-v mono">{goal.pct}%</div></div>
           <div className="mk"><div className="mk-l">last month</div><div className="mk-v mono" style={{color:goal.delta>0?'var(--ok)':goal.delta<0?'var(--bad)':'var(--text-3)'}}>{goal.delta>0?'+':''}{goal.delta}</div></div>
           <div className="mk mk-wide">
-            <div className="mk-l">last eleven weeks</div>
-            <Spark points={seed} color={`var(${dim?.color ?? '--accent'})`}/>
+            {/* Measured values only: no weekly history is stored for a goal, so the gauge shows current progress. */}
+            <div className="mk-l">progress toward the target</div>
+            <div className="bar" style={{marginTop:8}} role="img" aria-label={`${goal.pct}% of target`}>
+              <div className="bar-fill" style={{width:`${Math.max(0,Math.min(100,goal.pct))}%`,background:`var(${dim?.color ?? '--accent'})`}}/>
+            </div>
           </div>
         </div>
 

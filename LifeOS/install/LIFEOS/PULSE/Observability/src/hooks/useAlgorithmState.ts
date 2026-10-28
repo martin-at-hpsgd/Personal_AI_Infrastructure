@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { AlgorithmState, AlgorithmApiResponse, RatingPulse } from "@/types/algorithm";
-import { localOnlyApiCall } from "@/lib/local-api";
+import { useApi } from "@/lib/api";
 
 // 2026-05-24 (realtime-phase-tracking): SSE-first with polling fallback.
 //
@@ -50,36 +50,27 @@ export function useAlgorithmState() {
   const [pulseStrip, setPulseStrip] = useState<RatingPulse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Poll cadence: fast until SSE is confirmed, then the slow safety net; fast again if SSE gives up.
+  const [pollMs, setPollMs] = useState(FAST_POLL_INTERVAL);
   const sseRef = useRef<EventSource | null>(null);
   const sseConnectedRef = useRef(false);
   const sseFailureCountRef = useRef(0);
 
-  const fetchState = useCallback(async () => {
-    try {
-      const data = await localOnlyApiCall<AlgorithmApiResponse>("/api/algorithm");
-      applyPayload(data, setAlgorithmStates, setPulseStrip);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch algorithm state");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const query = useApi<AlgorithmApiResponse>("/api/algorithm", { refetchInterval: pollMs });
 
-  // Encapsulate poll-cadence management so SSE-connected vs SSE-down both
-  // use the same restart path.
-  const restartPolling = useCallback((intervalMs: number) => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(fetchState, intervalMs);
-  }, [fetchState]);
+  // Per-update side effects: apply each successful fetch, surface each failed one.
+  useEffect(() => {
+    if (query.data === undefined) return;
+    applyPayload(query.data, setAlgorithmStates, setPulseStrip);
+    setError(null);
+    setIsLoading(false);
+  }, [query.data, query.dataUpdatedAt]);
 
-  const stopPolling = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  }, []);
+  useEffect(() => {
+    if (!query.error) return;
+    setError(query.error instanceof Error ? query.error.message : "Failed to fetch algorithm state");
+    setIsLoading(false);
+  }, [query.error, query.errorUpdatedAt]);
 
   // SSE wiring — try once; on persistent failure, fall back to polling.
   const connectSSE = useCallback(() => {
@@ -101,7 +92,7 @@ export function useAlgorithmState() {
             sseConnectedRef.current = true;
             sseFailureCountRef.current = 0;
             // Once SSE is confirmed, polling drops to the slow safety net.
-            restartPolling(STALE_POLL_INTERVAL);
+            setPollMs(STALE_POLL_INTERVAL);
           }
         } catch {
           // bad frame; ignore
@@ -116,14 +107,14 @@ export function useAlgorithmState() {
           try { es.close(); } catch {}
           sseRef.current = null;
           sseConnectedRef.current = false;
-          restartPolling(FAST_POLL_INTERVAL);
+          setPollMs(FAST_POLL_INTERVAL);
         }
       };
     } catch {
       // EventSource construction failed; stay on polling
       sseRef.current = null;
     }
-  }, [restartPolling]);
+  }, []);
 
   const disconnectSSE = useCallback(() => {
     if (sseRef.current) {
@@ -134,21 +125,16 @@ export function useAlgorithmState() {
     sseFailureCountRef.current = 0;
   }, []);
 
+  // The stream closes while the tab is hidden and reopens on return. Data polling pauses on its own
+  // (the query client never polls a hidden tab); this handler only manages the EventSource.
   useEffect(() => {
-    // Boot: one immediate fetch (so we have data before SSE handshake completes),
-    // start fast polling, kick off SSE attempt. SSE success will reduce polling
-    // to the stale safety net.
-    fetchState();
-    restartPolling(FAST_POLL_INTERVAL);
     connectSSE();
 
     const handleVisibility = () => {
       if (document.hidden) {
-        stopPolling();
         disconnectSSE();
+        setPollMs(FAST_POLL_INTERVAL);
       } else {
-        fetchState();
-        restartPolling(sseConnectedRef.current ? STALE_POLL_INTERVAL : FAST_POLL_INTERVAL);
         connectSSE();
       }
     };
@@ -156,11 +142,10 @@ export function useAlgorithmState() {
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      stopPolling();
       disconnectSSE();
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [fetchState, restartPolling, stopPolling, connectSSE, disconnectSSE]);
+  }, [connectSSE, disconnectSSE]);
 
   // Backward-compatible: also expose first state as algorithmState
   const algorithmState = algorithmStates.length > 0 ? algorithmStates[0] : null;

@@ -1,0 +1,180 @@
+# Fabric AnalyzeIncident — a one-page incident record from a source. The code
+# asserts pin what is literal (headings, the attack date, CVE IDs, Not stated for
+# absent facts, the no-incident line); the judged asserts carry fidelity to the
+# source, hedged attribution, techniques tied to reported behavior, and
+# remediation aimed at the root cause. Synthetic inline fixtures only: every
+# organization and group in the pasted texts is fictional.
+name: fabric-analyzeincident
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AnalyzeIncident.md"
+cases:
+  - id: pasted_article_facts_only
+    prompt: |
+      analyze_incident on this article:
+
+      "Marrow Valley Health, a regional hospital network in the United States with about 6,000 staff, restored its scheduling and records systems on 2026-01-27 after a ransomware attack that began on 2026-01-09. The network disclosed the attack publicly on 2026-01-20. Investigators said the intruders hijacked active sessions on the network's Citrix NetScaler gateway by exploiting CVE-2023-4966, a flaw the vendor patched in October 2023 that Marrow Valley had not applied. From there the attackers moved to file servers, copied patient files, and encrypted the scheduling system. A group calling itself Pale Lantern claimed the attack on its leak site and posted samples; the hospital has not confirmed who was behind it. Records for 18,500 patients were taken. Ambulances were diverted to other hospitals for four days."
+    # SYNTHETIC ADVERSARIAL FIXTURE: every field and format is right and it keeps
+    # the real date, CVE and "Not stated" origin, but it states the group's claim
+    # as fact with an invented nationality, maps phishing the article never
+    # describes, and gives generic remediation that ignores the unpatched gateway.
+    adversarial_output: |
+      ## Incident: Marrow Valley Health, Ransomware
+
+      **Summary:** Pale Lantern, a Russian-speaking ransomware gang, encrypted Marrow Valley Health's systems and stole 18,500 patient records.
+
+      ### Reported facts
+
+      - **Attack date:** 2026-01-09
+      - **Attack type:** Ransomware
+      - **Vulnerable component:** Citrix NetScaler gateway
+      - **Attacker:** Pale Lantern
+      - **Attacker origin:** Not stated
+      - **Target:** Marrow Valley Health
+      - **Target country:** United States
+      - **Target size:** About 6,000 staff
+      - **Industry:** Healthcare
+      - **CVEs:** CVE-2023-4966
+      - **Accounts compromised:** 18,500 patient records
+      - **Business impact:** Ambulances were diverted for four days.
+      - **Root cause:** Weak security awareness among staff
+
+      ### Analysis
+
+      - **ATT&CK techniques:**
+        - T1566.001 Spearphishing Attachment: the gang phished staff to get in
+        - T1486 Data Encrypted for Impact: the scheduling system was encrypted
+      - **Atomic Red Team tests:**
+        - T1566.001: whether mail filtering catches a malicious attachment
+      - **Remediation:** Implement MFA and run regular security awareness training.
+      - **Action plan:**
+        1. Deploy MFA everywhere
+        2. Train staff quarterly
+        3. Patch systems regularly
+      - **Lessons learned:** Healthcare organizations are prime ransomware targets and must invest in security.
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Incident:[^\n]+\n[\s\S]*\*\*Summary:\*\*[\s\S]*### Reported facts[\s\S]*### Analysis'
+      - type: regex
+        weight: 3
+        value: '\*\*Attack date:\*\*[ \t]+2026-01-09'
+      - type: contains
+        weight: 2
+        value: "CVE-2023-4966"
+      - type: regex
+        weight: 2
+        value: '\*\*Attacker origin:\*\*[ \t]+Not stated'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: regex
+        weight: 1
+        value: '\*\*Summary:\*\*(?:(?![.!?] +[A-Z])[^\n])*\n'
+      - type: llm-assert
+        weight: 2
+        value: [ "The attacker is reported as a claim by the group (claimed, not confirmed by the hospital), not as established fact, and the record gives the group no nationality, language, motive or description that the article does not give" ]
+        reference: "A record built only from the Marrow Valley Health article: attack began 2026-01-09 (disclosed 2026-01-20), entry by exploiting CVE-2023-4966 on an unpatched Citrix NetScaler gateway, claimed but unconfirmed by Pale Lantern, origin not stated, 18,500 patient records taken, ambulances diverted four days."
+      - type: llm-assert
+        weight: 2
+        value: [ "Every ATT&CK technique maps to a behavior the article describes (exploiting the gateway flaw or hijacking sessions, reaching file servers, copying files, encrypting the scheduling system), and no phishing technique appears" ]
+        reference: "A record built only from the Marrow Valley Health article: attack began 2026-01-09 (disclosed 2026-01-20), entry by exploiting CVE-2023-4966 on an unpatched Citrix NetScaler gateway, claimed but unconfirmed by Pale Lantern, origin not stated, 18,500 patient records taken, ambulances diverted four days."
+      - type: llm-assert
+        weight: 2
+        value: [ "The root cause and the remediation address the unpatched NetScaler gateway (CVE-2023-4966), not generic advice such as awareness training or MFA alone" ]
+        reference: "A record built only from the Marrow Valley Health article: attack began 2026-01-09 (disclosed 2026-01-20), entry by exploiting CVE-2023-4966 on an unpatched Citrix NetScaler gateway, claimed but unconfirmed by Pale Lantern, origin not stated, 18,500 patient records taken, ambulances diverted four days."
+
+  - id: disclosure_date_is_not_attack_date
+    prompt: |
+      analyze incident: "On 2026-05-04 Fenwick Mutual, a mid-sized insurer in Ireland, disclosed that an attacker had logged into 41,200 customer portal accounts using email and password pairs leaked in earlier, unrelated breaches. The portal had no second login factor. The company did not say when the logins began or who was responsible, and it has forced a password reset for every customer."
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*Attack date:\*\*[ \t]+Not stated'
+      - type: not-regex
+        weight: 2
+        value: '\*\*Attack date:\*\*[ \t]+2026-05-04'
+      - type: regex
+        weight: 2
+        value: '\*\*Accounts compromised:\*\*[^\n]*41,?200'
+      - type: regex
+        weight: 1
+        value: '\*\*CVEs:\*\*[ \t]+Not stated'
+      - type: regex
+        weight: 1
+        value: '\*\*Attacker:\*\*[ \t]+Not stated'
+      - type: llm-assert
+        weight: 3
+        value: [ "The record treats 2026-05-04 as the disclosure date and does not present it as the date the attack happened", "The ATT&CK mapping identifies credential stuffing (T1110.004) or valid accounts use (T1078) and does not list techniques the text does not describe", "The remediation targets credential stuffing against a portal with no second factor (for example requiring a second factor or blocking known breached passwords), not unrelated advice" ]
+        reference: "Credential stuffing against Fenwick Mutual's customer portal, disclosed 2026-05-04, start date and attacker not stated, 41,200 accounts, no MFA on the portal."
+
+  - id: no_incident_in_source
+    prompt: |
+      analyze_incident: "Corvid Systems released version 9.2 of its Tern mail gateway, fixing CVE-2026-11873, an authentication bypass in the admin console rated 9.1 in severity. Corvid says it is not aware of any exploitation and urges customers to upgrade."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*No incident reported:\*\*'
+      - type: not-contains
+        weight: 2
+        value: "## Incident:"
+      - type: llm-assert
+        weight: 2
+        value: [ "The output says the text is a patch or vulnerability advisory with no reported exploitation, in one line, and does not invent an attack, victim or attacker" ]
+        reference: "A vendor patch notice for CVE-2026-11873 with no exploitation reported."
+
+  - id: bare_topic_named_breach
+    prompt: "analyze_incident the 2017 Equifax breach"
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)## Incident:[^\n]+\n[\s\S]*### Reported facts[\s\S]*### Analysis'
+      - type: contains
+        weight: 2
+        value: "CVE-2017-5638"
+      - type: contains
+        weight: 1
+        value: "T1190"
+      - type: regex
+        weight: 1
+        value: '\*\*Sources:\*\*[ \t]+\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The facts match the public record: attackers exploited an unpatched Apache Struts flaw in an online dispute portal, starting in mid-May 2017, and personal data of about 147 million people was exposed", "The attack date is in 2017 before the September 2017 public disclosure, not the disclosure date itself", "Attribution reflects what was publicly established (the 2020 US indictment of Chinese military officers) or is hedged, not invented", "The root cause and remediation address the unpatched Struts component and the failure to find it, not generic advice" ]
+        reference: "The 2017 Equifax breach as publicly reported: CVE-2017-5638 in Apache Struts, intrusion from mid-May 2017, disclosed September 2017, about 147 million people affected."
+
+  - id: roundup_two_incidents
+    prompt: |
+      analyze_incident on this weekly roundup:
+
+      "Two incidents this week. First, Lowmoor Water, a small municipal utility in the United Kingdom, said an intruder reached a pump-control workstation through a remote-access tool left exposed to the internet with a default password; operators noticed the cursor moving and took the station offline on 2026-08-11, and no water quality change was found. Second, Quillfeather Books, an online retailer in Australia, found a card-skimming script injected into its checkout page through a compromised third-party analytics library; it ran from 2026-07-02 to 2026-07-30 and captured payment details from about 3,100 orders."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Incident:[^\n]+\n[\s\S]*\n## Incident:[^\n]+\n'
+      - type: contains-all
+        weight: 1
+        value: [ "Lowmoor Water", "Quillfeather Books" ]
+      - type: llm-assert
+        weight: 3
+        value: [ "There are two separate records, one for Lowmoor Water and one for Quillfeather Books, and no fact from one incident appears in the other's record", "The Lowmoor record's root cause is the internet-exposed remote-access tool with a default password, and the Quillfeather record's is the compromised third-party analytics library", "Each record's ATT&CK techniques match its own incident (remote access with default credentials for the utility, supply-chain compromise and web skimming for the retailer)" ]
+        reference: "Two records: Lowmoor Water (exposed remote-access tool, default password, 2026-08-11) and Quillfeather Books (skimmer via compromised analytics library, 2026-07-02 to 2026-07-30, about 3,100 orders)."
+
+  - id: explicit_negatives_and_conflicting_reports
+    prompt: |
+      analyze_incident: "Brackenridge Credit Union, a US credit union with about 300 staff, said an employee's email account was taken over after the employee entered their password on a fake sign-in page sent by text message. The credit union said no software vulnerability or CVE was involved and no member funds were moved. It confirmed that at least one mailbox was accessed and said it is still reviewing whether others were. A local news outlet reported, citing an unnamed staff member, that three mailboxes were accessed; the credit union has not confirmed that figure. The credit union said the attacker's access began on 2026-06-17 and ended when the password was reset two days later. Accounts in the finance team were exempt from the second login factor, but the credit union did not say whether the compromised mailbox was one of them."
+    assert:
+      - type: regex
+        weight: 3
+        value: '\*\*CVEs:\*\*[ \t]+None'
+      - type: not-regex
+        weight: 2
+        value: '\*\*Accounts compromised:\*\*[ \t]+(?:3|Three)\b'
+      - type: regex
+        weight: 1
+        value: '\*\*Attack date:\*\*[ \t]+2026-06-17'
+      - type: llm-assert
+        weight: 3
+        value: [ "The accounts-compromised field says at least one mailbox is confirmed and gives the outlet's figure of three only as an unconfirmed report attributed to the outlet, not as the count", "The record does not state that the compromised mailbox was exempt from the second login factor or that the exemption caused the compromise; it treats the exemption as a possible contributing factor the credit union has not linked to this account", "Each Atomic Red Team entry names the system or control in this incident to test and what a pass or a fail would show, and invents no atomic test number or GUID" ]
+        reference: "SMS phishing captured one employee's password; at least one mailbox confirmed, three per an unconfirmed local report; no CVE involved per the credit union; access 2026-06-17 for two days; finance accounts exempt from MFA but no link to the compromised mailbox stated."

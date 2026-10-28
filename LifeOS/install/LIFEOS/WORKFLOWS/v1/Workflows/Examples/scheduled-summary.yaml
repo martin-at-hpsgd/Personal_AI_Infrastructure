@@ -1,0 +1,18 @@
+version: 1
+name: scheduled-summary
+description: A deterministic scheduled task; host supplies the summary as input.
+trigger:
+  type: schedule
+  cron: '0 9 * * 1-5'
+  timezone: UTC
+input:
+  type: object
+  required: [summary]
+  properties:
+    summary: { type: string }
+steps:
+  format:
+    uses: A_EXAMPLE_FORMAT
+    with:
+      summary: { $ref: input.summary }
+output: { $ref: steps.format.output }

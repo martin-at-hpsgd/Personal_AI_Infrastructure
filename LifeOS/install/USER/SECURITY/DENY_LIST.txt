@@ -1,0 +1,66 @@
+# DENY_LIST.txt — release deny-list (template; replace every REPLACE-ME line)
+#
+# WHAT THIS IS
+#   The plaintext blocklist the release gates scan the shipping tree against.
+#   Consumers (all read this exact path, ~/.claude/LIFEOS/USER/SECURITY/DENY_LIST.txt):
+#     the release precheck — runs `rg -i -f` with this file over a staged tree
+#     LIFEOS/TOOLS/SkillHygieneGate.ts        — skills must be publishable-clean
+#     hooks/lib/system-file-guard-core.ts     — write-time guard on SYSTEM files
+#     LIFEOS/TOOLS/DeriveDenyHashes.ts        — the salted-hash companion (DENY_HASHES.json)
+#
+# FORMAT
+#   One ripgrep regex per line. Scans run case-insensitive (-i).
+#   Blank lines and lines starting with `#` are ignored.
+#   `# --- Section ---` markers are just comments; keep them for readability.
+#   Escape regex metacharacters in literals: a dot in a domain is `\.`.
+#   Do NOT list your plain surname/first name if it appears in sanctioned public
+#   attribution (README credits, clone URLs) — that floods the gates. List the
+#   things that must NEVER ship: addresses, phone numbers, personal email,
+#   private hostnames, account ids, family names, customer names.
+#
+# SIZE RULE
+#   SkillHygieneGate refuses to scan against a list with fewer than 20 patterns
+#   ("suspiciously small — refusing to scan against a truncated list"). Keep at
+#   least 20 real patterns here once you replace the placeholders.
+#
+# PLACEHOLDERS
+#   Every `REPLACE-ME-...` token below is a stand-in that matches nothing in a
+#   normal tree. Replace each with your real value, or delete the line and add
+#   your own. Test after editing:
+#     bun ~/.claude/LIFEOS/TOOLS/SkillHygieneGate.ts   (and the release skill's DenyListCheck tool, if you have it)
+
+# --- Identity (the humans in your household; never the DA's name) ---
+REPLACE-ME-partner-first-name
+REPLACE-ME-partner-full-name
+REPLACE-ME-child-or-family-member-name
+REPLACE-ME-your-legal-middle-name
+REPLACE-ME-your-nickname
+
+# --- Contact details ---
+REPLACE-ME-personal-email@example\.invalid
+REPLACE-ME-phone-number-digits-only
+REPLACE-ME-street-address
+REPLACE-ME-zip-or-postal-code-with-street
+REPLACE-ME-birth-date-iso
+
+# --- Private infrastructure ---
+REPLACE-ME-home-lan-hostname\.lan
+REPLACE-ME-private-domain\.example
+REPLACE-ME-vpn-or-tailnet-name
+REPLACE-ME-nas-or-server-hostname
+REPLACE-ME-private-wifi-ssid
+
+# --- Accounts and ids ---
+REPLACE-ME-cloud-account-id
+REPLACE-ME-workers-dev-subdomain\.workers\.dev
+REPLACE-ME-stripe-account-id
+REPLACE-ME-discord-user-id
+REPLACE-ME-private-repo-name
+
+# --- Customers, employers, contracts ---
+REPLACE-ME-customer-company-name
+REPLACE-ME-customer-contact-name
+REPLACE-ME-employer-internal-project-name
+
+# --- Machine-bound paths (SkillHygieneGate adds /Users/<you>/ and /home/<you>/ itself) ---
+REPLACE-ME-external-volume-name

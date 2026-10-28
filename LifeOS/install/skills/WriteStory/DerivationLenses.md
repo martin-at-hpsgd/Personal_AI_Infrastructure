@@ -65,7 +65,7 @@ A well-formed premise implies three things: a **character** trait, a **conflict*
 Some stories should NOT have their theme or spine derived up front:
 
 - **Theme-emergent** (literary, experimental): hold the theme loose. Build scenes and characters that interest the writer, watch what keeps recurring, and name the theme late — applied over a story that already works, not bolted under it.
-- **Resonance-first** (vibe/image/mood seeds): there's no agent or causality yet, so deriving a flaw and a plot is fabrication. Stay in the mood. Explore texture, images, what's deliberately absent, what the feeling reminds the writer of. Use the **Explore** workflow to pull divergent material out of the writer until there's enough of their own substrate to build a spine from — then switch to the lens that fits what emerged.
+- **Resonance-first** (vibe/image/mood seeds): there's no agent or causality yet, so deriving a flaw and a plot is fabrication. Stay in the mood. Explore texture, images, what's deliberately absent, what the feeling reminds the writer of. Use the **Explore** intent to pull divergent material out of the writer until there's enough of their own substrate to build a spine from — then switch to the lens that fits what emerged.
 
 ## The Rule Underneath All of Them
 

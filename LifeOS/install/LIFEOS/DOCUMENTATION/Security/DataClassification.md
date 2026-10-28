@@ -1,17 +1,17 @@
 ---
-last_updated: 2026-06-18T00:00:00Z
+last_updated: 2026-09-20
 last_updated_by: da
-convention: pai-freshness-v1
-version: 1.1.0
+convention: lifeos-freshness-v1
+version: 1.1.9
 ---
 
 # LifeOS Data Classification & Inference-Source Routing
 
-> The doctrine that decides **which inference source may process which data**. Four data classes, four+ inference sources, one per-route routing matrix. Fail-closed. Designed + adversarially hardened 2026-06-18; routing policy revised by the principal the same day.
+> The doctrine that decides **which inference source may process which data**. Four data classes, four+ inference sources, one per-route routing matrix. Fail-closed as policy: unclassified data counts as RESTRICTED. Since 2026-10-24 no code checks a payload against these ceilings; see the enforcement section below. Designed + adversarially hardened 2026-06-18; routing policy revised by the principal the same day.
 
 ## Why this exists
 
-LifeOS draws inference from sources at different trust/egress tiers. Native (Anthropic) and Forge (OpenAI) are the two trusted US vendors; the GLM route (GLM via the OpenRouter broker, `OpenRouter.ts`) is an additional external cloud. Each external call is a data-egress surface. This doctrine classifies every piece of data and binds each class to the routes allowed to see it.
+LifeOS draws inference from sources at different trust/egress tiers. Anthropic, OpenAI (Astra, the workers, and the maintainer-side Pentest, which is not in the public release payload), Google (Gemini, since 2026-10-10), Cloudflare Workers AI on our own account (Assay's Clef-omni engine, since 2026-10-10), xAI (Grok) and Meta (Muse), both since 2026-10-16, are restricted-capable under the current vendor policy. The data broker Treg is the one wired external route with a lower ceiling (PUBLIC). The GLM route through the OpenRouter broker (`OpenRouter.ts`) was the third tier from 2026-06-18 until 2026-09-03, when it was removed: nothing called it and the broker account was dead. Each external call is a data-egress surface. This doctrine classifies every piece of data and binds each class to the routes allowed to see it.
 
 **The core principle: data egress is ranked by trust, content is ranked by sensitivity, and a route may only process data at or below its ceiling. Unclassified data is RESTRICTED (fail-closed).**
 
@@ -26,7 +26,7 @@ LifeOS draws inference from sources at different trust/egress tiers. Native (Ant
 
 **RESTRICTED** — auth material, third-party PII, customer-owned data. `.env` + anything quoting it; API keys/OAuth/Cloudflare/Google creds; customer-owned engagement data; contacts' PII; financial source docs; health/medical data. Paths: `**/.env`, `LIFEOS/USER/CONFIG/CREDENTIALS/**`, `LIFEOS/USER/WORK/CUSTOMERS/**`, `LIFEOS/USER/FINANCES/**` (legacy alias `LIFEOS/USER/TELOS/FINANCES/**`), `LIFEOS/USER/HEALTH/**`, `LIFEOS/USER/CONTACTS.md`. **Also the fail-closed default.**
 
-**CONFIDENTIAL** — {{PRINCIPAL_NAME}}'s own sensitive life/business data: health, financials, own-infra security findings, TELOS internals, hot-layer + relationship memory, People/Companies notes. **Default for all of `LIFEOS/USER/**`** except RESTRICTED sub-globs and named PUBLIC demotes.
+**CONFIDENTIAL** — the principal's own sensitive life/business data: health, financials, own-infra security findings, TELOS internals, hot-layer + relationship memory, People/Companies notes. **Default for all of `LIFEOS/USER/**`** except RESTRICTED sub-globs and named PUBLIC demotes.
 
 **INTERNAL** — private but not sensitive: ISAs, work notes, plans, non-PII knowledge, non-secret config, system internals. Paths: `LIFEOS/MEMORY/**`, `skills/**`, `LIFEOS/USER/CONFIG/**` (minus CREDENTIALS), `CLAUDE.md`, `LIFEOS/LIFEOS_SYSTEM_PROMPT.md`.
 
@@ -38,31 +38,41 @@ LifeOS draws inference from sources at different trust/egress tiers. Native (Ant
 |------|--------|--------|--------|
 | 0 | **LOCAL** | on-device (ollama) | none — **NOT YET WIRED** |
 | 1 | **NATIVE** | Anthropic | home vendor, subscription/enterprise terms |
-| 2 | **FORGE** | OpenAI (codex) | external, single known vendor |
-| 2 | **GENE** | OpenRouter broker → GLM 5.2 | external **broker** — non-deterministic downstream provider/country; most opaque |
+| 2 | **CODEX** | OpenAI (codex) | external, single known vendor; runs on the principal's ChatGPT plan, never an API key |
+| 2 | **GEMINI** | Google (`GeminiSearch.ts`) | external, single known vendor |
+| 2 | **WORKERS_AI** | Cloudflare Workers AI (Assay engines) | our own Cloudflare account |
+| 2 | **GROK** | xAI (`GrokQuery.ts`) | external, single known vendor |
+| 2 | **MUSE** | Meta (`Muse.ts`) | external, single known vendor |
+| 2 | **TREG** | data broker (`Treg.ts`) | external data vendor, not an inference vendor; PUBLIC ceiling |
+| 2 | _(GENE, removed 2026-09-03)_ | OpenRouter broker → GLM | external **broker** — non-deterministic downstream provider/country; the tier the rules below were hardened against, kept here so the rules read correctly |
 
 ## The routing matrix (the rule)
 
 **The ceiling is per-ROUTE — source + model + data-residency — not per-source** (principal policy, revised 2026-06-18). Three rules, most-restrictive wins:
 
-1. **RESTRICTED-capable vendors — Anthropic (Native) + OpenAI (Forge) ONLY.** These two trusted US vendors may process every class, including RESTRICTED. No other provider or model ever touches RESTRICTED.
+1. **RESTRICTED-capable vendors — Anthropic (Native), OpenAI (codex), Google (Gemini), xAI (Grok), Meta (Muse) and Cloudflare Workers AI on our own account (Assay's two engines, Clef-omni and Clairic) ONLY.** These trusted vendors may process every class, including RESTRICTED. No other provider or model ever touches RESTRICTED. Secret values never leave for any vendor.
 2. **Chinese-origin model → INTERNAL ceiling.** Any model from a Chinese lab (GLM/Z.ai, Kimi/Moonshot, MiniMax, Qwen, DeepSeek) caps at INTERNAL regardless of who hosts it — and only when routing is guaranteed off China/Russia; an opaque broker with no such guarantee drops to PUBLIC.
 3. **US/allied model, US inference, US company, verified no China/Russia egress → up to CONFIDENTIAL.** Otherwise PUBLIC.
 
-LOCAL (on-device) handles everything. **A route's ceiling depends on the model AND the residency:** the GLM route pinned to a US+ZDR provider reaches INTERNAL; the same route unpinned drops to PUBLIC.
+LOCAL (on-device) handles everything. **A route's ceiling depends on the model AND the residency:** a Chinese-origin model pinned to a US+ZDR provider reaches INTERNAL; the same model unpinned drops to PUBLIC. (The GLM route that exercised this rule was removed 2026-09-03; the rule stands for any future broker lane.)
 
 Resolved ceilings for the wired routes:
 
 | Route | Ceiling | Why |
 |-------|---------|-----|
 | NATIVE (Anthropic) | RESTRICTED | trusted US vendor |
-| FORGE (OpenAI) | RESTRICTED | trusted US vendor |
-| GENE · GLM 5.2, pinned US + ZDR (default: Fireworks) | INTERNAL | Chinese model, residency guaranteed by allowlisted US provider |
-| GENE · GLM 5.2, unpinned **or** non-US pin | PUBLIC | residency not guaranteed (could route to CN/RU) |
+| CODEX (OpenAI) | RESTRICTED | trusted US vendor |
+| GROK · xAI via `GrokQuery.ts` | RESTRICTED | trusted vendor since 2026-10-16 (principal call); was Bash-gated by `EgressClassGuard` from 2026-09-03 until that hook was retired 2026-10-24; secret values stay out through the `.env` read rules. Before 2026-10-16 the ceiling was PUBLIC, or INTERNAL while `XaiZdr.ts` showed a verified zero-retention test under 36 h old |
+| Gemini (`GeminiSearch.ts`) | RESTRICTED | trusted vendor since 2026-10-10 (principal call); secret values stay out through the `.env` read rules, and nothing scans the payload |
+| Assay engine (`Engine.ts`, Cloudflare Workers AI) | RESTRICTED | our own Cloudflare account; secret values still refused |
+| Treg (`Treg.ts`) | PUBLIC | data broker outside the trusted vendor set; policy only since 2026-10-24, no gate checks the payload |
+| Muse (`Muse.ts`, Meta Muse Code) | RESTRICTED | trusted vendor since 2026-10-16 (principal call; PUBLIC from 2026-10-12); secret values stay out through the `.env` read rules, and nothing scans the payload |
+| _(removed 2026-09-03)_ GENE · GLM, pinned US + ZDR | INTERNAL | Chinese model, residency guaranteed by allowlisted US provider |
+| _(removed 2026-09-03)_ GENE · GLM, unpinned or non-US pin | PUBLIC | residency not guaranteed (could route to CN/RU) |
 
-Machine-readable form: `maxClassForRoute()` / `ROUTES` in `LIFEOS/TOOLS/models.ts`. Live enforcement: `hooks/EgressClassGuard.hook.ts`.
+The ceilings are policy. The code form (`maxClassForRoute()` and the `InferenceSource` routes in the data-classification lib) and the Bash-time `EgressClassGuard` that enforced it were removed 2026-10-24. What is still enforced is that secret values stay out of reach, by the `.env` deny and ask rules in `settings.json`. Every model vendor is trusted for data (OPERATIONAL_PREFERENCES § Model selection).
 
-**Note on Forge/OpenAI at RESTRICTED:** assumes OpenAI's enterprise / zero-retention API terms apply to the codex path. Worth explicit confirmation — a principal-risk decision, not an inherited default.
+**Note on codex/OpenAI at RESTRICTED:** the codex route runs on the principal's ChatGPT subscription and never uses an API key, so OpenAI's enterprise or zero-retention API terms are not what governs it; the subscription's own data terms are. The RESTRICTED ceiling is the installing principal's decision (OPERATIONAL_PREFERENCES § Model selection), not an inherited default. Confirm those terms before sending third-party personal data or customer-owned data, or lower this route's ceiling in the table above and in OPERATIONAL_PREFERENCES § Model selection.
 
 ## Marking convention
 
@@ -77,18 +87,18 @@ Path-default-first, fail-closed, mark-only-the-exceptions:
 
 ## Enforcement
 
-**Built + LIVE:**
-- `hooks/EgressClassGuard.hook.ts` + `hooks/lib/egress-class-core.ts` — PreToolUse Bash gate, registered in the Bash matcher. Detects `bun … OpenRouter.ts` execs, classifies the payload (secret-shape scan + sensitive-path references), and BLOCKS anything above the route ceiling. Gates at Bash, so it catches both direct calls and any subagent's own internal OpenRouter.ts calls. Fail-closed on a confirmed Tier-2 route; never blocks unrelated Bash. Logs to `LIFEOS/MEMORY/OBSERVABILITY/egress-decisions.jsonl`. No LLM in the path. Verified by an 8-case battery + an observed live block.
-- `LIFEOS/TOOLS/models.ts` — `SOURCE_TIER`, `RESTRICTED_CAPABLE_VENDORS`, `CHINESE_MODEL_PATTERNS`, `maxClassForRoute()`/`isRouteAllowed()`, `ROUTES`.
-- `LIFEOS/USER/CONFIG/data-classification.json` — path-default glob table.
-- The hard guard is the deterministic `EgressClassGuard` hook (above); `OpenRouter.ts` forces `provider.data_collection: deny`. (The former `Gene.md` agent's soft prompt-guard was retired with the persona 2026-07-02; the capability now lives entirely in the tool + hook.)
-- **GLM route INTERNAL-by-default (2026-06-20):** the GLM/OpenRouter route now default-pins a US+ZDR provider (Fireworks) so its standing ceiling is INTERNAL, not PUBLIC. `egress-class-core.ts` grants the INTERNAL ceiling ONLY when the `--pin` value is on the `US_ZDR_PROVIDERS` allowlist; an unpinned call or a non-US pin fails closed to PUBLIC. The pin is honored as a *constraint*, not a preference: `OpenRouter.ts` sends `provider.order:[pin]` + `allow_fallbacks:false`, so if the pinned US provider is down the call **errors** rather than silently rerouting off-US (verified live: a Fireworks rate-limit returned 429, did not fall back). Two honest caveats this doctrine must not blur: (1) **ZDR ≠ residency** — `data_collection:deny` is a retention/training guarantee; US *geography* comes only from the pinned provider being US infra (OpenRouter's metadata claim), they are orthogonal. (2) **The broker is inside the trust boundary** — OpenRouter proxies plaintext and has its own logging policy, so the INTERNAL leak surface = OpenRouter infra + the pinned provider, not the provider alone. Acceptable for INTERNAL; named here rather than hidden. The gate enforces residency (route geography); the INTERNAL/CONFIDENTIAL *content* line still rests on the shape-scan + operator discipline (the gate sees secret-shapes and USER-paths, not semantic CONFIDENTIAL prose) — closing the prior "GLM wrapper pin" gap on residency, not on semantic content classification.
+**Retired 2026-10-24 (ISA `20261024-native-security`).** The enforcement below is gone; this section is history, and the ceilings above are policy. What still holds a secret value in place is the `.env` deny and ask rules in `settings.json`, with secret values masked at writers.
+- The Bash-time `EgressClassGuard` hook and its `egress-class-core` lib detected `bun … <gated CLI>` execs for every filename in `GATED_CLI_FILES` (`GrokQuery.ts`, `Engine.ts`, `Treg.ts`, `Muse.ts`), classified the payload (secret-shape scan plus sensitive-path references), and blocked anything above the route ceiling, logging to `LIFEOS/MEMORY/OBSERVABILITY/egress-decisions.jsonl`. It was removed once every model vendor became trusted for data (OPERATIONAL_PREFERENCES § Model selection).
+- The `data-classification` lib held `InferenceSource`, `CLASS_RANK`, `maxClassForRoute()` and the `RESTRICTED_CAPABLE_VENDORS` and `CHINESE_MODEL_PATTERNS` tables; it was removed with the guard.
+- `LIFEOS/USER/CONFIG/data-classification.json` — path-default glob table. Still on disk; nothing in the hook layer reads it any more.
+- (The former `Gene.md` agent's soft prompt-guard was retired with the persona 2026-07-02; the `OpenRouter.ts` tool that carried the route after it was removed 2026-09-03.)
+- **GLM route INTERNAL-by-default (2026-06-20, route removed 2026-09-03; kept as the worked precedent for any future broker lane):** the GLM/OpenRouter route now default-pins a US+ZDR provider (Fireworks) so its standing ceiling is INTERNAL, not PUBLIC. `egress-class-core.ts` grants the INTERNAL ceiling ONLY when the `--pin` value is on the `US_ZDR_PROVIDERS` allowlist; an unpinned call or a non-US pin fails closed to PUBLIC. The pin is honored as a *constraint*, not a preference: `OpenRouter.ts` sends `provider.order:[pin]` + `allow_fallbacks:false`, so if the pinned US provider is down the call **errors** rather than silently rerouting off-US (verified live: a Fireworks rate-limit returned 429, did not fall back). Two honest caveats this doctrine must not blur: (1) **ZDR ≠ residency** — `data_collection:deny` is a retention/training guarantee; US *geography* comes only from the pinned provider being US infra (OpenRouter's metadata claim), they are orthogonal. (2) **The broker is inside the trust boundary** — OpenRouter proxies plaintext and has its own logging policy, so the INTERNAL leak surface = OpenRouter infra + the pinned provider, not the provider alone. Acceptable for INTERNAL; named here rather than hidden. The gate enforces residency (route geography); the INTERNAL/CONFIDENTIAL *content* line still rests on the shape-scan + operator discipline (the gate sees secret-shapes and USER-paths, not semantic CONFIDENTIAL prose) — closing the prior "GLM wrapper pin" gap on residency, not on semantic content classification.
 
 **Still planned:**
 - Path/identity scrub for INTERNAL→Tier-2 (reuse sync-docs.ts + Daemon SecurityFilter rules).
 - Pulse statusline count; ShadowRelease release-time backstop.
 
-**Known limits of the v1 gate (honest):** it inspects the Bash *command string* — so it catches secrets and sensitive *paths named in the command*, but NOT the file *contents* the tool reads at runtime, nor free-prose PII with no token-shape or path reference. Strong first layer, not complete.
+**Known limits of the retired v1 gate (honest):** it inspected the Bash *command string* — so it caught secrets and sensitive *paths named in the command*, but not the file *contents* the tool read at runtime, nor free-prose PII with no token-shape or path reference.
 
 ## Gaps / roadmap
 
@@ -104,30 +114,34 @@ Path-default-first, fail-closed, mark-only-the-exceptions:
 
 ### One request, two files, two verdicts
 
-Say a workflow wants to summarize a file through the external GENE route (GLM behind the broker, pinned to a US zero-retention provider — ceiling INTERNAL). Watch the gate decide, per file, with no model in the loop:
+Say a workflow wants to summarize a file through an external broker route (the GENE/GLM lane that existed until 2026-09-03: a Chinese model behind a broker, pinned to a US zero-retention provider — ceiling INTERNAL). This is how the retired gate decided, per file, with no model in the loop. The verdicts are still the policy; since 2026-10-24 you apply them, because no code does:
 
 - **A plain work note** — an internal design doc under the memory tree, no secrets, no sensitive paths. Path default lands it at INTERNAL. INTERNAL ≤ the route's INTERNAL ceiling, so the call goes through.
-- **A deploy script that names a credential** — the same route, but the command string references an `.env` path and the scan sees a token-shaped string. Auto-promote fires: class becomes RESTRICTED. Only the two trusted US vendors may ever see RESTRICTED, so the broker route is **blocked, fail-closed** — the summary never leaves for the broker.
+- **A deploy script that names a credential** — the same route, but the command string references an `.env` path. Auto-promote fires: class becomes RESTRICTED. Only the trusted vendors may ever see RESTRICTED, so the broker route is **blocked, fail-closed** — the summary never leaves for the broker.
+- **A deploy script that contains a token-shaped string** — the scan finds a secret value. Policy forbids it on every route, trusted vendors included, because secret values never leave for any vendor. In code only the Assay engine refuses a secret shape in the payload; on the other routes the `.env` read rules keep the value out of reach.
 
-Same route, same one-line policy, opposite outcomes — decided by the *content*, not by which route was asked for. Flip the route to Native (Anthropic) and both files pass, because a RESTRICTED-capable vendor has no ceiling to exceed.
+Same route, same one-line policy, opposite outcomes — decided by the *content*, not by which route was asked for. Flip the route to Native (Anthropic) and the work note and the script that only names a credential both pass, because a RESTRICTED-capable vendor has no ceiling to exceed. The script holding a secret value still does not: strip the value, then send.
 
 ### When a route may see the data, and when it may not
 
 The quick read on any route is "what is this route's ceiling, and is the data at or below it?"
 
-- **Native / Forge** — no ceiling; every class, RESTRICTED included. The two trusted US vendors.
-- **GENE, pinned US + zero-retention** — INTERNAL ceiling. Fine for work notes and system internals; never for health, finances, or credentials.
-- **GENE, unpinned or pinned off-US** — drops to PUBLIC. Residency isn't guaranteed, so only already-public data may go.
+- **Native / codex / Gemini / Grok / Muse** — no ceiling; every class, RESTRICTED included. Trusted vendors (Google since 2026-10-10, xAI and Meta since 2026-10-16). Secret values never go to any route by policy; the `.env` read rules keep them out of reach, and only the Assay engine also refuses a secret shape in code.
+- **Treg** — PUBLIC ceiling; a data broker outside the trusted vendor set, so only already-public data may go.
+- **A Chinese-origin model pinned US + zero-retention** (the removed GENE lane) — INTERNAL ceiling. Fine for work notes and system internals; never for health, finances, or credentials.
+- **The same model unpinned or pinned off-US** — drops to PUBLIC. Residency isn't guaranteed, so only already-public data may go.
 - **Unclassified anything** — treated as RESTRICTED. If you didn't tag it, it's as locked as its directory.
 
 ### The routing decision as a picture
 
 ```mermaid
 flowchart TD
-    A[Data heading to an inference route] --> B{Secret-shape or RESTRICTED path?}
+    A[Data heading to an inference route] --> S{Secret value in the payload?}
+    S -->|yes| X
+    S -->|no| B{RESTRICTED path or tag?}
     B -->|yes| R[Class is RESTRICTED]
     B -->|no| C[Class from tag or path default]
-    R --> D{Route is Native or Forge?}
+    R --> D{Route is a trusted vendor?}
     C --> E{Class at or below the route ceiling?}
     D -->|yes| P[Allowed]
     D -->|no| X[Blocked, fail-closed]
@@ -135,6 +149,6 @@ flowchart TD
     E -->|no| X
 ```
 
-The diagram is the whole doctrine in one frame: sensitivity is decided first and most-restrictively, the two trusted vendors are the only path for the top class, and everything else must sit at or below its route's ceiling. Every unresolved branch falls to the blocked side — the default is no, not maybe.
+The diagram is the whole doctrine in one frame: a secret value stops at the first gate on every route, sensitivity is then decided most-restrictively, the trusted vendors are the only path for the top class, and everything else must sit at or below its route's ceiling. Every unresolved branch falls to the blocked side — the default is no, not maybe. The diagram is policy: since 2026-10-24 nothing evaluates it at call time, apart from the Assay engine's own secret-shape refusal.
 
 ---

@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.4.0
+ * 1.4.0 (2026-10-15): every fetch is https to the archive host, through SafeFetch, each redirect re-checked.
  * TlpArchive — scrape The Last Psychiatrist blog (thelastpsychiatrist.com)
  * and save each post as a Knowledge entry under MEMORY/KNOWLEDGE/Ideas/.
  *
@@ -16,9 +18,12 @@ import { writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { getPrincipalName } from "../../hooks/lib/identity";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { bumpMemoryGeneration } from "./MemoryRetriever";
+import { safeFetch, type SafeFetchOptions } from "./lib/SafeFetch";
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const KNOWLEDGE_DIR = join(HOME, ".claude/LIFEOS/MEMORY/KNOWLEDGE/Blogs");
+const KNOWLEDGE_DIR = lifeosPath("MEMORY", "KNOWLEDGE", "Blogs");
 const URL_FILE = "/tmp/tlp-urls.txt";
 const FAILED_FILE = "/tmp/tlp-failed.txt";
 const SUCCESS_FILE = "/tmp/tlp-success.txt";
@@ -44,20 +49,49 @@ type Post = {
 
 // ---------------------- Fetch ----------------------
 
-async function fetchHtml(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
+/** The only hosts this archiver fetches from. */
+export const ARCHIVE_HOSTS = new Set(["thelastpsychiatrist.com", "www.thelastpsychiatrist.com"]);
+const MAX_REDIRECTS = 5;
+
+/** Why `url` is not an archive page this tool may fetch, or null. https to an archive host only. */
+export function archiveUrlRefusal(url: string): string | null {
+  let u: URL;
+  try { u = new URL(url); } catch { return `not a valid URL: ${url}`; }
+  if (u.protocol !== "https:") return `${url} is not https`;
+  if (u.username || u.password) return `${url} carries credentials`;
+  const host = u.hostname.replace(/\.$/, "").toLowerCase();
+  if (!ARCHIVE_HOSTS.has(host)) return `${host} is not the archive host`;
+  return null;
+}
+
+/**
+ * Fetch one archive page. URLs arrive from the command line and from /tmp list files, so every
+ * request and every redirect hop must be https to the archive host, and goes through safeFetch: the
+ * name is resolved once, every answer must be public, and the connection is pinned to the checked
+ * address (no DNS-rebinding window). `opts` is a test seam (resolver, trust roots); production passes
+ * nothing.
+ */
+export async function fetchHtml(url: string, opts: Pick<SafeFetchOptions, "resolve" | "allow" | "tls"> = {}): Promise<string> {
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const refusal = archiveUrlRefusal(current);
+    if (refusal) throw new Error(`refused ${current}: ${refusal}`);
+    const res = await safeFetch(current, {
       headers: { "User-Agent": UA, Accept: "text/html" },
-      signal: controller.signal,
-      redirect: "follow",
-    });
+      signal,
+      redirect: "manual",
+    }, { ...opts, httpsOnly: true, timeoutMs: TIMEOUT_MS });
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (location) {
+      await res.body?.cancel().catch(() => {});
+      current = new URL(location, current).toString();
+      continue;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.text();
-  } finally {
-    clearTimeout(timer);
   }
+  throw new Error(`more than ${MAX_REDIRECTS} redirects from ${url}`);
 }
 
 // ---------------------- HTML helpers ----------------------
@@ -277,6 +311,45 @@ function parsePost(html: string, url: string): Post {
   return { url, year, month, urlSlug, title, postDate, bodyHtml, bodyMd, fileSlug };
 }
 
+// ---------------------- Install config ----------------------
+//
+// Cross-links into the installer's own Knowledge notes, and any personal note on
+// why the archive matters, are per-install data. They live in
+// USER/CONFIG/tlp-archive.json:
+//   { "firstPostRelated": "<slug>",       // the oldest post links here (no preceded-by)
+//     "indexRelated": ["<slug>", ...],    // the index links here
+//     "thesisNote": "<clause>" }          // appended to the index thesis sentence; {principal} → the principal's name
+// Every key is optional. A missing file or key writes no extra link or note, and
+// says so on stderr naming the file and key.
+
+type TlpConfig = { firstPostRelated?: string; indexRelated?: string[]; thesisNote?: string };
+const CONFIG_FILE = lifeosPath("USER", "CONFIG", "tlp-archive.json");
+let configCache: TlpConfig | null = null;
+
+function loadConfig(): TlpConfig {
+  if (configCache) return configCache;
+  let cfg: TlpConfig = {};
+  if (existsSync(CONFIG_FILE)) {
+    try {
+      cfg = JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as TlpConfig;
+    } catch (e) {
+      console.error(`TlpArchive: ${CONFIG_FILE} is not valid JSON (${(e as Error).message}); writing no install cross-links.`);
+    }
+  } else {
+    console.error(`TlpArchive: no ${CONFIG_FILE}; writing no install cross-links (keys: firstPostRelated, indexRelated, thesisNote).`);
+  }
+  configCache = cfg;
+  return cfg;
+}
+
+function configKey<K extends keyof TlpConfig>(key: K): TlpConfig[K] {
+  const cfg = loadConfig();
+  if (existsSync(CONFIG_FILE) && cfg[key] === undefined) {
+    console.error(`TlpArchive: ${CONFIG_FILE} has no "${key}"; skipping it.`);
+  }
+  return cfg[key];
+}
+
 // ---------------------- Frontmatter writer ----------------------
 
 function buildEntry(post: Post, prevSlug: string | null): string {
@@ -287,7 +360,8 @@ function buildEntry(post: Post, prevSlug: string | null): string {
   if (prevSlug) {
     related.push({ slug: prevSlug, type: "preceded-by" });
   } else {
-    related.push({ slug: "real-internet-of-things-retrospective", type: "related" });
+    const first = configKey("firstPostRelated");
+    if (first) related.push({ slug: first, type: "related" });
   }
 
   const fm = [
@@ -367,6 +441,7 @@ async function processOne(
     const out = buildEntry(post, prevSlug);
     const path = join(KNOWLEDGE_DIR, `${post.fileSlug}.md`);
     writeFileSync(path, out);
+    bumpMemoryGeneration();
     return { ok: true, slug: post.fileSlug };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -460,11 +535,17 @@ function buildArchiveIndex(urls: string[]): string {
   lines.push('author: "Alone (The Last Psychiatrist)"');
   lines.push('source: "The Last Psychiatrist"');
   lines.push("source_url: https://thelastpsychiatrist.com/archives.html");
-  lines.push("related:");
-  lines.push("  - slug: real-internet-of-things-retrospective");
-  lines.push("    type: related");
-  lines.push("  - slug: blog-redteam-adversarial-content-quality");
-  lines.push("    type: related");
+  const indexRelated = configKey("indexRelated") ?? [];
+  const thesisNote = configKey("thesisNote")?.split("{principal}").join(getPrincipalName());
+  if (indexRelated.length === 0) {
+    lines.push("related: []");
+  } else {
+    lines.push("related:");
+    for (const slug of indexRelated) {
+      lines.push(`  - slug: ${slug}`);
+      lines.push("    type: related");
+    }
+  }
   lines.push("---");
   lines.push("");
   lines.push("# The Last Psychiatrist — Archive Index");
@@ -476,7 +557,7 @@ function buildArchiveIndex(urls: string[]): string {
   lines.push("## Thesis");
   lines.push("");
   lines.push(
-    `TLP's body of work is one of the most influential cultural-criticism corpora of the late-Web-2.0 era — themes of narcissism, advertising, the disavowal of agency, and the medicalization of identity that became central to ${getPrincipalName()}'s own framing. Preserving the full archive locally insulates the corpus against link-rot and makes every essay browsable inside Pulse.`
+    `TLP's body of work is one of the most influential cultural-criticism corpora of the late-Web-2.0 era — themes of narcissism, advertising, the disavowal of agency, and the medicalization of identity${thesisNote ? ` ${thesisNote}` : ""}. Preserving the full archive locally insulates the corpus against link-rot and makes every essay browsable inside Pulse.`
   );
   lines.push("");
   lines.push("## Evidence");
@@ -563,7 +644,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

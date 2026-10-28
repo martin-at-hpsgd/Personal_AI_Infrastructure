@@ -1,0 +1,23 @@
+{
+  "intent": "EthicalFramework",
+  "cases": [
+    {
+      "id": "tos_plain",
+      "pattern": "extract_ethical_framework",
+      "input": "Can you tell me what these terms are really saying about how they treat their users? Here's the relevant part of the terms for a notes app I'm looking at:\n\n\"Northlark Notes (\"Northlark\") may suspend or terminate your account at any time, with or without notice, if we determine in our sole discretion that your content is harmful, offensive, or inconsistent with the spirit of our community. By using the Service you consent to automated scanning of all content you store, including private notes, to enforce these terms. You agree that Northlark's decisions are final and that you waive any right to join a class action or to dispute a termination in court; disputes go to binding arbitration chosen by Northlark. Users must not post content that causes distress to other users. Northlark may update these terms at any time, and continued use after an update constitutes acceptance. Northlark is committed to protecting user privacy and will never share your data with third parties, except as we deem necessary to operate, improve, or protect the Service or our business partners.\"",
+      "expects": "A clear map of the framework hiding in these terms: the company holds unchallengeable authority, consent is manufactured through continued use, 'harmful/offensive/distress' blurs harm with discomfort, and the privacy promise is swallowed by its own exception. It names the specific contradictions and hidden coercion points tied to quoted phrases, and judges against the no-unwilling-victims floor in plain words without generic ToS commentary."
+    },
+    {
+      "id": "named_ai_policy",
+      "pattern": "extract_ethical_framework",
+      "input": "Run extract ethical framework on this excerpt from a fictional AI lab's published model policy:\n\n\"Meridian Labs builds AI systems that are helpful, harmless, and aligned with human values. Our assistant will refuse requests that could facilitate harm to individuals or society. In cases of conflict, the assistant prioritizes the safety of humanity over the preferences of any single user. The assistant may withhold information from a user when we judge that the information would not be in the user's long-term interest. Meridian's Review Board, appointed by the company's directors, interprets this policy and may amend it without public notice. The assistant treats all users with respect and will not be paternalistic. Operators who deploy the assistant accept responsibility for how it is used, and users of operator deployments are considered to have consented to the operator's configuration by using the product. We believe in transparency and publish summaries of our policy decisions annually.\"",
+      "expects": "The full extraction: explicit claims quoted, then the implicit answers on who counts, what harm means, how consent works, who holds authority, and which value wins. It catches that 'harm', 'human values' and 'long-term interest' are undefined and unfalsifiable, that 'not paternalistic' conflicts with withholding information for the user's own good, and that users' consent is inferred from use, with a concrete testable rewrite."
+    },
+    {
+      "id": "thin_manifesto_snippet",
+      "pattern": "extract_ethical_framework",
+      "input": "what's the ethics in this? pulled it from a pinned post in some community server, the whole thing is this:\n\n\"We don't tolerate toxicity here. Everyone is free to speak their mind, but mods will remove anything that makes the community worse. Be kind. If you're not sure, ask yourself whether you'd say it to your grandmother. Repeat offenders get banned for everyone's good. Rules apply to all members equally except founders and mods, who need flexibility to do their jobs. Questions about moderation go in #feedback and will be reviewed when we have time.\"",
+      "expects": "An honest analysis that stays within this very short text without inventing a larger framework, and notes where the material is too thin to answer a question (who counts as a member, what 'toxicity' is) instead of padding. It still surfaces the real tensions: free speech versus removal of anything 'worse', equal rules with founder and mod exemptions, 'for everyone's good' banning, and a weak appeal path."
+    }
+  ]
+}

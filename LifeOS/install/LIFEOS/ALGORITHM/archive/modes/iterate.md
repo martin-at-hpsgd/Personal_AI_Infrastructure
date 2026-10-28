@@ -2,7 +2,7 @@
 status: RETIRED 2026-07-11 — historical doctrine. Modes/tiers were abolished with Algorithm v8 and system prompt v3.0.0 (one adaptive format). Kept as record only; nothing routes here.
 last_updated: 2026-05-13
 last_updated_by: da
-convention: pai-freshness-v1
+convention: lifeos-freshness-v1
 mode: iterate
 ---
 
@@ -21,7 +21,7 @@ The default Algorithm mode. Standard 7-phase pursuit of current state → ideal 
 ## Pulse surface
 
 - Tab: **Iterate**
-- Dashboard: `UnifiedWorkDashboard` (`LIFEOS/PULSE/Observability/src/components/activity/UnifiedWorkDashboard.tsx`)
+- Dashboard: `UnifiedWorkDashboard` (`LIFEOS/PULSE/Observability/src/components/activity/UnifiedWorkDashboard.tsx` (not in the public release))
 - Filter: shows all sessions where `s.mode === "iterate"` or `mode` is unset, plus the active in-flight Algorithm run.
 
 ## Execution pattern
@@ -66,7 +66,7 @@ Standard twelve-section ISA per tier completeness gate:
 | E2 | Problem, Goal, Criteria, Test Strategy |
 | E3 | Problem, Vision, Out of Scope, Constraints, Goal, Criteria, Features, Test Strategy |
 | E4 | All twelve |
-| E5 | All twelve + Interview workflow run before BUILD |
+| E5 | All twelve + Interview intent run before BUILD |
 
 ## Goal anchor
 

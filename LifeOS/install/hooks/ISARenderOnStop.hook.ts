@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * @version 1.1.2
+ * @version 1.2.0
  * ISARenderOnStop.hook.ts — Re-render edited ISAs at end-of-turn.
  *
  * TRIGGER: Stop event (assistant's turn ends).
@@ -12,19 +12,32 @@
  * the doctrinal gate that prevents "constant remaking" during active authoring.
  *
  * State file: ~/.claude/LIFEOS/MEMORY/STATE/isa-render-debounce/<session_id>.json
- * Cleared after each Stop fire.
+ * Claimed by an atomic rename, then removed, at each Stop fire.
+ *
+ * Trust (hooks audit shard ad #4, #5, #15): the session id must be a plain id and
+ * the state file must resolve inside the state dir, so neither the read nor the
+ * unlink can reach another path. Queue entries are data: each must be an absolute
+ * ISA path (ISA.md or *.isa.md) whose realpath is still an ISA file inside the
+ * user's home tree (task ISAs under MEMORY/WORK and project ISAs both live there);
+ * duplicates collapse to one render and at most MAX_RENDERS run per Stop.
+ * Two concurrent Stops cannot both render one queue: the first rename wins.
  *
  * Hook MUST NOT block Stop longer than ~100ms. Renders are spawned detached
  * and never awaited.
  */
 
-import { readFileSync, existsSync, unlinkSync } from 'fs';
+import { readFileSync, existsSync, unlinkSync, realpathSync, renameSync, statSync, appendFileSync, mkdirSync } from 'fs';
 import { spawn } from 'child_process';
+import { join, dirname, isAbsolute, sep } from 'path';
 import { homedir } from 'os';
-import { join, dirname } from 'path';
+import { randomUUID } from 'crypto';
+import { lifeosPath } from './lib/paths'; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { isIsaPath } from './lib/isa-utils';
 
-const STATE_DIR = join(homedir(), '.claude/LIFEOS/MEMORY/STATE/isa-render-debounce');
-const ISA_RENDER = join(homedir(), '.claude/LIFEOS/TOOLS/ISARender.ts');
+const STATE_DIR = lifeosPath('MEMORY', 'STATE', 'isa-render-debounce');
+const ISA_RENDER = lifeosPath('TOOLS', 'ISARender.ts');
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+export const MAX_RENDERS = 20;
 
 /**
  * Has this ISA reached completion at least once? This is the real gate the
@@ -49,77 +62,124 @@ function hasReachedCompletion(isaPath: string): boolean {
   }
 }
 
-let input: any;
-try {
-  input = JSON.parse(readFileSync(0, 'utf-8'));
-} catch {
-  console.log(JSON.stringify({ continue: true }));
-  process.exit(0);
+function within(child: string, parent: string): boolean {
+  return child === parent || child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
 }
 
-const sessionId = input.session_id;
-if (!sessionId) {
-  console.log(JSON.stringify({ continue: true }));
-  process.exit(0);
-}
-
-const stateFile = join(STATE_DIR, `${sessionId}.json`);
-if (!existsSync(stateFile)) {
-  console.log(JSON.stringify({ continue: true }));
-  process.exit(0);
-}
-
-let edited: string[] = [];
-try {
-  edited = JSON.parse(readFileSync(stateFile, 'utf-8')).edited_isas || [];
-} catch {
-  edited = [];
-}
-
-const rendered: string[] = [];
-const skipped: string[] = [];
-
-for (const isaPath of edited) {
-  if (!existsSync(isaPath)) { skipped.push(`${isaPath}:missing`); continue; }
-  const htmlPath = join(dirname(isaPath), 'ISA.html');
-  // Doctrinal gate: only render once the ISA has been completed at least once.
-  // Fast path: an existing ISA.html proves prior completion. Cold path: no html
-  // yet, so check the frontmatter directly — catches resumed / pre-convention
-  // ISAs the html-exists proxy used to miss. First-authoring ISAs still skip.
-  if (!existsSync(htmlPath) && !hasReachedCompletion(isaPath)) {
-    skipped.push(`${isaPath}:pre-completion`);
-    continue;
+/**
+ * Atomically take this session's render queue. Returns the entries, or null when
+ * there is nothing to take: a bad session id, no queue, a queue file that resolves
+ * outside the state dir, or another Stop that already claimed it.
+ */
+export function claimQueue(sessionId: unknown, stateDir = STATE_DIR): unknown[] | null {
+  if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) return null;
+  const stateFile = join(stateDir, `${sessionId}.json`);
+  if (!existsSync(stateFile)) return null;
+  let realDir: string;
+  try {
+    realDir = realpathSync(stateDir);
+    const realFile = realpathSync(stateFile);
+    if (!within(realFile, realDir) || realFile === realDir || !statSync(realFile).isFile()) return null;
+  } catch {
+    return null;
+  }
+  const claimed = join(realDir, `${sessionId}.json.${process.pid}.${randomUUID()}.claim`);
+  try {
+    renameSync(stateFile, claimed); // rename moves the link itself; containment was checked above
+  } catch {
+    return null; // a concurrent Stop took it first
   }
   try {
-    const proc = spawn('bun', [ISA_RENDER, isaPath], {
-      detached: true,
-      stdio: 'ignore',
-    });
-    proc.unref();
-    rendered.push(isaPath);
-  } catch (err) {
-    skipped.push(`${isaPath}:spawn-failed`);
+    const parsed = JSON.parse(readFileSync(claimed, 'utf-8'));
+    return Array.isArray(parsed?.edited_isas) ? parsed.edited_isas : [];
+  } catch {
+    return [];
+  } finally {
+    try { unlinkSync(claimed); } catch {}
   }
 }
 
-// Clear state regardless of render outcome.
-try { unlinkSync(stateFile); } catch {}
-
-// Log to observability (best-effort, non-blocking).
-if (rendered.length || skipped.length) {
-  try {
-    const { appendFileSync, mkdirSync } = require('fs');
-    const logDir = join(homedir(), '.claude/LIFEOS/MEMORY/OBSERVABILITY');
-    mkdirSync(logDir, { recursive: true });
-    appendFileSync(join(logDir, 'isa-render.jsonl'),
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        session_id: sessionId,
-        rendered,
-        skipped,
-      }) + '\n');
-  } catch {}
+/** Queue entries that are safe to hand to ISARender: real ISA files in the home tree, deduped, capped. */
+export function renderableEntries(entries: unknown[], home = homedir()): { targets: string[]; rejected: string[] } {
+  const targets: string[] = [];
+  const rejected: string[] = [];
+  const seen = new Set<string>();
+  let realHome: string;
+  try { realHome = realpathSync(home); } catch { realHome = home; }
+  for (const entry of entries) {
+    if (typeof entry !== 'string' || !isAbsolute(entry) || !isIsaPath(entry)) { rejected.push(`${String(entry).slice(0, 200)}:not-isa`); continue; }
+    let real: string;
+    try {
+      real = realpathSync(entry);
+      if (!statSync(real).isFile()) throw new Error('not a file');
+    } catch {
+      rejected.push(`${entry}:missing`);
+      continue;
+    }
+    if (!isIsaPath(real) || !within(real, realHome)) { rejected.push(`${entry}:outside`); continue; }
+    if (seen.has(real)) continue;
+    if (targets.length >= MAX_RENDERS) { rejected.push(`${entry}:over-cap`); continue; }
+    seen.add(real);
+    targets.push(real);
+  }
+  return { targets, rejected };
 }
 
-console.log(JSON.stringify({ continue: true }));
-process.exit(0);
+function main(): void {
+  let input: any;
+  try {
+    input = JSON.parse(readFileSync(0, 'utf-8'));
+  } catch {
+    return;
+  }
+  const sessionId = input?.session_id;
+  const queue = claimQueue(sessionId);
+  if (!queue) return;
+
+  const { targets, rejected } = renderableEntries(queue);
+  const rendered: string[] = [];
+  const skipped: string[] = [...rejected];
+
+  for (const isaPath of targets) {
+    const htmlPath = join(dirname(isaPath), 'ISA.html');
+    // Doctrinal gate: only render once the ISA has been completed at least once.
+    // Fast path: an existing ISA.html proves prior completion. Cold path: no html
+    // yet, so check the frontmatter directly — catches resumed / pre-convention
+    // ISAs the html-exists proxy used to miss. First-authoring ISAs still skip.
+    if (!existsSync(htmlPath) && !hasReachedCompletion(isaPath)) {
+      skipped.push(`${isaPath}:pre-completion`);
+      continue;
+    }
+    try {
+      const proc = spawn('bun', [ISA_RENDER, isaPath], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      proc.unref();
+      rendered.push(isaPath);
+    } catch {
+      skipped.push(`${isaPath}:spawn-failed`);
+    }
+  }
+
+  // Log to observability (best-effort, non-blocking).
+  if (rendered.length || skipped.length) {
+    try {
+      const logDir = lifeosPath('MEMORY', 'OBSERVABILITY');
+      mkdirSync(logDir, { recursive: true });
+      appendFileSync(join(logDir, 'isa-render.jsonl'),
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          session_id: sessionId,
+          rendered,
+          skipped,
+        }) + '\n');
+    } catch {}
+  }
+}
+
+if (import.meta.main) {
+  try { main(); } catch {}
+  console.log(JSON.stringify({ continue: true }));
+  process.exit(0);
+}

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
+import { useApi } from "@/lib/api";
 import {
   DollarSign,
   AlertTriangle,
@@ -12,8 +14,10 @@ import {
   ShieldCheck,
   CheckCircle2,
   XCircle,
+  MinusCircle,
 } from "lucide-react";
 import EmptyStateGuide from "@/components/EmptyStateGuide";
+import { fmtClock, fmtDateTime } from "@/lib/time";
 import {
   PageShell,
   PageHeader,
@@ -348,6 +352,7 @@ function FailuresTab({ data }: { data: FailureData | null }) {
 }
 
 function AnthropicTab({ data }: { data: AnthropicData | null }) {
+  const [bypassOnly, setBypassOnly] = useState(false);
   if (!data) return <div className="p-8 text-ink-3">Loading Anthropic cost data...</div>;
   if (!data.current)
     return (
@@ -364,6 +369,8 @@ function AnthropicTab({ data }: { data: AnthropicData | null }) {
   const bypassSites = data.sites.filter((s) => s.classification === "bypass");
   const legitSites = data.sites.filter((s) => s.classification === "legit");
   const unknownSites = data.sites.filter((s) => s.classification === "unknown");
+  // public issue #1843, @jacobo-ortiz — an unscanned inventory is unknown, never a clean bill
+  const sitesMeasured = data.sites.length > 0;
 
   return (
     <div className="space-y-6">
@@ -409,21 +416,23 @@ function AnthropicTab({ data }: { data: AnthropicData | null }) {
           sub={apiSpend !== null ? snap.api_spend.source : "set ANTHROPIC_ADMIN_API_KEY"}
         />
         <StatTile
-          icon={bypassSites.length > 0 ? XCircle : CheckCircle2}
-          dim={bypassSites.length > 0 ? "err" : "health"}
+          icon={bypassSites.length > 0 ? XCircle : sitesMeasured ? CheckCircle2 : MinusCircle}
+          dim={bypassSites.length > 0 ? "err" : sitesMeasured ? "health" : "neutral"}
           label="Bypass call sites"
-          value={String(bypassSites.length)}
-          sub={bypassSites.length === 0 ? "✅ all guarded" : "🚨 review and patch"}
+          value={sitesMeasured ? String(bypassSites.length) : "—"}
+          sub={bypassSites.length > 0 ? "🚨 review and patch" : sitesMeasured ? "✅ all guarded" : "not measured"}
+          active={bypassOnly}
+          onClick={() => setBypassOnly(!bypassOnly)}
         />
       </div>
 
       {/* Call sites inventory */}
       <Panel>
         <PanelHeader
-          title={`Call Sites (${data.sites.length})`}
+          title={`Call Sites (${bypassOnly ? bypassSites.length : data.sites.length})`}
           actions={
             <span className="text-xs text-ink-3">
-              baseline: {data.baseline_updated ? new Date(data.baseline_updated).toLocaleString() : "none"}
+              baseline: {data.baseline_updated ? fmtDateTime(data.baseline_updated) : "none"}
             </span>
           }
         />
@@ -439,7 +448,7 @@ function AnthropicTab({ data }: { data: AnthropicData | null }) {
               </div>
             </div>
           ))}
-          {unknownSites.map((s, i) => (
+          {!bypassOnly && unknownSites.map((s, i) => (
             <div key={`u-${i}`} className="flex items-start gap-2 py-1">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-warn" />
               <div className="flex-1 min-w-0">
@@ -450,7 +459,7 @@ function AnthropicTab({ data }: { data: AnthropicData | null }) {
               </div>
             </div>
           ))}
-          {legitSites.map((s, i) => (
+          {!bypassOnly && legitSites.map((s, i) => (
             <div key={`l-${i}`} className="flex items-start gap-2 py-1">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--health)" }} />
               <div className="flex-1 min-w-0">
@@ -478,7 +487,7 @@ function AnthropicTab({ data }: { data: AnthropicData | null }) {
                 <div
                   key={i}
                   className="flex-1"
-                  title={`${new Date(h.ts).toLocaleTimeString()} — 5h=${pct}%, sites=${h.call_sites.total} (bypass=${h.call_sites.bypass})`}
+                  title={`${fmtClock(h.ts)} — 5h=${pct}%, sites=${h.call_sites.total} (bypass=${h.call_sites.bypass})`}
                   style={{
                     height: `${Math.max(pct, 2)}%`,
                     background: alert ? "var(--err)" : "var(--money)",
@@ -493,7 +502,7 @@ function AnthropicTab({ data }: { data: AnthropicData | null }) {
         <div className="flex items-center justify-between mt-2">
           <span className="text-[12px] text-ink-3">{data.total_entries} total ledger entries</span>
           <span className="text-[12px] text-ink-3 mono">
-            last sample: {new Date(snap.ts).toLocaleTimeString()}
+            last sample: {fmtClock(snap.ts)}
           </span>
         </div>
       </Panel>
@@ -533,43 +542,10 @@ const TABS: TabSpec<Tab>[] = [
 
 export default function PerformancePage() {
   const [tab, setTab] = useState<Tab>("cost");
-  const [costData, setCostData] = useState<CostData | null>(null);
-  const [failureData, setFailureData] = useState<FailureData | null>(null);
-  const [anthropicData, setAnthropicData] = useState<AnthropicData | null>(null);
   const [days, setDays] = useState(30);
-
-  const fetchCost = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/performance/cost?days=${days}`);
-      if (res.ok) setCostData(await res.json());
-    } catch { /* silent */ }
-  }, [days]);
-
-  const fetchFailures = useCallback(async () => {
-    try {
-      const res = await fetch("/api/performance/failures");
-      if (res.ok) setFailureData(await res.json());
-    } catch { /* silent */ }
-  }, []);
-
-  const fetchAnthropic = useCallback(async () => {
-    try {
-      const res = await fetch("/api/performance/anthropic-cost");
-      if (res.ok) setAnthropicData(await res.json());
-    } catch { /* silent */ }
-  }, []);
-
-  useEffect(() => {
-    fetchCost();
-    fetchFailures();
-    fetchAnthropic();
-    const interval = setInterval(() => {
-      fetchCost();
-      fetchFailures();
-      fetchAnthropic();
-    }, 30_000);
-    return () => clearInterval(interval);
-  }, [fetchCost, fetchFailures, fetchAnthropic]);
+  const { data: costData = null } = useApi<CostData>(`/api/performance/cost?days=${days}`, { refetchInterval: 30_000, placeholderData: keepPreviousData });
+  const { data: failureData = null } = useApi<FailureData>("/api/performance/failures", { refetchInterval: 30_000 });
+  const { data: anthropicData = null } = useApi<AnthropicData>("/api/performance/anthropic-cost", { refetchInterval: 30_000 });
 
   const daysSwitcher = (
     <div className="flex items-center gap-1.5">

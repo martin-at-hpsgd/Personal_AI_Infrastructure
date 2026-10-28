@@ -1,0 +1,12 @@
+#!/bin/sh
+# lifeos-pre-push — a private LifeOS tree pushes only to a private GitHub repository.
+# Installed by: bun LIFEOS/TOOLS/Secrets.ts install-hook   (source of record: LIFEOS/TOOLS/githooks/pre-push)
+# Git passes the remote name and URL; LIFEOS/TOOLS/githooks/PrePush.ts asks GitHub for the visibility live.
+# Fail-closed: a missing checker, a failed lookup, or a non-GitHub remote refuses the push.
+
+tool="${LIFEOS_PREPUSH_TOOL:-$HOME/.claude/LIFEOS/TOOLS/githooks/PrePush.ts}"
+if [ ! -f "$tool" ]; then
+  echo "✗ lifeos-pre-push: checker missing at $tool; refusing to push unchecked." >&2
+  exit 1
+fi
+exec bun "$tool" "$1" "$2"

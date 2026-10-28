@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.1.1
  * ClipSource.ts — cut a social-ready clip out of ANY source video.
  *
- * The companion to the Descript-driven clip workflow: that one edits the
+ * The companion to the Descript-driven clip intent: that one edits the
  * principal's own recordings, this one cuts a range out of someone else's
  * video (a conference talk, a podcast, an interview) and hands back an MP4
  * X/LinkedIn/Bluesky will accept without transcoding surprises.

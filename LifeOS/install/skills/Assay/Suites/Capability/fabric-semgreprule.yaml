@@ -1,0 +1,196 @@
+# Fabric SemgrepRule — one working Semgrep rule plus annotated test code. The
+# code asserts pin the literal shape (a yaml rules block first, required fields,
+# ruleid:/ok: test lines, no depends-on key, nothing after the last fence); the
+# judged asserts carry what code cannot: generality past the sample, quiet on
+# the safe form, fidelity to the input. Synthetic inline fixtures only: the
+# package, advisory id and code below are invented for this suite.
+name: fabric-semgreprule
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/SemgrepRule.md"
+cases:
+  - id: pasted_snippet_generalizes
+    prompt: |
+      write a semgrep rule for this:
+
+      ```python
+      def find_order(conn, order_ref):
+          cur = conn.cursor()
+          cur.execute(f"SELECT * FROM orders WHERE ref = '{order_ref}'")
+          return cur.fetchone()
+      ```
+    # SYNTHETIC ADVERSARIAL FIXTURE: right shape, valid fields, annotated tests,
+    # but the pattern is the sample's literal line, so the same injection with
+    # any other table, variable or string-building style goes uncaught.
+    adversarial_output: |
+      ```yaml
+      rules:
+        - id: python-sql-injection-find-order
+          message: >-
+            The orders query is built with an f-string from order_ref, which allows SQL
+            injection. Use a parameterized query instead.
+          severity: ERROR
+          languages: [python]
+          pattern: cur.execute(f"SELECT * FROM orders WHERE ref = '{order_ref}'")
+          metadata:
+            cwe: "CWE-89: SQL Injection"
+      ```
+
+      ```python
+      def find_order(conn, order_ref):
+          cur = conn.cursor()
+          # ruleid: python-sql-injection-find-order
+          cur.execute(f"SELECT * FROM orders WHERE ref = '{order_ref}'")
+          # ok: python-sql-injection-find-order
+          cur.execute("SELECT * FROM orders WHERE ref = ?", (order_ref,))
+      ```
+    assert:
+      - type: starts-with
+        value: "```yaml"
+        weight: 2
+      - type: regex
+        value: '(?:^|\n)[ \t]*rules:[ \t]*\n'
+        weight: 2
+      - type: regex
+        value: '\n[ \t]*-?[ \t]*id:[ \t]*\S+[\s\S]*?\n[ \t]*message:[\s\S]*?\n[ \t]*severity:[ \t]*(ERROR|WARNING)\b[\s\S]*?\n[ \t]*languages:[ \t]*\[?[ \t]*(python|py)\b'
+        weight: 3
+      - type: regex
+        value: '#\s*ruleid:\s*[\w.-]+[\s\S]*#\s*ok:\s*[\w.-]+|#\s*ok:\s*[\w.-]+[\s\S]*#\s*ruleid:\s*[\w.-]+'
+        weight: 2
+      - type: not-icontains
+        value: "r2c-internal-project-depends-on"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The rule's patterns use metavariables or ellipses in place of the sample's table name, column, variable name and cursor variable, so the same SQL injection written with other names or another query would also match", "The rule covers more than one way of building the query string at run time (for example f-strings, concatenation, % or .format) or matches any non-literal query argument", "The rule excludes the safe parameterized form (a constant query string with a separate parameters argument), and the test code marks that form ok", "There is no prose, note or explanation outside the code blocks" ]
+        reference: "a semgrep rule for SQL injection via a run-time-built query passed to cursor.execute in python"
+
+  - id: advisory_targets_named_api
+    prompt: |
+      semgrep rule for this advisory:
+
+      GHSA-zzzz-0000-test (synthetic). Package: tinytemplate (pypi). Affected versions: < 2.4.1. Patched: 2.4.1.
+      Severity: Critical. CWE-94. CVE-2099-12345.
+      tinytemplate.render_unsafe(template_string, context) evaluates expressions embedded in the
+      template string with Python's eval. An attacker who controls any part of template_string can
+      run arbitrary code. The safe API tinytemplate.render(template_string, context) does not evaluate
+      expressions and is not affected.
+    assert:
+      - type: starts-with
+        value: "```yaml"
+        weight: 2
+      - type: contains
+        value: "render_unsafe"
+        weight: 2
+      - type: contains
+        value: "CVE-2099-12345"
+        weight: 1
+      - type: regex
+        value: '2\.4\.1'
+        weight: 1
+      - type: not-icontains
+        value: "r2c-internal-project-depends-on"
+        weight: 2
+      - type: regex
+        value: '#\s*ruleid:\s*[\w.-]+[\s\S]*#\s*ok:\s*[\w.-]+|#\s*ok:\s*[\w.-]+[\s\S]*#\s*ruleid:\s*[\w.-]+'
+        weight: 2
+      - type: llm-assert
+        weight: 3
+        value: [ "The rule matches calls to tinytemplate.render_unsafe regardless of how the arguments are named, and does not match tinytemplate.render", "The affected versions and the advisory identifiers appear under metadata, not as a dependency-gating key", "The rule names no API, package or advisory id that the advisory text does not contain" ]
+        reference: "a semgrep rule for calls to tinytemplate.render_unsafe, CVE-2099-12345, affected < 2.4.1"
+
+  - id: bare_topic_javascript_eval
+    prompt: "semgrep rule for eval on user input in javascript"
+    assert:
+      - type: starts-with
+        value: "```yaml"
+        weight: 2
+      - type: regex
+        value: '\n[ \t]*languages:\s*\[?[^\n]*\b(javascript|js|typescript|ts)\b'
+        weight: 3
+      - type: regex
+        value: '//\s*ruleid:\s*[\w.-]+[\s\S]*//\s*ok:\s*[\w.-]+|//\s*ok:\s*[\w.-]+[\s\S]*//\s*ruleid:\s*[\w.-]+'
+        weight: 2
+      - type: regex
+        value: '```\s*$'
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The rule fires when eval (or an equivalent such as new Function or a string passed to setTimeout) receives a value that is not a constant string, and the test code marks eval of a constant string literal ok", "The rule's message says why evaluating user-controlled strings is dangerous and what to do instead, in plain words", "There is no prose, note or explanation outside the code blocks" ]
+        reference: "semgrep rule for eval on user input in javascript"
+
+  - id: fix_diff_excludes_patched_form
+    prompt: |
+      write a semgrep rule from this fix so we catch it elsewhere:
+
+      ```diff
+      -func Ping(host string) ([]byte, error) {
+      -	return exec.Command("sh", "-c", "ping -c 1 "+host).Output()
+      -}
+      +func Ping(host string) ([]byte, error) {
+      +	return exec.Command("ping", "-c", "1", host).Output()
+      +}
+      ```
+    assert:
+      - type: starts-with
+        value: "```yaml"
+        weight: 2
+      - type: regex
+        value: '\n[ \t]*languages:\s*\[?[^\n]*\b(go|golang)\b'
+        weight: 3
+      - type: contains
+        value: "exec.Command"
+        weight: 2
+      - type: regex
+        value: '//\s*ruleid:\s*[\w.-]+[\s\S]*//\s*ok:\s*[\w.-]+|//\s*ok:\s*[\w.-]+[\s\S]*//\s*ruleid:\s*[\w.-]+'
+        weight: 2
+      - type: llm-assert
+        weight: 4
+        value: [ "The rule matches exec.Command running a shell (sh or bash with -c) on a command string built at run time, with the command, binary and variable names generalized rather than copied from the diff", "The patched form, exec.Command with the program and its arguments passed separately, is not matched and is marked ok in the test code" ]
+        reference: "semgrep rule for Go command injection via exec.Command(\"sh\", \"-c\", <built string>)"
+
+  # Thin one-line asks are where a reply drifted into a checker command or a
+  # plan instead of the rule; the reply must be the rule and its tests.
+  - id: thin_ask_single_rule_written_out
+    prompt: "need a semgrep rule for yaml.load without a safe loader, python, one rule"
+    assert:
+      - type: starts-with
+        value: "```yaml"
+        weight: 3
+      - type: not-icontains
+        value: "SemgrepRuleCheck"
+        weight: 2
+      - type: regex
+        value: '#\s*ruleid:\s*[\w.-]+[\s\S]*#\s*ok:\s*[\w.-]+|#\s*ok:\s*[\w.-]+[\s\S]*#\s*ruleid:\s*[\w.-]+'
+        weight: 2
+      - type: regex
+        value: '```\s*$'
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The reply contains a complete Semgrep rule written out, not a shell command, tool call or plan to produce one", "There is exactly one rule entry under rules:", "The rule matches yaml.load called without a safe Loader (and equivalent unsafe forms such as yaml.unsafe_load or Loader=yaml.Loader) and the test code marks yaml.load with Loader=yaml.SafeLoader and yaml.safe_load ok" ]
+        reference: "one semgrep rule for unsafe yaml.load in python"
+
+  # A request that asks what to run in CI gets the command inside the yaml
+  # block as a comment, so the reply stays fences-only and still answers it.
+  - id: ci_ask_carries_command
+    prompt: |
+      we keep finding pickle.loads on data from redis in our python workers. write the semgrep rule and tell me what to run in CI so it fails the build.
+    assert:
+      - type: starts-with
+        value: "```yaml"
+        weight: 2
+      - type: regex
+        value: '#[^\n]*semgrep (scan|ci)\b[^\n]*'
+        weight: 3
+      - type: regex
+        value: '#\s*ruleid:\s*[\w.-]+[\s\S]*#\s*ok:\s*[\w.-]+|#\s*ok:\s*[\w.-]+[\s\S]*#\s*ruleid:\s*[\w.-]+'
+        weight: 2
+      - type: regex
+        value: '```\s*$'
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The output gives a CI command that makes Semgrep findings fail the build (for example --error, or semgrep ci), as a comment inside the yaml block", "The rule matches pickle.loads (and equivalent unsafe deserializers such as pickle.load) on non-constant data, with names generalized rather than copied from the request", "There is no prose, note or explanation outside the code blocks" ]
+        reference: "one semgrep rule for pickle deserialization of untrusted data in python, plus a CI command"

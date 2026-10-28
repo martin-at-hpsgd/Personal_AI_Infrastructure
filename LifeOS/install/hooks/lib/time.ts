@@ -1,4 +1,5 @@
 /**
+ * @version 1.1.2
  * Shared Time Utilities
  *
  * Consistent timestamp generation across the hook system.
@@ -12,7 +13,11 @@ import { getPrincipal } from './identity';
  * Get configured timezone from settings.json (defaults to UTC)
  */
 function getTimezone(): string {
-  return getPrincipal().timezone || 'UTC';
+  // A zone Intl rejects (a hand-typed "Pacific", an unfilled token) falls through to the
+  // machine's zone instead of throwing in every hook that stamps time (round-7 audit).
+  const tz = getPrincipal().timezone;
+  if (tz) { try { new Intl.DateTimeFormat(undefined, { timeZone: tz }); return tz; } catch { /* invalid */ } }
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
 /**

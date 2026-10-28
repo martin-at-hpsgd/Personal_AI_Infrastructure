@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "_doc": "Customer exclusion by provenance for the STATVS cloud record. A session whose working folder matches a consulting.cwd_patterns entry is withheld whole. A pattern starts with ~/ (any home folder) or / ; * matches inside one path segment, ** matches across segments, and a pattern also covers everything under it. When withhold_lines_naming_paths is true, any line that names such a path is withheld too. The vector block applies only if one of your apps keeps per-tenant data: home_tenant_slug is your own tenant, tenant_id_prefix + home_tenant_slug must equal home_tenant_id, and apps, row_fields, known_other_tenants, schema_identifiers and fixture_slugs stay empty until you have such an app. Read by LIFEOS/STATVS/core/lib/provenance.ts; the shipped values withhold nothing, so add your consulting folders before you send anything to the cloud record.",
+  "consulting": {
+    "cwd_patterns": [],
+    "withhold_lines_naming_paths": true
+  },
+  "vector": {
+    "home_tenant_id": "tenant_example",
+    "home_tenant_slug": "example",
+    "tenant_id_prefix": "tenant_",
+    "slug_pattern": "[a-z][a-z0-9]{1,15}",
+    "apps": [],
+    "row_fields": [],
+    "known_other_tenants": [],
+    "schema_identifiers": [],
+    "fixture_slugs": []
+  }
+}

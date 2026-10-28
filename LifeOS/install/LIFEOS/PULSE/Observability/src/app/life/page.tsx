@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useApi } from "@/lib/api";
 import Link from "next/link";
 import {
   RadialBarChart,
@@ -20,8 +21,8 @@ import {
   Lightbulb,
   CheckSquare,
   Square,
-  AlertCircle,
   Wind,
+  PenLine,
   type LucideIcon,
 } from "lucide-react";
 import { PageShell, PageHeader, Panel, PanelHeader, StatTile, Pill } from "@/components/ui/chrome";
@@ -69,7 +70,7 @@ interface UserIndex {
 }
 
 interface GoalsData {
-  goals?: Array<{ id: string; text: string }>;
+  goals?: Array<{ id: string; text: string; progress?: number }>;
   mission?: Array<{ heading: string; body: string }>;
   problems?: Array<{ heading: string; body: string }>;
   status?: Array<{ heading: string; body: string }>;
@@ -104,6 +105,16 @@ interface AirMonitor {
   aqi: number | null;
   aqiLabel: string | null;
   type: string | null;
+}
+
+interface AffirmationData {
+  active: string | null;
+  target?: string | null;
+  started?: string | null;
+  streak?: number;
+  todayDone?: boolean;
+  queue?: string[];
+  queueCount?: number;
 }
 
 interface AirData {
@@ -261,7 +272,10 @@ function NarrativeBanner({ home }: { home: HomeData | null }) {
   if (!home) return <Panel className="h-24 animate-pulse" />;
   const mood = parseMoodToScore(home.current?.mood);
   const energy = parseRatio(home.current?.energy);
-  const focus = home.current?.focus ? 70 : null; // focus depth is categorical — render existence as 70
+  // Focus is categorical text, not a metric: render the text, never a
+  // stand-in score (the ring read a constant 70 whenever any Focus line
+  // existed). (public issue #2050, @lgertel)
+  const focus = null;
   const hasRings = mood !== null || energy !== null || focus !== null;
   const domains = home.domains ?? [];
   return (
@@ -418,13 +432,25 @@ function ActiveGoals({ goals }: { goals: GoalsData | null }) {
             <div key={g.id} className="flex items-center gap-4">
               <span className="text-xs mono text-ink-3 w-8 shrink-0">{g.id}</span>
               <span className="text-sm flex-1 truncate text-ink-1" title={g.text}>{g.text}</span>
-              <Pill dim="relationships" className="shrink-0">active</Pill>
+              {/* Hand-set `- Progress: N%` renders as a bar (public PR #1929, @hjbrandt) */}
+              {typeof g.progress === "number" ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="w-24 h-1.5 rounded-full bg-line-1 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${g.progress}%`, background: DIMENSION_COLOR.relationships }} />
+                  </div>
+                  <span className="text-xs mono text-ink-3 w-9 text-right">{g.progress}%</span>
+                </div>
+              ) : (
+                <Pill dim="relationships" className="shrink-0">active</Pill>
+              )}
             </div>
           ))}
         </div>
-        <div className="mt-4 pt-4 text-xs text-ink-3 italic border-t border-line-1">
-          Progress tracking appears once each goal has a `progress` field in Telos/Goals.md
-        </div>
+        {items.every(g => typeof g.progress !== "number") && (
+          <div className="mt-4 pt-4 text-xs text-ink-3 italic border-t border-line-1">
+            Progress tracking appears once a goal carries a `- Progress: N%` line in TELOS.md § Goals
+          </div>
+        )}
       </Panel>
     </section>
   );
@@ -461,7 +487,7 @@ function NextActionsSpark({ home }: { home: HomeData | null }) {
         {spark ? (
           <p className="text-base font-serif italic leading-relaxed text-ink-1">{spark}</p>
         ) : (
-          <p className="text-xs text-ink-3 italic">Sparks surfaces random entries from Telos/Sparks.md</p>
+          <p className="text-xs text-ink-3 italic">Spark surfaces a random bold-lead bullet from SPARKS.md (or a Sparks section in TELOS.md)</p>
         )}
       </Panel>
     </section>
@@ -509,51 +535,57 @@ function SystemContextDrawer({ index }: { index: UserIndex | null }) {
     </section>
   );
 }
+// ────────── Affirmation ──────────
+
+function AffirmationCard({ data }: { data: AffirmationData | null }) {
+  if (!data?.active) return null;
+  const next = data.queue?.[0];
+  return (
+    <Panel className="p-6">
+      <div className="flex items-center justify-between gap-6 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] uppercase tracking-widest mb-2 text-ink-3 flex items-center gap-2">
+            <PenLine className="w-3.5 h-3.5" />
+            Affirmation · handwrite 10 min · log with A
+            {data.started && <span className="normal-case tracking-normal">since {data.started}</span>}
+          </div>
+          <p className="text-xl lg:text-2xl font-medium leading-snug text-ink-1" data-sensitive>
+            &ldquo;{data.active}&rdquo;
+          </p>
+          {data.target && (
+            <p className="text-xs text-ink-3 mt-2" data-sensitive>{data.target}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-4 shrink-0">
+          <StatTile label="streak" value={data.streak ?? 0} sub="days" />
+          <div className="flex flex-col items-end gap-2">
+            <Pill dim={data.todayDone ? "ok" : "warn"}>{data.todayDone ? "today ✓" : "today open"}</Pill>
+            {next && <span className="text-[11px] text-ink-3" data-sensitive title={data.queue?.join(" · ")}>next: {next}</span>}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 // ────────── Page ──────────
 
 export default function LifePage() {
-  const [home, setHome] = useState<HomeData | null>(null);
-  const [health, setHealth] = useState<HealthData | null>(null);
-  const [finances, setFinances] = useState<FinancesData | null>(null);
-  const [business, setBusiness] = useState<BusinessData | null>(null);
-  const [work, setWork] = useState<WorkData | null>(null);
-  const [goals, setGoals] = useState<GoalsData | null>(null);
-  const [index, setIndex] = useState<UserIndex | null>(null);
-  const [air, setAir] = useState<AirData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchJson = (path: string) => fetch(path).then(r => r.ok ? r.json() : null).catch(() => null);
-    Promise.all([
-      fetchJson("/api/life/home").then(setHome),
-      fetchJson("/api/life/health").then(setHealth),
-      fetchJson("/api/life/finances").then(setFinances),
-      fetchJson("/api/life/business").then(setBusiness),
-      fetchJson("/api/life/work").then(setWork),
-      fetchJson("/api/life/goals").then(setGoals),
-      fetchJson("/api/life/air").then(setAir),
-      fetchJson("/api/user-index").then(setIndex),
-    ]).catch(err => setError(String(err)));
-  }, []);
-
-  if (error) {
-    return (
-      <PageShell>
-        <Panel style={{ borderLeft: "3px solid var(--err)" }}>
-          <div className="flex items-center gap-2 mb-2 text-err">
-            <AlertCircle className="w-4 h-4" />
-            <h2 className="font-medium">Dashboard unavailable</h2>
-          </div>
-          <p className="text-sm text-err">{error}</p>
-        </Panel>
-      </PageShell>
-    );
-  }
+  const home = useApi<HomeData>("/api/life/home", { retry: false }).data ?? null;
+  const health = useApi<HealthData>("/api/life/health", { retry: false }).data ?? null;
+  const finances = useApi<FinancesData>("/api/life/finances", { retry: false }).data ?? null;
+  const business = useApi<BusinessData>("/api/life/business", { retry: false }).data ?? null;
+  const work = useApi<WorkData>("/api/life/work", { retry: false }).data ?? null;
+  const goals = useApi<GoalsData>("/api/life/goals", { retry: false }).data ?? null;
+  const index = useApi<UserIndex>("/api/user-index", { retry: false }).data ?? null;
+  const air = useApi<AirData>("/api/life/air", { retry: false }).data ?? null;
+  const affirmation = useApi<AffirmationData>("/api/life/affirmation", { retry: false }).data ?? null;
 
   return (
     <PageShell className="max-w-[1920px]">
       <PageHeader icon={Activity} title="Life" subtitle="Your current state across every domain — mood, goals, work, and the numbers behind them." />
       <NarrativeBanner home={home} />
+      <AffirmationCard data={affirmation} />
       <DomainGrid business={business} health={health} finances={finances} work={work} goals={goals} air={air} />
       <ActiveGoals goals={goals} />
       <NextActionsSpark home={home} />

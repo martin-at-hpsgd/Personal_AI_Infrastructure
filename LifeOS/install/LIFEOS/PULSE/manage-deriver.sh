@@ -2,7 +2,7 @@
 # manage-deriver.sh — install / control the proactive deriver loop launchd agent.
 #
 # The deriver runs nightly via LearningPatternSynthesis.ts --hypothesize,
-# scanning recent LEARNING/SIGNALS and WORK/*/ISA.md for emergent patterns
+# scanning recent Errata (replacement since 2026-09-20) and WORK/*/ISA.md for emergent patterns
 # and emitting up to 3 hypothesis notes per run to
 # MEMORY/WISDOM/FRAMES/_hypotheses/. The Pulse /hypotheses tab renders them
 # for review (graduate / reject / age out at 30d).
@@ -49,6 +49,7 @@ case "${1:-}" in
     if [ -f "$PLIST_DST" ]; then
       launchctl unload "$PLIST_DST" 2>/dev/null || true
     fi
+    mkdir -p "$(dirname "$PLIST_DST")"
     sed -e "s|__HOME__|$HOME|g" -e "s|__BUN_PATH__|$BUN_PATH|g" "$PLIST_SRC" > "$PLIST_DST"
     launchctl load "$PLIST_DST"
     echo "LifeOS deriver installed (bun: $BUN_PATH, schedule: daily 03:00)"

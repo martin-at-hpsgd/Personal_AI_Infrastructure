@@ -1,6 +1,6 @@
 /**
  * Apple Health source module — reads the JSON file exported by the iPhone
- * Shortcut "LifeOS Health Export" into iCloud Drive (Shortcuts/PAI/).
+ * Shortcut "LifeOS Health Export" into iCloud Drive (Shortcuts/LifeOS/).
  * Path contract is duplicated in LIFEOS/USER/HEALTH/SHORTCUT_SETUP.md — keep in sync.
  */
 import { join } from "node:path";
@@ -47,15 +47,22 @@ export function parseAppleExport(text: string): AppleParse {
   return { ok: true, data: parsed as Json };
 }
 
+/** Decimal separator decided by position: with both `.` and `,`, the last one is
+ *  decimal; a lone `,` is thousands only when grouped in threes (`1,234,567`),
+ *  otherwise a decimal comma (`62,45`) (public issue #2182, @jacobo-ortiz). */
 function toNum(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || value.trim() === "") return null;
+  let s = value.trim();
+  const dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  if (dot !== -1 && comma !== -1) {
+    s = comma > dot ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  } else if (comma !== -1) {
+    s = /^-?\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, "") : s.replace(",", ".");
   }
-  if (typeof value === "string" && value.trim() !== "") {
-    const n = Number(value.replace(/,/g, ""));
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
 }
 
 const NUMERIC_KEYS = [

@@ -1,0 +1,18 @@
+{
+  "name": "lifeos-statvs-core",
+  "version": "0.15.1",
+  "private": true,
+  "type": "module",
+  "releaseScope": [
+    ".."
+  ],
+  "scripts": {
+    "dev": "cf dev",
+    "deploy": "bun ../../../TOOLS/CfEnv.ts deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^2.0.0-beta.sha-ad79608dd",
+    "cf": "^1.0.0-beta.9",
+    "vite": "^8.3.1"
+  }
+}

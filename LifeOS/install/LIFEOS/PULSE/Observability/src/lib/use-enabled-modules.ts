@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { useApi } from "@/lib/api";
 
 /**
  * Reads the resolved PULSE.toml [modules] map from the daemon and returns a
@@ -13,20 +14,8 @@ import { useCallback, useEffect, useState } from "react";
  * ported from public PR #1749, @elhoim
  */
 export function useEnabledModules(): (item: { module?: string }) => boolean {
-  const [modules, setModules] = useState<Record<string, boolean> | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/config/modules")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!cancelled && data?.modules) setModules(data.modules);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data } = useApi<{ modules?: Record<string, boolean> } | null>("/api/config/modules");
+  const modules = data?.modules ?? null;
 
   // Stable identity while `modules` is unchanged, so callers can memoise the
   // filtered list on this predicate instead of rebuilding it every render.

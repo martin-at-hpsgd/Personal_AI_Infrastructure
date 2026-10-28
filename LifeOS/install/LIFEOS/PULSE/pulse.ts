@@ -7,7 +7,6 @@
  *   - Voice notifications (ElevenLabs TTS)
  *   - Hook validation (skill-guard, agent-guard)
  *   - Observability (data APIs + dashboard)
- *   - iMessage bot (SQLite polling + claude-agent-sdk)
  *   - GitHub work polling (LifeOS Worker)
  *
  * One process. One port. One launchd plist. One log file.
@@ -16,7 +15,20 @@
 import { join } from "path"
 import { readFileSync, existsSync } from "fs"
 import { loadLifeosConfig } from "../TOOLS/LifeosConfig"
-import { isLoopbackHostHeader } from "./lib/host-guard.ts"
+import { principalTimezone } from "../TOOLS/lib/Timezone"
+import { parseEnv } from "../TOOLS/Env"
+import { isForbiddenCrossSiteWrite, isLoopbackHostHeader } from "./lib/host-guard.ts"
+import { getDAName } from "../../hooks/lib/identity"
+
+// Sentinel Host headers the Cloudflare tunnel ingress sends. The tunnel outlived
+// the inbound call-in line (decommissioned 2026-09-20) because Siri and the
+// outbound Twilio media stream still ride it; these headers are how a
+// tunnel-origin request is told from a loopback one. The DA-neutral form plus
+// the per-name form an older tunnel still sends. Computed once, never a literal name.
+const TUNNEL_SENTINEL_HOSTS: ReadonlySet<string> = new Set([
+  "da-line.internal",
+  `${getDAName().trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}-line.internal`,
+])
 
 // ── Load .env before anything else ──
 
@@ -27,27 +39,20 @@ const PULSE_DIR = join(LIFEOS_DIR, "PULSE")
 const envPath = join(HOME, ".claude", ".env")
 try {
   const envContent = readFileSync(envPath, "utf-8")
-  for (const line of envContent.split("\n")) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith("#")) continue
-    const eqIdx = trimmed.indexOf("=")
-    if (eqIdx === -1) continue
-    const key = trimmed.slice(0, eqIdx).trim()
-    let value = trimmed.slice(eqIdx + 1).trim()
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1)
-    }
+  // public issue #2100, @bowlax: use unified parseEnv to handle CRLF and export prefix
+  const parsed = parseEnv(envContent)
+  for (const [key, value] of Object.entries(parsed)) {
     if (!process.env[key]) process.env[key] = value
   }
 } catch { /* .env not found — rely on process environment */ }
 
 // ── BILLING GUARD (defense-in-depth) ──
 // Strip ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN from the daemon environment
-// AFTER .env load. Every downstream module (imessage, siri, spawnClaude)
+// AFTER .env load. Every downstream module (siri, spawnClaude)
 // inherits this. Prevents the Claude Agent SDK and `claude` CLI from billing
 // either key instead of CLAUDE_CODE_OAUTH_TOKEN — both outrank OAuth in
-// Anthropic's auth precedence chain. root cause of an early-2026 invoice
-// ($XXX / $XXX Sonnet + $YY WebSearch). Each module also strips independently
+// Anthropic's auth precedence chain. Root cause of an unexpected API invoice
+// once. Each module also strips independently
 // for belt-and-suspenders. Mirrors LIFEOS/TOOLS/Inference.ts:116-117.
 delete process.env.ANTHROPIC_API_KEY
 delete process.env.ANTHROPIC_AUTH_TOKEN
@@ -68,17 +73,21 @@ import {
   spawnClaude,
   parseConfigToml,
   resolveModules,
+  isOversizeLanBody,
 } from "./lib"
 
 import { startHooks, handleHooksRequestAsync, hooksHealth } from "./modules/hooks"
 import { homedir } from "node:os";
+import { heapStats } from "bun:jsc"
 
 // Conditional imports — modules may not exist yet during incremental migration
 let voiceModule: any = null
 let observabilityModule: any = null
 let wikiModule: any = null
 let siriModule: any = null
-let imessageModule: any = null
+let gptliveModule: any = null
+let talkModule: any = null
+let personalPagesModule: any = null
 let assistantModule: any = null
 let performanceModule: any = null
 let syslogModule: any = null
@@ -93,11 +102,25 @@ let conduitModule: any = null
 let menubarModule: any = null
 let booksModule: any = null
 let synapseModule: any = null
+let prioritizeModule: any = null
+let todayModule: any = null
+let idealStateModule: any = null
+let reviewModule: any = null
 let ledgerModule: any = null
 let projectsModule: any = null
 let assetsModule: any = null
 let atlasModule: any = null
+let shareModule: any = null
+let velocityModule: any = null
 let threatModelModule: any = null
+let achillesModule: any = null
+let socratesModule: any = null
+let workflowsModule: any = null
+let vigilModule: any = null
+let relayModule: any = null
+let corpusModule: any = null
+let gauntletModule: any = null
+let veraModule: any = null
 let usageModule: any = null
 let bunkerModule: any = null
 let contentModule: any = null
@@ -134,18 +157,29 @@ async function loadModules(config: PulseConfig) {
       log("warn", "Wiki module not available", { error: String(err) })
     }
   }
-  if (config.modules.imessage) {
-    try {
-      imessageModule = await import("./modules/imessage")
-    } catch (err) {
-      log("warn", "iMessage module not available", { error: String(err) })
-    }
-  }
   // Siri voice-turn endpoint — always load; fails closed without SIRI_API_KEY
   try {
     siriModule = await import("./modules/siri")
   } catch (err) {
     log("warn", "Siri module not available", { error: String(err) })
+  }
+  // GPT-Live bridge (Twilio Media Streams ↔ GPT-Live) — always load; fails closed without keys
+  try {
+    gptliveModule = await import("./modules/gptlive")
+  } catch (err) {
+    log("warn", "gptlive module not available", { error: String(err) })
+  }
+  // Talk: the live voice conversation beside a session (loopback only; fails closed without the agent)
+  try {
+    talkModule = await import("./modules/talk")
+  } catch (err) {
+    log("warn", "talk module not available", { error: String(err) })
+  }
+  // Personal pages: standalone HTML served from the USER tree at /p (generic, empty by default)
+  try {
+    personalPagesModule = await import("./modules/personal-pages")
+  } catch (err) {
+    log("warn", "personal-pages module not available", { error: String(err) })
   }
   // Assistant (DA subsystem) is a private module stripped from the public
   // release payload. Existence-check before importing so a fresh public install
@@ -259,6 +293,40 @@ async function loadModules(config: PulseConfig) {
       log("warn", "Books module not available", { error: String(err) })
     }
   }
+  // Prioritize — work prioritization recommendations.
+  if (config.modules.prioritize) {
+    try {
+      prioritizeModule = await import("./modules/prioritize")
+      if (prioritizeModule.start) prioritizeModule.start()
+    } catch (err) {
+      log("warn", "Prioritize module not available", { error: String(err) })
+    }
+  }
+  // Ideal State — recommend-only loop: open recommendations and the latest gap (read-only).
+  if (config.modules["ideal-state"]) {
+    try {
+      idealStateModule = await import("./modules/ideal-state")
+    } catch (err) {
+      log("warn", "Ideal-state module not available", { error: String(err) })
+    }
+  }
+  // Review — LifeOS reviews itself daily, weekly, monthly; the principal decides here.
+  if (config.modules.review) {
+    try {
+      reviewModule = await import("./modules/review")
+    } catch (err) {
+      log("warn", "Review module not available", { error: String(err) })
+    }
+  }
+  // Today — the daily front door: agenda, blockers, top work, next move, body and mood.
+  if (config.modules.today) {
+    try {
+      todayModule = await import("./modules/today")
+      if (todayModule.start) todayModule.start()
+    } catch (err) {
+      log("warn", "Today module not available", { error: String(err) })
+    }
+  }
   // Synapse — input routing & capture surface (ledger, knowledge, bookmarks, flows).
   if (config.modules.synapse) {
     try {
@@ -304,6 +372,24 @@ async function loadModules(config: PulseConfig) {
       log("warn", "Atlas module not available", { error: String(err) })
     }
   }
+  // Share — the file-sharing library, driven through the Share project CLI (no worker write path).
+  if (config.modules.share) {
+    try {
+      shareModule = await import("./modules/share")
+      if (shareModule.start) shareModule.start()
+    } catch (err) {
+      log("warn", "Share module not available", { error: String(err) })
+    }
+  }
+  // Velocity — read-only surface over MEMORY/STATE/velocity.json (commits-to-main across repos).
+  if (config.modules.velocity) {
+    try {
+      velocityModule = await import("./modules/velocity")
+      if (velocityModule.start) velocityModule.start()
+    } catch (err) {
+      log("warn", "Velocity module not available", { error: String(err) })
+    }
+  }
   // ThreatModel — read-only surface over the private risk register
   // (skills/ThreatModel; data in LIFEOS/USER/SECURITY/THREATMODEL).
   if (config.modules.threatmodel) {
@@ -312,6 +398,54 @@ async function loadModules(config: PulseConfig) {
       if (threatModelModule.start) threatModelModule.start()
     } catch (err) {
       log("warn", "ThreatModel module not available", { error: String(err) })
+    }
+  }
+  // Achilles — vulnerability management registry surface (read-only; CLI mutates).
+  if (config.modules.achilles) {
+    try {
+      achillesModule = await import("./modules/achilles")
+      if (achillesModule.start) achillesModule.start()
+    } catch (err) {
+      log("warn", "Achilles module not available", { error: String(err) })
+    }
+  }
+  // Socrates — standing-question ledger surface (read-only; CLI mutates).
+  if (config.modules.socrates) {
+    try {
+      socratesModule = await import("./modules/socrates")
+      if (socratesModule.start) socratesModule.start()
+    } catch (err) {
+      log("warn", "Socrates module not available", { error: String(err) })
+    }
+  }
+  if (config.modules.workflows) {
+    try {
+      workflowsModule = await import("./modules/workflows")
+      if (workflowsModule.start) workflowsModule.start()
+    } catch (err) {
+      log("warn", "Workflows module not available", { error: String(err) })
+    }
+  }
+  if (config.modules.corpus) { try { corpusModule = await import("./modules/corpus"); if (corpusModule.start) corpusModule.start() } catch (err) { log("warn", "Corpus module not available", { error: String(err) }) } }
+  if (config.modules.relay) { try { relayModule = await import("./modules/relay"); if (relayModule.start) relayModule.start() } catch (err) { log("warn", "Relay module not available", { error: String(err) }) } }
+  if (config.modules.vigil) { try { vigilModule = await import("./modules/vigil"); if (vigilModule.start) vigilModule.start() } catch (err) { log("warn", "Vigil module not available", { error: String(err) }) } }
+  if (config.modules.gauntlet) {
+    try {
+      gauntletModule = await import("./modules/gauntlet")
+      gauntletModule.start()
+    } catch (err) {
+      // Private on public installs: switch the flag off so the nav drops the tab instead of opening a dead page.
+      config.modules.gauntlet = false
+      log("warn", "Gauntlet module not available", { error: String(err) })
+    }
+  }
+  // Vera — person-profile ledger surface (read-only; CLI mutates).
+  if (config.modules.vera) {
+    try {
+      veraModule = await import("./modules/vera")
+      if (veraModule.start) veraModule.start()
+    } catch (err) {
+      log("warn", "Vera module not available", { error: String(err) })
     }
   }
   // Usage — Anthropic subscription + durable token/cost/model usage surface.
@@ -323,7 +457,7 @@ async function loadModules(config: PulseConfig) {
       log("warn", "Usage module not available", { error: String(err) })
     }
   }
-  // Bunker — application-harness registry surface (reads ~/.claude/LIFEOS/PULSE/Bunker via its CLI).
+    // Bunker — application-harness registry surface (reads ~/.claude/LIFEOS/PULSE/Bunker, a maintainer-private runtime location, via its CLI).
   if (config.modules.bunker) {
     try {
       bunkerModule = await import("./modules/bunker")
@@ -380,7 +514,6 @@ interface PulseConfig {
   modules: Record<string, boolean>
   tls?: { enabled: boolean; cert: string; key: string } // unused — TLS removed
   voice?: { enabled: boolean; [key: string]: unknown }
-  imessage?: { enabled: boolean; [key: string]: unknown }
   observability?: { enabled: boolean; dashboard_dir?: string; [key: string]: unknown }
   hooks?: { enabled: boolean; blocked_skills?: string[] }
   da?: { enabled: boolean; primary?: string; [key: string]: unknown }
@@ -438,10 +571,9 @@ async function loadPulseConfig(): Promise<PulseConfig> {
 
   return {
     port: (parsed.port as number) ?? parseInt(process.env.PULSE_PORT || "31337", 10),
-    modules: resolveModules(parsed, userParsed),
+    modules: { workflows: true, ...resolveModules(parsed, userParsed) },
     tls: (parsed.tls as PulseConfig["tls"]) ?? undefined,
     voice: (parsed.voice as PulseConfig["voice"]) ?? { enabled: true },
-    imessage: (parsed.imessage as PulseConfig["imessage"]) ?? { enabled: false },
     observability: (parsed.observability as PulseConfig["observability"]) ?? { enabled: true },
     performance: (parsed.performance as PulseConfig["performance"]) ?? { enabled: true },
     syslog: userSyslog ? { ...systemSyslog, ...userSyslog } : systemSyslog,
@@ -479,24 +611,8 @@ const FAILURE_RETRY_COOLDOWN_MS = 6 * 60 * 60 * 1000
 const MAX_SLEEP_MS = 60_000
 const MIN_SLEEP_MS = 1_000
 
-// ── Supervisor: restart crashed subsystems without killing the process ──
-
-async function supervise(name: string, fn: () => Promise<void>, shuttingDown: () => boolean) {
-  while (!shuttingDown()) {
-    try {
-      await fn()
-      // If fn returns normally, the subsystem exited cleanly
-      if (!shuttingDown()) {
-        log("info", `${name} exited cleanly, restarting in 10s`)
-        await Bun.sleep(10_000)
-      }
-    } catch (err) {
-      if (shuttingDown()) return
-      log("error", `${name} crashed, restarting in 30s`, { error: String(err) })
-      await Bun.sleep(30_000)
-    }
-  }
-}
+// (The unused supervise() restart loop was removed: it had no callers and would have
+// restarted an instantly-exiting subsystem every 10s forever. public issue #2205, @bak3r)
 
 // ── Compute next due time ──
 
@@ -522,7 +638,7 @@ function msUntilNextDue(jobs: PulseConfig["jobs"], state: DaemonState): number {
 
 // Content-liveness: the process being alive doesn't mean the product works.
 // 2026-06-10 incident: a fresh re-clone of ~/.claude wiped the gitignored
-// Next.js export (Observability/out/), every page 404'd for 13+ hours while
+// Next.js export (Observability/out/), and every page 404'd while
 // /healthz reported "ok". The dashboard asset check makes /healthz truthful.
 function dashboardDir(config: PulseConfig): string {
   const dir = config.observability?.dashboard_dir ?? "Observability/out"
@@ -569,10 +685,6 @@ function buildHealthResponse(state: DaemonState, config: PulseConfig): Response 
     subsystems.performance = performanceModule.performanceHealth()
   }
 
-  // iMessage
-  if (imessageModule && config.modules.imessage) {
-    subsystems.imessage = imessageModule.imessageHealth()
-  }
 
   // Assistant
   if (assistantModule && config.modules.da) {
@@ -617,8 +729,26 @@ function buildHealthResponse(state: DaemonState, config: PulseConfig): Response 
     port: config.port,
     startedAt: new Date(state.startedAt).toISOString(),
     uptime: Math.round((Date.now() - state.startedAt) / 1000),
+    memory: memorySnapshot(),
     subsystems,
   }, { status: httpStatus })
+}
+
+// ── Memory snapshot (2026-09-04) ──
+// The daemon reports its own memory so the Pulse ISA row and the Bunker probe
+// can read the number that matters. RSS on macOS counts pages JavaScriptCore
+// has freed but kept mapped, so RSS can read several times the physical
+// footprint; the heap figures below are the live truth. Cheap: no
+// subprocess, no vmmap — the health endpoint is polled.
+function memorySnapshot(): { rssMb: number; heapUsedMb: number; heapCapacityMb: number; externalMb: number; objects: number } {
+  const mu = process.memoryUsage()
+  let heapSize = mu.heapUsed, heapCapacity = mu.heapTotal, objects = 0
+  try {
+    const hs = heapStats()
+    heapSize = hs.heapSize; heapCapacity = hs.heapCapacity; objects = hs.objectCount
+  } catch { /* bun:jsc unavailable — process.memoryUsage figures stand */ }
+  const mb = (n: number) => Math.round(n / 1048576)
+  return { rssMb: mb(mu.rss), heapUsedMb: mb(heapSize), heapCapacityMb: mb(heapCapacity), externalMb: mb(mu.external ?? 0), objects }
 }
 
 // ── Main ──
@@ -626,10 +756,13 @@ function buildHealthResponse(state: DaemonState, config: PulseConfig): Response 
 async function main() {
   // Singleton guard — a second live pulse.ts means duplicate pollers, cron
   // jobs, and voice servers fighting over the same state (2026-07-09 incident:
-  // an orphaned hand-launched pulse fought the launchd one for hours).
+  // an orphaned hand-launched pulse fought the launchd one).
   // Refuse to boot instead.
   try {
-    const oldPid = parseInt((await Bun.file(PID_PATH).text()).trim(), 10)
+    // First boot has no pid file; on Windows the awaited read of a missing file
+    // was seen to never settle and the process exited 0 silently.
+    // public issue #2223, @aveneri
+    const oldPid = existsSync(PID_PATH) ? parseInt((await Bun.file(PID_PATH).text()).trim(), 10) : NaN
     if (oldPid && oldPid !== process.pid) {
       process.kill(oldPid, 0) // throws if oldPid is dead → guard passes
       const cmd = new TextDecoder()
@@ -650,6 +783,32 @@ async function main() {
   const config = await loadPulseConfig()
   let state = await readState(STATE_PATH)
   state.startedAt = Date.now()
+  // One memory line an hour in the daemon log: the growth curve the leak
+  // investigation never had (ISC-23, Pulse ISA).
+  setInterval(() => log("info", "memory", memorySnapshot() as unknown as Record<string, unknown>), 60 * 60 * 1000).unref()
+
+  // Local pager, run from the one process that survives a frozen scheduler.
+  // 2026-09-06: a cancelled software-update restart left launchd in on-demand-only
+  // mode; every StartInterval job sat pended and the cloud dead-man
+  // switch's emails went unread. SchedulerWatch kicks pended jobs (once per
+  // interval) and texts once per freeze; CloudPager texts the worker's red/green
+  // transitions. Both are their own CLIs (LIFEOS/TOOLS) so they stay testable;
+  // Pulse only provides the heartbeat (the Socrates page + scheduler-freeze work, 2026-09-06).
+  const runPager = () => {
+    for (const [tool, args] of [["SchedulerWatch.ts", ["heal"]], ["CloudPager.ts", ["once"]]] as const) {
+      try {
+        const p = Bun.spawn(["bun", join(LIFEOS_DIR, "TOOLS", tool), ...args], { stdout: "pipe", stderr: "pipe", env: { ...process.env, LIFEOS_NOTIFICATION_CHANNEL: "headless" } })
+        p.exited.then(async (code) => {
+          const out = (await new Response(p.stdout).text()).trim()
+          if (code !== 0 || /"(kicked|wentRed)":\[[^\]]/.test(out)) log(code === 0 ? "warn" : "error", `pager ${tool}`, { subsystem: "pager", code, out: out.slice(0, 600) })
+        }).catch(() => {})
+      } catch (err) {
+        log("error", `pager ${tool} failed to spawn`, { subsystem: "pager", error: String(err) })
+      }
+    }
+  }
+  setTimeout(runPager, 60 * 1000).unref()
+  setInterval(runPager, 5 * 60 * 1000).unref()
 
   // Drop state for jobs the config no longer declares. A renamed or deleted
   // job otherwise leaves its JobState behind forever — it accumulates in
@@ -669,6 +828,13 @@ async function main() {
   }
 
   const enabledJobs = config.jobs.filter((j) => j.enabled)
+  // Publish the enabled set so state-only readers (menubar) ignore disabled jobs'
+  // leftover failure counters; persist now, since the first heartbeat is 30s out
+  // (public issue #2204, @bak3r).
+  state.enabledJobs = enabledJobs.map((j) => j.name)
+  await writeState(STATE_PATH, state).catch((err) =>
+    log("error", "Failed to persist enabled job list at boot", { error: String(err) })
+  )
   log("info", "LifeOS Pulse starting (unified daemon)", {
     pid: process.pid,
     port: config.port,
@@ -679,7 +845,6 @@ async function main() {
       voice: config.modules.voice,
       hooks: config.hooks?.enabled !== false,
       observability: config.observability?.enabled !== false,
-      imessage: config.modules.imessage,
       syslog: config.modules.syslog,
       da: config.modules.da,
     },
@@ -811,16 +976,53 @@ async function main() {
   const server = Bun.serve({
     hostname: bindAll ? "0.0.0.0" : "127.0.0.1",
     port: config.port,
+    // Voice routes can legitimately hold a connection while audio streams;
+    // Bun's 10s default would sever them mid-turn.
+    idleTimeout: 120,
+    // Share uploads stream whole files (multi-GB screen recordings) through
+    // /api/share/upload to the project CLI; Bun's 128 MB default refused them.
+    // The cap is server-wide, so a non-loopback peer (possible only under
+    // LIFEOS_PULSE_BIND_ALL) is held to the 128 MB default in the fetch handler.
+    maxRequestBodySize: 16 * 1024 * 1024 * 1024,
     async fetch(req) {
       const url = new URL(req.url)
       const pathname = url.pathname
 
-      // Anti-DNS-rebinding (loopback-only mode): reject any request whose Host header isn't
-      // loopback. A rebinding page the user visits sends its own hostname; real local clients
-      // send 127.0.0.1/localhost or omit Host. Disabled under LIFEOS_PULSE_BIND_ALL (LAN opt-in
-      // sends a non-loopback Host by design). Guard logic + tests in lib/host-guard.ts.
-      if (!bindAll && !isLoopbackHostHeader(req.headers.get("host"), config.port)) {
+      // Tunnel-origin guard (Astra F3, 2026-08-25): the voice-line Cloudflare
+      // Tunnel sends a sentinel Host header (see TUNNEL_SENTINEL_HOSTS), so Pulse can
+      // tell tunnel traffic apart from a real loopback client even though the
+      // tunnel terminates at localhost. Tunnel traffic reaches ONLY the two
+      // voice paths here — a second wall behind the edge ingress regex, so the
+      // whole unauthed dashboard/API is not one misconfigured rule away from the
+      // internet. Path-normalized before the check (defeats /api/siri/..%2f..).
+      const hostHeader = (req.headers.get("host") ?? "").trim().toLowerCase()
+      if (TUNNEL_SENTINEL_HOSTS.has(hostHeader)) {
+        const norm = decodeURIComponent(pathname).replace(/\/+/g, "/")
+        if (!/^\/api\/(siri|voicellm)\//.test(norm)) {
+          return new Response("not found", { status: 404 })
+        }
+      } else if (!bindAll && !isLoopbackHostHeader(req.headers.get("host"), config.port)) {
+        // Anti-DNS-rebinding (loopback-only mode): reject any request whose Host header isn't
+        // loopback. A rebinding page the user visits sends its own hostname; real local clients
+        // send 127.0.0.1/localhost or omit Host. Disabled under LIFEOS_PULSE_BIND_ALL (LAN opt-in
+        // sends a non-loopback Host by design). Guard logic + tests in lib/host-guard.ts.
         return new Response("forbidden: non-loopback Host header", { status: 403 })
+      }
+
+      // Cross-site write guard (CSRF): the Host check above cannot stop a plain
+      // cross-origin POST (text/plain body → no preflight → Host is ours). One
+      // gate ahead of ALL routing covers every state-changing route — house
+      // actions, TELOS file PUT, security rules, doctrine/file writes, remounts.
+      // Local CLIs send no Origin/Sec-Fetch-Site and pass untouched. Logic +
+      // tests in lib/host-guard.ts.
+      if (isForbiddenCrossSiteWrite(req, config.port)) {
+        return new Response("forbidden: cross-site state-changing request", { status: 403 })
+      }
+
+      // LAN body bound: the 16 GB cap above is for loopback peers (share uploads);
+      // a LAN peer under LIFEOS_PULSE_BIND_ALL keeps Bun's 128 MB default.
+      if (isOversizeLanBody(req, server.requestIP(req)?.address)) {
+        return new Response("payload too large: LAN requests are limited to 128 MB with a Content-Length", { status: 413 })
       }
 
       // Health (unified) — moved to /api/pulse/health to avoid conflict with Life Dashboard /health page
@@ -836,10 +1038,16 @@ async function main() {
         return Response.json({ modules: config.modules })
       }
 
-      // Voice routes: /notify, /notify/personality, /voice, /voice/health
+      // The principal's current zone (a fresh location fix, else config). Every dashboard clock reads it
+      // through Observability/src/lib/principal-tz-sync.tsx, so the clocks follow the principal on a trip (Pulse ISA F7).
+      if (req.method === "GET" && pathname === "/api/config/timezone") {
+        return Response.json({ timezone: principalTimezone() }, { headers: { "Cache-Control": "no-store" } })
+      }
+
+      // Voice routes: /notify, /notify/personality, /voice, /voice/health, /voice/mute, /voice/stop
       // (/voice/health is implemented and advertised by the module but was never
-      // forwarded, so it 404'd — public PR #1621, @elhoim)
-      if (voiceModule && (pathname === "/notify" || pathname === "/notify/personality" || pathname === "/voice" || pathname === "/voice/health")) {
+      // forwarded, so it 404'd — public PR #1621, @elhoim; /voice/stop is voice mode's barge-in)
+      if (voiceModule && (pathname === "/notify" || pathname === "/notify/personality" || pathname === "/voice" || pathname === "/voice/health" || pathname === "/voice/mute" || pathname === "/voice/stop")) {
         const resp = await voiceModule.handleVoiceRequest(req, pathname)
         if (resp) return resp
       }
@@ -853,6 +1061,25 @@ async function main() {
       // Siri voice-turn route: POST /api/siri/turn (bearer-authed, tunnel-exposed)
       if (siriModule && pathname.startsWith("/api/siri")) {
         const resp = await siriModule.handleSiriRequest(req, pathname)
+        if (resp) return resp
+      }
+
+      // GPT-Live outbound phone bridge: media WebSocket plus loopback-only call control.
+      // Talk: page, token, context, hand-off inbox and progress streams.
+      if (talkModule && (pathname === "/talk" || pathname.startsWith("/talk/"))) {
+        const resp = await talkModule.handleTalkRequest(req, pathname)
+        if (resp) return resp
+      }
+
+      // Personal pages: /p and /p/<slug> — standalone HTML from the USER tree.
+      if (personalPagesModule && (pathname === "/p" || pathname.startsWith("/p/"))) {
+        const resp = await personalPagesModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+
+      if (gptliveModule && pathname.startsWith("/api/voicellm/live")) {
+        const resp = await gptliveModule.handleGptLiveRequest(req, pathname, (r: Request, data: Record<string, unknown>) => server.upgrade(r, { data }), server.requestIP(req)?.address)
+        if (resp === undefined) return undefined as unknown as Response // upgraded to WebSocket
         if (resp) return resp
       }
 
@@ -885,6 +1112,12 @@ async function main() {
         const subPath = pathname.replace(/^\/api\/syslog/, "")
         const body: Record<string, unknown> = Object.fromEntries(url.searchParams)
         return syslogModule.handleRequest(subPath, body)
+      }
+
+      // Workflows: /api/workflows — ahead of /api/work, whose prefix would swallow it.
+      if (workflowsModule && pathname.startsWith("/api/workflows")) {
+        const resp = await workflowsModule.handleRequest(req, pathname)
+        if (resp) return resp
       }
 
       // Work routes: /api/work/*  (data API consumed by the dashboard /work tab)
@@ -967,6 +1200,26 @@ async function main() {
         if (resp) return resp
       }
 
+      // Prioritize API: /api/prioritize
+      if (prioritizeModule && pathname.startsWith("/api/prioritize")) {
+        const resp = await prioritizeModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+      // Ideal State API: /api/ideal-state/recommendations, /api/ideal-state/gap
+      if (idealStateModule && pathname.startsWith("/api/ideal-state")) {
+        const resp = await idealStateModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+      // Review API: /api/review, /api/review/decide, /api/review/label
+      if (reviewModule && pathname.startsWith("/api/review")) {
+        const resp = await reviewModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+      // Today API: /api/today, /api/today/checkin
+      if (todayModule && pathname.startsWith("/api/today")) {
+        const resp = await todayModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
       // Synapse API: /api/synapse
       if (synapseModule && pathname.startsWith("/api/synapse")) {
         const resp = await synapseModule.handleRequest(req, pathname)
@@ -994,6 +1247,44 @@ async function main() {
       // Atlas API: /api/atlas (asset-graph snapshot)
       if (atlasModule && pathname.startsWith("/api/atlas")) {
         const resp = await atlasModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+
+      // Share API: /api/share (file-sharing library; mutations run the project CLI)
+      if (shareModule && pathname.startsWith("/api/share")) {
+        const resp = await shareModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+
+      // Velocity API: /api/velocity (shipping velocity state, read-only)
+      if (velocityModule && pathname.startsWith("/api/velocity")) {
+        const resp = await velocityModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+
+      // Achilles API: /api/achilles (vulnerability registry, read-only)
+      if (achillesModule && pathname.startsWith("/api/achilles")) {
+        const resp = await achillesModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+
+      // Socrates API: /api/socrates (standing-question ledger, read-only)
+      if (socratesModule && pathname.startsWith("/api/socrates")) {
+        const resp = await socratesModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+      if (corpusModule && pathname.startsWith("/api/corpus")) { const resp = await corpusModule.handleRequest(req, pathname); if (resp) return resp }
+      if (relayModule && pathname.startsWith("/api/relay")) { const resp = await relayModule.handleRequest(req, pathname); if (resp) return resp }
+      if (vigilModule && pathname.startsWith("/api/vigil")) { const resp = await vigilModule.handleRequest(req, pathname); if (resp) return resp }
+
+      if (gauntletModule && (pathname === "/api/gauntlet" || pathname.startsWith("/api/gauntlet/"))) {
+        const resp = await gauntletModule.handleRequest(req, pathname)
+        if (resp) return resp
+      }
+
+      // Vera API: /api/vera (person-profile ledger, read-only)
+      if (veraModule && pathname.startsWith("/api/vera")) {
+        const resp = await veraModule.handleRequest(req, pathname)
         if (resp) return resp
       }
 
@@ -1063,19 +1354,20 @@ async function main() {
 
       return new Response("Not found", { status: 404 })
     },
+    // Twilio Media Streams for the GPT-Live bridge; the only WebSocket Pulse serves.
+    websocket: {
+      open(ws) { gptliveModule?.websocketHandlers.open(ws) },
+      message(ws, message) { gptliveModule?.websocketHandlers.message(ws, message) },
+      close(ws) { gptliveModule?.websocketHandlers.close(ws) },
+      idleTimeout: 600,
+      maxPayloadLength: 1024 * 1024,
+    },
   })
 
   log("info", "HTTP server listening", { port: server.port })
 
   // Menu bar app is launched by its own launchd agent (com.lifeos.pulse-menubar)
   // Do NOT spawn it here — that causes duplicate menu bar icons
-
-  // ── Start Long-Running Subsystems (supervised) ──
-
-  if (imessageModule && config.modules.imessage) {
-    supervise("imessage", () => imessageModule.startIMessage(config.imessage), isShuttingDown)
-    log("info", "iMessage module started (supervised)")
-  }
 
   // ── Cron Heartbeat Loop ──
 
@@ -1111,6 +1403,21 @@ async function main() {
   // the loop into main().catch → exit(1) → supervised restart every 30s.
   // public PR #1644, @elhoim
   const badScheduleJobs = new Set<string>()
+
+  // public issue #2064, @0bsolescence: Heartbeat, independent of the run loop. state.json
+  // used to be written only after a job ran, so any quiet stretch over two minutes read as
+  // "tick stale" on every menu bar (2026-09-04). A write inside the loop was not enough: the
+  // loop blocks on a running job, and memory-consolidation is allowed 600s (codex review,
+  // same day). This timer keeps writing while a job runs, so the file's age means what
+  // readers assume: how long since the daemon last proved itself alive. writeState gives each
+  // write its own tmp file and chains writes to the same path, so this timer firing mid-persist
+  // cannot race the loop's own write (lib.ts writeState).
+  const heartbeat = setInterval(() => {
+    state.lastTick = Date.now()
+    writeState(STATE_PATH, state).catch((err) =>
+      log("error", "Failed to persist heartbeat", { error: String(err) })
+    )
+  }, 30_000)
 
   while (!shuttingDown) {
     const tickStart = Date.now()
@@ -1205,12 +1512,15 @@ async function main() {
   }
 
   // ── Cleanup ──
+  clearInterval(heartbeat)
   server.stop()
-  if (imessageModule) imessageModule.stopIMessage?.()
-  if (assistantModule) assistantModule.stopAssistant?.()
+  // public issue #2101, @bowlax: await module stops then explicit process.exit(0)
+  // on the success path. Otherwise module-side polling loops hold the event loop open.
+  await assistantModule?.stopAssistant?.()
   if (syslogModule) await syslogModule.stop?.()
   await writeState(STATE_PATH, state).catch(() => {})
   log("info", "LifeOS Pulse stopped", { uptimeMs: Date.now() - state.startedAt })
+  process.exit(0)
 }
 
 main().catch((err) => {

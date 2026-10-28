@@ -1,15 +1,12 @@
-# Rhetorical Figures Toolbelt
+# Rhetorical Figures Catalogue
+
+**Contents:** How to use this file · Part I: Forsyth's 39 Figures (from *The Elements of Eloquence*) · Part II: Extended Catalogue (Classical and Modern Rhetoric)
 
 125 rhetorical figures for fiction writing. The first 39 are from Mark Forsyth's *The Elements of Eloquence*. The remaining 86 come from classical rhetoric (Aristotle, Quintilian, Cicero), literary criticism, and modern craft resources.
 
-**Core thesis:** Memorable lines are ENGINEERED, not accidental. These are learnable, deployable techniques.
+## How to use this file
 
-## Strategic Deployment Rules
-
-1. **Save the fireworks.** Don't deploy every figure constantly — use them at high-impact moments (key dialogue, revelations, emotional peaks)
-2. **Layer figures.** The most powerful lines combine 2-3 figures simultaneously
-3. **Match figure to moment.** Sound figures for lyrical passages, structure figures for arguments, meaning figures for revelations
-4. **Dialogue vs. prose.** Dialogue favors punchy figures (antithesis, chiasmus, syllepsis). Prose favors flowing figures (assonance, tricolon, periodic sentences)
+This is a catalogue for naming the one figure a moment wants, never a plan, a density target or a quota. Figures are rare and come from this character's world, and the writer names the moment (`Intents/WriteChapter.md` § The sentence contract; the Figure revision in `Intents/Revise.md`). A line engineered to be quotable, or one stacking several figures, is the machine tell this skill's critics and judge catch (`AntiCliche.md` § The mechanisms, `Critics.md`). One moment gets one figure, in words the character would use, and a figure that raises the `StoryJudge.ts` shortfall rate comes out. The "Best for" notes say where a figure can live, not where one should go.
 
 ---
 
@@ -696,38 +693,3 @@
 - Power: Grounds fiction in folk wisdom
 - Best for: Traditional characters, rural settings, elder dialogue
 
----
-
-## Figure Deployment by Story Moment
-
-| Story Moment | Primary Figures | Why |
-|-------------|----------------|-----|
-| **Opening line** | Antithesis, Periodic Sentence, Paradox, In Medias Res, Sententia, Chronographia | Hook with surprise or contrast |
-| **Character introduction** | Diacope, Blazon, Transferred Epithet, Prosopographia, Ethopoeia, Antonomasia | Make them memorable immediately |
-| **Key dialogue** | Chiasmus, Antithesis, Syllepsis, Enthymeme, Antanaclasis, Epigram | Make lines quotable |
-| **Battle/Action** | Tricolon, Anaphora, Isocolon, Asyndeton, Onomatopoeia, Parataxis, Brachylogia | Create rhythm and momentum |
-| **Emotional peak** | Epizeuxis, Anadiplosis, Hyperbole, Apostrophe, Aposiopesis, Palillogia, Epimone | Raw intensity |
-| **Revelation** | Paradox, Litotes, Periodic Sentence, Dramatic Irony, Epanorthosis | Make truth land with weight |
-| **World-building** | Merism, Blazon, Synesthesia, Ekphrasis, Topographia, Kenning, Neologism, Enumeratio | Create richness and specificity |
-| **Humor** | Syllepsis, Zeugma, Litotes, Bathos, Antiphrasis, Malapropism, Spoonerism, Paronomasia | Witty compression |
-| **Climax speech** | Anaphora + Tricolon + Antithesis + Gradatio + Accumulatio | Maximum rhetorical force |
-| **Closing line** | Chiasmus, Paradox, Epiphonema, Epanalepsis, Sententia | Satisfying circularity |
-| **Foreshadowing** | Prolepsis (narrative), Paraenesis, Dramatic Irony, Foreshadowing | Plant future payoffs |
-| **Grief/Loss** | Apostrophe, Optatio, Epizeuxis, Polysyndeton, Adynaton | Emotional devastation |
-| **Persuasion/Debate** | Expeditio, Procatalepsis, Dilemma, Reductio ad Absurdum, Comprobatio | Strategic argumentation |
-| **Interior monologue** | Aporia, Epanorthosis, Hypotaxis, Ploce, Sermocinatio | Mind thinking in real time |
-| **Comic characters** | Malapropism, Spoonerism, Tautology, Pleonasm, Bathos | Voice-driven humor |
-| **Archaic/Fantasy** | Kenning, Periphrasis, Anastrophe, Homoioteleuton, Portmanteau | Ancient or alien voice |
-
-## Combination Power
-
-The most memorable lines combine multiple figures:
-
-- **"To be, or not to be"** = Antithesis + Diacope
-- **"It was the best of times, it was the worst of times"** = Anaphora + Antithesis + Isocolon
-- **"Ask not what your country can do for you..."** = Chiasmus + Antithesis + Anaphora
-- **"We shall fight on the beaches..."** = Anaphora + Tricolon + Isocolon
-- **"All happy families are alike..."** = Sententia + Antithesis + Paradox
-- **"Call me Ishmael."** = Apostrophe + Ellipsis (extreme compression)
-
-**Rule of thumb:** 2-3 figures per memorable line. More than 3 becomes overwrought.

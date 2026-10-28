@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.2.5
  * CommitmentLog.ts — Manual capture CLI. Creates a GitHub Issue tagged Type:commitment.
  *
  *   bun ~/.claude/LIFEOS/TOOLS/CommitmentLog.ts \
  *     --beneficiary "Alex" \
- *     --subject "send Surface threat-model brief" \
+ *     --subject "send reader app threat-model brief" \
  *     --due 2026-05-30 \
  *     [--channel imessage|email|inperson|other] \
  *     [--source-link <url-or-quote>] \

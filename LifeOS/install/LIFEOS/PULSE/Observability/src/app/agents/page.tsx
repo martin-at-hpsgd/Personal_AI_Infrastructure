@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import SystemHealthVitals from "@/components/activity/insights/SystemHealthVitals";
 import CapabilityStrip from "@/components/activity/CapabilityStrip";
@@ -29,7 +29,7 @@ const ObservabilityDashboard = dynamic(() => import("@/components/activity/Obser
 // 2026-07-14 redesign: the mode-tab structure (Iterate/Optimize/Loop/Native)
 // died with the mode system (retired 2026-07-11). Two surfaces remain:
 //
-//   WORK     — the board: tracked runs as climbs (claims closing on evidence),
+//   WORK     — the board: tracked runs as climbs (criteria closing on evidence),
 //              untracked sessions as liveness. Data: /api/algorithm.
 //   ACTIVITY — the live event layer: hooks, tools, agents. Data: /api/events/recent.
 //
@@ -43,8 +43,27 @@ const tabs: TabSpec<Tab>[] = [
   { id: "activity", label: "Activity", icon: Activity, dim: "rhythms" },
 ];
 
+// Wall mode: ?wall=lanes | ?wall=spotlight renders one slice of the board with
+// no page chrome, for an embedder (Pulse Dashboard) that frames it. Read after
+// mount — the static export pre-renders this page with no location.
+type Wall = "lanes" | "spotlight" | null;
+function readWall(): Wall {
+  const w = new URLSearchParams(window.location.search).get("wall");
+  return w === "lanes" || w === "spotlight" ? w : null;
+}
+
 export default function AgentsPage() {
   const [tab, setTab] = useState<Tab>("work");
+  const [wall, setWall] = useState<Wall>(null);
+  useEffect(() => { setWall(readWall()); }, []);
+
+  if (wall) {
+    return (
+      <div className="fixed inset-0 z-[60] flex flex-col bg-ground" data-wall={wall}>
+        <WorkBoard wall={wall} />
+      </div>
+    );
+  }
 
   return (
     <PageShell fullBleed>

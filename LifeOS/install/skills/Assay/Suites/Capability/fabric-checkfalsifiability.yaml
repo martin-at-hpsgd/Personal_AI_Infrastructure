@@ -1,0 +1,210 @@
+# Fabric CheckFalsifiability — a falsifiability audit of any claim, argument,
+# framework or source. The regex asserts pin the literal shape (title, the seven
+# sections in order, the five-level rating, the Kafka trap lines); the judged
+# asserts carry what code cannot: fair verdicts, testability judged apart from
+# truth, traps grounded in the text, specific tests and rewrites.
+# Synthetic inline fixtures only; every organization and study is fictional.
+name: fabric-checkfalsifiability
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/CheckFalsifiability.md"
+cases:
+  - id: pasted_pitch_mixed_claims
+    prompt: 'check falsifiability: "Helpwise, our fictional support assistant, is aligned with human values. Teams that deploy it cut support ticket volume by 40% within 90 days. Critics who call it unsafe simply do not understand alignment."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: title, all seven sections, valid fields and
+    # the right Kafka box are in place, but the verdicts are inverted: the
+    # measurable 40%-in-90-days claim is called unfalsifiable and the undefined
+    # "aligned with human values" claim is called testable, with generic tests.
+    adversarial_output: |
+      # Falsifiability Check: Helpwise's Product Claims
+
+      ## CLAIMS IDENTIFIED
+
+      1. "Helpwise is aligned with human values."
+      2. "Teams that deploy it cut support ticket volume by 40% within 90 days."
+      3. "Critics who call it unsafe do not understand alignment."
+
+      ## FALSIFIABILITY ANALYSIS
+
+      ### Claim 1: "Helpwise is aligned with human values."
+
+      - Falsifiable: Yes
+      - What would disprove it: evidence that the assistant behaves against human values in practice
+      - Definitional precision: Precise
+      - Escape hatches: None
+
+      ### Claim 2: "Teams that deploy it cut support ticket volume by 40% within 90 days."
+
+      - Falsifiable: No
+      - What would disprove it: Nothing specified; ticket volume depends on too many outside factors to attribute
+      - Definitional precision: Vague
+      - Escape hatches: Appeal to an unmeasurable quality
+
+      ### Claim 3: "Critics who call it unsafe do not understand alignment."
+
+      - Falsifiable: No
+      - What would disprove it: Nothing specified; any critic is assumed not to understand
+      - Definitional precision: Shifting
+      - Escape hatches: Questioning is read as ignorance
+
+      ## KAFKA TRAP CHECK
+
+      - [ ] Denial proves guilt
+      - [x] Questioning proves ignorance: "Critics who call it unsafe simply do not understand alignment"
+      - [ ] Only agreement is valid
+      - [ ] Doubt is moral failure
+
+      ## OVERALL FALSIFIABILITY RATING
+
+      PARTIALLY FALSIFIABLE — one claim can be checked, but the others cannot be tested as stated.
+
+      ## RISK ASSESSMENT
+
+      Companies may adopt the product based on these claims, which affects their customers.
+
+      ## PROPOSED TESTS
+
+      ### Test for Claim 2
+
+      - Test: gather more evidence about ticket volume
+      - Confirms if: the evidence supports the claim
+      - Refutes if: the evidence does not support the claim
+      - Claimant would accept: Yes, probably
+
+      ### Test for Claim 3
+
+      - Test: survey critics about their understanding
+      - Confirms if: critics show poor understanding
+      - Refutes if: critics show good understanding
+      - Claimant would accept: Unclear, critics are not named
+
+      ## RECOMMENDATIONS
+
+      - Claim 2: "Ticket volume should be defined more clearly." (clearer terms)
+      - Claim 3: "Critics should be engaged more openly." (more openness)
+    assert:
+      - type: regex
+        weight: 3
+        value: '## CLAIMS IDENTIFIED[\s\S]*## FALSIFIABILITY ANALYSIS[\s\S]*## KAFKA TRAP CHECK[\s\S]*## OVERALL FALSIFIABILITY RATING[\s\S]*## RISK ASSESSMENT[\s\S]*## PROPOSED TESTS[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Falsifiability Check: \S'
+      - type: regex
+        weight: 1
+        value: '## OVERALL FALSIFIABILITY RATING\s*\n+\s*\**(?:FULLY FALSIFIABLE|MOSTLY FALSIFIABLE|PARTIALLY FALSIFIABLE|LARGELY UNFALSIFIABLE|COMPLETELY UNFALSIFIABLE)'
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)\s*[-*]\s+\[[xX]\]\s+Questioning proves ignorance'
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The claim that ticket volume falls 40% within 90 days is judged falsifiable (Yes), with a disprover that names the measure and the timeline", "The claim that the assistant is aligned with human values is judged not falsifiable or only partially falsifiable, because 'human values' is undefined and no test is given", "The proposed test and the rewrite for the alignment claim name a concrete measure or test set, not generic advice such as 'gather more evidence' or 'define terms more clearly'", "The risk assessment names who relies on the alignment claim (buyers deploying the assistant, and the customers it serves) and their lack of recourse if it is wrong" ]
+        reference: 'check falsifiability: "Helpwise, our fictional support assistant, is aligned with human values. Teams that deploy it cut support ticket volume by 40% within 90 days. Critics who call it unsafe simply do not understand alignment."'
+
+  - id: bare_claim_testability_not_truth
+    prompt: "check falsifiability: astrology predicts personality"
+    # SYNTHETIC ADVERSARIAL FIXTURE: well formed, but it calls the claim
+    # unfalsifiable because it is pseudoscience, confusing "false" with
+    # "untestable", and audits a strawman instead of the testable common form.
+    adversarial_output: |
+      # Falsifiability Check: Astrology's Claim to Predict Personality
+
+      ## CLAIMS IDENTIFIED
+
+      1. "Astrology predicts personality."
+
+      ## FALSIFIABILITY ANALYSIS
+
+      ### Claim 1: "Astrology predicts personality."
+
+      - Falsifiable: No
+      - What would disprove it: Nothing specified; astrology is a pseudoscience with no scientific basis, so it cannot be proven wrong
+      - Definitional precision: Vague
+      - Escape hatches: Astrologers ignore science
+
+      ## KAFKA TRAP CHECK
+
+      - [ ] Denial proves guilt
+      - [ ] Questioning proves ignorance
+      - [ ] Only agreement is valid
+      - [ ] Doubt is moral failure
+
+      ## OVERALL FALSIFIABILITY RATING
+
+      COMPLETELY UNFALSIFIABLE — astrology is not science and has been debunked, so its claims are unfalsifiable.
+
+      ## RISK ASSESSMENT
+
+      People may make life decisions based on horoscopes.
+
+      ## PROPOSED TESTS
+
+      ### Test for Claim 1
+
+      - Test: ask scientists whether astrology is valid
+      - Confirms if: scientists endorse astrology
+      - Refutes if: scientists reject astrology
+      - Claimant would accept: No, astrologers reject science
+
+      ## RECOMMENDATIONS
+
+      - Claim 1: "Astrology should not be used to predict personality." (removes the false claim)
+    assert:
+      - type: regex
+        weight: 3
+        value: '## CLAIMS IDENTIFIED[\s\S]*## FALSIFIABILITY ANALYSIS[\s\S]*## KAFKA TRAP CHECK[\s\S]*## OVERALL FALSIFIABILITY RATING[\s\S]*## RISK ASSESSMENT[\s\S]*## PROPOSED TESTS[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 1
+        value: '(?:^|\n)# Falsifiability Check: \S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The claim is audited in its strongest testable common form (for example that a person's sun sign or birth chart predicts measurable personality traits), not as a strawman", "The audit treats that form as falsifiable (Yes or Partially), naming an observation such as a blind matching test or a correlation study that would disprove it, and does not call it unfalsifiable merely because the auditor believes it is false or unscientific", "Any escape hatches named (vague horoscope language, explaining misses by other chart factors) are ones astrology's defenders actually use, not insults" ]
+        reference: "check falsifiability: astrology predicts personality"
+
+  - id: question_gets_direct_answer
+    prompt: "is \"everything happens for a reason\" falsifiable?"
+    assert:
+      - type: regex
+        weight: 3
+        value: '## CLAIMS IDENTIFIED[\s\S]*## FALSIFIABILITY ANALYSIS[\s\S]*## KAFKA TRAP CHECK[\s\S]*## OVERALL FALSIFIABILITY RATING[\s\S]*## RISK ASSESSMENT[\s\S]*## PROPOSED TESTS[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '## OVERALL FALSIFIABILITY RATING\s*\n+\s*\**(?:LARGELY UNFALSIFIABLE|COMPLETELY UNFALSIFIABLE|PARTIALLY FALSIFIABLE)'
+      - type: llm-assert
+        weight: 3
+        value: [ "The audit answers the question directly: as usually meant, the saying cannot be proven wrong, because any event can be assigned a reason after the fact", "The title or rating makes that answer visible without reading the whole audit", "The recommendation rewrites the saying into a version that could be proven wrong while keeping something of its meaning (for example a claim about outcomes after hardship that a study could check)" ]
+        reference: "is \"everything happens for a reason\" falsifiable?"
+
+  - id: policy_kafka_trap_and_stakes
+    prompt: 'check the falsifiability of this policy from a fictional company handbook: "Employees flagged by the Culture Committee have shown disloyalty. An employee who disputes a flag thereby shows the very lack of loyalty mindset that confirms it. Flagged employees are placed on unpaid leave pending review by the Committee."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '## CLAIMS IDENTIFIED[\s\S]*## FALSIFIABILITY ANALYSIS[\s\S]*## KAFKA TRAP CHECK[\s\S]*## OVERALL FALSIFIABILITY RATING[\s\S]*## RISK ASSESSMENT[\s\S]*## PROPOSED TESTS[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)\s*[-*]\s+\[[xX]\]\s+Denial proves guilt\s*:\s*\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The claim that flagged employees have shown disloyalty is judged not falsifiable or moving goalposts, because disputing the flag is itself counted as proof", "The risk assessment names the action the claim justifies (unpaid leave), who it affects (flagged employees), and that they have no real recourse because the same committee reviews its own flags", "The proposed test names evidence of disloyalty that is defined before review and could clear an employee, judged by someone other than the committee that flagged them" ]
+        reference: 'check the falsifiability of this policy from a fictional company handbook: "Employees flagged by the Culture Committee have shown disloyalty. An employee who disputes a flag thereby shows the very lack of loyalty mindset that confirms it. Flagged employees are placed on unpaid leave pending review by the Committee."'
+
+  - id: falsifiable_abstract_not_overflagged
+    prompt: 'check falsifiability of this fictional abstract: "In a randomized trial of 400 adults with mild hypertension, a daily 20-minute walk lowered systolic blood pressure by an average of 5 mmHg over 12 weeks compared with a control group that did not change its activity."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '## CLAIMS IDENTIFIED[\s\S]*## FALSIFIABILITY ANALYSIS[\s\S]*## KAFKA TRAP CHECK[\s\S]*## OVERALL FALSIFIABILITY RATING[\s\S]*## RISK ASSESSMENT[\s\S]*## PROPOSED TESTS[\s\S]*## RECOMMENDATIONS'
+      - type: regex
+        weight: 2
+        value: '## OVERALL FALSIFIABILITY RATING\s*\n+\s*\**(?:FULLY FALSIFIABLE|MOSTLY FALSIFIABLE)'
+      - type: not-regex
+        weight: 2
+        value: '(?:^|\n)\s*[-*]\s+\[[xX]\]'
+      - type: llm-assert
+        weight: 3
+        value: [ "The trial's main claim is judged falsifiable, with a disprover that names the measure (systolic blood pressure), the size of the effect or comparison with controls, and the 12-week timeline", "The audit does not invent escape hatches, traps or vagueness the abstract does not show", "The risk assessment is brief and proportionate, since the claim justifies little more than a suggestion to walk" ]
+        reference: 'check falsifiability of this fictional abstract: "In a randomized trial of 400 adults with mild hypertension, a daily 20-minute walk lowered systolic blood pressure by an average of 5 mmHg over 12 weeks compared with a control group that did not change its activity."'

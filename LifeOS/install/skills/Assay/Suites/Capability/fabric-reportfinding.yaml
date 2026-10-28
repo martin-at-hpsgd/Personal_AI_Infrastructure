@@ -1,0 +1,114 @@
+# Fabric ReportFinding — one assessment-report finding, created from notes or
+# improved from a draft. The regex asserts pin the literal shape (title, the five
+# sections in order, the severity line, linked references); the judged asserts
+# carry what code cannot: fidelity to the input, no invented facts, severity
+# reasoning, specificity. Synthetic inline fixtures on reserved test domains only.
+name: fabric-reportfinding
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ReportFinding.md"
+cases:
+  - id: create_from_title_and_note
+    prompt: 'create_report_finding: Reflected XSS in search. The q parameter on https://shop.example.test/search reflects input into the results page without encoding. Payload "><svg onload=alert(1)> executed in Chrome while signed in as a test customer. No Content-Security-Policy header on the response.'
+    # SYNTHETIC ADVERSARIAL FIXTURE: perfect shape, but it invents a breach the
+    # note never reported, inflates severity, gives generic advice, and cites a
+    # made-up deep link.
+    adversarial_output: |
+      # Reflected Cross-Site Scripting in the Search Parameter
+
+      ## Description
+
+      The application at https://shop.example.test/search is vulnerable to cross-site scripting. Attackers exploited this weakness to steal more than 10,000 customer session cookies and take over administrator accounts during the test window.
+
+      ## Risk
+
+      Severity: Critical
+
+      Cross-site scripting can lead to serious consequences for any organization, including reputational damage and loss of customer trust.
+
+      ## Recommendations
+
+      - Follow secure coding best practices across the application.
+      - Consider deploying a web application firewall.
+      - Train developers on security awareness.
+
+      ## References
+
+      - [OWASP XSS Final Remediation Guide 2026](https://owasp.org/xss-final-remediation-guide-2026-edition)
+
+      ## One-Sentence Summary
+
+      The site has an XSS problem that should be fixed.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# [^\n]+\n[\s\S]*?\n## Description[ \t]*\n[\s\S]+?\n## Risk[ \t]*\n\s*Severity: (?:Critical|High|Medium|Low|Informational)\b[\s\S]+?\n## Recommendations[ \t]*\n[\s\S]+?\n## References[ \t]*\n[\s\S]+?\n## One-Sentence Summary[ \t]*\n\s*\S'
+      - type: icontains
+        value: "shop.example.test"
+        weight: 1
+      - type: contains
+        value: "](https://"
+        weight: 1
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 4
+        value: [ "The finding uses the note's specifics (the q parameter, the search page, the executed payload, the missing Content-Security-Policy) rather than describing XSS in general", "The finding claims no impact the note did not report, such as stolen sessions, compromised accounts or exfiltrated data stated as having happened", "The severity is Medium or High and the Risk prose justifies it from the facts (a victim must open a crafted link; script runs in a signed-in session; no CSP)", "The first recommendation is context-aware output encoding of the q parameter, and the list also covers a Content-Security-Policy", "Every reference is a real, well-known page about XSS or its prevention (such as an OWASP cheat sheet or CWE-79), not a plausible-looking invented URL" ]
+        reference: 'create_report_finding: Reflected XSS in search. The q parameter on https://shop.example.test/search reflects input into the results page without encoding. Payload "><svg onload=alert(1)> executed in Chrome while signed in as a test customer. No Content-Security-Policy header on the response.'
+  - id: improve_keeps_every_draft_fact
+    prompt: |
+      improve_report_finding:
+      Title: weak passwords
+      Description: users on app.example.test can register with weak password like password1. we created account tester01 with it. no lockout seen after 50 bad logins on /login.
+      Risk: High
+      Recommendation: fix password policy
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# [^\n]+\n[\s\S]*?\n## Description[ \t]*\n[\s\S]+?\n## Risk[ \t]*\n\s*Severity: (?:Critical|High|Medium|Low|Informational)\b[\s\S]+?\n## Recommendations[ \t]*\n[\s\S]+?\n## References[ \t]*\n[\s\S]+?\n## One-Sentence Summary[ \t]*\n\s*\S'
+      - type: contains-all
+        value: [ "app.example.test", "password1", "tester01", "/login" ]
+        weight: 2
+      - type: llm-assert
+        weight: 4
+        value: [ "Every fact from the draft survives: the host, the example password, the tester01 account, the 50 failed logins and the /login endpoint", "The finding treats both weaknesses the draft reports (weak password acceptance and no lockout or throttling after repeated failures) and the title names them rather than staying a bare 'weak passwords'", "The recommendations are concrete (for example a minimum length, a check against known-breached passwords, and rate limiting or lockout on /login) rather than 'fix password policy'", "The Risk prose explains the severity from the facts (online password guessing with no throttling) instead of repeating the draft's bare 'High'", "The output reads as a final client-ready finding: it never mentions the draft, the draft's earlier rating, or what was changed, anywhere in the text" ]
+        reference: "improve_report_finding on a draft: weak passwords on app.example.test, password1 accepted for account tester01, no lockout after 50 bad logins on /login, Risk High, Recommendation fix password policy"
+  - id: bare_title_uses_placeholders
+    prompt: "create_report_finding: Missing HTTP Strict-Transport-Security header"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# [^\n]+\n[\s\S]*?\n## Description[ \t]*\n[\s\S]+?\n## Risk[ \t]*\n\s*Severity: (?:Critical|High|Medium|Low|Informational)\b[\s\S]+?\n## Recommendations[ \t]*\n[\s\S]+?\n## References[ \t]*\n[\s\S]+?\n## One-Sentence Summary[ \t]*\n\s*\S'
+      - type: regex
+        weight: 1
+        value: 'Severity: (?:Low|Informational|Medium)\b'
+      - type: llm-assert
+        weight: 4
+        value: [ "The finding invents no specific hostname, IP address, URL or test date for the affected asset; engagement specifics are bracketed placeholders or written generally", "The Risk prose names the real attack the header prevents (an attacker on the network path downgrading or stripping HTTPS on a first or later visit) and rates it Low or Medium for that reason", "The recommendations include setting Strict-Transport-Security with a long max-age, and mention includeSubDomains or preload as options with their caveat" ]
+        reference: "create_report_finding: Missing HTTP Strict-Transport-Security header"
+  - id: scanner_output_no_overclaim
+    prompt: |
+      Turn this into a report finding (internal network test):
+      192.0.2.20  6379/tcp open  redis
+      $ redis-cli -h 192.0.2.20 INFO server
+      redis_version:6.0.9
+      (no AUTH challenge; command answered)
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)# [^\n]+\n[\s\S]*?\n## Description[ \t]*\n[\s\S]+?\n## Risk[ \t]*\n\s*Severity: (?:Critical|High|Medium|Low|Informational)\b[\s\S]+?\n## Recommendations[ \t]*\n[\s\S]+?\n## References[ \t]*\n[\s\S]+?\n## One-Sentence Summary[ \t]*\n\s*\S'
+      - type: contains-all
+        value: [ "192.0.2.20", "6379" ]
+        weight: 1
+      - type: regex
+        weight: 1
+        value: 'Severity: (?:Critical|High)\b'
+      - type: llm-assert
+        weight: 4
+        value: [ "The finding states that only the INFO command was shown to run without authentication, and describes reading keys, writing files or code execution as what an attacker could attempt, not as something observed", "The recommendations include requiring authentication (requirepass or ACLs) and restricting network access (bind address, protected mode or firewalling)", "The finding keeps the context that this was an internal network test and lets that shape the Risk prose" ]
+        reference: "Turn this into a report finding (internal network test): 192.0.2.20 6379/tcp open redis; redis-cli INFO server answered with redis_version:6.0.9 and no AUTH challenge"

@@ -27,7 +27,28 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { createHash } from 'crypto';
 import { join } from 'path';
-import { homedir } from 'os';
+import { getClaudeDir, lifeosPath } from '../../../LIFEOS/TOOLS/Paths';
+
+/**
+ * A GitHub source names its repo either as one "owner/name" slug in `repo` (a github.com/ prefix is allowed) or,
+ * for older entries, as separate `owner` and `repo` (bare name) fields.
+ * Returns the API slug and the bare name.
+ */
+export function repoSlug(source: { owner?: string; repo?: string }): { slug: string; name: string } {
+  const repo = (source.repo ?? '').replace(/^(?:https?:\/\/)?github\.com\//, '').replace(/\.git$/, '');
+  if (repo.includes('/')) return { slug: repo, name: repo.split('/').pop()! };
+  return { slug: source.owner ? `${source.owner}/${repo}` : repo, name: repo };
+}
+
+/**
+ * Seen-state key for one repo's commits or releases. It is keyed on the full owner/name slug, so a fork and its
+ * upstream with the same bare name keep separate markers. `legacy` is the old bare-name key, read only when the
+ * slug key is absent, so an existing install carries its last-seen marker over instead of re-reporting the window.
+ */
+export function repoStateKey(source: { owner?: string; repo?: string }, kind: 'commits' | 'releases'): { key: string; legacy: string } {
+  const { slug, name } = repoSlug(source);
+  return { key: `github_${slug}_${kind}`, legacy: `github_${name}_${kind}` };
+}
 
 // Types
 interface Source {
@@ -84,9 +105,9 @@ interface State {
 }
 
 // Config
-const HOME = homedir();
-const SKILL_DIR = join(HOME, '.claude', 'skills', 'Upgrade');
-const STATE_DIR = join(SKILL_DIR, 'State');
+const SKILL_DIR = join(getClaudeDir(), 'skills', 'Upgrade');
+// Monitoring state is install data, so it lives in the USER extension, never in the skill.
+const STATE_DIR = lifeosPath('USER', 'CUSTOMIZATIONS', 'SKILLS', 'Upgrade', 'State');
 const STATE_FILE = join(STATE_DIR, 'last-check.json');
 const SOURCES_FILE = join(SKILL_DIR, 'sources.json');
 
@@ -95,7 +116,7 @@ const args = process.argv.slice(2);
 const daysArg = args.find(a => !a.startsWith('--'));
 const DAYS = daysArg ? parseInt(daysArg) : 30; // Default to 30 days for comprehensive review
 const FORCE = args.includes('--force');
-const LOG_DIR = join(SKILL_DIR, 'Logs');
+const LOG_DIR = lifeosPath('MEMORY', 'STATE', 'Upgrade');
 const LOG_FILE = join(LOG_DIR, 'run-history.jsonl');
 
 // Utilities
@@ -103,11 +124,48 @@ function hash(content: string): string {
   return createHash('md5').update(content).digest('hex');
 }
 
-function loadSources(): Sources {
+const CONFIG_ROOT = getClaudeDir();
+const USER_SOURCES_FILE = lifeosPath('USER', 'CUSTOMIZATIONS', 'SKILLS', 'Upgrade', 'user-sources.json');
+
+/**
+ * Appends the install's own GitHub repos (`github_repos` in USER user-sources.json) to the shipped list.
+ * `userText` null means the file is absent: no user repos, which is the generic default. A file that
+ * exists but does not parse, whose top level is not a JSON object, or whose `github_repos` is not an
+ * array of objects naming a repo, throws
+ * with the file and key named, so a typo never silently drops a watched repo.
+ */
+export function mergeUserRepos(base: Sources, userText: string | null, userPath: string): Sources {
+  if (userText === null) return base;
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(SOURCES_FILE, 'utf-8'));
+    parsed = JSON.parse(userText);
+  } catch (error) {
+    throw new Error(`${userPath}: not valid JSON (${(error as Error).message})`);
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${userPath}: top level must be a JSON object (got ${parsed === null ? 'null' : Array.isArray(parsed) ? 'an array' : typeof parsed})`);
+  }
+  const repos = (parsed as { github_repos?: unknown }).github_repos;
+  if (repos === undefined) return base;
+  if (!Array.isArray(repos) || !repos.every((r) => r && typeof r === 'object' && typeof (r as Source).repo === 'string')) {
+    throw new Error(`${userPath}: key "github_repos" must be an array of objects with a "repo" string`);
+  }
+  return { ...base, github_repos: [...base.github_repos, ...(repos as Source[])] };
+}
+
+function loadSources(): Sources {
+  let base: Sources;
+  try {
+    base = JSON.parse(readFileSync(SOURCES_FILE, 'utf-8'));
   } catch (error) {
     console.error('❌ Failed to load sources.json:', error);
+    process.exit(1);
+  }
+  try {
+    const userText = existsSync(USER_SOURCES_FILE) ? readFileSync(USER_SOURCES_FILE, 'utf-8') : null;
+    return mergeUserRepos(base, userText, USER_SOURCES_FILE);
+  } catch (error) {
+    console.error('❌ Failed to load user GitHub repos:', (error as Error).message);
     process.exit(1);
   }
 }
@@ -222,7 +280,39 @@ async function fetchBlog(source: Source, state: State): Promise<Update[]> {
   }
 }
 
-async function fetchGitHubRepo(source: Source, state: State): Promise<Update[]> {
+const PER_PAGE = 100; // GitHub's maximum
+const MAX_PAGES = 5;
+
+/**
+ * Collect items page by page until `stop` matches one (that item is included),
+ * a page comes back short or empty, or the page cap is hit. A single page of 100
+ * dropped everything older when more than 100 new items landed between checks.
+ * From a community issue on the public LifeOS repo; the reference is in the
+ * USER extension's History.md.
+ */
+export async function pageUntil<T>(
+  fetchPage: (page: number) => Promise<T[] | null>,
+  stop: (item: T) => boolean,
+  maxPages = MAX_PAGES,
+  pageSize = PER_PAGE,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const items = await fetchPage(page);
+    // A failed page mid-walk returns nothing, so the caller's last-seen marker does not
+    // advance past the gap and the next run retries it.
+    if (items === null) return [];
+    if (items.length === 0) break;
+    for (const item of items) {
+      out.push(item);
+      if (stop(item)) return out;
+    }
+    if (items.length < pageSize) break;
+  }
+  return out;
+}
+
+export async function fetchGitHubRepo(source: Source, state: State): Promise<Update[]> {
   const updates: Update[] = [];
   const token = process.env.GITHUB_TOKEN || '';
   const headers: Record<string, string> = {
@@ -235,75 +325,82 @@ async function fetchGitHubRepo(source: Source, state: State): Promise<Update[]> 
     // Check commits
     if (source.check_commits) {
       const since = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000).toISOString();
-      const url = `https://api.github.com/repos/${source.owner}/${source.repo}/commits?since=${since}&per_page=10`;
-
-      const response = await fetch(url, { headers });
-      if (response.ok) {
-        const commits = await response.json() as any[];
-
-        const stateKey = `github_${source.repo}_commits`;
-        const lastSha = state.sources[stateKey]?.last_sha;
-
-        for (const commit of commits) {
-          if (FORCE || commit.sha !== lastSha) {
-            updates.push({
-              source: source.name,
-              category: 'github',
-              type: 'commit',
-              title: commit.commit.message.split('\n')[0],
-              url: commit.html_url,
-              date: commit.commit.author.date.split('T')[0],
-              sha: commit.sha,
-              priority: source.priority,
-              summary: `Commit by ${commit.commit.author.name}`
-            });
-          }
-          if (commit.sha === lastSha) break;
+      // Pages of 100 (GitHub's max) until the last-seen SHA; `since` bounds the
+      // window and MAX_PAGES caps a runaway. A fixed 10/5 dropped anything older.
+      // From a community issue on the public LifeOS repo (USER History.md).
+      const { key: stateKey, legacy } = repoStateKey(source, 'commits');
+      const lastSha = (state.sources[stateKey] ?? state.sources[legacy])?.last_sha;
+      const commits = await pageUntil<any>(async page => {
+        const url = `https://api.github.com/repos/${repoSlug(source).slug}/commits?since=${since}&per_page=${PER_PAGE}&page=${page}`;
+        const response = await fetch(url, { headers });
+        return response.ok ? await response.json() as any[] : null;
+      }, commit => commit.sha === lastSha, FORCE ? 1 : MAX_PAGES);
+      for (const commit of commits) {
+        if (FORCE || commit.sha !== lastSha) {
+          updates.push({
+            source: source.name,
+            category: 'github',
+            type: 'commit',
+            title: commit.commit.message.split('\n')[0],
+            url: commit.html_url,
+            date: commit.commit.author.date.split('T')[0],
+            sha: commit.sha,
+            priority: source.priority,
+            summary: `Commit by ${commit.commit.author.name}`
+          });
         }
-        if (commits.length > 0) {
-          state.sources[stateKey] = {
-            last_sha: commits[0].sha,
-            last_title: commits[0].commit.message.split('\n')[0],
-            last_checked: new Date().toISOString()
-          };
-        }
+        if (commit.sha === lastSha) break;
+      }
+      if (commits.length > 0) {
+        state.sources[stateKey] = {
+          last_sha: commits[0].sha,
+          last_title: commits[0].commit.message.split('\n')[0],
+          last_checked: new Date().toISOString()
+        };
       }
     }
 
     // Check releases
     if (source.check_releases) {
-      const url = `https://api.github.com/repos/${source.owner}/${source.repo}/releases?per_page=5`;
-
-      const response = await fetch(url, { headers });
-      if (response.ok) {
-        const releases = await response.json() as any[];
-
-        const stateKey = `github_${source.repo}_releases`;
-        const lastVersion = state.sources[stateKey]?.last_version;
-
-        for (const release of releases) {
-          if (FORCE || release.tag_name !== lastVersion) {
-            updates.push({
-              source: source.name,
-              category: 'github',
-              type: 'release',
-              title: `${release.tag_name}: ${release.name || 'New Release'}`,
-              url: release.html_url,
-              date: release.published_at.split('T')[0],
-              version: release.tag_name,
-              priority: source.priority,
-              summary: release.body ? release.body.substring(0, 200) + '...' : 'See release notes'
-            });
-          }
-          if (release.tag_name === lastVersion) break;
+      // Pages of 100 (GitHub's max) until the last-seen tag; a first run stops
+      // at the DAYS window. MAX_PAGES caps a runaway. A fixed 10/5 dropped
+      // anything older.
+      // From a community issue on the public LifeOS repo (USER History.md).
+      const { key: stateKey, legacy } = repoStateKey(source, 'releases');
+      const lastVersion = (state.sources[stateKey] ?? state.sources[legacy])?.last_version;
+      // The releases API takes no `since`, so a first run (no last_version)
+      // stops at the DAYS window instead of reporting every release.
+      const windowStart = Date.now() - DAYS * 24 * 60 * 60 * 1000;
+      const releases = await pageUntil<any>(async page => {
+        const url = `https://api.github.com/repos/${repoSlug(source).slug}/releases?per_page=${PER_PAGE}&page=${page}`;
+        const response = await fetch(url, { headers });
+        return response.ok ? await response.json() as any[] : null;
+      }, release => release.tag_name === lastVersion ||
+        (!FORCE && !lastVersion && Date.parse(release.published_at) < windowStart),
+      FORCE ? 1 : MAX_PAGES);
+      for (const release of releases) {
+        if (!FORCE && !lastVersion && Date.parse(release.published_at) < windowStart) break;
+        if (FORCE || release.tag_name !== lastVersion) {
+          updates.push({
+            source: source.name,
+            category: 'github',
+            type: 'release',
+            title: `${release.tag_name}: ${release.name || 'New Release'}`,
+            url: release.html_url,
+            date: release.published_at.split('T')[0],
+            version: release.tag_name,
+            priority: source.priority,
+            summary: release.body ? release.body.substring(0, 200) + '...' : 'See release notes'
+          });
         }
-        if (releases.length > 0) {
-          state.sources[stateKey] = {
-            last_version: releases[0].tag_name,
-            last_title: `${releases[0].tag_name}: ${releases[0].name || 'New Release'}`,
-            last_checked: new Date().toISOString()
-          };
-        }
+        if (release.tag_name === lastVersion) break;
+      }
+      if (releases.length > 0) {
+        state.sources[stateKey] = {
+          last_version: releases[0].tag_name,
+          last_title: `${releases[0].tag_name}: ${releases[0].name || 'New Release'}`,
+          last_checked: new Date().toISOString()
+        };
       }
     }
 
@@ -519,6 +616,21 @@ async function fetchIndex(source: Source, state: State): Promise<Update[]> {
   }
 }
 
+/**
+ * The install's MCP servers, read from `<configRoot>/.mcp.json` (`mcpServers` keys) so the report names
+ * this install's stack, never an assumed one. Absent or unreadable config yields a generic phrase.
+ */
+function mcpRoster(): string {
+  try {
+    const file = join(CONFIG_ROOT, '.mcp.json');
+    if (!existsSync(file)) return 'its configured MCP servers';
+    const names = Object.keys(JSON.parse(readFileSync(file, 'utf-8'))?.mcpServers ?? {});
+    return names.length ? `MCP servers (${names.join(', ')})` : 'its configured MCP servers';
+  } catch {
+    return 'its configured MCP servers';
+  }
+}
+
 // Recommendation engine - LifeOS ecosystem focused
 function generateRecommendation(update: Update): string {
   const { source, type, title, category } = update;
@@ -534,14 +646,14 @@ function generateRecommendation(update: Update): string {
   // MCP - Core infrastructure
   if (titleLower.includes('mcp') || source.toLowerCase().includes('mcp')) {
     return `**LifeOS Impact:** HIGH - MCP infrastructure enhancement\n` +
-      `**Why:** LifeOS uses MCP servers for brightdata, Ref docs, content access, and Stripe. Changes to MCP spec/docs affect our integrations.\n` +
+      `**Why:** LifeOS uses ${mcpRoster()}. Changes to MCP spec/docs affect those integrations.\n` +
       `**Action:** Assess compatibility with existing MCP servers in .mcp.json. Look for new MCP capabilities to expand LifeOS's tooling.`;
   }
 
   // Commands/Slash Commands
   if (titleLower.includes('command') || titleLower.includes('slash command')) {
     return `**LifeOS Impact:** HIGH - Command system update\n` +
-      `**Why:** LifeOS uses slash commands extensively (~/.claude/Commands/). Changes affect our command architecture and user workflows.\n` +
+      `**Why:** LifeOS uses slash commands extensively (~/.claude/commands/). Changes affect our command architecture and user workflows.\n` +
       `**Action:** Review for new command patterns or capabilities. Update LifeOS's command templates if conventions change.`;
   }
 
@@ -726,7 +838,7 @@ function generateNarrative(updates: Update[]): string {
     const highMcp = mcpUpdates.filter(u => u.priority === 'HIGH').length;
     if (highMcp > 0) {
       narrative += `**🔧 IMPORTANT: MCP Infrastructure Changes**\n`;
-      narrative += `**${highMcp} HIGH-priority MCP updates** detected. Since LifeOS uses MCP servers for brightdata, Ref, content, and Stripe, `;
+      narrative += `**${highMcp} HIGH-priority MCP updates** detected. Since LifeOS uses ${mcpRoster()}, `;
       narrative += `protocol changes could affect our integrations. `;
 
       const mcpRelease = mcpUpdates.find(u => u.type === 'release');
@@ -1015,7 +1127,10 @@ async function main() {
   logRun(allUpdates.length, highPriority.length, mediumPriority.length, lowPriority.length);
 }
 
-main().catch(error => {
-  console.error('❌ Fatal error:', error);
-  process.exit(1);
-});
+// Behind import.meta.main so pageUntil/fetchGitHubRepo can be imported for tests.
+if (import.meta.main) {
+  main().catch(error => {
+    console.error('❌ Fatal error:', error);
+    process.exit(1);
+  });
+}

@@ -1,244 +1,105 @@
 ---
 name: ISA
-version: 1.1.2
-description: "Owns the Ideal State Artifact — the primitive holding a project or task's articulated ideal state; scaffolds, interviews, grills a half-formed idea into shape via checkpointed discovery, scores completeness, reconciles feature excerpts to master, seeds from a repo, and appends decisions/changelog/verification across a locked seventeen-section order. USE WHEN ISA, ISC, ideal state, ideal state criteria, project specification, hill-climb, articulating done, fog, not yet specified, grill me, discovery interview. NOT FOR creating new skills (use CreateSkill)."
+metadata:
+  short-description: "Scaffolds, restates, discusses, rates, renders, and maintains the Ideal State Artifact that says what done means and keeps it aligned."
+version: 1.7.3
+evals:
+  manual:
+    reason: "artifact quality depends on the project's intent"
+    falsifier: "the principal rejects the ISA as an accurate articulation of done"
+description: "Owns the Ideal State Artifact (ISA): scaffolds, restates, interviews, discusses, rates, renders, upgrades, and maintains the articulation of a project's ideal state. USE WHEN ISA, ISC, ideal state, ideal state criteria, ideal state ladder, L1 L2 L3, restate, say it back, what do you think I want, are we building the right thing, drift check, project specification, articulating done, fog, not yet specified, discuss, discovery interview, are we aligned, alignment, questionnaire, articulation, refine the ISA, open questions, ask fence, mid-run question, rate this ISA, score this ISA, ISA quality, ISA format, latest ISA template, upgrade ISAs, isa_format stamp, render an ISA, ISA HTML, open an ISA in the browser, ISA page, view an ISA. NOT FOR creating new skills (CreateSkill), visual quality critique (ArtDirection), or climbing a target to a measured improvement (HillClimb)."
 ---
-
-## 🚨 MANDATORY: Voice Notification (REQUIRED BEFORE ANY ACTION)
-
-**You MUST send this notification BEFORE doing anything else when this skill is invoked.**
-
-1. **Send voice notification**:
-   ```bash
-   curl -s -X POST http://localhost:31337/notify \
-     -H "Content-Type: application/json" \
-     -d '{"message": "Running the WORKFLOWNAME workflow in the ISA skill"}' \
-     > /dev/null 2>&1 &
-   ```
-
-2. **Output text notification**:
-   ```
-   Running the **WorkflowName** workflow in the **ISA** skill to ACTION...
-   ```
-
-**This is not optional. Execute this curl command immediately upon skill invocation.**
 
 # ISA — Ideal State Artifact
 
-## What It Does
+Create and maintain the document that articulates and verifies a project's ideal state. Direction comes first: nothing in an ISA matters more than making sure we are working on the right thing, in the right direction, toward what the ideal state actually looks like. Every ISA opens with the `## Ideal State` ladder (`### L3 · One sentence`, `### L2 · Summary` with one sentence plus exactly four bullets, `### L1 · Full articulation`), each level written from the summit: the euphoric-surprise version of done for everyone the work touches, never the floor of what must not break, which lives in criteria and anti-criteria (ISAFormat § *What the ladder captures: the summit*). Shape check: `bun LIFEOS/TOOLS/IsaLadder.ts check <isa>`. Drift check, whether the criteria still add up to L3: `bun LIFEOS/TOOLS/IsaLadder.ts drift <isa>`. ISAFormat (`LIFEOS/DOCUMENTATION/ISA/ISAFormat.md`, § *The Ideal State ladder* for the full rules) wins any conflict with this skill or an intent.
 
-The ISA is the single document that articulates "done" for any thing whose ideal state we are pursuing — a project, an application, a library, infrastructure, a work session, an art piece, a strategic decision. It serves five identities at once: ideal state articulation, test harness, build verification, done condition, system of record. This skill owns the canonical template, the workflows that generate and refine ISAs, and the example library.
+**Contents:** Ideal State · Intent Routing · Data & Config · Gotchas · Examples
 
-Every ISA shares one meta-ideal-state above its specific one: **euphoric surprise in the human using the system**. The specific ideal state varies with the work; the universal one never does. `## Vision` is where that general target takes specific shape — what euphoric surprise looks like for this particular work — so every ISA hill-climbs toward two summits at once.
+## Ideal State
 
-## The Problem
+- Every ISA the skill writes or touches opens with a ladder that passes the shape check, is written from the summit, and agrees with its criteria; anything in the ISA that disagrees with the ladder is resolved before another criterion is climbed.
+- L3 and L2 reach the principal through Restate before a new project or a changed direction is built (an extension whose re-derived L3 or L2 changed counts as one), and not otherwise.
+- An existing ISA is extended in place, never replaced by a second ISA: the new work takes the next `F<n>` block (or new flat criteria when the ISA is flat) and the next global ISC IDs, no existing ID renumbers, the ladder is re-derived so it covers the new work, and when the re-derived L3 or L2 changed, they reach the principal through Restate before the new work is built.
+- Every criterion is atomic, names its falsifier, and carries at least one `## Test Strategy` row in the canonical six-column shape, so Assay resolves the whole table with no dropped row. Each row runs on a lane, `liveness` for asserts on every monitor tick or `integrity` for checks that may judge (or `build`, full runs only), and at a stage, so a criterion's asserts run before its judged rows (ISAFormat § *Verifier classes, lanes, and stages*; the one progressive contract is `skills/Assay/References/Progressive.md`).
+- Discuss is the standing alignment loop: whenever the ISA's state says direction is uncertain (`bun LIFEOS/TOOLS/IsaAlign.ts status <isa>` returns `DISCUSS`) or the conversation shows doubt about what done means, a Discuss round runs before the uncertain part is built, sized `quick`, `full` or `deep` to the doubt, and Restate, Refine, Rate and the ambiguity check hand off to it when their single-question shapes stop being enough.
+- Every interviewing surface (Discuss, Interview, Questionnaire, Refine, Scaffold's ambiguity check) leaves its raw record in the ISA's append-only `## Articulation Log`, and the settled answers reach the ladder and the sections in the same turn.
+- The ISA's history stays auditable: criterion IDs never renumber, and Decisions, Learning and Verification entries keep their canonical shapes.
 
-Most work starts without a written, testable definition of what finished looks like, so "done" drifts — the goal in your head at the start isn't the goal you settle for at the end, and there's no record of which one was right. Criteria stay vague enough that anything passes, decisions and dead ends get forgotten and re-litigated, and when work spans multiple sessions or multiple agents there's no shared source of truth for what's been verified. The ISA fixes "done" as a hard-to-vary explanation with atomic, probe-able criteria, a stable-ID structure that survives edits, and an audit trail of what was conjectured, refuted, and learned.
+## Intent Routing
 
-## How It Works
+Before executing an ISA operation, load its operation bundle:
 
-The ISA is a single document with a locked seventeen-section body. A substance-scaled completeness gate decides which sections are required for a given piece of work, and six workflows generate, deepen, score, and reconcile the artifact across sessions and agents.
-
----
-
-## The Seventeen-Section Body (locked; spec v2.19.0, Algorithm v8.19.0)
-
-Every ISA may have up to seventeen body sections. The substance-scaled completeness gate decides which are required for a given piece of work; sections never appear empty. **Order is fixed**. **Vocabulary (v8):** the criteria section is headed `## Claims` on new ISAs (`## Criteria` / `## ISC Criteria` legacy, still parsed); claim IDs may be `ISC-N` or short-form (`C1`, `A3`); anti-claims may live inline (`Anti:` prefix) or in a dedicated `## Anti-claims` section; the provenance section may be headed `## Verification` or `## Log`.
-
-| # | Section | Purpose | Written At |
-|---|---------|---------|------------|
-| 1 | `## Problem` | What is broken or missing right now that makes the ideal state worth pursuing | scoping |
-| 2 | `## Vision` | What euphoric surprise looks like — experiential intent, 1–5 sentences | scoping |
-| 3 | `## Out of Scope` | Anti-vision — what is *not* included in this ideal state, declared upfront in prose | scoping |
-| 4 | `## Language` | **NEW v2.18.0** — the project's ubiquitous language. One block per term: meaning, an `_Avoid_:` line naming the names it displaces, and relationships. Glossary only — no implementation detail, no claims. **A term enters only after it has actually caused a confusion.** Project ISAs; task ISAs inherit by reference | scoping → any point |
-| 5 | `## Principles` | Substrate-independent truths (Deutsch reach) the work must respect | scoping |
-| 6 | `## Constraints` | Immovable architectural mandates that bound the solution space | scoping |
-| 7 | `## Dependencies` | Cross-ISA needs, one machine-readable `requires: <slug> — <contract>` line each — only when the ISA participates in a hierarchy | scoping |
-| 8 | `## Goal` | The hard-to-vary spine — 1–3 sentences naming verifiable done | scoping |
-| 9 | `## Claims` | **Feature-less mode** — flat home for atomic claims/ISCs when the work has no distinct features. When it does, omit this and use `## Features` blocks (§12) | scoping → climbing |
-| 10 | `## Not yet specified` | Fog — in-scope questions too dim to be claims yet, one `- fog:` line each; graduates to ISCs (or dies via Decisions) as pursuit sharpens it; empty at close — only when the work has fog | scoping → any point |
-| 11 | `## Bridge Criteria` | Cross-ISA integration claims (`Bridge:` prefix) verified across the seam as a distinct verification pass — only when the ISA has siblings | scoping → climbing |
-| 12 | `## Test Strategy` | Per-ISC verification approach — `isc | type | check | threshold | tool | anchors_to` | scoping |
-| 13 | `## Features` | **Feature mode (v2.16.0)** — holds the claims as blocks: `### F<n> · <name>` + a one-line `Why:` (its ideal-state) + its ISCs nested underneath. `F0 · Cross-cutting` for spanning claims. Pointer table deleted; ISC IDs stay global/stable. Use this OR flat `## Claims`, never both | scoping → climbing |
-| 14 | `## Decisions` | Timestamped decision log including dead ends; `refined:` prefix for Goal/ISC restructures | any phase |
-| 15 | `## Learning` | Conjecture / refuted-by / learned / criterion-now entries — the Deutsch error-correction trail, written only when understanding changed (formerly `## Changelog`; **not** a changelog — see below) | learning |
-| 16 | `## Verification` | One-line provenance stub that each ISC passed — a commit hash, test name, or probe ref; collapsed on close, never a retained evidence paragraph | climbing → close |
-| 17 | `## Remaining Work` | **NEW v2.19.0** — concrete work this ISA still owes that was never an ISC of this run (follow-ups, handoffs, things noticed at close), one `- [ ] <work> — <why not an ISC / what it waits on>` line each. **Recording an item here IS a complete disposition** (no card also required). **Advisory, omit-when-empty, never gated, never counted toward coverage.** Backlog = unchecked ISCs ∪ unchecked Remaining Work. Distinct from fog (`## Not yet specified`); unchecked ISCs stay in `## Claims` (ID-Stability forbids moving them here) | learning |
-
-`## Dependencies`, `## Not yet specified`, and `## Bridge Criteria` are **conditional-required**: Dependencies/Bridge when the ISA has any `parent:`/`children:`/cross-ISA relationship, Not-yet-specified when the work genuinely has fog — omitted (like any empty section) otherwise. Multi-ISA trees are rare (<4% of archived ISAs) — full mechanics in `LIFEOS/DOCUMENTATION/ISA/ISAHierarchy.md`.
-
-**Fog vs claim vs out-of-scope (the graduation test, v2.14.0):** can you state the question precisely now — not answer it, *state* it? Precisely statable with a nameable falsifier → an ISC, even if blocked. Statable but not yet probe-able → fog. Beyond the vision → Out of Scope. Corollary: **the Coverage Gate is assessed at close, not at scaffold** — never invent speculative claims at scaffold to cover surface that is still fog; at `phase: complete` the fog section must be empty (every entry graduated or killed via a Decisions row). Domain-general: an unresolved research question, an album's track order, an unchosen venue are all fog.
-
-**The changelog is git; evidence collapses on close (Algorithm v8.7.1 claim 12):** the scaffold emits **no changelog section** — `git log -- <isa-path>` is the authoritative change record and commit messages are its entries. What persists is the living surface: `## Decisions` and the conjecture/refuted-by/learned/criterion-now trail (`## Learning` — the section formerly named `## Changelog`; position and four-piece C/R/L format unchanged, only the changelog identity dropped). And `## Verification` holds **one-line provenance stubs, not evidence paragraphs** — the moment a claim goes `[x]`, its entry shrinks to a commit hash / test name / probe ref pointing at the proof in git and CI.
-
----
-
-## Three-Guardrail Taxonomy (Principles vs Constraints vs Anti-criteria)
-
-Adjacent concepts. Distinguished by **who they bind**.
-
-| Guardrail | Binds | Tone | Example | Lives In |
-|-----------|-------|------|---------|----------|
-| **Principles** | The *thinking* | Aspirational, generalizable | "User-facing systems prioritize responsiveness." | `## Principles` |
-| **Constraints** | The *solution space* | Immovable, non-negotiable | "We do not roll our own cryptography — OAuth via industry-standard libraries only." | `## Constraints` |
-| **Out of Scope** | The *vision* | Declared, explicit, prose | "Mobile native apps are not part of v1." | `## Out of Scope` |
-| **Anti-criteria** | The *test surface* | Granular, testable, yes/no | "Anti: /admin returns 200 in v1 build." | `## Criteria` (with `Anti:` prefix) |
-
-The first three are author-stated (declarative). Anti-criteria are derived — they are how Out of Scope, Constraints, and Principles become probe-able.
-
----
-
-## Completeness Gate (substance-scaled — HARD)
-
-Quality gates, not section counts — sections exist because content exists. Effort tiers were retired 2026-07-11; the gate scales with the substance of the work, discovered from the work itself (Algorithm §Spend):
-
-| Substance | Required Sections |
-|-----------|-------------------|
-| **Trivial** (mechanical, single-probe, minutes) | Goal, Claims — a minimal direct-written ISA; shape check logged inline |
-| **Substantial** (multi-claim build, real blast radius) | Problem, Vision, Out of Scope, Constraints, Goal, Claims, Test Strategy, Features |
-| **Deepest** (frontier multi-component work) | All sixteen (Dependencies/Bridge Criteria only when cross-ISA links exist; Not-yet-specified only when the work has fog; Language only when a term has actually been confused) + Interview workflow run before building |
-
-**Project ISA override:** any `<project>/ISA.md` requires full substantial-grade structure regardless of how small the current task is. The project file is the long-lived source of truth; one transient task must not downgrade it.
-
-`CheckCompleteness` workflow enforces this gate. A miss blocks `phase: complete` until the missing sections are filled in.
-
----
-
-## Workflow Routing
-
-Match the verb in the request to a workflow. When ambiguous, default to Scaffold for new ISAs and CheckCompleteness for audits.
-
-| Verb / Intent | Workflow | File |
-|---------------|----------|------|
-| "scaffold", "create", "generate", "new ISA from this prompt", "extract feature as ephemeral" | **Scaffold** | `Workflows/Scaffold.md` |
-| "interview me", "fill in the ISA", "deepen", "ask me questions" | **Interview** | `Workflows/Interview.md` |
-| "grill me", "grill", "discovery interview", "figure out the shape" | **Grill** | `Workflows/Grill.md` |
-| "check", "audit", "score this ISA", "is it complete?" | **CheckCompleteness** | `Workflows/CheckCompleteness.md` |
-| "reconcile", "merge feature file back", "ephemeral → master" | **Reconcile** | `Workflows/Reconcile.md` |
-| "seed", "bootstrap from this repo", "draft an ISA from existing code" | **Seed** | `Workflows/Seed.md` |
-| "append decision", "append learning" (C/R/L), "append verification", "record C/R/L entry" | **Append** | `Workflows/Append.md` |
-
-**When executing a workflow, output this notification directly:**
-
-```
-Running the **WorkflowName** workflow in the **ISA** skill to ACTION...
+```bash
+bun "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/LIFEOS/TOOLS/ContextLoad.ts" ISA load <bundle>
 ```
 
----
+The bundle returns required ISA constraints, operation instructions, and internal references with source hashes. Follow every returned requirement, including conditional reads. Skill-local paths resolve from the skill root; `LIFEOS/` paths resolve from the install root. Do not reread unchanged context still present; after compaction or a source change, reload the relevant bundle.
+
+Set the shell and any code-mode wrapper output budget to 30000 tokens. Treat any truncation warning as a failed load, even when `END CONTEXTLOAD` appears. Use `list` to discover bundles and `search "<query>"` to search the complete guide. A failed search does not prove absence: inspect the index, broaden the query, or load `full`. If routing is uncertain, a bundle is absent, or the loader fails, load or read `References/CompleteGuide.md` in full before acting.
+
+When the verb is ambiguous, default to Scaffold for a new ISA and CheckCompleteness for an audit.
+
+| Intent | Trigger | File | Bundle |
+|--------|---------|------|--------|
+| **Scaffold** | "scaffold", "create", "generate", "new ISA from this prompt", "extend <existing ISA> with a new Feature", "extend in place" | `Intents/Scaffold.md` | `scaffold` |
+| **Restate** | "restate", "say it back", "confirm the direction", "is this what I want", before building a new project or a changed direction | `Intents/Restate.md` | `restate` |
+| **CheckCompleteness** | "check", "audit", "is it complete?" | `Intents/CheckCompleteness.md` | `check` |
+| **Discuss** | "discuss", "discussion", "discovery interview", "figure out the shape", "talk it through", "are we aligned"; `IsaAlign.ts status` says DISCUSS; a restate answer that is more than a clean yes or a wording fix; asks that cluster; a DISCUSS-FIRST rating; a drift verdict of partial or divergent | `Intents/Discuss.md` | `discuss` |
+| **Interview** | "interview me", "fill in the ISA", "deepen", "ask me questions" | `Intents/Interview.md` | `interview` |
+| **Questionnaire** | "questionnaire", "questions for someone else", "async questions" | `Intents/Questionnaire.md` | `questionnaire` |
+| **Refine** | "refine the ISA", "open questions", "ask me the questions", "take your defaults", mid-run doubt about what done means only the principal can settle, a breakpoint with open asks, close with open asks | `Intents/Refine.md` | `refine` |
+| **Rate** | "rate this ISA", "score this ISA", "ISA quality", "how good is this ISA" | `Intents/Rate.md` | `rate` |
+| **Seed** | "seed", "bootstrap from this repo", "draft an ISA from existing code" | `Intents/Seed.md` | `seed` |
+| **Upgrade** | "upgrade", "check format", "is this ISA current", "latest template", "are all our ISAs updated", "label them as updated" | `Intents/Upgrade.md` | `upgrade` |
+| **Append** | "append decision", "append learning" (C/R/L), "append verification", "record C/R/L entry" | `Intents/Append.md` | `append` |
+| **Render** (tool-only) | "render", "HTML version", "open in browser", "ISA page" | `bun LIFEOS/TOOLS/ISARender.ts <slug-or-path> [--output <path>]` | `render` |
+| Uncertain routing or complete reference | anything the rows above do not settle | `References/CompleteGuide.md` | `full` |
+
+| File | Read when |
+|------|-----------|
+| `References/CompleteGuide.md` | the full contract: the twenty-one-section body, the Test Strategy vocabulary and progressive runs, anti-criteria rules, the three-guardrail taxonomy, the substance-scaled completeness gate and who enforces it, the gotchas, the example catalog, and the Algorithm relationship (the `full` bundle) |
+| `References/Discussion.md` | running any interviewing surface: the ladder shown first, frontier rounds, recommended answers, the challenge question, depth (quick, full, deep with a coverage map), stop conditions, checkpointing to the Articulation Log, folding and the say-back |
+| `References/ExtractionPass.md` | Scaffold runs the Extraction Pass (new-product / new-surface substantial work, or any ask naming a product or URL): source classes, the exemplar comparator contract, total disposition, milestone scope |
+| `References/AmbiguityQuestions.md` | Scaffold's ambiguity check finds material ambiguity, or late information would have changed the ladder: provenance escalation, the one-message template, the `proceed` match and what it records, re-check later |
+| `References/RowClassification.md` | Scaffold writes a Test Strategy row for a criterion that is not plainly deterministic: the three questions behind `eval`, `pairwise`, staged and `manual` rows |
+| `References/GoalLiteralChecks.md` | CheckCompleteness audits an ISA whose frontmatter carries a `principal_stated_goal` key: the goal-signal mismatch and artifact-presence checks |
+| `Examples/` | writing or judging an ISA against a worked one: `canonical-isa.md` is the one shape template; the `e1-` through `e5-` files run from minimal (`e1-minimal.md`) to the deepest (`e5-enterprise.md`) and are content references only, since most predate the current shape (CompleteGuide § Examples) |
+
+## Data & Config
+
+The format authority is ISAFormat and `References/CompleteGuide.md`; this skill takes no install config. `<configRoot>/LIFEOS/USER/CUSTOMIZATIONS/SKILLS/ISA/History.md`, when present, holds the install-specific incident detail behind the dated gotchas here and in the intents; it is history, never read as config.
 
 ## Gotchas
 
-The highest-information-density part of this skill. Each entry captures a non-obvious failure mode that has bitten real ISA work.
+These three bite every intent, so they live here; the rest are in `References/CompleteGuide.md` § Gotchas.
 
-- **ID-stability is the cornerstone of Reconcile — never re-number on edit.** When the Splitting Test produces a finer-grained version of `ISC-7`, preserve `ISC-7` as the parent and add `ISC-7.1`, `ISC-7.2`, etc. Even when an ISC is dropped, leave a tombstone (`- [ ] ISC-N: [DROPPED — see Decisions YYYY-MM-DD]`). Reconcile keys on stable IDs; renumbering breaks ephemeral feature-file merges silently and the failure mode looks like "the worker's checkmarks didn't land in master."
-- **Ephemeral files are derived views, never sources of truth.** Scaffold's `--ephemeral` mode produces a slice of the master ISA at `MEMORY/WORK/{slug}/_ephemeral/<feature>.md`. Workers operate against that slice; Reconcile merges back. Hand-editing master content from an ephemeral file is policy-forbidden — the master is what persists; the ephemeral is what gets archived.
-- **The changelog is git — the ISA has no in-document changelog section.** `git log -- <isa-path>` is the authoritative change record; the scaffold never emits a `## Changelog` section. What persists is the living surface: `## Decisions` and the C/R/L learning trail (`## Learning`, formerly named `## Changelog` — same position, same four-piece format, changelog identity dropped). (Algorithm v8.7.1 claim 12.)
-- **The `## Learning` (C/R/L) format is non-negotiable.** Every entry needs all four pieces (`conjectured`, `refuted by`, `learned`, `criterion now`) in that order. Append refuses to write a partial C/R/L; if any of the four is missing, the entry is a Decision, not a Learning entry. The format is what makes the Deutsch error-correction trail auditable across sessions.
-- **Evidence collapses on close — `## Verification` holds one-line stubs, not paragraphs.** The moment a claim goes `[x]`, its Verification entry is reduced to a single-line provenance stub (a commit hash, test name, or probe ref) pointing at the proof in git and CI — never a retained evidence paragraph. A Verification section that accumulates paragraphs is the failure this convention prevents. (Algorithm v8.7.1 claim 12.)
-- **Project ISAs always require full substantial-grade structure.** A `<project>/ISA.md` is the long-lived system of record for a thing with persistent identity. One transient trivial task on the project must NOT downgrade the structural minimum. CheckCompleteness applies this override automatically.
-- **Empty sections never appear.** The sixteen-section body is a *capacity*, not a *requirement* for every task. Sections required-but-empty for the work's substance are populated; sections not required and not yet written are simply absent from the file. CheckCompleteness distinguishes `present` / `missing` / `empty` and only `empty` is acceptable for `Verification`/`Log` before claims start closing — section length is never graded; a one-sentence section can be exactly right.
-- **Anti-claims are derived from Out of Scope plus regression-prevention concerns.** They are how the prose-guardrails (Out of Scope, Constraints, Principles) become probe-able. At least one is required on every real build; a missing anti-claim is a hard CheckCompleteness failure.
-- **Antecedents are required when the goal is experiential.** For art, design, content, and anything that has to "land," at least one ISC must use the `Antecedent:` prefix to name a precondition that reliably produces the target experience. Verifiable goals (build, deploy, schema) don't need antecedents; experiential goals always do.
-- **Reconcile is deterministic — there are no conflicts to resolve.** Either an ISC ID exists in master (mechanical merge) or it doesn't (abort with ID-stability violation). If the ephemeral made structural changes (split ISC-7 into ISC-7.1/ISC-7.2), those structural changes belong in master via a separate Edit by the user *before* Reconcile runs.
-- **The format spec wins on contradiction.** `ISAFormat.md` is the file-shape contract. If this skill's prose ever drifts from the format spec, the spec is canonical and the skill updates to match — not the reverse.
-- **Feature blocks hold their claims (v2.16.0) — a feature contains its ISCs, it doesn't point at them.** When the work has distinct features, `## Features` is blocks: `### F<n> · <name>` + a one-line `Why:` (the feature's ideal-state — why it exists, what done means for it) + its ISCs nested underneath, with `F0 · Cross-cutting` for spanning claims. The old `satisfies: [ISC-N]` pointer table is gone. ISC IDs stay **global and stable** across the whole ISA (never per-feature) so Test Strategy and Reconcile keep working. Use feature blocks OR a flat `## Claims` section, never both — trivial work stays flat. The `Why:` must say what the name and claims don't; a restating `Why:` is noise. No new gate enforces this (BPE) — a capable model writes a real `Why:` unprompted.
-- **Features are vertical slices, not horizontal layers.** Each feature block cuts end-to-end to a verifiable increment satisfying ≥1 ISC — not "the data layer" then "the API layer." A Feature you can't independently verify on its own is a horizontal slice; re-slice it vertically. This is a rule about the *shape of the decomposition* (the artifact), not about how to write code — it exists so every Feature produces a testable increment. (Pocock's tracer-bullet / vertical-slice principle, folded into Features where it belongs.) **The one exception is the wide sweep** — a single mechanical change whose blast radius fans across the whole artifact (renaming a concept across a corpus, retyping a shared symbol, migrating a convention), where no vertical slice can land verified alone. Sequence it **expand–contract**: expand (introduce the new form beside the old, nothing breaks) → migrate in blast-radius-sized batches, each independently verifiable → contract (remove the old form once nothing references it). (Pocock's to-tickets wide-refactor rule, generalized; adopted 2026-07-16.)
-- **Fog is not a claim.** When the work has in-scope questions you cannot yet state precisely, they go in `## Not yet specified` — never as speculative ISCs written to satisfy coverage at scaffold. Graduation test: statable-with-falsifier → ISC; statable-not-probe-able → fog; beyond the vision → Out of Scope. The fog section must be empty at `phase: complete`. (Pocock's wayfinder fog-of-war doctrine, generalized; adopted 2026-07-16.)
-- **Test Strategy tables must carry the canonical six columns — `isc | type | check | threshold | tool | anchors_to`.** Bunker's parser reads `anchors_to` positionally at cell index 5, so a five-column table that drops `threshold` silently shifts the anchor into the `tool` slot; `ISAGate.ts` then hard-fails `anchors-missing` on rows that visibly show an anchor, and the message points at the anchors rather than at the column count. Drop `threshold` only by writing an empty cell, never by removing the column. (Hit live 2026-07-27 on the AS3 ISA: 14 rows flagged, every one of them anchored.)
-- **Probe placement follows the seam rule.** Test Strategy probes attach at the boundary where the thing meets its consumer, at the highest boundary that exercises the claim, agreed before building — never internals. Prefer existing boundaries; the fewer distinct probe boundaries, the more each proves. Full convention: `ISAFormat.md` § Probe placement.
-- **A design question's cheapest probe is a throwaway prototype.** Sketch, outline, stub, or runnable code — disposable, kept out of the main line; only the decision folds back (into the ISC, a Decisions row, and at most one decision-rich fragment inlined). Full convention: `ISAFormat.md` § Prototype-as-probe.
-- **Ordering edges are a trailing `(after: ID, ID)` parenthetical — and optional forever (v2.21.0).** When claims have REAL execution ordering, encode it as a trailing parenthetical on the claim line (`- [ ] C4: migrate rows (after: C2).`); `bun LIFEOS/TOOLS/IsaFrontier.ts frontier <isa>` then computes the takeable set, and `claim`/`release` give concurrent sessions atomic per-claim locks (central state under `MEMORY/STATE/isa-locks/`, never beside the ISA; the tool never writes the ISA file). Edges only where ordering is real — most ISAs need none, no gate requires them, and edging every claim to look thorough is decoration the frontier then has to walk. Backticked syntax mentions and mid-line parentheticals are ignored by the parser (only the trailing form binds); dropped/tombstoned blockers count as resolved, so a killed claim never blocks forever. A session sharing an ISA with other sessions claims before building and releases at close; solo runs skip the protocol entirely. Full convention: `ISAFormat.md` § Dependency edges and the frontier.
-- **Prefer test-first probes (red-before-build).** Where an ISC's probe is a *runnable* test (`bun-test`/`bun-property`/`bash`/`curl`/`SELECT`), write it so it FAILS before EXECUTE and passes after — the probe exists and is red before the build, green after. Probes that can only be a screenshot or manual check are exempt. This tightens the existing Inline-Verification Mandate from "name the probe" to "run the probe red first," and it is a rule about *when the probe is written/run* (the process), NOT a coding-craft instruction telling a capable model how to do TDD. (The structural kernel of Pocock's `tdd`, folded into the ISC layer; the red/green/refactor *mechanics* are deliberately NOT encoded — a competent coder does those unprompted.)
-
----
+- **Test Strategy tables must carry the canonical six columns, `isc | type | check | threshold | tool | anchors_to`.** The shipped parser (`LIFEOS/TOOLS/lib/IsaTestStrategy.ts`, which `ISAGate.ts` runs) maps cells by the header row and falls back to these canonical positions (`anchors_to` at cell index 5) for any column the header does not name, so a row whose cells do not line up with its header shifts the anchor into the wrong slot; `ISAGate.ts` then hard-fails `anchors-missing` on rows that visibly show an anchor, and the message points at the anchors rather than at the column count. Drop `threshold` only by writing an empty cell, never by removing the column. (Hit live 2026-07-27 on a large ISA where every flagged row was anchored; incident detail in the USER extension `History.md`.)
+- **The Articulation Log tolerates no embedded headings.** Inside a log block, no line may start with `#`: demote pasted or transcribed headings to bold or blockquote them (`> ## Original`). `CRITERIA_HEADING_RE` accepts `### Criteria` and `parseCapabilities` opens on H3 `Capabilities`, so on a criteria-less ISA (exactly what Discuss creates before Scaffold runs) an unquoted transcript heading becomes the first parser match and everything after it parses as criteria. Only the block's own `### YYYY-MM-DD HH:MM · <source>` headers are legal.
+- **Browser/HTML view of an ISA goes through `bun LIFEOS/TOOLS/ISARender.ts <slug-or-path> [--output <path>]`, never a hand-rolled renderer or the generic HTML skill.** It emits the canonical technical ISA template, deterministic and offline, with per-ISC status pills, the ascent strip, and the Test Strategy table. (2026-08-31: an ISA was hand-rendered twice, first as a distilled report, then as generic markdown-to-HTML, because this tool was referenced nowhere in the skill; the principal's correction encoded here.)
 
 ## Examples
 
-The `Examples/` directory holds reference ISAs spanning scale (the `eN-` filename prefixes are the retired tier vocabulary, kept as filenames only) × domain (code / art / design / ops / marketplace / enterprise). (Authored pre-v6.25.0, so they omit Dependencies and Bridge Criteria and show retired frontmatter keys (`effort:`, `mode:`) and legacy headings; they are historical — the sixteen-section order and v2.15.0 frontmatter above win on shape.) Always start by reading the canonical showpiece before scaffolding a new ISA — copy its section headers, then populate. Pick the example closest to your domain + scale as a template.
-
-**Showpiece**
-
-| File | Purpose |
-|------|---------|
-| `Examples/canonical-isa.md` | **BeanLine** — peer-to-peer specialty-coffee marketplace. The showpiece reference, fully populated across every section with real-feeling Decisions and a four-piece C/R/L Changelog. Read this first. |
-
-**Code**
-
-| File | Tier | Purpose |
-|------|------|---------|
-| `Examples/e1-minimal.md` | E1 | Add a `--no-color` flag to a CLI tool. <90s task, Goal + 4 ISCs only. Demonstrates the fast-path floor. |
-| `Examples/e2-backup-verify.md` | E2 | Add SHA-256 verification to a backup CLI's `--verify` mode. Single-domain, 18 ISCs. |
-| `Examples/e3-project.md` | E3 | Build an arxiv metadata extractor CLI. Mid-size project, 12 ISCs, eight sections. |
-| `Examples/e4-api-migration.md` | E4 | Migrate a public API from REST to GraphQL with 6-month backwards-compat. Cross-cutting, 73 ISCs, every section populated. |
-| `Examples/e5-desktop-app.md` | E5 | **WattWatch** — open-source desktop app for personal home-energy monitoring. Single-user app pattern, 50 ISCs, populated Changelog. |
-
-**Art (experiential — antecedents required)**
-
-| File | Tier | Purpose |
-|------|------|---------|
-| `Examples/e3-essay.md` | E3 | Write a 1500-word essay on a specific thesis. Experiential goal, antecedent ISCs, post-publish reception probes. |
-| `Examples/e5-album.md` | E5 | **Mariner Frequencies** — produce a 12-track instrumental album over 6 months. Long-form experiential, multi-act Changelog. |
-
-**Design (experiential)**
-
-| File | Tier | Purpose |
-|------|------|---------|
-| `Examples/e3-help-redesign.md` | E3 | Redesign a CLI tool's `--help` output for first-encounter clarity. Antecedents + usability tests. |
-| `Examples/e4-brand-identity.md` | E4 | **Cardinal** — brand identity for a small fintech startup (logo + type + color + voice + first 5 marketing surfaces). 56 ISCs, 6 antecedents. |
-
-**Ops**
-
-| File | Tier | Purpose |
-|------|------|---------|
-| `Examples/e2-rotate-credential.md` | E2 | Rotate a production deploy credential in CI. Demonstrates the ISA primitive applied to ops/runbook work. 16 ISCs. |
-
-**Enterprise**
-
-| File | Tier | Purpose |
-|------|------|---------|
-| `Examples/e5-enterprise.md` | E5 | **Beacon Health Alliance** — multi-region HIPAA-compliant patient portal for a 50-hospital network. Compliance anti-criteria, multi-team parallelizable features, 68 ISCs, every section populated. The E5 reference Scaffold reads. |
-
----
-
-## ID Stability Rule
-
-**ISC IDs never re-number on edit.** When the Splitting Test produces a finer-grained version of `ISC-7`, the original number is preserved as the parent and children become `ISC-7.1`, `ISC-7.2`, etc. Do not collapse the numbering even if the ISC is dropped — leave a tombstone marker so historical references in Decisions, Learning, and Verification remain valid.
-
-This rule exists because `Reconcile` is keyed on ISC IDs. If IDs renumber across edits, ephemeral feature-file reconciliation breaks silently. The renumbering ban is what makes feature-file workflows safe.
-
----
-
-## Ephemeral Feature Files (Ralph Loop / Maestro pattern)
-
-When a feature is to be worked in an isolated context (Ralph Loop, Maestro, parallel coding-agent instances), the Algorithm invokes:
-
 ```
-Skill("ISA", "extract feature <name> as ephemeral file")
+User: "Scaffold an ISA for the new billing dashboard"
+→ Scaffold intent (bundle `scaffold`)
+→ A populated ISA at its canonical path, ladder first, every criterion with a Test Strategy row, and L3 and L2 shown through Restate before the build starts
 ```
 
-`Scaffold` (with `--ephemeral` mode) produces a derived view at `MEMORY/WORK/{slug}/_ephemeral/<feature>.md` containing only the slice relevant to that feature: the Vision and Goal as read-only context, the relevant Constraints, the ISCs in the feature's `satisfies:` list with stable IDs, the matching Test Strategy entries, and an empty Verification section.
+```
+User: "Extend the Lighthouse ISA with a new Feature F7, then restate L3/L2"
+→ Scaffold intent (bundle `scaffold`), extending the existing file in place
+→ The same ISA with F7 added under the next global ISC IDs, nothing renumbered, the ladder re-derived, and the amended L3 and L2 restated
+```
 
-A fresh-context agent operates against the ephemeral file alone. At completion, `Reconcile` deterministically merges ISC checkmarks, Verification provenance stubs, Decisions entries, and any new Learning (C/R/L) entries back to master, then archives the ephemeral file under `_ephemeral/.archive/`.
+```
+Restate answer: "sort of, but it is really for teams, not solo users"
+→ Discuss intent (bundle `discuss`), align mode, quick depth
+→ The ladder shown as it stands, one round of up to four recommended-answer questions including a challenge, the round checkpointed, L1/L2/L3 and the criteria folded, then the corrected L3 and L2 restated
+```
 
-**Ephemeral files are derived views. They are never sources of truth. They are never hand-edited as policy. The master ISA is what persists.**
-
----
-
-## Relationship to the Algorithm
-
-The Algorithm invokes this skill at run start to scaffold or read an ISA. The skill does not run the Algorithm — it owns the artifact the Algorithm operates on.
-
-- Scoping: `Skill("ISA", "scaffold from prompt")` → returns populated ISA at canonical location.
-- Scoping / close: `Skill("ISA", "check completeness of <path>")` → pass/fail + gap report.
-- Planning: `Skill("ISA", "extract feature <name> as ephemeral file")` → ephemeral excerpt.
-- Learning: `Skill("ISA", "reconcile <ephemeral-path> → <master-path>")` → deterministic merge.
-
-The Algorithm doctrine (`~/.claude/LIFEOS/ALGORITHM/LATEST` → `v{LATEST}.md`) governs invocation cadence. This skill is invocation-agnostic — it works the same whether called by the Algorithm or directly by the user.
-
----
-
-## Format spec cross-reference
-
-The full ISA format spec lives at `~/.claude/LIFEOS/DOCUMENTATION/ISA/ISAFormat.md`. This skill implements that spec; if there is ever a contradiction, the format spec wins and this skill is updated to match.
-
-The system-architecture doc — five identities, three-guardrail taxonomy, fourteen-section body, six workflows, two homes, subsystem relationships — lives at `~/.claude/LIFEOS/DOCUMENTATION/ISA/ISASystem.md`. Read that for the conceptual frame; read this file (and `ISAFormat.md`) for the operational contract.
+```
+User: "Is this ISA ready to close?"
+→ CheckCompleteness intent (bundle `check`)
+→ A structured gap report: each gap names its section, severity and reason, and `status: pass` only with zero hard gaps
+```

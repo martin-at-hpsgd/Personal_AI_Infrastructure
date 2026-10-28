@@ -1,4 +1,11 @@
 import type { Config } from "tailwindcss"
+import plugin from "tailwindcss/plugin"
+import { reportTheme } from "./theme"
+
+// Palette, font roles and @font-face rules all come from theme.ts, which
+// WriteReport replaces with the user's ReportTheme.ts when one exists.
+const c = reportTheme.colors
+const stack = (fonts: string[]) => fonts.map((f) => (/\s/.test(f) ? `'${f}'` : f)).join(", ")
 
 const config: Config = {
   content: [
@@ -8,59 +15,85 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Dark Theme - Super Dark Blue Background
         background: {
-          DEFAULT: "#0B0D14",
-          secondary: "#12141D",
-          tertiary: "#191C26",
-          elevated: "#20232E",
+          DEFAULT: c.background,
+          secondary: c.backgroundSecondary,
+          tertiary: c.backgroundTertiary,
+          elevated: c.backgroundElevated,
         },
-
-        // Text - Light on Dark
-        foreground: "#F5F5F7",
+        foreground: c.foreground,
         muted: {
-          DEFAULT: "#A1A1A6",
-          dark: "#6B6B70",
+          DEFAULT: c.muted,
+          dark: c.mutedDark,
         },
-
-        // Borders
         border: {
-          DEFAULT: "rgba(255, 255, 255, 0.12)",
-          subtle: "rgba(255, 255, 255, 0.08)",
-          emphasis: "rgba(255, 255, 255, 0.2)",
+          DEFAULT: c.border,
+          subtle: c.borderSubtle,
+          emphasis: c.borderEmphasis,
         },
-
-        // Accents - Brightened for dark mode
         primary: {
-          DEFAULT: "#4A9EF7",
-          glow: "rgba(74, 158, 247, 0.3)",
+          DEFAULT: c.primary,
+          glow: c.primaryGlow,
         },
         accent: {
-          DEFAULT: "#B47AFF",
-          glow: "rgba(180, 122, 255, 0.3)",
+          DEFAULT: c.accent,
+          glow: c.accentGlow,
         },
-        success: "#4ADE80",
-        warning: "#FBBF24",
-        destructive: "#F87171",
-
-        // Section backgrounds
-        section: "#12141D",
-        callout: "rgba(74, 158, 247, 0.1)",
+        success: c.success,
+        warning: c.warning,
+        destructive: c.destructive,
+        section: c.backgroundSecondary,
+        callout: c.callout,
       },
-      fontFamily: {
-        // Matthew Butterick's Practical Typography fonts
-        display: ["'Advocate Wide'", "'Advocate'", "sans-serif"],
-        heading: ["'Concourse Medium'", "'Concourse'", "sans-serif"],
-        body: ["'Valkyrie'", "Georgia", "serif"],
-        accent: ["'Heliotrope Caps'", "'Heliotrope'", "sans-serif"],
-        sans: ["'Concourse'", "system-ui", "sans-serif"],
-      },
+      fontFamily: reportTheme.fonts,
       boxShadow: {
-        glow: "0 0 20px rgba(74, 158, 247, 0.3)",
-        "glow-accent": "0 0 20px rgba(180, 122, 255, 0.3)",
+        glow: `0 0 20px ${c.primaryGlow}`,
+        "glow-accent": `0 0 20px ${c.accentGlow}`,
       },
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(({ addBase }) => {
+      addBase({
+        ":root": {
+          "--background": c.background,
+          "--background-secondary": c.backgroundSecondary,
+          "--background-tertiary": c.backgroundTertiary,
+          "--background-elevated": c.backgroundElevated,
+          "--foreground": c.foreground,
+          "--muted": c.muted,
+          "--muted-dark": c.mutedDark,
+          "--border": c.border,
+          "--border-subtle": c.borderSubtle,
+          "--border-emphasis": c.borderEmphasis,
+          "--primary": c.primary,
+          "--primary-glow": c.primaryGlow,
+          "--accent": c.accent,
+          "--accent-glow": c.accentGlow,
+          "--success": c.success,
+          "--warning": c.warning,
+          "--destructive": c.destructive,
+          "--section-bg": c.backgroundSecondary,
+          "--callout-bg": c.callout,
+          "--font-display": stack(reportTheme.fonts.display),
+          "--font-heading": stack(reportTheme.fonts.heading),
+          "--font-body": stack(reportTheme.fonts.body),
+          "--font-accent": stack(reportTheme.fonts.accent),
+          "--font-sans": stack(reportTheme.fonts.sans),
+        },
+      })
+      if (reportTheme.fontFaces.length > 0) {
+        addBase({
+          "@font-face": reportTheme.fontFaces.map((f) => ({
+            fontFamily: `'${f.family}'`,
+            src: `url('${f.src}') format('woff2')`,
+            fontWeight: String(f.weight),
+            fontStyle: f.style,
+            fontDisplay: "swap",
+          })),
+        } as any)
+      }
+    }),
+  ],
 }
 export default config

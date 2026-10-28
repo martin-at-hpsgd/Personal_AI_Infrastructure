@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.17
  * LifeosUpgrade.ts — idempotent migration runner + diagnostic harness for LifeOS rebuild.
  *
  * Each migration knows how to detect its own applied state and is safe to re-run.
@@ -25,9 +26,151 @@
 import { existsSync, readFileSync, lstatSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { getClaudeDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { shellSteps } from "../../hooks/lib/shell-commands";
 
 const HOME = process.env.HOME ?? homedir();
-const CLAUDE_ROOT = join(HOME, ".claude");
+const CLAUDE_ROOT = getClaudeDir();
+
+/**
+ * The script a hook command actually executes, or null when the command is not a plain invocation:
+ * `<script>` (shebang) or `bun [run] [flags] <script>`, with `$VAR`/`${VAR}` path variables and quotes.
+ * Shell control syntax makes the command opaque (null), so an `echo` naming a hook file, or a chain that
+ * only mentions it, is never read as running it.
+ *
+ * Only flags that still run the script are accepted (BUN_RUN_FLAGS). Any other flag can change what bun does
+ * with the next word (`--help`, `-h`, `--version`, `-e`, `--print`, `--revision` never execute it), so such a
+ * command is opaque and returns null rather than attesting a hook that never runs (S091, S092). This is the one
+ * hook-command parser: MemoryHealthCheck imports it.
+ *
+ * Words come from the shared shell parser (hooks/lib/shell-commands.ts), so quotes group exactly as the shell
+ * groups them: `bun "hooks/X.hook.ts --help"` passes bun ONE word with a space in it, which names no hook file.
+ * Splitting on whitespace before stripping quotes read that as the hook path (S091/S092 review). The command must
+ * be one plain step: no env prefix, wrapper, redirect or nested command; the control-character screen below is
+ * the plain-invocation shape rule, kept as a second, stricter check beside the parser.
+ */
+export function hookCommandScript(command: unknown): string | null {
+  if (typeof command !== "string") return null;
+  const withoutVars = command.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*/g, "VAR");
+  // Screened over the whole text, comment included, as before: a comment never earns control syntax a pass.
+  if (/[;&|`<>()$\n\r]/.test(withoutVars)) return null;
+  const code = commandBeforeComment(command);
+  if (code === null) return null;
+  // A backslash anywhere makes the command opaque: the shell keeps one inside double quotes before an ordinary
+  // character while the shared parser drops it, and it can move a quote boundary. (`#` is settled by
+  // commandBeforeComment: a comment is cut off, and any other `#` is literal to bash and the parser.)
+  if (code.includes("\\")) return null;
+  let walk: ReturnType<typeof shellSteps>;
+  try { walk = shellSteps(code); } catch { return null; }
+  if (walk.tooDeep || walk.commands.length !== 1 || walk.steps.length !== 1) return null;
+  const step = walk.steps[0]!;
+  if (step.depth !== 0 || step.wrappers.length > 0 || Object.keys(step.env).length > 0 || step.writeTargets.length > 0) return null;
+  const tokens = step.argv;
+  if (tokens.length === 0) return null;
+  const exe = tokens[0]!;
+  let i = 0;
+  if (exe.split("/").pop() === "bun") {
+    i = 1;
+    const run = tokens[i] === "run";
+    if (run) i++;
+    while (i < tokens.length && tokens[i]!.startsWith("-")) {
+      if (tokens[i] === "--") { i++; break; } // end of bun's options: the next word is the script, whatever it looks like
+      if (!bunRunFlag(tokens[i]!, run)) return null;
+      i++;
+    }
+    if (i >= tokens.length) return null;
+  }
+  // Glob and brace expansion let the shell's word differ from the parsed word, so they make the command opaque
+  // in the words that decide what runs: the executable, bun's options and the script. Words after the script are
+  // its own arguments and cannot change which file runs, so a trailing `'*.ts'`, `?` or `{}` is left alone (S091
+  // parity: HEAD counted those, and bash runs the hook).
+  const deciding = tokens.slice(0, i + 1).map((t) => t.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*/g, "VAR"));
+  if (deciding.some((t) => /[*?[\]{}]/.test(t))) return null;
+  return tokens[i]!;
+}
+
+/**
+ * The command with a trailing shell comment cut off, or null when its quoting is not what bash would run.
+ * Quotes must balance: bash rejects an unmatched quote as a syntax error and runs nothing, while the shared parser
+ * tolerates it and rebuilds a word, so an unbalanced command is opaque. A `#` starts a comment only where bash
+ * starts one, unquoted at the start of a word (line start or after a blank); everything from there is ignored.
+ * Any other `#` (inside a word or a quoted string) is a literal character to bash, and the shared parser keeps it
+ * literal too (it has no comment rule), so once the comment is cut the two read the same words. Backslashes never
+ * reach a quote decision here: hookCommandScript refuses a backslash before the parser runs.
+ */
+function commandBeforeComment(command: string): string | null {
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!;
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === "#" && (i === 0 || command[i - 1] === " " || command[i - 1] === "\t")) return command.slice(0, i);
+  }
+  return quote === null ? command : null;
+}
+
+/**
+ * bun options that still execute the script word that follows them (bun 1.3 `bun --help`): value-less switches,
+ * and `=`-joined values that tune the runtime without changing which file runs. Left out on purpose, so they stay
+ * opaque: anything that never runs the script (`--help`, `-h`, `--version`, `-v`, `--revision` before `run`, `-e`, `--eval`,
+ * `-p`, `--print`), anything that runs other code first or instead (`--preload`, `-r`, `--require`, `--import`,
+ * `--filter`, `--workspaces`, `--shell`, `--config`), `--cwd`, which moves what a relative script path names,
+ * the debugger waits, and every space-separated value form, whose value word would be read as the script.
+ */
+const BUN_RUN_FLAGS = new Set([
+  "--bun", "-b", "--smol", "--silent", "--no-install", "-i", "--hot", "--watch", "--no-clear-screen", "--if-present",
+  "--cpu-prof", "--prefer-offline", "--prefer-latest", "--expose-gc", "--no-deprecation", "--throw-deprecation",
+  "--zero-fill-buffers", "--use-system-ca", "--use-openssl-ca", "--use-bundled-ca", "--redis-preconnect",
+  "--sql-preconnect", "--no-addons", "--no-env-file",
+]);
+// `--max-old-space-size`, `--stack-trace-limit` and `--conditions` tune the runtime and still run the script
+// (checked with bash and bun 1.3.6; HEAD counted them, S091 parity).
+const BUN_RUN_VALUE_FLAGS = /^--(?:env-file|install|port|title|console-depth|unhandled-rejections|dns-result-order|max-http-header-size|user-agent|cpu-prof-name|cpu-prof-dir|max-old-space-size|stack-trace-limit|conditions)=\S+$/;
+/**
+ * True when `token` still runs the script word that follows. After `bun run`, `--revision` is not bun's own
+ * revision switch and the script runs (bun 1.3.6: `bun run --revision <file>` runs it, `bun --revision <file>`
+ * only prints the revision), so it is accepted there alone.
+ */
+function bunRunFlag(token: string, afterRun: boolean): boolean {
+  if (afterRun && token === "--revision") return true;
+  return BUN_RUN_FLAGS.has(token) || BUN_RUN_VALUE_FLAGS.test(token);
+}
+
+/** True when a PreToolUse matcher covers both Write and Edit (absent, empty and "*" match every tool). */
+function matcherCoversWrites(matcher: unknown): boolean {
+  if (matcher === undefined || matcher === "" || matcher === "*") return true;
+  if (typeof matcher !== "string") return false;
+  try {
+    const re = new RegExp(`^(?:${matcher})$`);
+    return re.test("Write") && re.test("Edit");
+  } catch { return false; }
+}
+
+/**
+ * m-006's test: true when a PreToolUse group whose matcher covers Write and Edit holds a `type: "command"`
+ * hook that executes the SystemFileGuard hook script. A substring match on the file name is not enough: an
+ * inert command that merely mentions it is not a guard. No current install registers that hook (system-file
+ * boundaries are held by the pre-commit leak scan, LIFEOS/TOOLS/githooks/StagedLeakScan.ts), so m-006 reports
+ * MISSING on a current install.
+ */
+export function systemFileGuardRegistered(settings: unknown): boolean {
+  const hooks = settings && typeof settings === "object" ? (settings as { hooks?: unknown }).hooks : undefined;
+  const preTool = hooks && typeof hooks === "object" ? (hooks as { PreToolUse?: unknown }).PreToolUse : undefined;
+  if (!Array.isArray(preTool)) return false;
+  return preTool.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const e = entry as { matcher?: unknown; hooks?: unknown };
+    if (!matcherCoversWrites(e.matcher) || !Array.isArray(e.hooks)) return false;
+    return e.hooks.some((h) => {
+      if (!h || typeof h !== "object" || (h as { type?: unknown }).type !== "command") return false;
+      const script = hookCommandScript((h as { command?: unknown }).command);
+      return script !== null && /(^|\/)hooks\/SystemFileGuard\.hook\.ts$/.test(script);
+    });
+  });
+}
 
 interface MigrationContext {
   claudeRoot: string;
@@ -69,7 +212,7 @@ const MIGRATIONS: Migration[] = [
   },
   {
     id: "m-002",
-    name: "Phase C — CLAUDE.md @-imports the five identity files directly + OPERATIONAL_RULES.md present",
+    name: "Phase C — CLAUDE.md @-imports the five identity files directly + OPERATIONAL_PREFERENCES.md present",
     detectOnly: true,
     isApplied: ({ claudeRoot }) => {
       const claudeMd = join(claudeRoot, "CLAUDE.md");
@@ -80,10 +223,10 @@ const MIGRATIONS: Migration[] = [
         "@LIFEOS/USER/PRINCIPAL/PRINCIPAL_IDENTITY.md",
         "@LIFEOS/USER/DIGITAL_ASSISTANT/DA_IDENTITY.md",
         "@LIFEOS/USER/PROJECTS.md",
-        "@LIFEOS/USER/CONFIG/OPERATIONAL_RULES.md",
+        "@LIFEOS/USER/CONFIG/OPERATIONAL_PREFERENCES.md",
       ];
       const allImportsPresent = requiredImports.every((imp) => content.includes(imp));
-      const opRulesPresent = existsSync(join(claudeRoot, "LIFEOS/USER/CONFIG/OPERATIONAL_RULES.md"));
+      const opRulesPresent = existsSync(join(claudeRoot, "LIFEOS/USER/CONFIG/OPERATIONAL_PREFERENCES.md"));
       return allImportsPresent && opRulesPresent;
     },
     apply: () => {
@@ -148,13 +291,7 @@ const MIGRATIONS: Migration[] = [
       const settingsPath = join(claudeRoot, "settings.json");
       if (!existsSync(settingsPath)) return false;
       try {
-        const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
-          hooks?: { PreToolUse?: Array<{ matcher?: string; hooks?: Array<{ command?: string }> }> };
-        };
-        const preTool = settings.hooks?.PreToolUse ?? [];
-        return preTool.some((entry) =>
-          (entry.hooks ?? []).some((h) => (h.command ?? "").includes("SystemFileGuard.hook.ts")),
-        );
+        return systemFileGuardRegistered(JSON.parse(readFileSync(settingsPath, "utf8")));
       } catch {
         return false;
       }
@@ -197,7 +334,7 @@ function usage(code = 2): never {
       `  bun ${process.argv[1]} [--target=<version>]\n` +
       `  bun ${process.argv[1]} --from-fresh-install   (NOT YET IMPLEMENTED)\n` +
       `  bun ${process.argv[1]} --help\n\n` +
-      `Exit: 0 success / 1 migration failed / 2 usage error.`,
+      `Exit: 0 success / 1 migration failed or a check errored / 2 usage error / 3 migrations pending.`,
   );
   process.exit(code);
 }
@@ -225,30 +362,52 @@ function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
-function diagnose(ctx: MigrationContext): void {
+export interface DiagnoseSummary { applied: number; missing: number; errors: number }
+
+/**
+ * Audit every migration. A check that throws is an ERROR, counted on its own and never folded into
+ * "up to date"; the exit code the CLI derives from this summary is nonzero
+ * whenever anything is missing or failed to check.
+ */
+function diagnose(ctx: MigrationContext): DiagnoseSummary {
   console.log(`LifeOS install audit — ${ctx.claudeRoot}\n`);
   console.log("Migration registry status:");
   let appliedCount = 0;
   let missingCount = 0;
+  let errorCount = 0;
   for (const m of MIGRATIONS) {
-    const applied = (() => {
-      try {
-        return m.isApplied(ctx);
-      } catch (err) {
-        return null;
-      }
-    })();
+    let applied: boolean | null;
+    let detail = "";
+    try {
+      applied = m.isApplied(ctx);
+    } catch (err) {
+      applied = null;
+      detail = `  (${err instanceof Error ? err.message : String(err)})`;
+    }
     const tag = applied === true ? "✓ APPLIED " : applied === false ? "✗ MISSING " : "? ERROR   ";
-    console.log(`  ${tag} ${m.id}  ${m.name}`);
+    console.log(`  ${tag} ${m.id}  ${m.name}${detail}`);
     if (applied === true) appliedCount++;
     else if (applied === false) missingCount++;
+    else errorCount++;
   }
-  console.log(`\nSummary: ${appliedCount} applied, ${missingCount} missing, of ${MIGRATIONS.length} total.`);
+  console.log(`\nSummary: ${appliedCount} applied, ${missingCount} missing, ${errorCount} errored, of ${MIGRATIONS.length} total.`);
+  if (errorCount > 0) {
+    console.log(`\n${errorCount} migration check(s) could not run — the install state is unknown until they do.`);
+  }
   if (missingCount > 0) {
     console.log(`\nNext step: review each missing migration's description above before applying.`);
-  } else {
+  }
+  if (missingCount === 0 && errorCount === 0) {
     console.log(`\nInstall is up-to-date through the registered migration set.`);
   }
+  return { applied: appliedCount, missing: missingCount, errors: errorCount };
+}
+
+/** --diagnose exit: 1 when any check errored, 3 when migrations are missing, 0 only when everything is applied. */
+export function diagnoseExitCode(s: DiagnoseSummary): 0 | 1 | 3 {
+  if (s.errors > 0) return 1;
+  if (s.missing > 0) return 3;
+  return 0;
 }
 
 function plan(ctx: MigrationContext): { toApply: Migration[]; alreadyApplied: Migration[] } {
@@ -331,8 +490,7 @@ function main(): never {
   }
 
   if (args.diagnose) {
-    diagnose(ctx);
-    process.exit(0);
+    process.exit(diagnoseExitCode(diagnose(ctx)));
   }
 
   if (args.dryRun) {
@@ -343,4 +501,4 @@ function main(): never {
   runMigrations(ctx);
 }
 
-main();
+if (import.meta.main) main();

@@ -2,14 +2,14 @@
 last_updated: 2026-07-19
 last_updated_by: da
 last_reviewed: 2026-07-19
-last_reviewed_by: {{PRINCIPAL_NAME}}
-convention: pai-freshness-v1
-version: 2.1.2
+last_reviewed_by: principal
+convention: lifeos-freshness-v1
+version: 2.1.12
 ---
 
 # Ledger — the LifeOS Change-Tracking System
 
-> **Private component — the tooling described here is NOT in the public release payload.** Ledger's tools and workflows live in the underscore-prefixed release-management skill, which is rsync-excluded from public releases. The concepts below describe how the principal's own install tracks change; a fresh public install ships the documentation but not the `_`-prefixed tooling, so the commands named here will not resolve there.
+> **Private component — the tooling described here is NOT in the public release payload.** Ledger's tools and intents live in the underscore-prefixed release-management skill, which is rsync-excluded from public releases. The concepts below describe how the principal's own install tracks change; a fresh public install ships the documentation but not the `_`-prefixed tooling, so the commands named here will not resolve there.
 
 > **Ledger is the subsystem that knows what changed, when, at what version, verified how — for everything.** It classifies every change as Major, Feature, or Patch, bumps the OS umbrella and every touched component line, records the change in an append-only update registry, gates shipping on integrity, nags on drift, records every estate deploy, and surfaces the whole picture in Pulse. It is the versioning and change-record authority for the entire LifeOS estate.
 
@@ -23,12 +23,12 @@ The one-line test for what belongs to Ledger: **does it decide, record, or propa
 
 ## The scheme — always three levels, Major.Feature.Patch
 
-Every live version identifier in LifeOS is exactly three levels: **`Major.Feature.Patch`**. No two-level, no four. This binds the whole version surface — the OS version (`LIFEOS/VERSION`), the Algorithm (`LIFEOS/ALGORITHM/LATEST`), the system prompt, the ISA Format spec, Memory, every skill's `version:`, every hook's `@version`, every living doc's frontmatter `version:`, and any new component line. **This section is the standing rule's system home**, and Ledger is also what enforces it. It does not live in `OPERATIONAL_RULES.md`: that is a per-principal USER file, `@`-imported per install and shipped as a four-section stub with no Versioning section, so a system-wide rule placed there would not survive into any install. A principal may restate it there for their own tree; the source of truth is here. *(public PR #1672, @anikinsasha — who found the pointer dangling from two docs; a third, this one, turned up in the same sweep.)*
+Every live version identifier in LifeOS is exactly three levels: **`Major.Feature.Patch`**. No two-level, no four. This binds the whole version surface — the OS version (`LIFEOS/VERSION`), the Algorithm (`LIFEOS/ALGORITHM/LATEST`), the system prompt, the ISA Format spec, Memory, every skill's `version:`, every hook's `@version`, every living doc's frontmatter `version:`, and any new component line. **This section is the standing rule's system home**, and Ledger is also what enforces it. It does not live in `OPERATIONAL_PREFERENCES.md`: that is a per-principal USER file, `@`-imported per install and shipped as a four-section stub with no Versioning section, so a system-wide rule placed there would not survive into any install. A principal may restate it there for their own tree; the source of truth is here. *(public PR #1672, @anikinsasha — who found the pointer dangling from two docs; a third, this one, turned up in the same sweep.)*
 
 | Level | Meaning | Gate |
 |-------|---------|------|
 | **Major** | Breaking or structural change — a format-schema change, a removed contract, a restructured subsystem | Human conversation required before the bump |
-| **Feature** | Additive capability — a new section, workflow, subsystem | One-line confirm at ship time |
+| **Feature** | Additive capability — a new section, intent, workflow, subsystem | One-line confirm at ship time |
 | **Patch** | Fix, doc, or no-behavior-change edit | Auto-applies with a visible notice |
 
 The middle number is **Feature**, not "minor." `ClassifyChange.ts` emits `patch | feature | major`; Ledger names the scheme around it.
@@ -46,26 +46,26 @@ Two granularities of the same fact:
 
 A single skill edit bumps both the skill's line and the umbrella: component and umbrella are different granularities of one fact.
 
-**Estate extension (2.0.0):** deployed projects (sites, apps, Arbol workers) join the version surface through the per-project convention below — each carries its own `VERSION` (or `package.json` version), recorded at every deploy.
+**Estate extension (2.0.0):** deployed projects (sites, apps, Workflows workers) join the version surface through the per-project convention below — each carries its own `VERSION` (or `package.json` version), recorded at every deploy.
 
 ---
 
 ## The components (the tools)
 
-> **Note:** `_`-prefixed skill paths referenced below (e.g. `<your-release-skill>/`, `skills/_CLOUDFLARE/`) are **private skills, absent from the public release** — those paths do not exist on a public install. The Ledger's concepts and registry format are public; the tooling that drives them ships only in the private tree.
+> **Note:** The Ledger's concepts and registry format are public; the maintenance tooling described below is private and is not included in an installation.
 
 | Tool | Role |
 |------|------|
-| `<your-release-skill>/Tools/ClassifyChange.ts` | **Classify.** Diff since last tag → `patch \| feature \| major`; major always human-gated. |
-| `<your-release-skill>/Tools/UpdateLifeosVersion.ts` | **Bump the umbrella** (`LIFEOS/VERSION`). |
-| `<your-release-skill>/Tools/Bump{Algorithm,SystemPrompt,Hook,Skill,Doc}Versions.ts` | **Roll the touched component lines.** All run automatically inside `UpdateKaiRepo --bump`. The Algorithm bumper detects + syncs (never mints doctrine); the system-prompt bumper defaults patch (`--sp-level` elevates). |
+| Private change classifier (not included) | **Classify.** Diff since last tag → `patch \| feature \| major`; major always human-gated. |
+| Private version bumper (not included) | **Bump the umbrella** (`LIFEOS/VERSION`). |
+| Private component bumpers (not included) | **Roll the touched component lines.** The Algorithm bumper detects + syncs (never mints doctrine); the system-prompt bumper defaults patch. |
 | `LIFEOS/TOOLS/CreateUpdate.ts` | **Record.** Appends the change to the update registry (4–8-word real title enforced). |
-| `<your-release-skill>/Tools/UpdateIndex.ts` | **Index.** Regenerates `index.json` + `CHANGELOG.md` from the registry files. |
-| `<your-release-skill>/Tools/UpdateKaiRepo.ts` | **Sync + tag.** Verified two-repo private sync; `--bump` runs all bumpers and refuses feature/major without a fresh integrity stamp (`--skip-integrity` logged override). |
+| `LIFEOS/TOOLS/UpdateIndex.ts` | **Index.** Regenerates `index.json` + `CHANGELOG.md` from the registry files. |
+| Private repository updater (not included) | **Sync + tag.** Verified private sync with integrity checks. |
 | `LIFEOS/TOOLS/LedgerDeployEvent.ts` | **Estate record.** Appends a deploy event (project, target, domain, git SHA, project version, ok/fail) to `deploys.jsonl` on every gated deploy. |
 | `hooks/VersionDrift.hook.ts` | **Drift tooth.** UserPromptSubmit nag (`⏫ VERSION-DRIFT`) at ≥10 changed core files since last `v*` tag, or any drift on a tag older than 48h. |
 
-Workflows that orchestrate them: `<your-release-skill>/Workflows/VersionBump.md` (`/vb` — the coordinator), `DocumentSession.md`, `DocumentationUpdate.md` (`/ud`), `IntegrityCheck.md` (`/ic`). The `rc` shortcut cuts a release candidate (integrity check → docs update → bump → cut).
+Private intents orchestrate these tools and are not included in an installation.
 
 ---
 
@@ -87,27 +87,27 @@ Component-local records stay component-local by design: the Algorithm's `changel
 system change lands
   → ClassifyChange.ts                 # diff → {patch | feature | major}
   → (major? → human conversation first)
-  → /ud Phase A                       # docs current (always)
+  → the docs-update intent (/ud where installed; not shipped)  # docs current (always)
   → /ic IntegrityCheck                # feature/major — writes the integrity stamp
   → UpdateLifeosVersion.ts            # bump the umbrella
   → Bump*Versions.ts                  # component lines (auto inside --bump)
   → CreateUpdate.ts + UpdateIndex.ts  # record + reindex
-  → UpdateKaiRepo.ts --bump           # sync + tag (REFUSES feature/major without fresh integrity stamp)
+  → private repo updater --bump       # sync + tag (REFUSES feature/major without fresh integrity stamp; not included)
 
 estate deploy lands (any site/app/worker via the gated deploy path)
   → LedgerDeployEvent.ts record       # project, target, domain, SHA, version, ok
 ```
 
-You don't have to remember any of it: `VersionDrift.hook.ts` nags when core drift accumulates unbumped, and `/vb` sequences docs + integrity by tier — the "in concert" wiring is code, not prose.
+You don't have to remember any of it: `VersionDrift.hook.ts` nags when core drift accumulates unbumped, and the maintainer release flow (the private repository updater's `--bump` or `/rc` on installs that have it; not shipped) sequences docs + integrity by tier — the "in concert" wiring is code, not prose.
 
 ---
 
 ## Per-project versioning (the estate convention, 2.0.0)
 
-Every deployed project (site, app, Arbol worker) SHOULD carry a version: a repo-root `VERSION` file (one line, `Major.Feature.Patch`) or a `package.json` `version`. `LedgerDeployEvent.ts` resolves it in that order at deploy time and records it with the git SHA.
+Every deployed project (site, app, Workflows worker) SHOULD carry a version: a repo-root `VERSION` file (one line, `Major.Feature.Patch`) or a `package.json` `version`. `LedgerDeployEvent.ts` resolves it in that order at deploy time and records it with the git SHA.
 
 - **Absence never blocks.** The SHA is always recorded; `version: null` is a nudge, not a gate. Seeding is incremental — add `VERSION` the next time each project ships.
-- Bump levels follow the same Major.Feature.Patch semantics; the project owner (usually a `/vb`-style judgment at ship time) picks the level.
+- Bump levels follow the same Major.Feature.Patch semantics; the project owner (usually a version-bump judgment at ship time; the private repository updater's `--bump` or `/rc` where that release skill is installed, not shipped) picks the level.
 - Project ISAs remain the state-of-record for *what the project is*; Ledger records *what shipped when*.
 
 ---
@@ -115,7 +115,7 @@ Every deployed project (site, app, Arbol worker) SHOULD carry a version: a repo-
 ## The read surface
 
 - **Pulse Ledger page** — recent registry entries, estate deploy events, current versions (umbrella + component lines), drift status, last integrity stamp. One place to answer "what changed across everything this week."
-- **`CHANGELOG.md`** — the generated flat history (735+ entries since 2025).
+- **`CHANGELOG.md`** — the generated flat history (1,900+ entries since 2025).
 - **`UpdateSearch.ts`** — query the registry from the CLI.
 
 ---
@@ -124,8 +124,8 @@ Every deployed project (site, app, Arbol worker) SHOULD carry a version: a repo-
 
 Ledger governs the private-version side. Two later stages are release stages, deliberately separate and increasingly sensitive:
 
-1. **UpdateKaiRepo** — private-repo sync + version-tag to the two private remotes. Everyday sensitivity. Ledger's terminal step.
-2. **CreateShadowRelease** — "cut": stage + gates, no push. Moderate sensitivity.
+1. **Private repository updater** (not included) — private-repo sync + version-tag to the two private remotes. Everyday sensitivity. Ledger's terminal step.
+2. **ReleaseCandidate** (the maintainer-side `rc` command, not in the public release) — "cut": `release.ts cut`, boot and audits, no public push. Moderate sensitivity.
 3. **CreateRelease** — "publish" to the public repo. Extremely sensitive, explicit go-ahead only.
 
 **"Cut" never means "publish." Private-sync ≠ cut ≠ publish.**
@@ -136,7 +136,7 @@ Ledger governs the private-version side. Two later stages are release stages, de
 
 - **Not the release/publish system.** It stamps, records, and syncs private; publishing is `CreateRelease`, a separate deliberate act.
 - **Not an orchestrator or scheduler.** No daemon, no new required gates on unrelated flows; it records the changes that happen and gates only its own ship step.
-- **Not a monitoring system.** Arbol Security (hourly scans) and Pulse status cards are *feeds* Ledger's read surface can join against, not parts of Ledger.
+- **Not a monitoring system.** Workflows Security (hourly scans) and Pulse status cards are *feeds* Ledger's read surface can join against, not parts of Ledger.
 
 ---
 
@@ -144,7 +144,7 @@ Ledger governs the private-version side. Two later stages are release stages, de
 
 ### One change through the Ledger
 
-A developer adds a new workflow to an existing skill. Watch the change earn its version.
+A developer adds a new intent to an existing skill. Watch the change earn its version.
 
 1. **Classify.** `ClassifyChange.ts` diffs the tree since the last tag and calls it a **feature** — new capability, nothing broken. (A doc typo would come back `patch`; a removed contract would come back `major` and stop for a human conversation before any number moves.)
 2. **Bump two numbers.** The skill's own `version:` line rolls, and so does the OS umbrella in `LIFEOS/VERSION`. They're not duplicates — they're the same fact at two zoom levels, the subsystem and the whole estate.
@@ -158,7 +158,7 @@ The point is that no step is optional and none is remembered by hand: classify d
 The three levels are not cosmetic — each buys a different amount of ceremony:
 
 - **A patch** (a fixed link, a doc edit) auto-applies with a visible notice. No conversation.
-- **A feature** (the new workflow above) takes a one-line confirm at ship time.
+- **A feature** (the new intent above) takes a one-line confirm at ship time.
 - **A major** (a changed format schema, a removed contract) stops cold and requires a human conversation *before* the bump.
 
 And if a change never gets bumped at all, it isn't lost: once core files pile up unversioned since the last tag, `VersionDrift.hook.ts` nags on the next prompt — the reminder is wired into the harness, not left to discipline.
@@ -185,9 +185,9 @@ Classification is the fork the whole system turns on: it routes the change to it
 
 ## Cross-references
 
-- Standing rule — this doc, § The scheme (a principal's `LIFEOS/USER/CONFIG/OPERATIONAL_RULES.md` may restate it, but that file ships as a stub and is not the source)
+- Standing rule — this doc, § The scheme (a principal's `LIFEOS/USER/CONFIG/OPERATIONAL_PREFERENCES.md` may restate it, but that file ships as a stub and is not the source)
 - Master architecture — `LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md` § Ledger
-- Version-bump coordinator — `<your-release-skill>/Workflows/VersionBump.md` (`/vb`)
-- Deploy gate — `skills/_CLOUDFLARE/Workflows/Deploy.md` (records the estate event)
+- Version-bump coordinator — private maintenance workflow (not included)
+- Deploy gate — your deploy workflow (records the estate event)
 - Registry — `LIFEOS/MEMORY/SYSTEMUPDATES/`
-- Algorithm component changelog — `LIFEOS/ALGORITHM/changelog.md`
+- Algorithm component changelog — `LIFEOS/ALGORITHM/changelog.md` (not in the public release)

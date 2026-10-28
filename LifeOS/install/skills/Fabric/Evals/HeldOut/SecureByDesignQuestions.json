@@ -1,0 +1,23 @@
+{
+  "intent": "SecureByDesignQuestions",
+  "cases": [
+    {
+      "id": "plain_agent_inbox",
+      "pattern": "ask_secure_by_design_questions",
+      "input": "I'm about to build a small service for a fictional newsletter company, Harbor Press. It lets an AI agent read incoming reader emails from a shared mailbox (support@harborpress.example.com), draft replies, and file tickets in our tracker through an API token. Drafts go to a human for approval, but low-risk categories like 'unsubscribe' and 'address change' will be auto-sent after a month. It will run as a container on a single cloud VM at 203.0.113.40, with the agent calling a hosted LLM API. What should I be asking myself before I build it?",
+      "expects": "A prioritized set of themed, capitalized-header secure-by-design questions (an OVERVIEW plus at least 15 questions) specific to an email-reading agent with a tracker token and a planned auto-send path: prompt injection from reader email, token scope, send authority, approval bypass, logging, and the VM and LLM API boundaries. Questions are plain, exact and tied to this system, not generic security boilerplate."
+    },
+    {
+      "id": "named_job_badge_gate",
+      "pattern": "ask_secure_by_design_questions",
+      "input": "Run secure by design questions on this. We're designing a door-access system for a fictional co-working space, Lattice Commons. Members tap a phone (NFC) at a reader; the reader talks over Wi-Fi to a controller in the back office that checks a member list synced nightly from our billing system, then releases the magnetic lock. Reader firmware updates are pushed from a cloud dashboard. Guests get a QR code by email that works for 24 hours. If the internet is down, the controller falls back to its last cached member list. The fire alarm should always unlock the doors.",
+      "expects": "The secure-by-design questions the pattern exists to produce, grouped under capitalized themes, covering the physical and cyber design of this access system: NFC credential cloning and replay, reader-to-controller channel, firmware signing and update path, guest QR forgery and expiry, stale cache and revocation when offline, and fire-alarm fail-safe versus fail-secure. Prioritized, specific to the input, with life-safety treated as a hard constraint."
+    },
+    {
+      "id": "hard_thin_ambiguous",
+      "pattern": "ask_secure_by_design_questions",
+      "input": "ok so the plan, per the call w/ Priya and the vendor guy (Tomas?): we put 'the connector' between the old billing thing and the new portal. Tomas said it 'just passes stuff through' and 'handles the auth stuff so we don't have to'. Priya wants it live before the quarter ends, Nov 28. Runs somewhere in the Dunmore DC probably, 198.51.100.0/24 range I think. Customers see their invoices in the portal. Not sure if payment cards touch it. Tomas will send docs 'soon'. Also someone mentioned we might reuse the admin login from the old system. Questions for me to ask?",
+      "expects": "Secure-by-design questions that read what is meant from vague, hearsay-level material: they treat the connector as an unverified trust boundary between billing and the portal, and put first the questions that settle the unknowns (what data and cards it touches, what 'handles auth' actually means, where it runs, who owns it, admin credential reuse, the deadline pressure). Accuracy over coverage: no invented details about the system, no generic checklist filler, and the open unknowns are named plainly."
+    }
+  ]
+}

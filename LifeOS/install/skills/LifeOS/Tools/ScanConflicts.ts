@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * ScanConflicts — Setup step 2. READ-ONLY conflict report. Surfaces everything
- * the Setup workflow must reconcile before any write: existing settings hooks,
+ * the Setup intent must reconcile before any write: existing settings hooks,
  * a populated user config tree, LifeOS skill-name collisions, and discoverable
  * API keys (names only — never values). Produces no mutations.
  *

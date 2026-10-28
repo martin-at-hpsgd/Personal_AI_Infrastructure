@@ -1,0 +1,161 @@
+# Fabric ExtractReferences — the works a piece of content points to. The code
+# asserts pin what is literal (the bold heading, the `- *Title*, Creator (kind):
+# note` bullet, the no-references line, the cap and its Left out line, and the
+# works a hint keeps or drops); the judged asserts carry what code cannot:
+# references kept to what the content refers to, every referred-to work present
+# (an untitled fable included), a misattribution corrected, people and products
+# left out, an allusion identified, an unidentifiable work kept as described with
+# no guessed title, a given URL kept exactly, notes specific to the input, and
+# real works with real creators for a bare topic. Whole bullets stay at 16 words.
+# Synthetic inline fixtures only: every team, talk, essay and outage is
+# fictional; the works they cite are real, published works, and the one URL is
+# on the reserved example.com domain.
+name: fabric-extractreferences
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExtractReferences.md"
+cases:
+  - id: notes_named_misattributed_alluded
+    prompt: 'Run extract_references on these notes: "Offsite notes for a fictional product team. The facilitator opened with the line from Moby Dick about chasing the whale, then argued that forecasting is a learnable skill, citing Superforecasting by Bill Tetlock. She played a clip from the film Arrival to show how language shapes thought. Someone said Einstein failed math, which got a laugh. We agreed to keep all meeting notes in Notion. Before lunch she retold the fable about the slow animal who beats the boastful fast one in a race, and she closed by reading from Rilke''s Letters to a Young Poet."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: heading and every bullet are in the right
+    # shape and the named works are all there, but it repeats the notes'
+    # misattribution of Superforecasting as fact, adds a famous forecasting book
+    # the notes never mention, misses the alluded fable, and its notes are
+    # generic descriptions of the works rather than what the offsite used them for.
+    adversarial_output: |
+      **References in the offsite notes**
+
+      - *Moby-Dick*, Herman Melville (novel): classic American novel about a whaling voyage
+      - *Superforecasting*, Bill Tetlock (book): a book about forecasting
+      - *The Signal and the Noise*, Nate Silver (book): a book about prediction
+      - *Arrival*, Denis Villeneuve (film): science fiction film about aliens
+      - *Letters to a Young Poet*, Rainer Maria Rilke (letters): famous collection of letters
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\*\*[^*\n]+\*\*[ \t]*\n[ \t]*\n- \*[^*\n]+\*(?:, [^()\n]+)? \([^()\n]+\): \S'
+      - type: contains
+        weight: 1
+        value: "Letters to a Young Poet"
+      - type: not-contains
+        weight: 1
+        value: "Notion"
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: not-regex
+        weight: 1
+        value: '\n- (?:\S+[ \t]+){16}\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "Every listed work is one the notes actually refer to, by name or by allusion; no related or famous work the notes never mention is added", "Superforecasting is credited to Philip Tetlock (with or without Dan Gardner), not to Bill Tetlock, and its bullet says the notes credited Bill Tetlock", "The fable about the slow animal beating the fast one is identified as Aesop's The Tortoise and the Hare and marked as alluded", "Einstein and Notion are not listed as references", "Each note says what the offsite used the work for (the point it framed or supported), not a generic description of the work" ]
+        reference: 'Run extract_references on these notes: "Offsite notes for a fictional product team. The facilitator opened with the line from Moby Dick about chasing the whale, then argued that forecasting is a learnable skill, citing Superforecasting by Bill Tetlock. She played a clip from the film Arrival to show how language shapes thought. Someone said Einstein failed math, which got a laugh. We agreed to keep all meeting notes in Notion. Before lunch she retold the fable about the slow animal who beats the boastful fast one in a race, and she closed by reading from Rilke''s Letters to a Young Poet."'
+  - id: no_references_line
+    prompt: 'extract references from this: "Pick up milk, eggs and two lemons. Call the plumber about the kitchen sink before Friday. Rent is due on the first."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\*\*No references:\*\*[ \t]+\S[^\n]*$'
+      - type: not-contains
+        weight: 1
+        value: "- *"
+  - id: bare_topic_essential_works
+    prompt: "extract_references stoicism"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\*\*[^*\n]+\*\*[ \t]*\n[ \t]*\n- \*[^*\n]+\*(?:, [^()\n]+)? \([^()\n]+\): \S'
+      - type: contains
+        weight: 1
+        value: "Meditations"
+      - type: llm-assert
+        weight: 3
+        value: [ "Every listed work is a real, published work credited to its real author", "The list is the essential works an expert on Stoicism would give a newcomer (such as Marcus Aurelius's Meditations, Epictetus's Enchiridion or Discourses, and the letters of Seneca), not descriptions of Stoicism or a list of philosophers", "Each note says what that work is the reference for, specific to it", "The heading names the read as essential references on Stoicism or close to it" ]
+        reference: "extract_references stoicism"
+  - id: hint_keeps_only_papers_and_essays
+    prompt: 'extract_references, only the papers and essays: "In the talk, a fictional researcher said the transformer paper Attention Is All You Need changed everything, then cited Rich Sutton''s essay The Bitter Lesson as the reason scale wins. She recommended Gödel, Escher, Bach for the weekend and showed a still from Ex Machina."'
+    assert:
+      - type: contains
+        weight: 2
+        value: "Attention Is All You Need"
+      - type: contains
+        weight: 2
+        value: "Bitter Lesson"
+      - type: not-contains
+        weight: 2
+        value: "Ex Machina"
+      - type: not-contains
+        weight: 2
+        value: "Escher"
+      - type: llm-assert
+        weight: 2
+        value: [ "Only papers and essays are listed; the book and the film are left out", "Attention Is All You Need is credited to Vaswani and colleagues, and The Bitter Lesson to Rich Sutton" ]
+        reference: 'extract_references, only the papers and essays: "In the talk, a fictional researcher said the transformer paper Attention Is All You Need changed everything, then cited Rich Sutton''s essay The Bitter Lesson as the reason scale wins. She recommended Gödel, Escher, Bach for the weekend and showed a still from Ex Machina."'
+  - id: hint_caps_at_three
+    prompt: 'extract the top 3 references from this essay excerpt: "The fictional essay is built on Thomas Kuhn''s The Structure of Scientific Revolutions, which it returns to in every section, and argues at length against Karl Popper''s The Logic of Scientific Discovery. Its main worked example is the 1887 Michelson and Morley paper on the ether. In passing it mentions Hamlet, the Beatles song Let It Be, and the film Interstellar."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '\n- \*[^\n]*\n- \*[^\n]*\n- \*[^\n]*'
+      - type: not-regex
+        weight: 3
+        value: '\n- [^\n]*\n- [^\n]*\n- [^\n]*\n- '
+      - type: regex
+        weight: 2
+        value: '\*\*Left out:\*\*[ \t]+3\b'
+      - type: llm-assert
+        weight: 3
+        value: [ "The three works kept are the ones the essay leans on most: Kuhn's The Structure of Scientific Revolutions, Popper's The Logic of Scientific Discovery, and the Michelson and Morley paper; Hamlet, Let It Be and Interstellar are not among the three bullets" ]
+        reference: 'extract the top 3 references from this essay excerpt: "The fictional essay is built on Thomas Kuhn''s The Structure of Scientific Revolutions, which it returns to in every section, and argues at length against Karl Popper''s The Logic of Scientific Discovery. Its main worked example is the 1887 Michelson and Morley paper on the ether. In passing it mentions Hamlet, the Beatles song Let It Be, and the film Interstellar."'
+  - id: reading_list_keeps_untitled_fable
+    prompt: 'Make a reading list from this essay, keep each bullet to 16 words: "The fictional essay on patience opens with Seneca''s On the Shortness of Life, borrows its structure from Annie Dillard''s The Writing Life, and pauses on the old story of the ant who stores grain all summer while the grasshopper sings. It leans on Walter Mischel''s book The Marshmallow Test for the research on delayed gratification and closes with Mary Oliver''s poem Wild Geese."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\*\*[^*\n]+\*\*[ \t]*\n[ \t]*\n- \*[^*\n]+\*(?:, [^()\n]+)? \([^()\n]+\): \S'
+      - type: icontains
+        weight: 2
+        value: "Grasshopper"
+      - type: contains
+        weight: 1
+        value: "Wild Geese"
+      - type: not-regex
+        weight: 2
+        value: '\n- (?:\S+[ \t]+){16}\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "All five works the essay points to are listed: On the Shortness of Life, The Writing Life, the fable of the ant and the grasshopper, The Marshmallow Test and Wild Geese", "The ant-and-grasshopper story is identified as Aesop's fable The Ant and the Grasshopper and marked as alluded", "No work the essay does not mention is added, and nothing outside the essay (dates, editions, caveats) is brought in", "Each note says what the essay uses the work for" ]
+        reference: 'Make a reading list from this essay, keep each bullet to 16 words: "The fictional essay on patience opens with Seneca''s On the Shortness of Life, borrows its structure from Annie Dillard''s The Writing Life, and pauses on the old story of the ant who stores grain all summer while the grasshopper sings. It leans on Walter Mischel''s book The Marshmallow Test for the research on delayed gratification and closes with Mary Oliver''s poem Wild Geese."'
+  - id: messy_notes_url_and_unidentified_book
+    prompt: 'extract references from these incident notes: "fictional outage review. cache stampede AGAIN. on-call said it looked exactly like the writeup at https://example.com/posts/thundering-herd and dropped it in the channel. someone recommended a book about running on-call rotations, couldnt remember title or author. action item: add jitter to TTLs, ping the db team."'
+    assert:
+      - type: contains
+        weight: 3
+        value: "https://example.com/posts/thundering-herd"
+      - type: icontains
+        weight: 1
+        value: "unidentified"
+      - type: not-regex
+        weight: 1
+        value: '\n- (?:\S+[ \t]+){16}\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The writeup is listed with its URL exactly as the notes give it", "The recommended book is listed as an unidentified book about running on-call rotations, with no guessed title, author or likely candidate named anywhere in the output", "No other work is added, and the database team and the caching fix are not listed as references" ]
+        reference: 'extract references from these incident notes: "fictional outage review. cache stampede AGAIN. on-call said it looked exactly like the writeup at https://example.com/posts/thundering-herd and dropped it in the channel. someone recommended a book about running on-call rotations, couldnt remember title or author. action item: add jitter to TTLs, ping the db team."'
+  - id: kinds_named_in_passing_do_not_narrow
+    prompt: 'Which books and articles does this draft lean on? I want to be sure I credit all of it: "The fictional essay on habits starts from James Clear''s Atomic Habits, borrows the idea of keystone habits from Charles Duhigg''s The Power of Habit, and cites a 2009 study by Lally and colleagues on how long habits take to form. Midway it retells the story of the fox who decides the grapes he cannot reach must be sour."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '^\*\*[^*\n]+\*\*[ \t]*\n[ \t]*\n- \*[^*\n]+\*(?:, [^()\n]+)? \([^()\n]+\): \S'
+      - type: icontains
+        weight: 3
+        value: "Fox"
+      - type: not-regex
+        weight: 1
+        value: '\n- (?:\S+[ \t]+){16}\S'
+      - type: llm-assert
+        weight: 3
+        value: [ "All four works are listed, including the fable of the fox and the grapes, even though the request only named books and articles, because it asks to credit everything", "The fable is identified as Aesop's The Fox and the Grapes and marked as alluded", "The study's 2009 year, given in the draft, is kept, and no detail the draft does not give is added", "The heading does not narrow the read to books and articles only" ]
+        reference: 'Which books and articles does this draft lean on? I want to be sure I credit all of it: "The fictional essay on habits starts from James Clear''s Atomic Habits, borrows the idea of keystone habits from Charles Duhigg''s The Power of Habit, and cites a 2009 study by Lally and colleagues on how long habits take to form. Midway it retells the story of the fox who decides the grapes he cannot reach must be sour."'

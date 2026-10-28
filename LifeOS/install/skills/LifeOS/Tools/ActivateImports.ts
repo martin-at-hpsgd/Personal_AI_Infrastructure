@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { activateImports, detectDevTree } from "./InstallEngine";
+import { activateImports, refuseDevInstallWrites } from "./InstallEngine";
 
 function main(): void {
   const a = process.argv.slice(2);
@@ -26,12 +26,8 @@ function main(): void {
   const apply = a.includes("--apply");
   const allowDev = a.includes("--allow-dev");
 
-  if (detectDevTree(configRoot) && !allowDev) {
-    console.log(JSON.stringify({ ok: false, refused: "dev-tree", detail: `${configRoot} is a source tree — refusing to edit CLAUDE.md.` }, null, 2));
-    process.exit(2);
-  }
-
   const claudeMd = join(configRoot, "CLAUDE.md");
+  refuseDevInstallWrites(configRoot, [claudeMd], allowDev);
 
   if (!apply) {
     // Dry-run: report which commented imports WOULD activate without writing.

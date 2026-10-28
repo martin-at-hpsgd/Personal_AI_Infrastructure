@@ -27,7 +27,7 @@ rel_home() { case "$1" in "$HOME"/*) printf '~%s' "${1#"$HOME"}";; *) printf '%s
 
 if [ ! -d "$SRC" ]; then
   echo "FATAL: build dir not found: $SRC" >&2
-  echo "  Build first (Update workflow step 3), or set INTERCEPTOR_SRC." >&2
+  echo "  Build first (Update intent step 2, Path B), or set INTERCEPTOR_SRC." >&2
   exit 1
 fi
 
@@ -60,7 +60,7 @@ Manifest version: $VERSION
 Content SHA256: $SHA
 Pinned at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 Reason: Chrome disables unpacked extensions on every manifest version bump.
-Refresh by re-running this command intentionally (Update workflow).
+Refresh by re-running this command intentionally (Update intent).
 EOF
 
 # Fail loud if any ABSOLUTE home path survived. Anchored so a URL path segment

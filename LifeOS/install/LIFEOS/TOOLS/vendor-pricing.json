@@ -1,0 +1,14 @@
+{
+  "fetched": "2026-09-22T20:30:00Z",
+  "source": "https://developers.openai.com/api/docs/pricing",
+  "note": "Non-Anthropic $/MTok, standard (non-batch, non-fast) rates. Anthropic prices live in model-pricing.json, synced by ModelSync.",
+  "models": {
+    "gpt-6-astra":   { "displayName": "GPT-6 Astra",  "input": 10,  "cachedInput": 1,    "output": 50 },
+    "gpt-6.1-sol":   { "displayName": "GPT-6.1 Sol",   "input": 2,   "cachedInput": 0.1,  "output": 10 },
+    "gpt-6-sol":     { "displayName": "GPT-6 Sol",     "input": 2,   "cachedInput": 0.2,  "output": 10 },
+    "gpt-6-luna":    { "displayName": "GPT-6 Luna",    "input": 0.1, "cachedInput": 0.01, "output": 0.5 },
+    "gpt-5.6-sol":   { "displayName": "GPT-5.6 Sol",   "input": 4,   "cachedInput": 0.4,  "output": 20 },
+    "gpt-5.6-terra": { "displayName": "GPT-5.6 Terra", "input": 2,   "cachedInput": 0.2,  "output": 12 },
+    "gpt-5.6-luna":  { "displayName": "GPT-5.6 Luna",  "input": 0.2, "cachedInput": 0.02, "output": 1.2 }
+  }
+}

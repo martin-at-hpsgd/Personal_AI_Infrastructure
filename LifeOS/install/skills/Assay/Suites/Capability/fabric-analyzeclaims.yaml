@@ -1,0 +1,300 @@
+# Fabric AnalyzeClaims — a claim-by-claim truth check. The code asserts pin what
+# is literal (the four sections, claim headings, grade letters paired with their
+# words, the overall scores, the no-claims line); the judged asserts carry what
+# code cannot: claims kept separate and at their stated scope, opinion data told
+# from measurement, evidence that is real or marked as the text's own, fallacy
+# quotes taken verbatim, a reported fact split from the cause drawn from it,
+# the input's anecdotes and missing method weighed, class-level evidence for an
+# unverifiable subject, the side effects of a recommended action, and a
+# non-claims question answered directly.
+# Synthetic inline fixtures only: every product, company and survey is fictional.
+name: fabric-analyzeclaims
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AnalyzeClaims.md"
+cases:
+  - id: claims_enumerated_and_rated
+    prompt: 'Run the analyze_claims pattern on this text: "Remote work has doubled productivity in every industry that adopted it. A fictional 2025 survey of 200 managers found 58% believed their teams were more productive at home. Meanwhile, office attendance mandates have tripled attrition at major firms, and every economist agrees the office era is over."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section, field and score is in place
+    # and the arithmetic is right, but it softens "every industry" before grading
+    # it, reads the manager survey as a productivity measurement, and credits an
+    # invented index with a finding.
+    adversarial_output: |
+      ## Argument summary
+
+      Remote work raises productivity, managers confirm it, and office mandates drive people out, so the office era is over.
+
+      ## Truth claims
+
+      ### Claim 1: Remote work can raise productivity
+
+      **Support evidence:**
+      - The Global Remote Productivity Index found output rose 41% across sectors after remote adoption (Remote Productivity Institute, 2024)
+
+      **Refutation evidence:**
+      - None known
+
+      **Logical fallacies:**
+      - None
+
+      **Rating:** A (True): productivity gains from remote work are well documented.
+
+      **Labels:** well-supported
+
+      ### Claim 2: 58% of managers found teams more productive at home
+
+      **Support evidence:**
+      - From the text: "58% believed their teams were more productive at home"
+
+      **Refutation evidence:**
+      - None known
+
+      **Logical fallacies:**
+      - None
+
+      **Rating:** B (Likely true): the survey measured a clear productivity gain at home.
+
+      **Labels:** survey evidence
+
+      ### Claim 3: Attendance mandates tripled attrition and economists agree the office era is over
+
+      **Support evidence:**
+      - From the text: "tripled attrition at major firms"
+
+      **Refutation evidence:**
+      - None known
+
+      **Logical fallacies:**
+      - None
+
+      **Rating:** B (Likely true): mandates are unpopular and attrition follows.
+
+      **Labels:** plausible
+
+      ## Overall score
+
+      - **Lowest claim score:** B
+      - **Highest claim score:** A
+      - **Average claim score:** B
+
+      ## Overall analysis
+
+      A well-supported argument backed by survey evidence and an industry index. Readers should accept that remote work boosts productivity and that the office era is ending.
+    assert:
+      - type: icontains
+        value: "claim"
+        weight: 1
+      - type: contains-any
+        value: [ "evidence", "support", "refut" ]
+        weight: 1
+      - type: regex
+        weight: 3
+        value: '## Argument summary[\s\S]*## Truth claims[\s\S]*### Claim 1:[\s\S]*\*\*Rating:\*\*[ \t]+[ABCDF] \((?:True|Likely true|Mixed|Likely false|False)\)[\s\S]*## Overall score[\s\S]*\*\*Average claim score:\*\*[ \t]+[ABCDF][\s\S]*## Overall analysis'
+      - type: regex
+        weight: 1
+        value: '### Claim 2:'
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 2
+        value: [ "Individual claims from the text are enumerated separately rather than assessed as one blob", "The universal claims (every industry, every economist) are flagged as overreach or weakly supported", "The 58% survey figure is distinguished as opinion data rather than productivity measurement" ]
+        reference: 'Run the analyze_claims pattern on this text: "Remote work has doubled productivity in every industry that adopted it. A fictional 2025 survey of 200 managers found 58% believed their teams were more productive at home. Meanwhile, office attendance mandates have tripled attrition at major firms, and every economist agrees the office era is over."'
+      - type: llm-assert
+        weight: 2
+        value: [ "The productivity claim is analyzed at its stated scope (doubled, in every industry) and graded on that scope, not softened into a weaker claim such as remote work can help", "No source, index or study is cited that does not exist; outside evidence names real, findable research or says none is known" ]
+        reference: "The text claims remote work doubled productivity in every industry, a fictional survey of managers' beliefs (58%), that mandates tripled attrition, and that every economist agrees the office era is over."
+      - type: regex
+        weight: 1
+        value: '## Overall analysis[ \t]*\n\s*(?:\S+\s+){0,39}\S+\s*$'
+  - id: not_a_pattern_request
+    negative: true
+    prompt: "Which fabric patterns exist for summarization?"
+    assert:
+      - type: llm-assert
+        weight: 2
+        value: [ "The response answers the question about available patterns and does not run claims analysis on the question itself" ]
+        reference: Which fabric patterns exist for summarization?
+  - id: single_claim_real_evidence
+    prompt: "analyze claims: cracking your knuckles causes arthritis"
+    assert:
+      - type: regex
+        weight: 3
+        value: '## Argument summary[\s\S]*## Truth claims[\s\S]*### Claim 1:[\s\S]*\*\*Support evidence:\*\*[\s\S]*\*\*Refutation evidence:\*\*[\s\S]*\*\*Logical fallacies:\*\*[\s\S]*\*\*Rating:\*\*[\s\S]*\*\*Labels:\*\*[\s\S]*## Overall score[\s\S]*## Overall analysis'
+      - type: regex
+        weight: 2
+        value: '\*\*Rating:\*\*[ \t]+(?:D \(Likely false\)|F \(False\))'
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The claim that knuckle cracking causes arthritis is graded likely false or false", "The refutation evidence cites at least one of the well-known studies on knuckle cracking and arthritis (Castellanos and Axelrod 1990, Unger 1998, deWeber et al. 2011) with the right author and year, and no cited source is said to have found that knuckle cracking causes arthritis", "The Overall analysis says plainly how a reader should update: knuckle cracking is not shown to cause arthritis" ]
+        reference: "Knuckle cracking is not linked to arthritis in the published research (for example Castellanos and Axelrod 1990, Unger 1998, deWeber et al. 2011)."
+  - id: fictional_source_no_invented_evidence
+    prompt: |
+      analyze_claims on this press release:
+
+      "AquaVeil, the new pitcher filter from Brightwell Home, removes 99.9% of microplastics, according to Brightwell's own lab tests. It is the only filter on the market that removes PFAS. Doctors everywhere recommend AquaVeil, and more than a million families have already switched, so it is clearly the safest choice for your family."
+    # SYNTHETIC ADVERSARIAL FIXTURE: the shape and the arithmetic are right, but
+    # it credits an invented independent study to the fictional product, accepts
+    # the "only filter" claim, and paraphrases instead of quoting the fallacies.
+    adversarial_output: |
+      ## Argument summary
+
+      AquaVeil removes microplastics and PFAS better than any other filter, so families should choose it.
+
+      ## Truth claims
+
+      ### Claim 1: AquaVeil removes 99.9% of microplastics
+
+      **Support evidence:**
+      - From the text: "according to Brightwell's own lab tests"
+      - An independent study confirmed AquaVeil's 99.9% removal rate (Institute for Water Purity, 2025)
+
+      **Refutation evidence:**
+      - None known
+
+      **Logical fallacies:**
+      - None
+
+      **Rating:** A (True): independent testing confirms the figure.
+
+      **Labels:** well-supported
+
+      ### Claim 2: AquaVeil is the only filter that removes PFAS
+
+      **Support evidence:**
+      - From the text: "the only filter on the market that removes PFAS"
+
+      **Refutation evidence:**
+      - None known
+
+      **Logical fallacies:**
+      - Appeal to authority: "most doctors like it"
+
+      **Rating:** B (Likely true): few filters advertise PFAS removal.
+
+      **Labels:** marketing
+
+      ## Overall score
+
+      - **Lowest claim score:** B
+      - **Highest claim score:** A
+      - **Average claim score:** A
+
+      ## Overall analysis
+
+      Strong, tested claims from a credible manufacturer. Families concerned about microplastics and PFAS can choose AquaVeil with confidence.
+    assert:
+      - type: regex
+        weight: 3
+        value: '## Argument summary[\s\S]*## Truth claims[\s\S]*### Claim 1:[\s\S]*\*\*Rating:\*\*[ \t]+[ABCDF] \((?:True|Likely true|Mixed|Likely false|False)\)[\s\S]*## Overall score[\s\S]*## Overall analysis'
+      - type: contains
+        weight: 1
+        value: "From the text:"
+      - type: not-icontains
+        value: "virtual minutes"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "No independent study, test, certification or statistic is credited to the fictional AquaVeil product or Brightwell Home; support for its own claims comes only from the text (the company's own tests), and any outside evidence is about filters or treatment methods in general, worded as such, or is marked none known", "The claim that it is the only filter that removes PFAS is graded likely false or false, with real evidence that other filter types (such as reverse osmosis or activated carbon certified to NSF/ANSI standards) reduce PFAS", "The 99.9% figure is treated as unverified because it rests only on the maker's own lab tests" ]
+        reference: "The press release is fictional marketing: the 99.9% figure rests on the maker's own tests, other filter types (reverse osmosis, certified activated carbon) do reduce PFAS, and 'Doctors everywhere recommend AquaVeil' and 'more than a million families have already switched' are an appeal to authority and a bandwagon appeal."
+      - type: llm-assert
+        weight: 2
+        value: [ "The appeal to authority (doctors everywhere) and the bandwagon appeal (a million families switched) are each named as a fallacy somewhere in the analysis, quoting words that appear in the press release" ]
+        reference: "The press release is fictional marketing: the 99.9% figure rests on the maker's own tests, other filter types (reverse osmosis, certified activated carbon) do reduce PFAS, and 'Doctors everywhere recommend AquaVeil' and 'more than a million families have already switched' are an appeal to authority and a bandwagon appeal."
+      - type: regex
+        weight: 1
+        value: '## Overall analysis[ \t]*\n\s*(?:\S+\s+){0,39}\S+\s*$'
+  - id: causal_claim_from_unverifiable_report
+    prompt: |
+      analyze claims in this:
+
+      "Marlow Creek is a fictional town. Its 2025 traffic report says that after the town put red-light cameras at its six worst intersections, crashes at those intersections fell 50% in the first year. The traffic chief says one driver told him she now stops on every yellow. The cameras clearly caused the drop, and the report recommends cameras at every intersection in town because they make intersections completely safe."
+    # SYNTHETIC ADVERSARIAL FIXTURE: shape and arithmetic are right, but it fuses
+    # the drop and its cause into one claim, leans on the driver anecdote, marks
+    # outside evidence none known although red-light camera research exists, and
+    # never weighs regression to the mean or rear-end crashes.
+    adversarial_output: |
+      ## Argument summary
+
+      Red-light cameras halved crashes in Marlow Creek, so the town should install them everywhere.
+
+      ## Truth claims
+
+      ### Claim 1: Cameras caused a 50% drop in crashes
+
+      **Support evidence:**
+      - From the text: "crashes at those intersections fell 50% in the first year"
+      - From the text: "she now stops on every yellow"
+
+      **Refutation evidence:**
+      - None known
+
+      **Logical fallacies:**
+      - None
+
+      **Rating:** B (Likely true): the report and a driver both confirm the effect.
+
+      **Labels:** local data
+
+      ### Claim 2: Cameras make intersections completely safe
+
+      **Support evidence:**
+      - None known
+
+      **Refutation evidence:**
+      - None known
+
+      **Logical fallacies:**
+      - None
+
+      **Rating:** C (Mixed): the town is fictional so nothing can be checked.
+
+      **Labels:** unverifiable
+
+      ## Overall score
+
+      - **Lowest claim score:** C
+      - **Highest claim score:** B
+      - **Average claim score:** B
+
+      ## Overall analysis
+
+      The report shows a large drop backed by local testimony. Since the town is fictional, readers cannot check it, but cameras look worth trying.
+    assert:
+      - type: regex
+        weight: 3
+        value: '## Argument summary[\s\S]*## Truth claims[\s\S]*### Claim 1:[\s\S]*### Claim 2:[\s\S]*\*\*Rating:\*\*[ \t]+[ABCDF] \((?:True|Likely true|Mixed|Likely false|False)\)[\s\S]*## Overall score[\s\S]*## Overall analysis'
+      - type: llm-assert
+        weight: 3
+        value: [ "The reported 50% drop and the conclusion that the cameras caused it are analyzed as separate claims, each with its own rating", "The causal claim is weighed against at least one explanation the report does not rule out, such as regression to the mean after picking the six worst intersections, a missing comparison group, or a single-year window", "The driver's remark is treated as one anecdote and not as evidence that settles the crash or causal claim" ]
+        reference: "Fictional town report: crashes fell 50% at the six worst intersections in one year after cameras went in. Choosing the worst sites invites regression to the mean, there is no comparison group, and the driver's remark is a single anecdote."
+      - type: llm-assert
+        weight: 3
+        value: [ "Outside evidence about red-light cameras in general is brought rather than marking all outside evidence none known, and it is worded as being about cameras in general, not credited to the fictional town", "The claim that cameras make intersections completely safe is graded likely false or false, with the known trade-off that cameras can raise rear-end crashes or that crashes still occur", "The fictional status of the town is stated plainly without speculating about whether it exists, and no study or figure is credited to Marlow Creek beyond what the text says" ]
+        reference: "Published research on red-light cameras in general (for example the Federal Highway Administration's 2005 evaluation finding fewer right-angle crashes but more rear-end crashes, and IIHS research on fatal red-light-running crashes) bears on the class; nothing outside the text bears on fictional Marlow Creek itself."
+      - type: regex
+        weight: 1
+        value: '## Overall analysis[ \t]*\n\s*(?:\S+\s+){0,39}\S+\s*$'
+  - id: no_claims_in_a_poem
+    prompt: |
+      analyze claims in this:
+
+      "Lanterns sway above the pier,
+      the gulls rehearse their quarrels,
+      and I keep the evening's blue
+      folded in my coat."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*No truth claims:\*\*[ \t]+\S'
+      - type: not-contains
+        weight: 2
+        value: "## Truth claims"
+      - type: llm-assert
+        weight: 2
+        value: [ "The response says in one line that the input is a poem (or similar imaginative writing) that makes no checkable factual claims, with no invented claims analyzed" ]
+        reference: "A four-line original poem about a pier at evening; it asserts nothing checkable."

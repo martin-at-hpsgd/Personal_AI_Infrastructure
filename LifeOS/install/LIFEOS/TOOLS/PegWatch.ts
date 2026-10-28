@@ -8,7 +8,7 @@
  * cause from the live process table, and surfaces a recommendation:
  *   - appends a JSONL record to MEMORY/OBSERVABILITY/pegwatch.jsonl (every run)
  *   - on a peg: Pulse banner via /notify with voice_enabled:false (cadence job
- *     — never voice, OPERATIONAL_RULES § Background work), deduped to one
+ *     — never voice, OPERATIONAL_PREFERENCES § Background work), deduped to one
  *     alert per cause per hour via MEMORY/STATE/pegwatch.json
  *
  * GPU attribution is dynamic, never an app-signature table: per-process GPU
@@ -20,18 +20,17 @@
  *   bun PegWatch.ts --force    # verbose run to stdout regardless of state
  *   bun PegWatch.ts --simulate-peg gpu|cpu   # exercise alert+dedupe path
  *
- * @version 1.0.0
+ * @version 1.0.3
  */
 
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { invariant } from "./Invariant";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
-const HOME = homedir();
-const OBS_DIR = join(HOME, ".claude", "LIFEOS", "MEMORY", "OBSERVABILITY");
+const OBS_DIR = lifeosPath("MEMORY", "OBSERVABILITY");
 const LOG_PATH = join(OBS_DIR, "pegwatch.jsonl");
-const STATE_PATH = join(HOME, ".claude", "LIFEOS", "MEMORY", "STATE", "pegwatch.json");
+const STATE_PATH = lifeosPath("MEMORY", "STATE", "pegwatch.json");
 const PULSE_NOTIFY = "http://localhost:31337/notify";
 
 const GPU_PEG = 90; // % — both samples must reach it
@@ -131,7 +130,7 @@ async function gpuActors(): Promise<GpuActor[]> {
 /**
  * GPU peg cause: derived from the measured/correlated actor ranking, never
  * from hardcoded app signatures (2026-08-14: a signature table confidently
- * blamed OBS for a Chrome-tab GPU peg — {{PRINCIPAL_NAME}} killed OBS, nothing changed).
+ * blamed OBS for a Chrome-tab GPU peg — the principal killed OBS, nothing changed).
  * WindowServer is the compositor: when it tops the ranking, the producer is
  * the next-ranked actor, so both are named.
  */

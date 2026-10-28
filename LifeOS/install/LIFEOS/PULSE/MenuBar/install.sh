@@ -4,12 +4,22 @@
 
 set -euo pipefail
 
+# Argument contract (round-19 audit): no argument installs; --help prints usage; anything else
+# refuses with exit 2 BEFORE the build, the delete, the pkill, or the launchctl load.
+usage() { echo "Usage: bash install.sh            # build, deploy, and load the menu-bar app"; echo "       bash install.sh --help     # this text"; echo "Preview with: bun LIFEOS/TOOLS/Services.ts install --only pulse-menubar"; }
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    *) echo "install.sh: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOME_DIR="$HOME"
 APP_NAME="LifeOS Pulse"
-APP_DIR="$HOME_DIR/Applications"
+APP_DIR="$HOME_DIR/Library/Application Support/LifeOS/Helpers.noindex"
 APP_DEST="$APP_DIR/$APP_NAME.app"
-OLD_APP="$APP_DIR/PAI Monitor.app"
+OLD_APP="$HOME_DIR/Applications/PAI Monitor.app"
 
 PLIST_LABEL="com.lifeos.pulse-menubar"
 PLIST_SRC="$SCRIPT_DIR/com.lifeos.pulse-menubar.plist"
@@ -64,14 +74,53 @@ echo "  Installed $APP_DEST"
 echo "[6/6] Installing LaunchAgent..."
 
 # Substitute __HOME__ placeholder with actual home directory
+mkdir -p "$(dirname "$PLIST_DST")"
 sed "s|__HOME__|$HOME_DIR|g" "$PLIST_SRC" > "$PLIST_DST"
 echo "  Installed $PLIST_DST"
 
 # Ensure logs directory exists
 mkdir -p "$HOME_DIR/.claude/LIFEOS/PULSE/logs"
 
-launchctl load "$PLIST_DST"
-echo "  Loaded $PLIST_LABEL"
+# public issue #2068, @m4rkolson: use bootout+bootstrap for proper error detection and confirmation
+DOMAIN="gui/$(id -u)"
+BINARY_NAME="LifeOS Pulse"
+BINARY_PATH="$APP_DEST/Contents/MacOS/$BINARY_NAME"
+
+launchctl bootout "$DOMAIN/$PLIST_LABEL" 2>/dev/null || true
+
+# bootout→bootstrap on the same label can hit a transient launchd "already in
+# progress" / I/O error; retry three times before calling it a failure.
+BOOTSTRAPPED=0
+for _ in 1 2 3; do
+    if launchctl bootstrap "$DOMAIN" "$PLIST_DST" 2>/dev/null; then
+        BOOTSTRAPPED=1
+        break
+    fi
+    sleep 1
+done
+if [ "$BOOTSTRAPPED" -ne 1 ]; then
+    echo "  ERROR: launchctl bootstrap failed for $PLIST_LABEL" >&2
+    echo "  The menu bar is NOT installed. Plist: $PLIST_DST" >&2
+    exit 1
+fi
+echo "  Bootstrapped $PLIST_LABEL"
+
+# Verify the process is actually running
+RUNNING=0
+for _ in $(seq 1 10); do
+    if pgrep -f "$BINARY_PATH" >/dev/null 2>&1; then
+        RUNNING=1
+        break
+    fi
+    sleep 0.5
+done
+
+if [ "$RUNNING" -ne 1 ]; then
+    echo "  ERROR: $PLIST_LABEL was bootstrapped but no process is running." >&2
+    echo "  Check $HOME_DIR/.claude/LIFEOS/PULSE/logs/menubar-stderr.log" >&2
+    launchctl print "$DOMAIN/$PLIST_LABEL" 2>&1 | grep -E "last exit code|state =" >&2 || true
+    exit 1
+fi
 
 echo ""
 echo "=== Installation complete ==="

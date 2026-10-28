@@ -10,9 +10,10 @@
  * Called by TabState.hook.ts (Stop branch; formerly ResponseTabReset.hook.ts).
  */
 
-import { setTabState, readTabState, stripPrefix, setAscentTab, isDegenerateDesc } from '../lib/tab-setter';
-import { isValidCompletionTitle, gerundToPastTense, getWorkingFallback, trimToValidTitle } from '../lib/output-validators';
+import { setTabState, readTabState, tabTitleActivity, getSessionShortLabel, setAscentTab, isDegenerateDesc, resolveSessionRow } from '../lib/tab-setter';
+import { isValidCompletionTitle, gerundToPastTense, getWorkingFallback, trimToValidTitle, toGerund } from '../lib/output-validators';
 import { getDAName } from '../lib/identity';
+import { stripVoiceTags } from '../../LIFEOS/TOOLS/VoiceTags';
 
 import type { ParsedTranscript } from '../../LIFEOS/TOOLS/TranscriptParser';
 
@@ -24,8 +25,8 @@ import type { ParsedTranscript } from '../../LIFEOS/TOOLS/TranscriptParser';
 function extractTabTitle(voiceLine: string): string | null {
   if (!voiceLine || voiceLine.length < 3) return null;
 
-  const cleaned = voiceLine
-    .replace(/^🗣️\s*/, '')
+  const cleaned = stripVoiceTags(voiceLine
+    .replace(/^🗣️\s*/, ''))
     .replace(new RegExp(`^${getDAName()}:\\s*`, 'i'), '')
     .replace(/^(Done\.?\s*)/i, '')
     .trim();
@@ -48,26 +49,6 @@ function extractTabTitle(voiceLine: string): string | null {
   if (words.length === 0) return null;
 
   return trimToValidTitle(words, isValidCompletionTitle);
-}
-
-/**
- * Convert imperative verb to gerund: "Fix" → "Fixing", "Set" → "Setting", "Create" → "Creating".
- */
-function toGerund(verb: string): string {
-  const lower = verb.toLowerCase();
-  if (lower.endsWith('ing')) return verb; // already a gerund
-  if (lower.endsWith('ie')) return lower.slice(0, -2) + 'ying'; // "die" → "dying"
-  if (lower.endsWith('e') && !lower.endsWith('ee')) return lower.slice(0, -1) + 'ing';
-  if (lower.endsWith('y')) return lower + 'ing'; // "modify" → "modifying"
-  // Double final consonant for stressed CVC pattern (set→setting, run→running, stop→stopping, debug→debugging)
-  // but NOT for words ending in w, x, y and NOT when preceded by vowel digraph (clean→cleaning)
-  const match = lower.match(/([aeiou])([bcdfghjklmnpqrstvz])$/);
-  if (match && lower.length <= 6) {
-    const beforeVowel = lower.length >= 3 ? lower[lower.length - 3] : '';
-    const isDigraph = 'aeiou'.includes(beforeVowel); // "ea" in clean, "ou" in pour — don't double
-    if (!isDigraph) return lower + match[2] + 'ing';
-  }
-  return lower + 'ing';
 }
 
 /**
@@ -119,12 +100,7 @@ export async function handleTabState(parsed: ParsedTranscript, sessionId?: strin
     let shortTitle: string | null = null;
     const currentState = readTabState(sessionId);
     if (currentState) {
-      let rawTitle = stripPrefix(currentState.title);
-      // Strip session prefix (e.g., "KITTY TAB | Removing redundancy." → "Removing redundancy.")
-      const pipeIdx = rawTitle.indexOf(' | ');
-      if (pipeIdx !== -1) {
-        rawTitle = rawTitle.slice(pipeIdx + 3);
-      }
+      let rawTitle = tabTitleActivity(currentState.title, sessionId ? getSessionShortLabel(sessionId) : null);
       if (rawTitle && !isDegenerateDesc(rawTitle) && rawTitle !== 'Done.' && rawTitle !== 'Processing.' && rawTitle !== 'Processing request.' && rawTitle !== getWorkingFallback() && !rawTitle.endsWith('ready\u2026')) {
         const words = rawTitle.replace(/\.$/, '').split(/\s+/);
         if (words.length >= 2 && words[0].toLowerCase().endsWith('ing')) {
@@ -157,10 +133,21 @@ export async function handleTabState(parsed: ParsedTranscript, sessionId?: strin
     }
 
     if (sessionId) {
-      // Completion with session prefix: "NAME | summary"
-      setAscentTab('cairn', sessionId, shortTitle?.replace(/\.$/, '') || undefined);
+      // A turn ending is not the same as a RUN ending. A native turn (no ISA)
+      // is done — cairn. But an ISA whose criteria are still open is mid-climb;
+      // stamping cairn here painted a live run green at every turn end and then
+      // seeded the next prompt with priorAscent=cairn, wiping it to ⚡ traverse
+      // (found 2026-09-07). Resolve the run's real state from work.json — the
+      // SAME row Pulse reads — and only paint cairn when the run truly is one.
+      const row = resolveSessionRow(sessionId);
+      const stampState = row?.hasIsa && row.ascent && row.ascent !== 'cairn' ? row.ascent : 'cairn';
+      // A non-cairn state is still climbing — keep the working description
+      // (composeAscentTitle carries it over); the past-tense summary is only
+      // honest at cairn.
+      const summary = stampState === 'cairn' ? shortTitle?.replace(/\.$/, '') || undefined : undefined;
+      setAscentTab(stampState, sessionId, summary);
 
-      console.error(`[TabState] Completion: "${shortTitle || '(session name fallback)'}"`);
+      console.error(`[TabState] Turn end (${stampState}): "${stampState === 'cairn' ? (shortTitle || '(session name fallback)') : 'mid-run, state preserved'}"`);
     } else {
       // No session ID fallback: "✅ summary"
       const tabTitle = `✅ ${shortTitle || 'Done.'}`;

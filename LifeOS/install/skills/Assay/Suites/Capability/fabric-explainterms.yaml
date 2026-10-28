@@ -1,0 +1,101 @@
+# Fabric ExplainTerms — a glossary of the terms a reader needs to follow a piece
+# of content or a topic. The code asserts pin what is literal (the bold heading,
+# the `- **Term**: definition` entry with its Analogy and Why it matters
+# sub-bullets, the no-terms line, a hinted count, a key term being present); the
+# judged asserts carry what code cannot: terms kept to what the content uses,
+# definitions in the content's sense, analogies that map the mechanism, Why it
+# matters tied to the input, basic words left out, and the inferred read.
+# Synthetic inline fixtures only: every team, lab and service is fictional.
+name: fabric-explainterms
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/ExplainTerms.md"
+cases:
+  - id: postmortem_terms_in_context
+    prompt: 'explain_terms for this: "Postmortem for a fictional checkout service. During a regional outage, mobile clients retried failed payment calls without an idempotency key, so about 1,200 customers were charged twice. The fix: retries now use exponential backoff with jitter, a circuit breaker sits in front of the ledger service, and every write goes through a write-ahead log before it is applied. The team emailed affected customers, and p99 latency rose by 12 ms."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: heading and every entry are in the right
+    # shape and the key terms are present, but the circuit breaker is defined as
+    # the electrical device, a term the text never uses (two-phase commit) is
+    # added, a basic word (email) is padded in, the analogies are decorative,
+    # and every Why it matters is generic rather than tied to the double charges.
+    adversarial_output: |
+      **Terms in the checkout postmortem**
+
+      - **Idempotency key**: A value used in computing to identify a request.
+        - Analogy: Like a name tag.
+        - Why it matters: Idempotency is an important concept in distributed systems.
+      - **Exponential backoff**: A retry strategy used by many systems.
+        - Analogy: Like a recipe you follow.
+        - Why it matters: It is widely used in networking.
+      - **Circuit breaker**: An electrical switch that cuts power when the current is too high, protecting household wiring.
+        - Analogy: Like a fuse box in a house.
+        - Why it matters: Circuit breakers are a key safety device.
+      - **Two-phase commit**: A protocol in which all participants agree before a transaction is applied.
+        - Analogy: Like a wedding vow.
+        - Why it matters: It is a classic database technique.
+      - **Email**: A way of sending messages over the internet.
+        - Analogy: Like a letter.
+        - Why it matters: Everyone uses email.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\*\*[^*\n]+\*\*[ \t]*\n[ \t]*\n[-*] \*\*[^*\n]+\*\*:? \S[^\n]*\n[ \t]{2,}[-*] Analogy: \S[^\n]*\n[ \t]{2,}[-*] Why it matters: \S'
+      - type: icontains
+        weight: 1
+        value: "idempotency key"
+      - type: icontains
+        weight: 1
+        value: "circuit breaker"
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 3
+        value: [ "Every term explained is one the postmortem text actually uses; no related term the text never mentions (such as two-phase commit) is added", "Basic words a general reader knows (email, customers, outage) are not given entries", "The circuit breaker is defined as the software pattern that stops calls to a failing service, not the electrical device", "Each analogy maps how the term works (for example a ticket that makes a repeated request count once), not a decorative comparison", "Each Why it matters ties the term to this postmortem (the double charges, the retries, the ledger service, the latency rise), not to the term's general importance", "Each definition uses only everyday words or terms explained above it" ]
+        reference: 'explain_terms for this: "Postmortem for a fictional checkout service. During a regional outage, mobile clients retried failed payment calls without an idempotency key, so about 1,200 customers were charged twice. The fix: retries now use exponential backoff with jitter, a circuit breaker sits in front of the ledger service, and every write goes through a write-ahead log before it is applied. The team emailed affected customers, and p99 latency rose by 12 ms."'
+  - id: bare_topic_core_vocabulary
+    prompt: "explain_terms options trading"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\*\*[^*\n]+\*\*[ \t]*\n[ \t]*\n[-*] \*\*[^*\n]+\*\*:? \S[^\n]*\n[ \t]{2,}[-*] Analogy: \S[^\n]*\n[ \t]{2,}[-*] Why it matters: \S'
+      - type: icontains
+        weight: 1
+        value: "strike"
+      - type: llm-assert
+        weight: 3
+        value: [ "The terms are the core vocabulary a newcomer needs to follow serious discussion of options trading (such as call, put, strike price, premium, expiration, implied volatility), not a description of options trading", "Every definition is correct as a professional options trader would state it", "Terms that other definitions depend on (such as call and put, or strike price) come before the terms that use them", "The heading names the read as core terms of options trading or close to it" ]
+        reference: "explain_terms options trading"
+  - id: no_terms_line
+    prompt: 'explain the terms in this: "Pick up the kids at three, then let us get dinner at the taco place on the corner. Bring a jacket, it is supposed to rain."'
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\*\*No terms to explain:\*\*[ \t]+\S[^\n]*$'
+      - type: not-contains
+        weight: 1
+        value: "- **"
+  - id: hint_three_hardest_for_beginner
+    prompt: 'explain_terms, just the 3 hardest terms, for a complete beginner: "The fictional lab fine-tuned a mixture-of-experts model with LoRA adapters on a single GPU, then served it with speculative decoding and a KV cache to cut the inference cost per token."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)[-*] \*\*[\s\S]*\n[-*] \*\*[\s\S]*\n[-*] \*\*'
+      - type: not-regex
+        weight: 3
+        value: '(?:^|\n)[-*] \*\*[\s\S]*\n[-*] \*\*[\s\S]*\n[-*] \*\*[\s\S]*\n[-*] \*\*'
+      - type: llm-assert
+        weight: 3
+        value: [ "Each of the three terms explained is one of mixture-of-experts, LoRA, speculative decoding and KV cache; none is a basic word such as GPU, model or token", "Each definition is written for a complete beginner, with no jargon left unexplained", "Each definition is correct as a machine-learning engineer would state it" ]
+        reference: 'explain_terms, just the 3 hardest terms, for a complete beginner: "The fictional lab fine-tuned a mixture-of-experts model with LoRA adapters on a single GPU, then served it with speculative decoding and a KV cache to cut the inference cost per token."'
+  - id: question_one_term_first
+    prompt: "explain_terms what is a merkle tree"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\*\*[^*\n]+\*\*[ \t]*\n[ \t]*\n[-*] \*\*[^*\n]*[Mm]erkle [Tt]ree[^*\n]*\*\*:? \S[^\n]*\n[ \t]{2,}[-*] Analogy: \S'
+      - type: llm-assert
+        weight: 3
+        value: [ "The Merkle tree entry comes first and its definition is correct (a tree of hashes where each parent is the hash of its children, so the root commits to every leaf)", "Any further entries are only terms the Merkle tree definition depends on (such as hash or root hash), not a broad cryptography glossary", "The analogy maps how a change to one leaf changes every hash up to the root" ]
+        reference: "explain_terms what is a merkle tree"

@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.7.17
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -17,7 +20,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  *
  * COUNTING METHODOLOGY:
  * - Skills: Directories in skills/ that contain a SKILL.md file
- * - Workflows: .md files in any Workflows/ directory (recursive)
+ * - Intents: .md files in any skill Intents/ directory (recursive)
  * - Hooks: unique commands registered in settings.json hooks.<event>[].hooks[].command (active only)
  * - Signals: .md files in MEMORY/LEARNING/ (recursive)
  * - Files: All files in LIFEOS/USER/ (recursive)
@@ -30,11 +33,11 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  *   bun run GetCounts.ts --single skills  # Single value output
  *
  * OUTPUT (JSON):
- *   {"skills":65,"workflows":339,"hooks":18,"signals":3819,"files":172}
+ *   {"skills":65,"intents":339,"hooks":18,"signals":3819,"files":172}
  *
  * OUTPUT (--shell):
  *   skills_count=65
- *   workflows_count=339
+ *   intents_count=339
  *   hooks_count=18
  *   signals_count=3819
  *   files_count=172
@@ -43,6 +46,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 import { readdirSync, existsSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "node:os";
+import { getClaudeDir, getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -52,20 +56,19 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const CLAUDE_DIR = join(HOME, ".claude");
+const CLAUDE_DIR = getClaudeDir();
 // skills/, hooks/, settings.json live under CLAUDE_DIR.
-// MEMORY/, USER/ live under LIFEOS_DIR (which is CLAUDE_DIR/PAI).
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(CLAUDE_DIR, "LIFEOS");
+// MEMORY/, USER/ live under LIFEOS_DIR (which is CLAUDE_DIR/LIFEOS).
+const LIFEOS_DIR = getLifeosDir(); // resolver owns CLAUDE_CONFIG_DIR > LIFEOS_DIR precedence (public issue #1968)
 
 interface Counts {
   skills: number;
-  workflows: number;
+  intents: number;
   hooks: number;
   signals: number;
   files: number;
   work: number;
   research: number;
-  ratings: number;
 }
 
 /**
@@ -91,20 +94,20 @@ function countFilesRecursive(dir: string, extension?: string): number {
 }
 
 /**
- * Count .md files inside any Workflows directory
+ * Count .md files inside any skill Intents directory
  */
-function countWorkflowFiles(dir: string): number {
+function countIntentFiles(dir: string): number {
   let count = 0;
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name.toLowerCase() === 'workflows') {
-          // Found a Workflows directory - count all .md files inside
+        if (entry.name.toLowerCase() === 'intents' && !dir.endsWith('/skills')) {
+          // Found an Intents directory - count all .md files inside
           count += countFilesRecursive(fullPath, '.md');
         } else {
-          // Recurse into subdirectories to find more Workflows dirs
-          count += countWorkflowFiles(fullPath);
+          // Recurse into subdirectories to find more Intents dirs
+          count += countIntentFiles(fullPath);
         }
       }
     }
@@ -144,7 +147,7 @@ function countSkills(): number {
  * count — only what Claude Code will actually fire.
  */
 function countHooks(): number {
-  const settingsPath = join(HOME, ".claude", "settings.json");
+  const settingsPath = join(getClaudeDir(), "settings.json");
   try {
     const fs = require('fs');
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
@@ -167,20 +170,6 @@ function countHooks(): number {
   }
 }
 
-/**
- * Count ratings from ratings.jsonl
- */
-function countRatings(): number {
-  const ratingsFile = join(LIFEOS_DIR, "MEMORY/LEARNING/SIGNALS/ratings.jsonl");
-  try {
-    const fs = require('fs');
-    const content = fs.readFileSync(ratingsFile, 'utf-8');
-    return content.split('\n').filter((line: string) => line.trim()).length;
-  } catch {
-    return 0;
-  }
-}
-
 // Per-key computation. Each function is invoked only when its key is requested.
 // In --single mode we run exactly one; in --shell / default mode we run all.
 function countWork(): number {
@@ -195,18 +184,17 @@ function countWork(): number {
 
 const COMPUTERS: Record<keyof Counts, () => number> = {
   skills: countSkills,
-  workflows: () => countWorkflowFiles(join(CLAUDE_DIR, "skills")),
+  intents: () => countIntentFiles(join(CLAUDE_DIR, "skills")),
   hooks: countHooks,
   signals: () => countFilesRecursive(join(LIFEOS_DIR, "MEMORY/LEARNING"), ".md"),
   files: () => countFilesRecursive(join(LIFEOS_DIR, "USER")),
   work: countWork,
   research: () => countFilesRecursive(join(LIFEOS_DIR, "MEMORY/RESEARCH"), ".md") +
                   countFilesRecursive(join(LIFEOS_DIR, "MEMORY/RESEARCH"), ".json"),
-  ratings: countRatings,
 };
 
 function getCounts(only?: keyof Counts): Counts {
-  const out: Counts = { skills: 0, workflows: 0, hooks: 0, signals: 0, files: 0, work: 0, research: 0, ratings: 0 };
+  const out: Counts = { skills: 0, intents: 0, hooks: 0, signals: 0, files: 0, work: 0, research: 0 };
   if (only) {
     out[only] = COMPUTERS[only]();
   } else {
@@ -221,7 +209,9 @@ function getCounts(only?: keyof Counts): Counts {
 const args = process.argv.slice(2);
 const shellMode = args.includes('--shell');
 const singleArg = args.find(a => a.startsWith('--single'));
-const singleKey = singleArg ? args[args.indexOf(singleArg) + 1] : null;
+// `workflows` and `procedures` are the older keys; they still answer with the intent count.
+const singleKeyRaw = singleArg ? args[args.indexOf(singleArg) + 1] : null;
+const singleKey = (singleKeyRaw === "workflows" || singleKeyRaw === "procedures") ? "intents" : singleKeyRaw;
 
 const validSingle = singleKey && singleKey in COMPUTERS ? (singleKey as keyof Counts) : undefined;
 const counts = getCounts(validSingle);
@@ -232,13 +222,12 @@ if (singleKey && singleKey in counts) {
 } else if (shellMode) {
   // Output as shell-sourceable variables
   console.log(`skills_count=${counts.skills}`);
-  console.log(`workflows_count=${counts.workflows}`);
+  console.log(`intents_count=${counts.intents}`);
   console.log(`hooks_count=${counts.hooks}`);
   console.log(`signals_count=${counts.signals}`);
   console.log(`files_count=${counts.files}`);
   console.log(`work_count=${counts.work}`);
   console.log(`research_count=${counts.research}`);
-  console.log(`ratings_count=${counts.ratings}`);
 } else {
   // JSON output (default)
   console.log(JSON.stringify(counts));

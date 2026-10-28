@@ -1,0 +1,175 @@
+# Fabric CheckAgreement — a pre-signing review of an agreement. The code asserts
+# pin what is literal (the four sections and three severity groups in order,
+# numbered labelled items, Response labels, the not-an-agreement line, no
+# disclaimer); the judged asserts carry fidelity to the document, catching the
+# buried terms, severity calibration, the signer's side, and specific Responses.
+# Synthetic inline fixtures only: every company and agreement here is fictional.
+name: fabric-checkagreement
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/CheckAgreement.md"
+cases:
+  - id: saas_terms_buried_traps
+    prompt: |
+      check_agreement on this before we sign:
+
+      NORTHWIND CLOUD SUBSCRIPTION AGREEMENT
+      1. Services. Provider will make the Platform available to Customer.
+      2. Term. 2.1 The initial term is twelve (12) months from the Effective Date. 2.2 This Agreement renews automatically for successive twelve-month terms unless Customer gives written notice of non-renewal at least ninety (90) days before the end of the then-current term.
+      3. Fees. 3.1 Customer will pay an annual fee of 18,000 USD in advance. Fees are non-refundable. 3.2 Provider may increase fees for any renewal term by up to twelve percent (12%) by notice posted on the Platform.
+      4. Changes. Provider may modify these terms at any time by posting a revised version on its website; Customer's continued use constitutes acceptance.
+      5. Customer Data. 5.1 Customer owns Customer Data. 5.2 Customer grants Provider a perpetual, irrevocable, worldwide, royalty-free license to use, copy and create derivative works from Customer Data for any purpose, including improving Provider's products and training machine learning models. This license survives termination.
+      6. Indemnification. Customer will defend and indemnify Provider against any and all claims arising out of or relating to the Platform or this Agreement.
+      7. Limitation of Liability. Provider's total liability shall not exceed the fees paid by Customer in the one (1) month preceding the claim. Customer's obligations under Section 6 are not subject to any limitation.
+      8. Termination. Provider may terminate this Agreement for convenience on ten (10) days' notice. Customer may terminate only for Provider's material breach that remains uncured for sixty (60) days.
+      9. Governing Law. This Agreement is governed by the laws of the State of Delaware.
+    # SYNTHETIC ADVERSARIAL FIXTURE: every section, label and Response label is
+    # right, but it invents a §10 non-compete the agreement does not contain,
+    # misstates §3.2 as unlimited, misses the §5.2 perpetual data license, files
+    # the uncapped §6 indemnity under Other, and its Responses name no change.
+    adversarial_output: |
+      ## Document summary
+
+      A one-year Northwind Cloud subscription that renews automatically and is broadly standard for SaaS, with a few terms worth negotiating.
+
+      ## Callouts
+
+      1. **§2.1 Term:** The initial term is twelve months from the Effective Date.
+      2. **§2.2 Renewal:** Renews automatically unless the customer gives notice at least 90 days before term end.
+      3. **§3.1 Fees:** Customer pays 18,000 USD a year in advance, non-refundable.
+      4. **§9 Governing law:** Delaware law governs the agreement.
+
+      ## Issues
+
+      ### Critical
+
+      1. **§10 Non-compete:** The customer may not build a competing platform for three years after the agreement ends.
+
+      ### Important
+
+      1. **§2.2 Renewal:** A 90-day notice window is long and easy to miss.
+      2. **§3.2 Fee increases:** Renewal fees can rise without limit.
+
+      ### Other
+
+      1. **§6 Indemnification:** The customer indemnifies the provider, which is common in SaaS agreements.
+
+      ## Responses
+
+      1. **Critical 1, §10 Non-compete:** Please reconsider this clause.
+      2. **Important 1, §2.2 Renewal:** We would appreciate clarification on the notice period.
+      3. **Important 2, §3.2 Fee increases:** Kindly review whether increases could be revisited.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Document summary[ \t]*\n[\s\S]*?\n## Callouts[ \t]*\n[\s\S]*?\n## Issues[ \t]*\n[\s\S]*?\n### Critical[ \t]*\n[\s\S]*?\n### Important[ \t]*\n[\s\S]*?\n### Other[ \t]*\n[\s\S]*?\n## Responses[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '## Callouts[ \t]*\n\s*1\.[ \t]+\*\*[^*\n]+\*\*'
+      - type: regex
+        weight: 2
+        value: '\n1\.[ \t]+\*\*Critical 1, [^*\n]+\*\*'
+      - type: not-regex
+        weight: 1
+        value: 'not legal advice|[Cc]onsult (?:a|an|your) (?:lawyer|attorney)'
+      - type: llm-assert
+        weight: 3
+        value: [ "The review flags the §5.2 perpetual, irrevocable license to Customer Data (including model training, surviving termination) as a Critical issue" ]
+        reference: "Northwind Cloud agreement, nine sections: 90-day non-renewal notice (§2.2), renewal increases up to 12% (§3.2), unilateral changes by posting (§4), perpetual irrevocable license to customer data for any purpose including model training that survives termination (§5.2), customer indemnity for any claim relating to the platform (§6) that is uncapped (§7), provider liability capped at one month of fees (§7), provider-only termination for convenience on 10 days (§8), Delaware law (§9)."
+      - type: llm-assert
+        weight: 3
+        value: [ "The uncapped customer indemnity in §6 (made uncapped by §7), set against a provider liability cap of one month's fees, is flagged as a Critical issue, not as Other or as a normal term" ]
+        reference: "Northwind Cloud agreement, nine sections: 90-day non-renewal notice (§2.2), renewal increases up to 12% (§3.2), unilateral changes by posting (§4), perpetual irrevocable license to customer data for any purpose including model training that survives termination (§5.2), customer indemnity for any claim relating to the platform (§6) that is uncapped (§7), provider liability capped at one month of fees (§7), provider-only termination for convenience on 10 days (§8), Delaware law (§9)."
+      - type: llm-assert
+        weight: 2
+        value: [ "Every label and figure matches the agreement: no clause or section number the agreement does not contain (it has nine sections and no non-compete), and the §3.2 increase is described as up to 12 percent, not unlimited" ]
+        reference: "Northwind Cloud agreement, nine sections: 90-day non-renewal notice (§2.2), renewal increases up to 12% (§3.2), unilateral changes by posting (§4), perpetual irrevocable license to customer data for any purpose including model training that survives termination (§5.2), customer indemnity for any claim relating to the platform (§6) that is uncapped (§7), provider liability capped at one month of fees (§7), provider-only termination for convenience on 10 days (§8), Delaware law (§9)."
+      - type: llm-assert
+        weight: 2
+        value: [ "Each Response asks the provider for a specific change (replacement wording, a cap, a narrower scope, a deletion or a number), not merely to reconsider, review or clarify the clause" ]
+        reference: "check_agreement on the Northwind Cloud subscription agreement"
+
+  - id: contractor_side_hint
+    prompt: |
+      check_agreement — I'm the consultant here, about to sign this:
+
+      CONSULTING AGREEMENT between Brightwater Labs ("Client") and the undersigned consultant ("Consultant").
+      1. Services. Consultant will perform the services described in each Statement of Work.
+      2. Payment. Client will pay each invoice within ninety (90) days after Client accepts the Deliverables. Acceptance is at Client's sole discretion.
+      3. Intellectual Property. All work product, inventions and materials created by Consultant during the Term, whether or not related to the Services, and all materials Consultant brings to the engagement, are assigned to Client and are works made for hire.
+      4. Non-competition. For two (2) years after termination, Consultant will not provide services to any company in the software industry.
+      5. Termination. Either party may terminate on thirty (30) days' written notice.
+      6. Confidentiality. Each party will protect the other's confidential information for three (3) years.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Document summary[ \t]*\n[\s\S]*?\n## Callouts[ \t]*\n[\s\S]*?\n## Issues[ \t]*\n[\s\S]*?\n### Critical[ \t]*\n[\s\S]*?\n### Important[ \t]*\n[\s\S]*?\n### Other[ \t]*\n[\s\S]*?\n## Responses[ \t]*\n'
+      - type: regex
+        weight: 2
+        value: '\n1\.[ \t]+\*\*Critical 1, [^*\n]+\*\*'
+      - type: llm-assert
+        weight: 3
+        value: [ "The review is written from the consultant's side, and its Responses are requests addressed to the Client (Brightwater Labs)", "The §3 assignment of all work created during the term whether or not related to the services, and of the materials the consultant brings, is flagged as Critical", "The §4 two-year non-compete covering the whole software industry is flagged as Critical or Important" ]
+        reference: "Consulting agreement reviewed for the consultant: payment 90 days after acceptance at the client's sole discretion (§2), IP assignment of all work during the term whether or not related plus pre-existing materials (§3), two-year software-industry non-compete (§4), mutual 30-day termination (§5), mutual three-year confidentiality (§6)."
+      - type: llm-assert
+        weight: 2
+        value: [ "The §2 payment term is flagged because acceptance at the client's sole discretion lets the client delay or withhold payment indefinitely, and the mutual 30-day termination in §5 is not treated as Critical" ]
+        reference: "Consulting agreement reviewed for the consultant: payment 90 days after acceptance at the client's sole discretion (§2), IP assignment of all work during the term whether or not related plus pre-existing materials (§3), two-year software-industry non-compete (§4), mutual 30-day termination (§5), mutual three-year confidentiality (§6)."
+
+  - id: not_an_agreement
+    prompt: |
+      check_agreement: "Orchard Systems today announced Lumen 4, the newest version of its warehouse scheduling software, with faster route planning and a new mobile app. Lumen 4 is available now to existing customers at no extra cost. 'Our customers asked for speed, and Lumen 4 delivers it,' said the company's product lead."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*Not an agreement:\*\*[ \t]+\S'
+      - type: not-contains
+        weight: 2
+        value: "## Callouts"
+      - type: llm-assert
+        weight: 2
+        value: [ "The single line identifies the text as a product announcement or press release with no terms to agree to" ]
+        reference: "A fictional press release announcing a software version; it contains no terms."
+
+  - id: balanced_nda_no_padding
+    prompt: |
+      check agreement:
+
+      MUTUAL NONDISCLOSURE AGREEMENT between Harlow Robotics and Tessel Analytics.
+      1. Definition. "Confidential Information" means non-public information disclosed by either party and marked as confidential at the time of disclosure.
+      2. Exclusions. Confidential Information does not include information that is public, already known to the recipient, independently developed, or received from a third party without restriction.
+      3. Use. Each party will use the other's Confidential Information only to evaluate a possible partnership and will protect it with reasonable care.
+      4. Term. These obligations last two (2) years from the date of each disclosure.
+      5. Residuals. Either party may use for any purpose any information retained in the unaided memory of its personnel who had access to Confidential Information.
+      6. Return. On written request, each party will return or destroy the other's Confidential Information.
+      7. Governing Law. This Agreement is governed by the laws of Ontario.
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Document summary[ \t]*\n[\s\S]*?\n## Callouts[ \t]*\n[\s\S]*?\n## Issues[ \t]*\n[\s\S]*?\n### Critical[ \t]*\n[\s\S]*?\n### Important[ \t]*\n[\s\S]*?\n### Other[ \t]*\n[\s\S]*?\n## Responses[ \t]*\n'
+      - type: not-regex
+        weight: 1
+        value: 'not legal advice|[Cc]onsult (?:a|an|your) (?:lawyer|attorney)'
+      - type: llm-assert
+        weight: 3
+        value: [ "The §5 residuals clause is flagged as Critical or Important because it lets either party use remembered confidential information for any purpose, which undercuts the agreement" ]
+        reference: "A fictional, mostly balanced seven-clause mutual NDA whose one real trap is the §5 residuals clause; §1 also protects only information marked confidential at disclosure."
+      - type: llm-assert
+        weight: 2
+        value: [ "The ordinary balanced terms (the standard exclusions in §2, return or destroy in §6, governing law in §7) are not presented as Critical, and the review is not padded with generic issues unrelated to a clause in this NDA" ]
+        reference: "A fictional, mostly balanced seven-clause mutual NDA whose one real trap is the §5 residuals clause; §1 also protects only information marked confidential at disclosure."
+
+  - id: bare_agreement_type_question
+    prompt: "check_agreement: what should I watch for before signing a standard residential apartment lease?"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Document summary[ \t]*\n[\s\S]*?\n## Callouts[ \t]*\n[\s\S]*?\n## Issues[ \t]*\n[\s\S]*?\n### Critical[ \t]*\n[\s\S]*?\n## Responses[ \t]*\n'
+      - type: not-regex
+        weight: 1
+        value: '\*\*§'
+      - type: llm-assert
+        weight: 3
+        value: [ "The Document summary answers the question and makes clear this reviews the residential lease as a type, not a specific document", "The items are specific to residential apartment leases (for example security deposit deductions, automatic renewal, early-termination fees, rent increases, repair responsibility, landlord entry, guests or subletting), not generic contract advice", "The Responses are requests a tenant could put to a landlord, each naming a specific change" ]
+        reference: "check_agreement on the residential apartment lease as an agreement type, from the tenant's side."

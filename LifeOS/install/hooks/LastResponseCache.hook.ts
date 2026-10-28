@@ -7,7 +7,7 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 }
 
 /**
- * @version 1.2.4
+ * @version 1.2.8
  * LastResponseCache.hook.ts — Cache last response for RatingCapture bridge
  *
  * PURPOSE:
@@ -20,9 +20,8 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  */
 
 import { readHookInput, parseTranscriptFromInput } from './lib/hook-io';
-import { writeFileSync } from 'fs';
-import { join } from 'path';
-import { homedir } from "node:os";
+import { hookCovers } from './lib/function-hooks';
+import { cacheResponse } from './lib/response-cache';
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -34,6 +33,8 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 async function main() {
   const input = await readHookInput();
   if (!input) { process.exit(0); }
+  // Armed LifeOSHooks session that has proven it runs turn-complete: the bridge writes the cache.
+  if (hookCovers(String(input.session_id ?? ''), 'turn-complete')) process.exit(0);
 
   // Prefer last_assistant_message from stdin (v2.1.47+), fall back to transcript parse
   let lastResponse = input.last_assistant_message;
@@ -44,9 +45,7 @@ async function main() {
 
   if (lastResponse) {
     try {
-      const paiDir = process.env.LIFEOS_DIR || join(homedir(), '.claude', 'LIFEOS');
-      const cachePath = join(paiDir, 'MEMORY', 'STATE', 'last-response.txt');
-      writeFileSync(cachePath, lastResponse.slice(0, 2000), 'utf-8');
+      cacheResponse(String(input.session_id ?? ''), lastResponse);
     } catch (err) {
       console.error('[LastResponseCache] Failed to write:', err);
     }

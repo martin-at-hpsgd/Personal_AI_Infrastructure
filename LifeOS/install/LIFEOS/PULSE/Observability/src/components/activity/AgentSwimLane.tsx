@@ -20,7 +20,8 @@ const AGENT_HEX: Record<string, string> = {
   "gemini-researcher": "#EAB308",
   main: "#3B82F6",
   da: "#3B82F6",
-  pai: "#3B82F6",
+  pai: "#3B82F6", // legacy events
+  lifeos: "#3B82F6",
   "claude-code": "#3B82F6",
 };
 
@@ -136,7 +137,12 @@ export default function AgentSwimLane({ agentName, events, timeRange, onClose }:
       animationDuration: 300,
       barWidth: 3,
       barGap: 1,
-      colors: { primary: "#3B82F6", glow: "#60A5FA", axis: "#333", text: "#565f89" },
+      colors: {
+        primary: "#3B82F6",
+        glow: "#60A5FA",
+        axis: "rgba(255,255,255,0.10)",
+        text: "rgba(255,255,255,0.35)",
+      },
     });
 
     const resizeObs = new ResizeObserver(() => {

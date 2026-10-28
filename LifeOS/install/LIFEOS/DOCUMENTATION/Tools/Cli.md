@@ -1,5 +1,5 @@
 ---
-version: 1.2.1
+version: 1.4.3
 ---
 
 > This system is under active development. APIs, configuration formats, and features may change without notice.
@@ -8,24 +8,24 @@ version: 1.2.1
 
 > CLI-first is how the Life OS stays deterministic (`LIFEOS/DOCUMENTATION/LifeOs/LifeOsThesis.md`): the hill-climb's moves are code you can script, test, and trust — prompts orchestrate, code executes.
 
-LifeOS provides the Arbol CLI for running actions and pipelines locally (runtime: `bun`).
+LifeOS provides the Workflows action CLI for running actions and pipelines locally (runtime: `bun`).
 
 > The former Algorithm CLI (LIFEOS/TOOLS/algorithm.ts, now deleted) was RETIRED 2026-07-14 with the phase-machinery deep strip — the Algorithm runs in-session against the ISA; there is no standalone runner.
 
 ---
 
-## The Arbol CLI (pai)
+## The Workflows action CLI (lifeos)
 
-> **Not in the public release.** The local Arbol CLI tree (`LIFEOS/ARBOL/` — `Actions/`, `Flows/`, `Pipelines/`) is rsync-excluded from the public release payload, so the `~/.claude/LIFEOS/ARBOL/...` paths and commands below do not exist on a public install. The Arbol *model* (the three primitives, the pipe model, the cloud workers) is public; this local runner tree is not.
+> **In the public release since 2026-09-09.** The local Workflows tree (`LIFEOS/WORKFLOWS/v1/` — `Actions/`, `Flows/`, `Pipelines/`, `Workflows/`) is SYSTEM code and ships with the release. A user's own actions, pipelines, flows, and worker code live in `LIFEOS/USER/CUSTOMIZATIONS/ARBOL/` (the path the v1 runners read; create it if it is missing), which stays private.
 
-**Location:** `~/.claude/LIFEOS/ARBOL/Actions/lifeos.ts`
+**Location:** `~/.claude/LIFEOS/WORKFLOWS/v1/Actions/lifeos.ts`
 
-The Arbol CLI (`pai`) provides a unified interface for running actions and pipelines locally. It supports JSON input via arguments, stdin piping, and UNIX-style action composition.
+The Workflows action CLI (`lifeos`) provides a unified interface for running actions and pipelines locally. It supports JSON input via arguments, stdin piping, and UNIX-style action composition.
 
 ### Quick Start
 
 ```bash
-cd ~/.claude/LIFEOS/ARBOL/Actions
+cd ~/.claude/LIFEOS/WORKFLOWS/v1/Actions
 
 # Run an action with inline JSON
 bun lifeos.ts action A_EXAMPLE_SUMMARIZE --input '{"content": "Your text here"}'
@@ -45,12 +45,15 @@ bun lifeos.ts info A_EXAMPLE_SUMMARIZE
 
 ### Usage
 
+In the usage blocks below, `lifeos` stands for this action CLI. On an install with the shell layer, the real `lifeos` command is the session launcher, so run the CLI as `bun lifeos.ts ...` or through the `lifeos-actions` alias (see Setting Up Shell Aliases).
+
 ```
-pai action <name> [--input '<json>']     Run an action
-pai pipeline <name> [--<param> <value>]  Run a pipeline
-pai actions                               List all actions
-pai pipelines                             List all pipelines
-pai info <name>                           Show action/pipeline details
+lifeos action <name> [--input '<json>']     Run an action
+lifeos pipeline <name> [--<param> <value>]  Run a pipeline
+lifeos actions                               List all actions
+lifeos pipelines                             List all pipelines
+lifeos info <name>                           Show action/pipeline details
+lifeos workflow <command> <file.yaml>        Validate, inspect, or run a workflow
 ```
 
 ### Options
@@ -71,7 +74,7 @@ Actions accept input via three methods (in priority order):
 
 ### Action Composition (Pipe Model)
 
-The Arbol CLI outputs JSON to stdout, enabling UNIX-style piping between actions:
+The Workflows action CLI outputs JSON to stdout, enabling UNIX-style piping between actions:
 
 ```bash
 # Summarize, then format the result
@@ -87,23 +90,23 @@ Use `-v` to see execution details on stderr (stdout stays clean for piping):
 
 ```bash
 bun lifeos.ts action A_EXAMPLE_SUMMARIZE --input '{"content": "test"}' -v
-# [pai] Running action: A_EXAMPLE_SUMMARIZE
-# [pai] Mode: local
-# [pai] Input: {"content":"test"}
-# [pai] Duration: 1234ms
+# [lifeos] Running action: A_EXAMPLE_SUMMARIZE
+# [lifeos] Mode: local
+# [lifeos] Input: {"content":"test"}
+# [lifeos] Duration: 1234ms
 # {"summary":"...","word_count":42}
 ```
 
 ---
 
-## The Arbol Runner (Low-Level)
+## The Workflows action runner (Low-Level)
 
-**Location:** `~/.claude/LIFEOS/ARBOL/Actions/lib/runner.v2.ts`
+**Location:** `~/.claude/LIFEOS/WORKFLOWS/v1/Actions/lib/runner.v2.ts`
 
-The runner is the lower-level engine that the `pai` CLI and pipeline runner both use. You can call it directly:
+The runner is the lower-level engine that the `lifeos` CLI and pipeline runner both use. You can call it directly:
 
 ```bash
-cd ~/.claude/LIFEOS/ARBOL/Actions
+cd ~/.claude/LIFEOS/WORKFLOWS/v1/Actions
 
 # Run an action (input as JSON argument)
 bun lib/runner.v2.ts run A_EXAMPLE_SUMMARIZE '{"content": "Your text here"}'
@@ -133,12 +136,12 @@ bun lib/runner.v2.ts list
 
 ## The Pipeline Runner
 
-**Location:** `~/.claude/LIFEOS/ARBOL/Actions/lib/pipeline-runner.ts`
+**Location:** `~/.claude/LIFEOS/WORKFLOWS/v1/Actions/lib/pipeline-runner.ts`
 
 The pipeline runner loads YAML pipeline definitions and chains actions sequentially.
 
 ```bash
-cd ~/.claude/LIFEOS/ARBOL/Actions
+cd ~/.claude/LIFEOS/WORKFLOWS/v1/Actions
 
 # Run a pipeline with named parameters
 bun lib/pipeline-runner.ts run P_EXAMPLE_SUMMARIZE_AND_FORMAT --content "Your text here"
@@ -166,12 +169,12 @@ The runner pipes data through each action sequentially: the output of action N b
 Both the runner and pipeline runner search for actions in two locations (in priority order):
 
 1. **`LIFEOS/USER/CUSTOMIZATIONS/ARBOL/ACTIONS/`** — Personal actions (override system actions)
-2. **`LIFEOS/ARBOL/Actions/`** — System/framework actions (includes examples)
+2. **`LIFEOS/WORKFLOWS/v1/Actions/`** — System/framework actions (includes examples)
 
 Similarly, pipelines are searched in:
 
 1. **`LIFEOS/USER/CUSTOMIZATIONS/ARBOL/PIPELINES/`** — Personal pipelines
-2. **`LIFEOS/ARBOL/Pipelines/`** — System/framework pipelines
+2. **`LIFEOS/WORKFLOWS/v1/Pipelines/`** — System/framework pipelines
 
 This two-tier resolution means you can create personal actions and pipelines that extend or override the built-in examples.
 
@@ -182,19 +185,21 @@ This two-tier resolution means you can create personal actions and pipelines tha
 For convenience, add aliases to your shell configuration (`.zshrc`, `.bashrc`):
 
 ```bash
-# The Arbol CLI
-alias pai="bun ~/.claude/LIFEOS/ARBOL/Actions/lifeos.ts"
+# The Workflows action CLI. Named lifeos-actions, not lifeos: the shell layer
+# (Terminal/zsh/lifeos.zsh) owns `lifeos` as the session launcher, and the
+# new-session hotkey runs it.
+alias lifeos-actions="bun ~/.claude/LIFEOS/WORKFLOWS/v1/Actions/lifeos.ts"
 
-# Runners (optional — pai CLI wraps these)
-alias arbol-run="bun ~/.claude/LIFEOS/ARBOL/Actions/lib/runner.v2.ts"
-alias arbol-pipe="bun ~/.claude/LIFEOS/ARBOL/Actions/lib/pipeline-runner.ts"
+# Runners (optional — the action CLI wraps these)
+alias wf-run="bun ~/.claude/LIFEOS/WORKFLOWS/v1/Actions/lib/runner.v2.ts"
+alias wf-pipe="bun ~/.claude/LIFEOS/WORKFLOWS/v1/Actions/lib/pipeline-runner.ts"
 ```
 
 Then use:
 
 ```bash
-pai action A_EXAMPLE_SUMMARIZE --input '{"content": "text"}'
-pai actions
+lifeos-actions action A_EXAMPLE_SUMMARIZE --input '{"content": "text"}'
+lifeos-actions actions
 ```
 
 ---
@@ -203,7 +208,7 @@ pai actions
 
 | Tool | Purpose | Command |
 |------|---------|---------|
-| **Arbol CLI (pai)** | Run actions and pipelines | `bun ACTIONS/lifeos.ts action <name>` |
+| **Workflows action CLI (lifeos)** | Run actions and pipelines | `bun ACTIONS/lifeos.ts action <name>` |
 | **Runner** | Low-level action execution | `bun ACTIONS/lib/runner.v2.ts run <action>` |
 | **Pipeline Runner** | Chain actions via YAML | `bun ACTIONS/lib/pipeline-runner.ts run <pipeline>` |
 
@@ -237,7 +242,7 @@ Reach for stdin when composing, the flag when scripting one call, named params w
 
 ```mermaid
 flowchart TD
-    A[pai action A_SUMMARIZE] --> B{Input source?}
+    A[lifeos action A_SUMMARIZE] --> B{Input source?}
     B -->|stdin| C[Read JSON from stdin]
     B -->|input flag| C
     B -->|named params| C
@@ -258,9 +263,9 @@ Because every action reads JSON and writes JSON, actions compose like UNIX tools
 | Document | Path | Description |
 |----------|------|-------------|
 | System Architecture | `LIFEOS/DOCUMENTATION/LifeosSystemArchitecture.md` | Master architecture reference |
-| Arbol Overview | `LIFEOS/DOCUMENTATION/Arbol/ArbolSystem.md` | Arbol system architecture |
+| Workflows | `LIFEOS/DOCUMENTATION/Workflows/WorkflowsSystem.md` | Workflows system: actions, definitions, local and cloud runs |
 | Tools Reference | `LIFEOS/DOCUMENTATION/Tools/Tools.md` | CLI utility tools |
 
 ---
 
-**Last Updated:** 2026-07-14
+**Last Updated:** 2026-09-10

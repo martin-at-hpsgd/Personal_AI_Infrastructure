@@ -301,6 +301,9 @@ export const PRIVILEGED_TOOLS: readonly string[] = [
   "write_file",
   "patch",
   "edit_file",
+  // A code body writes files and spawns processes without passing any command
+  // glob, so a tainted turn may not run one (GHSA-3h35-j277-wm7q class follow-up, @Piroshki).
+  "execute_code",
   "computer_use",
   "skill_manage",
   "cron_create",
@@ -327,6 +330,29 @@ export const PRIVILEGED_COMMAND_GLOBS: readonly string[] = [
   "*gh*issue*create*",
   "*gh*pr*create*",
   "*rm -rf*",
+
+  // Persistence: a shell write into the harness's hook, agent or command dirs,
+  // a launchd job, or a shell startup file runs attacker text in a LATER,
+  // untainted session. Like every privileged rule, these apply in a tainted
+  // turn only, and they refuse a read of the same path as well as a write.
+  // They match the command TEXT, so a path assembled at run time (a quoted
+  // concatenation, a variable, a script that builds it) is not caught: this is a
+  // tripwire, not a sandbox. A structural fix (no shell in a tainted turn beyond
+  // a read-only allowlist) is the principal's policy call
+  // (GHSA-3h35-j277-wm7q class follow-up, @Piroshki).
+  "*.claude/hooks*",
+  "*.claude/agents*",
+  "*.claude/commands*",
+  "*LaunchAgents*",
+  "*LaunchDaemons*",
+  "*.zshrc*",
+  "*.zshenv*",
+  "*.zprofile*",
+  "*.zlogin*",
+  "*.bashrc*",
+  "*.bash_profile*",
+  "*.profile*",
+  "*crontab*",
 ];
 
 /**
@@ -379,7 +405,7 @@ export interface GuardPolicy {
 export function buildPolicy(opts: { launcherName?: string; trustedEgressDomains?: readonly string[] } = {}): GuardPolicy {
   const extra = (opts.trustedEgressDomains ?? []).map((d) => String(d).trim().toLowerCase()).filter(Boolean);
   return {
-    version: 5,
+    version: 6,
     denyRules: [...SENSITIVE_READ_RULES],
     readAllowRules: [...READ_ALLOW_RULES],
     readOnlyTools: READ_ONLY_TOOLS,
@@ -409,7 +435,8 @@ if (import.meta.main) {
   const argv = process.argv.slice(2);
   const launcherIdx = argv.indexOf("--launcher");
   const launcherName = launcherIdx !== -1 ? (argv[launcherIdx + 1] ?? "") : "";
-  const positional = argv.filter((a, i) => a !== "--launcher" && i !== launcherIdx + 1);
+  // ported from public PR #1863, @hjbrandt (issue #1859)
+  const positional = argv.filter((a, i) => a !== "--launcher" && (launcherIdx === -1 || i !== launcherIdx + 1));
   const dest = positional[0];
   if (!dest) {
     process.stdout.write(JSON.stringify(buildPolicy({ launcherName }), null, 2) + "\n");

@@ -1,20 +1,23 @@
 /**
  * Bunker module — feeds the Pulse "Bunker" tab.
  *
- * Bunker (~/.claude/LIFEOS/PULSE/Bunker) is the source of truth. This module shells out to its
- * CLI (`bunker data`), caches the snapshot, and serves it at /api/bunker. Pulse only
- * displays; Bunker computes. CLI-as-contract keeps Pulse decoupled from bunker internals.
+ * Bunker (~/.claude/LIFEOS/PULSE/Bunker, a maintainer-private runtime location) is the source of truth. Its launchd monitor runs
+ * every probe on its own clock and writes a full snapshot to the USER tree; this module
+ * READS that file (never runs a scan), caches it, and serves it at /api/bunker. Pulse only
+ * displays; Bunker computes. A stale or missing snapshot is served as a fault, not as pending.
  *
  * Routes (all under /api/bunker):
  *   GET  /api/bunker          → { apps[], summary, lastFetch, stale }
  *   GET  /api/bunker/status   → module health
- *   GET  /api/bunker/arbol    → cloud infra-security scan (the Arbol scanner's last report)
- *   POST /api/bunker/refresh  → force an immediate re-scan
+ *   GET  /api/bunker/security-scan → cloud infra-security scan (the Workflows scanner's last report)
+ *   GET  /api/bunker/codesweep → local white-box security sweep state
+ *   POST /api/bunker/refresh  → re-read the snapshot file now
  */
 
 import { join } from "path";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
 import { homedir } from "node:os";
+import { workflowsConfigPath } from "../../TOOLS/WorkflowsConfig"
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
 const MODULE = "bunker";
@@ -23,6 +26,7 @@ const MODULE = "bunker";
 const BUNKER_DIR = process.env.BUNKER_DIR || join(HOME, ".claude", "LIFEOS", "PULSE", "Bunker");
 const BUNKER_BIN = join(BUNKER_DIR, "bin", "bunker.ts");
 const BUNKER_SHOTS_DIR = join(HOME, ".config", "LIFEOS", "USER", "PULSE", "Bunker", "shots");
+const CODESWEEP_DIR = join(HOME, ".config", "LIFEOS", "USER", "PULSE", "Bunker", "codesweep");
 
 interface State {
   running: boolean;
@@ -34,56 +38,67 @@ interface State {
 
 const state: State = { running: false, startedAt: null, cache: null, lastFetch: null, pollHandle: null };
 
-// ASYNC, never sync (2026-07-26). The old spawnSync froze Pulse's entire event
-// loop for the length of a `bunker data` run — and the moment Pulse itself was
-// registered in Bunker, that run contained curl probes against :31337, which
-// could never answer because the thread that would answer them was the one
-// blocked waiting. Self-deadlock: every probe burned its full timeout, refresh
-// took minutes, /health starved, and the daemon got SIGKILLed in a loop.
-// Overlap guard + subprocess timeout keep one bounded scan in flight at most.
-let refreshInFlight = false;
-const REFRESH_TIMEOUT_MS = 4 * 60_000;
+// Pulse never runs a scan. The launchd monitor runs every probe on its own
+// clock and writes the full snapshot to SNAPSHOT_PATH; this module only reads
+// the file. An in-process scan cannot outlive a request timeout, cannot
+// self-probe Pulse, and never overlaps the monitor's own cycle.
+const BUNKER_SNAPSHOT = join(HOME, ".config", "LIFEOS", "USER", "PULSE", "Bunker", "snapshot.json");
+// launchd cadence is 900s; two missed cycles means the monitor is not running.
+const STALE_AFTER_MS = 2 * 15 * 60_000;
+// A sweep can outlast a cycle (34 min on 2026-10-08), so age runs from when the
+// last sweep finished, and the allowance grows by that sweep's own duration.
+let lastCompleted: Date | null = null;
+let lastSweepMs = 0;
 
 async function refresh(): Promise<{ ok: boolean; reason?: string }> {
-  if (refreshInFlight) return { ok: false, reason: "refresh already in flight" };
-  refreshInFlight = true;
+  if (!existsSync(BUNKER_SNAPSHOT)) {
+    return { ok: false, reason: `no snapshot at ${BUNKER_SNAPSHOT} — the launchd monitor (com.lifeos.bunkermonitor) has not completed a sweep yet` };
+  }
   try {
-    const proc = Bun.spawn(["bun", BUNKER_BIN, "data"], { stdout: "pipe", stderr: "pipe" });
-    const timer = setTimeout(() => { try { proc.kill(); } catch { /* already gone */ } }, REFRESH_TIMEOUT_MS);
-    const [out, errTxt, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    clearTimeout(timer);
-    if (code !== 0) {
-      return { ok: false, reason: `bunker data exit ${code}: ${errTxt.slice(0, 200)}` };
-    }
-    state.cache = JSON.parse(out);
-    state.lastFetch = new Date();
+    const snap = JSON.parse(readFileSync(BUNKER_SNAPSHOT, "utf8"));
+    if (!Array.isArray(snap?.apps) || !snap?.summary) return { ok: false, reason: "snapshot is not a Bunker snapshot (no apps/summary)" };
+    state.cache = snap;
+    state.lastFetch = new Date(snap.generatedAt ?? Date.now());
+    lastCompleted = snap.completedAt ? new Date(snap.completedAt) : null;
+    lastSweepMs = lastCompleted ? Math.max(0, lastCompleted.getTime() - state.lastFetch.getTime()) : 0;
     return { ok: true };
   } catch (err) {
-    return { ok: false, reason: String(err) };
-  } finally {
-    refreshInFlight = false;
+    return { ok: false, reason: `snapshot unreadable: ${String(err)}` };
   }
+}
+
+function snapshotAge(): { stale: boolean; reason?: string } {
+  if (!state.lastFetch) return { stale: true, reason: "no snapshot yet — first scan pending" };
+  const age = Date.now() - (lastCompleted ?? state.lastFetch).getTime();
+  if (age > STALE_AFTER_MS + lastSweepMs) return { stale: true, reason: `snapshot is ${Math.round(age / 60_000)} min old — monitor missed ≥2 cycles` };
+  return { stale: false };
 }
 
 export async function start(): Promise<void> {
   console.log(`[${MODULE}] Starting...`);
+  // health() has consulted bunkerAvailable() since 2026-07-31 (report absence
+  // honestly rather than a status); start() never did. So a public install —
+  // where the CLI is a containment zone and genuinely absent — still spawned a
+  // 300s timer against a path that cannot exist, for the life of the daemon,
+  // with nothing reporting it. Same check, one layer earlier.
+  // public issue #1898, @bnkath2o — same class as #1750.
+  if (!bunkerAvailable()) {
+    console.log(
+      `[${MODULE}] Not installed — ${BUNKER_BIN} is absent, so the module stays idle. ` +
+        `The Bunker CLI is not part of the public payload; set BUNKER_DIR if yours lives elsewhere.`,
+    );
+    state.running = false;
+    return;
+  }
   state.running = true;
   state.startedAt = new Date();
-  // Fire-and-forget: a full scan can take minutes and module start gates the
-  // HTTP server coming up. The tab renders "first scan pending" until it lands.
-  refresh().then((r) => {
-    if (!r.ok) console.warn(`[${MODULE}] initial refresh failed: ${r.reason}`);
-  });
-  // 5-min cadence, matching the launchd monitor. 60s meant a near-continuous
-  // probe storm across every registered app for a display surface.
+  const first = await refresh();
+  if (!first.ok) console.warn(`[${MODULE}] initial snapshot read failed: ${first.reason}`);
+  // A file read, so a 60s re-read costs nothing; the monitor writes every 900s.
   state.pollHandle = setInterval(() => {
-    refresh().catch((err) => console.error(`[${MODULE}] poll error: ${err}`));
-  }, 300_000);
-  console.log(`[${MODULE}] Polling ${BUNKER_BIN} every 300s (async)`);
+    refresh().then((r) => { if (!r.ok) console.warn(`[${MODULE}] snapshot read failed: ${r.reason}`); });
+  }, 60_000);
+  console.log(`[${MODULE}] Reading ${BUNKER_SNAPSHOT} every 60s`);
 }
 
 export async function stop(): Promise<void> {
@@ -127,17 +142,17 @@ export function health(): { status: string; details?: Record<string, unknown> } 
   };
 }
 
-// ── Arbol cloud infra-security (infra-security worker) ──
+// ── Workflows cloud infra-security (infra-security worker) ──
 // The hourly cloud scanner is part of the same uptime/security stack Bunker
 // fronts. This proxies its last report so the token stays server-side and the
 // tab shows cloud health next to the local probe results. Worker URL is derived
-// from ~/.config/arbol/config.yaml (subdomain + auth_token) — nothing
+// from ~/.config/workflows/config.yaml (subdomain + auth_token) — nothing
 // user-specific is hardcoded here (this file ships in releases).
 
-interface ArbolCheck { target: string; category: string; check: string; status: string; evidence?: string; severity: string }
-interface ArbolReport { timestamp: string; summary: { pass: number; fail: number; error: number; skip: number }; checks: ArbolCheck[] }
+interface ScanCheck { target: string; category: string; check: string; status: string; evidence?: string; severity: string }
+interface ScanReport { timestamp: string; summary: { pass: number; fail: number; error: number; skip: number }; checks: ScanCheck[] }
 
-let arbolCache: { at: number; report: ArbolReport } | null = null;
+let scanCache: { at: number; report: ScanReport } | null = null;
 let pentestCache: { at: number; online: boolean } | null = null;
 
 // Every deployed worker NAME is an install-private fact and lives in the
@@ -147,18 +162,21 @@ let pentestCache: { at: number; online: boolean } | null = null;
 // Max's 7.31.5 audit found their kebab-case names hardcoded two lines below a
 // comment claiming exactly this property. Defaults are generic shapes, not
 // this install's names: an install with different names sets the keys.
-const DEFAULT_SECURITY_WORKER = "infra-security";
-const DEFAULT_SITE_HEALTH_WORKER = "site-health";
-function arbolConfig(): { subdomain: string; token: string; pentestWorker?: string; securityWorker: string; siteHealthWorker: string } | null {
+// public PR #2112, @pai-scaffolde: A worker exists only when its key is set.
+// ~/.config/workflows/config.yaml is Workflows' general config, so its presence says
+// nothing about these two scanners. Defaulting their names turned a missing
+// scanner into a confusing "unreachable" signal. Drop the defaults.
+function cloudConfig(): { subdomain: string; token: string; pentestWorker?: string; securityWorker?: string; siteHealthWorker?: string; emailWorker?: string } | null {
   try {
-    const y = readFileSync(join(HOME, ".config", "arbol", "config.yaml"), "utf8");
+    const y = readFileSync(workflowsConfigPath(HOME), "utf8");
     const subdomain = y.match(/^subdomain:\s*"?([^"\n]+)"?/m)?.[1]?.trim();
     const token = y.match(/^auth_token:\s*"?([^"\n]+)"?/m)?.[1]?.trim();
     const pentestWorker = y.match(/^pentest_worker:\s*"?([^"\n]+)"?/m)?.[1]?.trim();
-    const securityWorker = y.match(/^security_worker:\s*"?([^"\n]+)"?/m)?.[1]?.trim() || DEFAULT_SECURITY_WORKER;
-    const siteHealthWorker = y.match(/^site_health_worker:\s*"?([^"\n]+)"?/m)?.[1]?.trim() || DEFAULT_SITE_HEALTH_WORKER;
+    const securityWorker = y.match(/^security_worker:\s*"?([^"\n]+)"?/m)?.[1]?.trim();
+    const siteHealthWorker = y.match(/^site_health_worker:\s*"?([^"\n]+)"?/m)?.[1]?.trim();
+    const emailWorker = y.match(/^email_worker:\s*"?([^"\n]+)"?/m)?.[1]?.trim();
     if (!subdomain || !token) return null;
-    return { subdomain, token, pentestWorker, securityWorker, siteHealthWorker };
+    return { subdomain, token, pentestWorker, securityWorker, siteHealthWorker, emailWorker };
   } catch { return null; }
 }
 
@@ -166,24 +184,24 @@ function arbolConfig(): { subdomain: string; token: string; pentestWorker?: stri
 // (the old return type) made "no security system installed" and "scanner is
 // down" render identically as a BLANK panel — and a blank security panel reads
 // as "no findings / all clear", the most dangerous possible misread (a blank
-// card is broken, not acceptable — OPERATIONAL_RULES § Deploy & verify). The
+// card is broken, not acceptable — OPERATIONAL_PREFERENCES § Deploy & verify). The
 // caller now renders `unreachable` as a red/degraded card face, never empty.
-type ArbolFetch =
-  | { state: "ok"; report: ArbolReport }
+type ScanFetch =
+  | { state: "ok"; report: ScanReport }
   | { state: "not-configured" }
   | { state: "unreachable"; reason: string };
 
-async function fetchArbol(): Promise<ArbolFetch> {
-  if (arbolCache && Date.now() - arbolCache.at < 5 * 60_000) return { state: "ok", report: arbolCache.report };
-  const cfg = arbolConfig();
-  if (!cfg) return { state: "not-configured" };
+async function fetchScan(): Promise<ScanFetch> {
+  if (scanCache && Date.now() - scanCache.at < 5 * 60_000) return { state: "ok", report: scanCache.report };
+  const cfg = cloudConfig();
+  if (!cfg || !cfg.securityWorker) return { state: "not-configured" };
   try {
     const r = await fetch(`https://${cfg.securityWorker}.${cfg.subdomain}.workers.dev/report`, {
       headers: { Authorization: `Bearer ${cfg.token}` },
     });
     if (!r.ok) return { state: "unreachable", reason: `scanner returned HTTP ${r.status}` };
-    const report = (await r.json()) as ArbolReport;
-    arbolCache = { at: Date.now(), report };
+    const report = (await r.json()) as ScanReport;
+    scanCache = { at: Date.now(), report };
     return { state: "ok", report };
   } catch (e) {
     return { state: "unreachable", reason: `scanner fetch failed: ${(e as Error)?.message ?? "network error"}` };
@@ -192,7 +210,7 @@ async function fetchArbol(): Promise<ArbolFetch> {
 
 async function pentestOnline(): Promise<boolean | null> {
   if (pentestCache && Date.now() - pentestCache.at < 5 * 60_000) return pentestCache.online;
-  const cfg = arbolConfig();
+  const cfg = cloudConfig();
   if (!cfg?.pentestWorker) return null;
   try {
     const r = await fetch(`https://${cfg.pentestWorker}.${cfg.subdomain}.workers.dev/health`, { signal: AbortSignal.timeout(4000) });
@@ -204,7 +222,7 @@ async function pentestOnline(): Promise<boolean | null> {
   }
 }
 
-// Per-app security rollup: match arbol scan targets to an app by normalized
+// Per-app security rollup: match cloud scan targets to an app by normalized
 // name substring (an app usually deploys at a domain containing its name),
 // aggregate that app's failing checks, and grade: red = critical/high failing,
 // orange = medium/low failing, green = matched and clean. Null when no scan
@@ -218,9 +236,12 @@ export interface AppSecurity {
   failing: { target: string; category: string; check: string; severity: string }[];
 }
 
-function securityForApp(appName: string, report: ArbolReport): AppSecurity | null {
+function securityForApp(appName: string, report: ScanReport): AppSecurity | null {
   const name = appName.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const checks = report.checks.filter((c) => c.target.toLowerCase().replace(/[^a-z0-9.]/g, "").includes(name));
+  // Normalize the target exactly like the name: keeping "." on the target side
+  // only meant an app named after its domain ("docs.example" → "docsexample")
+  // never matched its own target. public issue #2243, @pai-scaffolde
+  const checks = report.checks.filter((c) => c.target.toLowerCase().replace(/[^a-z0-9]/g, "").includes(name));
   if (checks.length === 0) return null;
   const failing = checks.filter((c) => c.status === "fail");
   const errors = checks.filter((c) => c.status === "error").length;
@@ -246,8 +267,8 @@ let siteHealthCache: { at: number; body: unknown } | null = null;
 
 async function siteHealthReport(): Promise<Response> {
   if (siteHealthCache && Date.now() - siteHealthCache.at < 60_000) return Response.json(siteHealthCache.body);
-  const cfg = arbolConfig();
-  if (!cfg) return Response.json({ error: "arbol not configured (~/.config/arbol/config.yaml)" }, { status: 503 });
+  const cfg = cloudConfig();
+  if (!cfg || !cfg.siteHealthWorker) return Response.json({ error: "site-health worker not configured" }, { status: 503 });
   try {
     const r = await fetch(`https://${cfg.siteHealthWorker}.${cfg.subdomain}.workers.dev/status`, {
       headers: { Authorization: `Bearer ${cfg.token}` },
@@ -277,19 +298,21 @@ async function siteHealthReport(): Promise<Response> {
 // priced against the Workers Paid plan. Token/account read server-side from the
 // canonical env; nothing sensitive reaches the browser.
 
-// The optional pentest worker (private name, from config) joins the cost
-// rollup when configured; worker names are [a-z0-9-] so direct interpolation
-// into the regex is safe.
-function monitorWorkersRe(): RegExp {
+// The optional pentest and alert-email workers (private names, from config)
+// join the cost rollup when configured; worker names are [a-z0-9-] so direct
+// interpolation into the regex is safe.
+export function monitorWorkersRe(): RegExp {
   // Built from the SAME config-sourced names the report fetchers use, so an
   // install whose workers are named differently still gets them costed. The
   // hardcoded pair here survived the 7.31.5 config refactor two functions
   // above and would have silently omitted both workers from the cost card on
-  // every non-default install (Max audit, 7.31.6).
-  const cfg = arbolConfig();
-  const names = [cfg?.securityWorker, cfg?.siteHealthWorker, "send-email", cfg?.pentestWorker]
+  // every non-default install (Max audit, 7.31.6). The email worker's name was
+  // still a literal here until the 8.621.0 audit; it is `email_worker` now.
+  const cfg = cloudConfig();
+  const names = [cfg?.securityWorker, cfg?.siteHealthWorker, cfg?.emailWorker, cfg?.pentestWorker]
     .filter((n): n is string => Boolean(n));
-  return new RegExp(names.join("|"));
+  // An empty alternation would match every worker on the account; none configured costs none.
+  return names.length ? new RegExp(names.join("|")) : /(?!)/;
 }
 // Workers Paid: $5/mo flat includes 10M requests; $0.30 per additional million.
 const CF_INCLUDED_REQUESTS = 10_000_000;
@@ -351,34 +374,11 @@ async function costReport(): Promise<Response> {
   }
 }
 
-// Critical/high banner feed. Reads the user's security system (Arbol). If the
-// user has NO security system configured, returns { configured: false } and the
-// banner never renders — data/code separation: this is generic system code that
-// only lights up when a real security source exists behind it.
-async function criticalBanner(): Promise<Response> {
-  const res = await fetchArbol();
-  if (res.state === "not-configured") return Response.json({ configured: false });
-  // Configured but the scanner didn't answer — surface it so the banner can show
-  // "security status unknown" rather than silently reading as all-clear.
-  if (res.state === "unreachable") return Response.json({ configured: true, reachable: false, reason: res.reason, count: 0, items: [] });
-  const report = res.report;
-  const crit = report.checks.filter((c) => c.status === "fail" && (c.severity === "critical" || c.severity === "high"));
-  return Response.json({
-    configured: true,
-    reachable: true,
-    timestamp: report.timestamp,
-    count: crit.length,
-    critical: crit.filter((c) => c.severity === "critical").length,
-    high: crit.filter((c) => c.severity === "high").length,
-    items: crit.slice(0, 12).map((c) => ({ target: c.target, check: c.check, severity: c.severity, evidence: (c.evidence ?? "").slice(0, 120) })),
-  });
-}
-
-async function arbolReport(): Promise<Response> {
-  const res = await fetchArbol();
+async function securityScanReport(): Promise<Response> {
+  const res = await fetchScan();
   if (res.state !== "ok") {
     return Response.json(
-      { error: res.state === "unreachable" ? `arbol worker unreachable: ${res.reason}` : "arbol not configured (~/.config/arbol/config.yaml)" },
+      { error: res.state === "unreachable" ? `security scanner unreachable: ${res.reason}` : "security scanner not configured (~/.config/workflows/config.yaml)" },
       { status: res.state === "unreachable" ? 502 : 503 },
     );
   }
@@ -398,13 +398,44 @@ async function arbolReport(): Promise<Response> {
   });
 }
 
+interface CodeSweepState {
+  app: string;
+  version: number;
+  running?: { pid: number; started_at: string; head: string };
+  completed_at?: string;
+  mode?: "full" | "incremental";
+  head?: string;
+  wall_ms?: number;
+  prompt_bytes?: number;
+  files_in_scope?: string[];
+  snapshot_at?: string;
+  findings?: { raw: number; corroborated: number; dropped: number; registered: string[]; existing: string[] };
+  error?: string;
+  error_at?: string;
+}
+
+/** Read-only presentation data. Bunker owns these files and Pulse never invokes a sweep. */
+export function codeSweepReport(codesweepDir = CODESWEEP_DIR): { apps: { app: string; state: CodeSweepState | null }[] } {
+  if (!existsSync(codesweepDir)) return { apps: [] };
+  let apps: string[];
+  try { apps = readdirSync(codesweepDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(); } catch { return { apps: [] }; }
+  return { apps: apps.map((app) => {
+    const path = join(codesweepDir, app, "state.json");
+    let state: CodeSweepState | null = null;
+    if (existsSync(path)) {
+      try { state = JSON.parse(readFileSync(path, "utf8")) as CodeSweepState; } catch { /* unreadable state is represented as absent */ }
+    }
+    return { app, state };
+  }) };
+}
+
 export async function handleRequest(req: Request, pathname: string): Promise<Response | null> {
   if (!pathname.startsWith("/api/bunker")) return null;
   const sub = pathname.replace(/^\/api\/bunker/, "") || "/";
 
   if (sub === "/status") return Response.json(health());
-  if (req.method === "GET" && sub === "/arbol") return arbolReport();
-  if (req.method === "GET" && sub === "/critical") return criticalBanner();
+  if (req.method === "GET" && sub === "/security-scan") return securityScanReport();
+  if (req.method === "GET" && sub === "/codesweep") return Response.json(codeSweepReport());
   if (req.method === "GET" && sub === "/sitehealth") return siteHealthReport();
   if (req.method === "GET" && sub === "/cost") return costReport();
 
@@ -421,27 +452,42 @@ export async function handleRequest(req: Request, pathname: string): Promise<Res
     const found = state.cache?.apps?.find((a: any) => a.name === appName);
     if (!found) return Response.json({ error: "unknown app" }, { status: 404 });
     // Screenshots live centrally in the USER data tree (never in an app's deploy payload, never in the code tree).
+    // Brand assets are served from the repo-relative path the registry FOUND (stacks
+    // disagree on where og/favicon live), re-validated here against a closed shape so
+    // a poisoned cache still cannot traverse: no "..", no absolute path, fixed basename.
+    const rel = kindParam === "favicon" ? found.faviconPath : found.ogPath;
+    const SAFE_ASSET = /^(?:public|static|assets)?\/?(?:img\/|images\/|assets\/)?(?:og|favicon)\.(?:png|jpe?g|webp|svg|ico)$/;
+    if (kindParam !== "shot" && (typeof rel !== "string" || !SAFE_ASSET.test(rel))) {
+      return Response.json({ error: "no asset" }, { status: 404 });
+    }
     const path = kindParam === "shot"
       ? join(BUNKER_SHOTS_DIR, `${found.name}.png`)
-      : join(found.dir, "public", kindParam === "favicon" ? "favicon.svg" : "og.png"); // dir from trusted registry; filename whitelisted
+      : join(found.dir, rel as string); // dir from trusted registry; rel shape-validated above
     if (!existsSync(path)) return Response.json({ error: "no asset" }, { status: 404 });
     return new Response(Bun.file(path), { headers: { "Cache-Control": "public, max-age=300" } });
   }
 
   if (req.method === "GET" && (sub === "/" || sub === "")) {
     if (!state.cache) {
+      // "Never deployed" and "first sweep still pending" both produce an empty
+      // snapshot; only the former never resolves, so name it on the wire.
+      // (public issue #2018, @0bsolescence)
+      const available = bunkerAvailable();
       return Response.json({
         apps: [],
         summary: { apps: 0, green: 0, probesPass: 0, probesTotal: 0, manual: 0 },
         lastFetch: null,
         stale: true,
-        stale_reason: "no snapshot yet — first scan pending",
+        available,
+        stale_reason: available
+          ? "no snapshot yet — the monitor (com.lifeos.bunkermonitor) has not completed a sweep"
+          : "Bunker harness not deployed on this install",
       });
     }
     // Fold the cloud security grade into each app so every bay carries
     // "when was the last security check, and is it green/orange/red".
-    const arbol = await fetchArbol();
-    const report = arbol.state === "ok" ? arbol.report : null;
+    const scan = await fetchScan();
+    const report = scan.state === "ok" ? scan.report : null;
     const apps = (state.cache.apps ?? []).map((a: any) => ({
       ...a,
       security: report ? securityForApp(a.name, report) : null,
@@ -450,10 +496,18 @@ export async function handleRequest(req: Request, pathname: string): Promise<Res
     // "scanner unreachable" indicator instead of a blank panel that reads as
     // all-clear. `not-configured` stays silent (no security system installed).
     const security_source =
-      arbol.state === "ok" ? { state: "ok" as const, timestamp: arbol.report.timestamp }
-      : arbol.state === "unreachable" ? { state: "unreachable" as const, reason: arbol.reason }
+      scan.state === "ok" ? { state: "ok" as const, timestamp: scan.report.timestamp }
+      : scan.state === "unreachable" ? { state: "unreachable" as const, reason: scan.reason }
       : { state: "not-configured" as const };
-    return Response.json({ ...state.cache, apps, security_source, lastFetch: state.lastFetch?.toISOString() ?? null });
+    const age = snapshotAge();
+    return Response.json({
+      ...state.cache,
+      apps,
+      security_source,
+      lastFetch: state.lastFetch?.toISOString() ?? null,
+      stale: age.stale,
+      ...(age.reason ? { stale_reason: age.reason } : {}),
+    });
   }
 
   return Response.json({ error: "Not found" }, { status: 404 });

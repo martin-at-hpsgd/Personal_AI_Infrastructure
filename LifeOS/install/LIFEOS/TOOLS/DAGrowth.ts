@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.3.7
  * DA Growth Viewer — CLI tool
  *
  * View diary entries, opinions, growth events, and summary for the primary DA.
@@ -12,13 +13,21 @@
  *   bun LIFEOS/TOOLS/DAGrowth.ts summary         # Overview
  */
 
+import { principalTimezone } from "./lib/Timezone"
 import { join } from "path"
 import { getDAName } from "../../hooks/lib/identity"
 import { homedir } from "node:os";
+import { existsSync } from "node:fs";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir()
-const LifeOS = join(HOME, ".claude", "LIFEOS")
-const REGISTRY_PATH = join(LifeOS, "USER", "DA", "_registry.yaml")
+const LifeOS = getLifeosDir()
+// The DA registry lives at USER/LIFEOS_WORKERS/_registry.yaml (DAInterview.ts writes it there); USER/DA/_registry.yaml
+// is the legacy location, still read when an older install has only that.
+const REGISTRY_PATHS = [
+  join(LifeOS, "USER", "LIFEOS_WORKERS", "_registry.yaml"),
+  join(LifeOS, "USER", "DA", "_registry.yaml"),
+]
 
 // ── Types ──
 
@@ -61,7 +70,7 @@ async function readJSONL<T>(path: string): Promise<T[]> {
 
 function daysAgoStr(days: number): string {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-    .toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" })
+    .toLocaleDateString("en-CA", { timeZone: principalTimezone() })
 }
 
 const MOOD_ICON: Record<string, string> = {
@@ -215,10 +224,12 @@ async function main() {
   const command = args[0] ?? "summary"
 
   let primaryDA = getDAName()
-  try {
-    const registryContent = await Bun.file(REGISTRY_PATH).text()
-    primaryDA = parsePrimaryDA(registryContent)
-  } catch {}
+  const registryPath = REGISTRY_PATHS.find((p) => existsSync(p))
+  if (registryPath) {
+    primaryDA = parsePrimaryDA(await Bun.file(registryPath).text())
+  } else {
+    console.error(`DAGrowth: no DA registry at ${REGISTRY_PATHS[0]}; using the DA name "${primaryDA}" from DA_IDENTITY.md`)
+  }
 
   const daDir = join(LifeOS, "USER", "DA", primaryDA)
 

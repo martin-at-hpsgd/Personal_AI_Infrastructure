@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "pai-pulse",
+      "name": "lifeos-pulse",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.1.0",
         "jose": "^5.0.0",

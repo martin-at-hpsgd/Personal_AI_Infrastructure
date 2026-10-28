@@ -19,7 +19,15 @@ case "${1:-help}" in
     echo "Reload a running window with shift+cmd+r.";;
   doctor)
     command -v kitty >/dev/null && echo "✓ kitty installed" || echo "✗ kitty missing"
-    command -v bun >/dev/null && echo "✓ bun installed (live tab bar + session picker)" || echo "  note: bun absent — tab bar and session picker are inert"
+    command -v bun >/dev/null && echo "✓ bun installed (tab-bar hide/show)" || echo "  note: bun absent — the tab bar cannot hide while herdr runs"
+    if command -v herdr >/dev/null; then
+      echo "✓ herdr installed"
+      herdr plugin list --plugin lifeos.select-above --json 2>/dev/null | grep -q '"enabled":true' \
+        && echo "✓ herdr select-above plugin linked (closing a session focuses the one above)" \
+        || echo "✗ herdr select-above plugin not linked (run install.sh)"
+    else
+      echo "  note: herdr absent — it is the workspace layer (https://herdr.dev)"
+    fi
     # Hardcoded, matching install.sh: the config's helper scripts reference
     # ~/.config/kitty by absolute path, so that is the only location that works.
     # Verify the link TARGET, not just that a link exists: a dotfiles manager's own
@@ -33,6 +41,26 @@ case "${1:-help}" in
     fi
     if [[ -n "${XDG_CONFIG_HOME:-}" && "${XDG_CONFIG_HOME}" != "$HOME/.config" ]]; then
       echo "  note: XDG_CONFIG_HOME is set to $XDG_CONFIG_HOME, but Helm installs at ~/.config/kitty by design"
+    fi
+    HERDR_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml"
+    if [[ ! -f "$HERDR_CONF" ]]; then
+      echo "✗ herdr config missing (run install.sh to copy the Helm template)"
+    elif grep -q 'focus_pane_left = "cmd+h"' "$HERDR_CONF"; then
+      echo "✓ herdr config carries the Helm key mirror"
+    else
+      echo "  note: your herdr config differs from the Helm key mirror — compare with $HELM_DIR/herdr/config.toml"
+    fi
+    grep -qF "Terminal/zsh/lifeos.zsh" "${ZDOTDIR:-$HOME}/.zshrc" 2>/dev/null \
+      && echo "✓ shell layer sourced from .zshrc" \
+      || echo "✗ shell layer not sourced (run install.sh)"
+    if [[ "$(uname)" == "Darwin" ]]; then
+      if [[ "$(readlink "$HOME/.hammerspoon/lifeos.lua" 2>/dev/null)" == "$HELM_DIR/hammerspoon/lifeos.lua" ]]; then
+        echo "✓ Hammerspoon hotkeys linked"
+      elif [[ -d /Applications/Hammerspoon.app || -d "$HOME/Applications/Hammerspoon.app" ]]; then
+        echo "✗ Hammerspoon installed but LifeOS hotkeys not linked (run install.sh)"
+      else
+        echo "  note: Hammerspoon absent — brew install --cask hammerspoon for the LifeOS hotkeys"
+      fi
     fi;;
   *)
     echo "helm — the Helm terminal"

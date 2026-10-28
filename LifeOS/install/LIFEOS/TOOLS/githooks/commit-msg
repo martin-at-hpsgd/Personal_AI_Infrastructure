@@ -1,0 +1,61 @@
+#!/bin/bash
+# lifeos-judgment-lane-guard — refuses commits that remove layer-one rules while citing Glance.
+# Installed by: bun LIFEOS/TOOLS/Secrets.ts install-hook   (source of record: LIFEOS/TOOLS/githooks/commit-msg)
+# Prevents accidental removal of safety rules while the same commit references Glance system engine changes.
+
+# Read the commit message from .git/COMMIT_EDITMSG or from the argument (if provided)
+msg_file="${1:-.git/COMMIT_EDITMSG}"
+# Fail closed: a message this hook cannot read cannot be checked, so it refuses rather than passes.
+if [ ! -f "$msg_file" ]; then
+  echo "✗ ISC-42: commit message file $msg_file not found; refusing." >&2
+  exit 1
+fi
+
+if ! msg=$(cat "$msg_file"); then
+  echo "✗ ISC-42: could not read the commit message ($msg_file); refusing." >&2
+  exit 1
+fi
+
+# Check if the message mentions the judgment system ("glance"), case-insensitively. The engine's old name also
+# stays matched ("jev", retired 2026-10-10), so an old habit still trips the guard.
+# Fail closed (S121): grep exits 1 for "no match" and 2 or more when it could not run; only a clean no-match passes.
+printf '%s\n' "$msg" | grep -qiE "jev|glance" # jev: retired 2026-10-10 engine name
+match_rc=$?
+if [ "$match_rc" -eq 1 ]; then
+  exit 0
+fi
+if [ "$match_rc" -ne 0 ]; then
+  echo "✗ ISC-42: could not check the commit message (grep exited $match_rc); refusing." >&2
+  exit 1
+fi
+
+# Compare layer-one rule counts, staged against HEAD, on the four guarded surfaces.
+# 2026-09-18 (issue #1225): the rule is monotone non-decreasing counts. The earlier check
+# refused any deleted line, comments and imports included, and so refused commits that
+# removed no rule. The counting lives in LIFEOS/TOOLS/LayerOneCount.ts, where it is tested.
+# Fail closed: a listing that fails is not "nothing staged".
+if ! staged_guarded=$(git diff --cached --name-only -- hooks/lib/containment-zones.ts hooks/PreToolGuard.hook.ts hooks/lib/egress-shapes.ts settings.json); then
+  echo "✗ ISC-42: could not list the staged guarded files (git diff --cached failed); refusing." >&2
+  exit 1
+fi
+if [ -z "$staged_guarded" ]; then
+  exit 0
+fi
+
+root=$(git rev-parse --show-toplevel 2>/dev/null)
+counter="$root/LIFEOS/TOOLS/LayerOneCount.ts"
+# Fail closed: a guarded file is staged and the message cites the judgment system, so a
+# missing counter or a missing bun refuses rather than waves the commit through.
+if [ ! -f "$counter" ] || ! command -v bun >/dev/null 2>&1; then
+  echo "✗ ISC-42: cannot count layer-one rules (LayerOneCount.ts or bun missing); refusing." >&2
+  exit 1
+fi
+
+if ! (cd "$root" && bun "$counter" --staged-vs-head); then
+  echo "✗ ISC-42 violation: a layer-one rule count fell while the commit cites the Glance system or its engine." >&2
+  echo "   Counts are printed above (HEAD → staged)." >&2
+  echo "   Layer-one rules are monotone non-decreasing — they cannot shrink." >&2
+  exit 1
+fi
+
+exit 0

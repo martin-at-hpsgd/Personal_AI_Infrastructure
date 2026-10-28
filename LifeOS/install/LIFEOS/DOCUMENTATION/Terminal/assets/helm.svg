@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Helm app icon: a ship's wheel with a terminal prompt in the hub. Authored SVG. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B2C48"/><stop offset="1" stop-color="#080F1C"/></linearGradient>
+    <linearGradient id="tileEdge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/><stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.03"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
+    <linearGradient id="metal" x1="0.25" y1="0" x2="0.75" y2="1"><stop offset="0" stop-color="#8FD3F7"/><stop offset="0.5" stop-color="#38BDF8"/><stop offset="1" stop-color="#0B84BF"/></linearGradient>
+    <linearGradient id="spoke" x1="0.25" y1="0" x2="0.75" y2="1"><stop offset="0" stop-color="#4CC3F9"/><stop offset="1" stop-color="#0E97D6"/></linearGradient>
+    <filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.08 0"/></filter><clipPath id="tileClip"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath><linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#111E33"/><stop offset="1" stop-color="#111E33"/></linearGradient><linearGradient id="amber" x1="0.25" y1="0" x2="0.75" y2="1"><stop offset="0" stop-color="#FDE68A"/><stop offset="1" stop-color="#F59E0B"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#0EA5E9" stop-opacity="0.28"/><stop offset="1" stop-color="#0EA5E9" stop-opacity="0"/></radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000" flood-opacity="0.55"/></filter>
+    <filter id="tileShadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.45"/></filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#vignette)" filter="url(#tileShadow)"/>
+  <rect x="100" y="100" width="824" height="824" filter="url(#grain)" clip-path="url(#tileClip)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="url(#tileEdge)" stroke-width="3"/>
+  <circle cx="512" cy="512" r="300" fill="url(#glow)" opacity="0.8"/>
+  <g filter="url(#shadow)">
+    <g fill="url(#metal)"><path d="M531.0 290.0 Q524.0 238.0 526.0 198.0 L498.0 198.0 Q500.0 238.0 493.0 290.0 Z"/><path d="M682.4 368.5 Q714.2 326.7 743.9 299.9 L724.1 280.1 Q697.3 309.8 655.5 341.6 Z"/><circle cx="736.9" cy="287.1" r="22"/><path d="M734.0 531.0 Q786.0 524.0 826.0 526.0 L826.0 498.0 Q786.0 500.0 734.0 493.0 Z"/><circle cx="830.0" cy="512.0" r="22"/><path d="M655.5 682.4 Q697.3 714.2 724.1 743.9 L743.9 724.1 Q714.2 697.3 682.4 655.5 Z"/><circle cx="736.9" cy="736.9" r="22"/><path d="M493.0 734.0 Q500.0 786.0 498.0 826.0 L526.0 826.0 Q524.0 786.0 531.0 734.0 Z"/><circle cx="512.0" cy="830.0" r="22"/><path d="M341.6 655.5 Q309.8 697.3 280.1 724.1 L299.9 743.9 Q326.7 714.2 368.5 682.4 Z"/><circle cx="287.1" cy="736.9" r="22"/><path d="M290.0 493.0 Q238.0 500.0 198.0 498.0 L198.0 526.0 Q238.0 524.0 290.0 531.0 Z"/><circle cx="194.0" cy="512.0" r="22"/><path d="M368.5 341.6 Q326.7 309.8 299.9 280.1 L280.1 299.9 Q309.8 326.7 341.6 368.5 Z"/><circle cx="287.1" cy="287.1" r="22"/></g>
+    <g fill="url(#amber)"><circle cx="512.0" cy="194.0" r="25"/></g>
+    <g fill="url(#spoke)"><path d="M527.0 414.0 L520.0 316.0 L504.0 316.0 L497.0 414.0 Z"/><path d="M591.9 453.3 L656.2 379.1 L644.9 367.8 L570.7 432.1 Z"/><path d="M610.0 527.0 L708.0 520.0 L708.0 504.0 L610.0 497.0 Z"/><path d="M570.7 591.9 L644.9 656.2 L656.2 644.9 L591.9 570.7 Z"/><path d="M497.0 610.0 L504.0 708.0 L520.0 708.0 L527.0 610.0 Z"/><path d="M432.1 570.7 L367.8 644.9 L379.1 656.2 L453.3 591.9 Z"/><path d="M414.0 497.0 L316.0 504.0 L316.0 520.0 L414.0 527.0 Z"/><path d="M453.3 432.1 L379.1 367.8 L367.8 379.1 L432.1 453.3 Z"/></g>
+    <path fill-rule="evenodd" fill="url(#metal)" d="M284 512a228 228 0 1 0 456 0a228 228 0 1 0 -456 0Z M320 512a192 192 0 1 1 384 0a192 192 0 1 1 -384 0Z"/>
+    <path d="M287 512 A225 225 0 0 1 737 512" fill="none" stroke="#E0F2FE" stroke-opacity="0.7" stroke-width="3"/>
+    <circle cx="512" cy="512" r="194" fill="none" stroke="#075985" stroke-opacity="0.8" stroke-width="4"/>
+    <circle cx="512" cy="512" r="114" fill="url(#metal)"/>
+    <circle cx="512" cy="512" r="104" fill="#0E1A2E"/>
+    <path d="M466 476 L502 512 L466 548" fill="none" stroke="#7DD3FC" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/><rect x="514" y="534" width="48" height="18" rx="4" fill="#FBBF24"/>
+  </g>
+</svg>

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /**
+ * @version 1.6.9
  * Feature Registry CLI
  *
  * JSON-based feature tracking for complex multi-feature tasks.
@@ -7,7 +8,7 @@
  * than Markdown because models are less likely to corrupt structured data.
  *
  * Usage:
- *   bun run ~/.claude/Tools/FeatureRegistry.ts <command> [options]
+ *   bun run ~/.claude/LIFEOS/TOOLS/FeatureRegistry.ts <command> [options]
  *
  * Commands:
  *   init <project>              Initialize feature registry for project
@@ -20,7 +21,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { homedir } from "node:os";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 interface TestStep {
   step: string;
@@ -56,7 +57,7 @@ interface FeatureRegistry {
   };
 }
 
-const REGISTRY_DIR = join(homedir(), '.claude', 'LIFEOS', 'MEMORY', 'STATE', 'progress');
+const REGISTRY_DIR = lifeosPath('MEMORY', 'STATE', 'progress');
 
 function getRegistryPath(project: string): string {
   // Prevent path traversal: project is joined into a filename, so restrict it
@@ -234,7 +235,24 @@ function listFeatures(project: string): void {
   }
 }
 
-function verifyFeatures(project: string): void {
+/**
+ * Completion needs affirmative evidence: at least one feature, every feature
+ * `passing`, and every test step `passing`. A failing or pending step, or an
+ * empty / malformed registry, is never "ready".
+ */
+export function registryReady(registry: Pick<FeatureRegistry, 'features'>): boolean {
+  const features = registry?.features;
+  if (!Array.isArray(features) || features.length === 0) return false;
+  return features.every(
+    (f) =>
+      f?.status === 'passing' &&
+      Array.isArray(f.test_steps) &&
+      f.test_steps.every((s) => s?.status === 'passing'),
+  );
+}
+
+/** Prints the report and returns true only when `registryReady`. */
+export function verifyFeatures(project: string): boolean {
   const registry = loadRegistry(project);
   if (!registry) {
     console.error(`No registry found for ${project}`);
@@ -244,14 +262,12 @@ function verifyFeatures(project: string): void {
   console.log(`\nVerification Report: ${project}`);
   console.log(`═══════════════════════════════════════\n`);
 
-  let allPassing = true;
-
   for (const feature of registry.features) {
-    const icon = feature.status === 'passing' ? '✅' : '❌';
+    const stepsPassing = feature.test_steps.every((s) => s.status === 'passing');
+    const icon = feature.status === 'passing' && stepsPassing ? '✅' : '❌';
     console.log(`${icon} ${feature.id}: ${feature.name}`);
 
     if (feature.status !== 'passing') {
-      allPassing = false;
       console.log(`   Status: ${feature.status}`);
       if (feature.blocked_by.length > 0) {
         console.log(`   Blocked by: ${feature.blocked_by.join(', ')}`);
@@ -266,12 +282,14 @@ function verifyFeatures(project: string): void {
     console.log('');
   }
 
+  const ready = registryReady(registry);
   console.log(`═══════════════════════════════════════`);
-  if (allPassing) {
+  if (ready) {
     console.log(`✅ ALL FEATURES PASSING - Ready for completion`);
   } else {
-    console.log(`❌ INCOMPLETE - Some features not passing`);
+    console.log(`❌ INCOMPLETE - Some features or test steps not passing`);
   }
+  return ready;
 }
 
 function nextFeature(project: string): void {
@@ -305,7 +323,7 @@ function nextFeature(project: string): void {
 
 // CLI Parser
 
-const args = process.argv.slice(2);
+function main(args: string[]): void {
 const command = args[0];
 
 switch (command) {
@@ -354,7 +372,8 @@ switch (command) {
       console.error('Usage: feature-registry verify <project>');
       process.exit(1);
     }
-    verifyFeatures(args[1]);
+    // Exit nonzero unless every feature and every test step is affirmatively passing.
+    if (!verifyFeatures(args[1])) process.exit(1);
     break;
 
   case 'next':
@@ -385,3 +404,6 @@ Examples:
   feature-registry verify my-app
 `);
 }
+}
+
+if (import.meta.main) main(process.argv.slice(2));

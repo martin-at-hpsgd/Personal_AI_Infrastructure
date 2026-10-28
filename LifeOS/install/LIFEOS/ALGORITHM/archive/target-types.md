@@ -54,7 +54,7 @@ Read the target path and content to classify into one of five types:
 2. For each test input, invoke using `Skill()` tool call with the sandbox copy
 3. Capture full output text for judging
 
-**Sandbox strategy:** Copy skill directory to `MEMORY/WORK/{slug}/sandbox/skill_name/`. Mutations modify sandbox copies only.
+**Sandbox strategy:** Copy skill directory to `LIFEOS/MEMORY/WORK/{slug}/sandbox/skill_name/`. Mutations modify sandbox copies only.
 
 ---
 
@@ -85,7 +85,7 @@ Read the target path and content to classify into one of five types:
 2. For each test input, send `prompt_content + test_input` to LLM via LifeOS Inference Tool
 3. Capture output text for judging
 
-**Sandbox strategy:** Copy prompt file(s) to `MEMORY/WORK/{slug}/sandbox/`. Simple file copy, no git needed.
+**Sandbox strategy:** Copy prompt file(s) to `LIFEOS/MEMORY/WORK/{slug}/sandbox/`. Simple file copy, no git needed.
 
 ---
 
@@ -116,7 +116,7 @@ Read the target path and content to classify into one of five types:
 2. For each test input, spawn agent with the sandbox definition and test task
 3. Capture agent's final output for judging (not intermediate tool calls)
 
-**Sandbox strategy:** Copy agent definition to `MEMORY/WORK/{slug}/sandbox/`. Mutations modify the definition file.
+**Sandbox strategy:** Copy agent definition to `LIFEOS/MEMORY/WORK/{slug}/sandbox/`. Mutations modify the definition file.
 
 ---
 

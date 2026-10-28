@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "description": "Engine canary for LIFEOS/ASSAY/Fingerprint.ts (Assay ISA M7, ISC-60). Twenty fixed questions over invented, public text: no real person, no credential, no personal data. The rounded answers hash into the engine fingerprint, so editing any case changes the fingerprint and reverts every enforce row once. Change this file only on purpose.",
+  "cases": [
+    { "key": "c01_arithmetic", "state": "A worksheet line reads: 7 + 5 = 12.", "question": { "type": "noul", "instructions": "Is the arithmetic on this line correct?" } },
+    { "key": "c02_urgency", "state": "Note to self: the community garden might want more mulch sometime next spring.", "question": { "type": "noul", "instructions": "Does this note express urgency?" } },
+    { "key": "c03_refund_request", "state": "Hello, the kettle I ordered arrived with a cracked lid. Could you send a replacement or refund it? Order 4417.", "question": { "type": "noul", "instructions": "Is the writer asking for a refund or replacement?" } },
+    { "key": "c04_sarcasm", "state": "Oh great, the bus is late again. Exactly what I needed on a Monday.", "question": { "type": "noul", "instructions": "Is this sentence sarcastic?" } },
+    { "key": "c05_recipe_vegan", "state": "Ingredients: two cups oat flour, one mashed banana, a splash of almond milk, a pinch of salt, one tablespoon maple syrup.", "question": { "type": "noul", "instructions": "Is this ingredient list vegan?" } },
+    { "key": "c06_meeting_time", "state": "Let us move the planning call to Thursday at 15:00 instead of Wednesday.", "question": { "type": "noul", "instructions": "Does this message propose a new meeting time?" } },
+    { "key": "c07_hedged_claim", "state": "The new pump design may reduce energy use, although the trial was small and results varied.", "question": { "type": "noul", "instructions": "Does the text make a confident, unhedged claim?" } },
+    { "key": "c08_upset", "state": "I have written three times about the broken streetlight on Alder Lane and nobody has replied.", "question": { "type": "noul", "instructions": "Is the writer frustrated?" } },
+    { "key": "c09_code_bug", "state": "function add(a, b) { return a - b; }", "question": { "type": "noul", "instructions": "Does this function's body match its name?" } },
+    { "key": "c10_praise", "state": "Well, the presentation was certainly memorable.", "question": { "type": "noul", "instructions": "Is this praise sincere?" } },
+    { "key": "c11_question_form", "state": "Could the library extend its weekend hours during exam season", "question": { "type": "noul", "instructions": "Is this sentence a question?" } },
+    { "key": "c12_safety_warning", "state": "Caution: the floor near the fountain is wet and slippery.", "question": { "type": "noul", "instructions": "Is this a safety warning?" } },
+    { "key": "c13_story_ending", "state": "The lighthouse keeper turned off the lamp for the last time, folded the logbook, and walked down to the boat.", "question": { "type": "noul", "instructions": "Does this passage read like the ending of a story?" } },
+    { "key": "c14_mixed_review", "state": "The hotel room was spotless and the staff were kind, but the street noise kept us up every night.", "question": { "type": "noul", "instructions": "Is this review mostly positive?" } },
+    { "key": "c15_topic", "state": "The volcano's eruption sent ash fifteen kilometres into the air and grounded flights across the region.", "question": { "type": "choice", "instructions": "What is the main topic of this text?", "criteria": { "sport": "Sport or games", "nature": "Nature, geology or weather", "money": "Money or business", "food": "Food or cooking" } } },
+    { "key": "c16_sentiment", "state": "The update fixed the crash, though the new menu is harder to find.", "question": { "type": "choice", "instructions": "What is the overall sentiment of this text?", "criteria": { "positive": "Mostly positive", "negative": "Mostly negative", "mixed": "Mixed or balanced" } } },
+    { "key": "c17_register", "state": "Yo, can u send me that file real quick? thx", "question": { "type": "choice", "instructions": "What register is this message written in?", "criteria": { "formal": "Formal", "neutral": "Neutral", "casual": "Casual" } } },
+    { "key": "c18_clarity", "state": "To reset the device, hold the side button for ten seconds until the light blinks twice, then release it.", "question": { "type": "score", "instructions": "How clear are these instructions?", "criteria": ["Unclear", "Somewhat clear", "Clear", "Very clear"] } },
+    { "key": "c19_formality", "state": "Dear committee members, please find attached the revised budget for your consideration at Tuesday's session.", "question": { "type": "score", "instructions": "How formal is this message?", "criteria": ["Very casual", "Casual", "Neutral", "Formal", "Very formal"] } },
+    { "key": "c20_risk", "state": "The plan is to cross the frozen lake on foot in early April to save twenty minutes.", "question": { "type": "score", "instructions": "How risky is the plan described?", "criteria": ["Safe", "Low risk", "Moderate risk", "High risk"] } }
+  ]
+}

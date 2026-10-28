@@ -1,16 +1,16 @@
 #!/usr/bin/env bun
 // ported from public PR #1754, @elhoim
 /**
+ * @version 1.1.3
  * Apple Health import — turns the Health app's "Export All Health Data" backup
  * into a markdown summary the Pulse HEALTH tab reads.
  *
- * WHY A SUMMARY AND NOT A TIMESERIES. The health surface is markdown-backed:
- * `/api/life/health` reads `.md` files out of USER/HEALTH and the page
- * renders each file's `##` headings. There is no store for per-day samples and
- * no chart to put them in, so this writes one generated file whose headings
- * carry the headline numbers and whose bodies carry the tables. Feeding the
- * healthsync DayFile shape (USER/HEALTH/DATA) is the richer follow-up; nothing
- * in Pulse reads that directory today.
+ * TWO OUTPUTS. (1) APPLE_HEALTH.md, a markdown summary the Health tab lists as a
+ * file (headings carry the headline numbers because the page renders headings).
+ * (2) With --days-out, one healthsync DayFile per day under USER/HEALTH/DATA/apple
+ * for the WHOLE export — years of steps, heart, sleep stages, weight — which the
+ * Pulse trend board merges with Oura day by day. That is how history reaches the
+ * Week … Lifetime tabs.
  *
  * SCALE. export.xml is routinely multi-gigabyte, so the file is never read
  * whole: it is streamed in chunks and matched per `<Record .../>` element. Peak
@@ -21,22 +21,27 @@
  * results) are never read or touched — this cannot clobber your own notes.
  *
  * Usage:
- *   bun AppleHealthImport.ts <export.zip|export.xml> [--days N] [--out PATH] [--dry-run]
+ *   bun AppleHealthImport.ts <export.zip|export.xml> [--days N] [--out PATH] [--days-out [DIR]] [--overwrite] [--dry-run]
  *
  *   --days N     Window to summarise, in days back from the newest sample (default 90)
+ *   --days-out   Also write one healthsync DayFile per day for the WHOLE export into DIR
+ *                (default USER/HEALTH/DATA/apple) — the history feed for the Pulse trend board.
+ *                Existing day files are filled where null, never clobbered; --overwrite replaces.
  *   --out PATH   Write somewhere other than USER/HEALTH/APPLE_HEALTH.md
  *   --dry-run    Print the markdown instead of writing it
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
+import { closeSync, constants as FS, existsSync, lstatSync, mkdirSync, openSync, writeFileSync, writeSync, readFileSync, realpathSync } from "node:fs";
 import { createReadStream } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
+import { lifeosPath } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
+import { invariant } from "./Invariant.ts";
 
 const HOME = process.env.HOME ?? "~";
 // USER/HEALTH, not USER/TELOS/HEALTH: `/api/life/health` resolves its directory as
 // USER_DIR + "HEALTH" (Observability/observability.ts:1713) and readDirMdFiles (:2342)
 // picks up every .md there except README.md, so a file under TELOS/ would never be read.
-// TELOS/{CURRENT,IDEAL}_STATE/HEALTH.md are gap-analysis inputs and not this file's home.
+// the current and ideal health-state documents are gap-analysis inputs and not this file's home.
 //
 // This file is NOT in the handler's hardcoded parse list (:2440-2448), so it reaches the
 // page only through that generic scan: `sections` is parsed from the full text, but the
@@ -45,8 +50,9 @@ const HOME = process.env.HOME ?? "~";
 //
 // Complementary path, not a rival: LIFEOS/TOOLS/healthsync/apple.ts is the CONTINUOUS sync
 // (iPhone Shortcut JSON -> DayFiles under USER/HEALTH/DATA). This is the bulk backup import.
-const DEFAULT_OUT = join(HOME, ".claude", "LIFEOS", "USER", "HEALTH", "APPLE_HEALTH.md");
+const DEFAULT_OUT = lifeosPath("USER", "HEALTH", "APPLE_HEALTH.md");
 const DEFAULT_DAYS = 90;
+const DEFAULT_DAYS_OUT = lifeosPath("USER", "HEALTH", "DATA", "apple");
 
 /**
  * Fail-closed output guard, same posture as PurgeArchives.ts.
@@ -59,16 +65,29 @@ const DEFAULT_DAYS = 90;
  * Applies even under --dry-run: refusing a path in one mode and accepting it in another is
  * how a guard gets trusted in the mode that does not have it.
  */
-function assertWritableOut(out: string): string {
+export function checkWritableOut(out: string, homeDir: string = HOME): { ok: true; abs: string } | { ok: false; reason: string } {
   const abs = resolve(out);
-  const home = realpathSync(resolve(HOME));
+  let home: string;
+  try { home = realpathSync(resolve(homeDir)); } catch { return { ok: false, reason: `REFUSED: "${abs}" — the home directory does not resolve.` }; }
   // resolve() is lexical — a symlinked parent inside $HOME ($HOME/link -> /outside)
   // passes a startsWith(home) check while the write lands outside the tree. Canonicalize
   // the nearest EXISTING ancestor of the (possibly not-yet-created) output path and check
   // THAT against the real home (Forge cross-vendor audit 2026-08-10; same class as the
   // PurgeArchives symlink bypass).
+  // existsSync follows links and reports a DANGLING symlink as absent, which sent the walk to
+  // the link's parent inside $HOME while a write follows the link to its target outside it.
+  // lstatSync sees the link itself, so a link that does not resolve is refused outright.
   let ancestor = abs;
-  while (!existsSync(ancestor)) {
+  for (;;) {
+    let isLink = false;
+    try { isLink = lstatSync(ancestor).isSymbolicLink(); } catch { /* absent: climb */ }
+    if (isLink) {
+      try { realpathSync(ancestor); } catch {
+        return { ok: false, reason: `REFUSED: "${abs}" passes through a dangling symlink at "${ancestor}". A write would follow it to an unchecked target.` };
+      }
+      break;
+    }
+    if (existsSync(ancestor)) break;
     const parent = dirname(ancestor);
     if (parent === ancestor) break; // reached filesystem root
     ancestor = parent;
@@ -77,14 +96,21 @@ function assertWritableOut(out: string): string {
   try {
     realAncestor = realpathSync(ancestor);
   } catch {
-    console.error(`REFUSED: "${abs}" — no resolvable ancestor directory.`);
-    process.exit(1);
+    return { ok: false, reason: `REFUSED: "${abs}" — no resolvable ancestor directory.` };
   }
   if (realAncestor !== home && !realAncestor.startsWith(home + sep)) {
-    console.error(`REFUSED: "${abs}" resolves outside $HOME (${home}) via "${realAncestor}". I do not write outside the home tree.`);
+    return { ok: false, reason: `REFUSED: "${abs}" resolves outside $HOME (${home}) via "${realAncestor}". I do not write outside the home tree.` };
+  }
+  return { ok: true, abs };
+}
+
+function assertWritableOut(out: string): string {
+  const r = checkWritableOut(out);
+  if (!r.ok) {
+    console.error(r.reason);
     process.exit(1);
   }
-  return abs;
+  return r.abs;
 }
 
 // ── What we pull out of the export ──
@@ -198,7 +224,7 @@ interface DayBucket {
  * priority list; `collapse()` below picks a winner per day instead, which needs
  * no configuration.
  */
-type Daily = Map<string, Map<string, Map<string, DayBucket>>>;
+export type Daily = Map<string, Map<string, Map<string, DayBucket>>>;
 
 function addSample(
   daily: Daily, key: string, date: string, source: string, value: number, startedAt: string,
@@ -268,6 +294,29 @@ const RECORD_RE = /<Record\s([^>]*?)\/?>/g;
 const ATTR_RE = /(\w+)="([^"]*)"/g;
 const TYPE_PREFIX = "HKQuantityTypeIdentifier";
 
+// Sleep is a category type, not a quantity: each record is a stage with a
+// start and end, and the value names the stage. Hours land on the WAKE day
+// (endDate), which is how Oura keys its nights too, so the two sources line up
+// day for day. Keys are namespaced so `summarise()` (METRICS only) never sees them.
+const SLEEP_TYPE = "HKCategoryTypeIdentifierSleepAnalysis";
+const SLEEP_STAGE: Record<string, string> = {
+  HKCategoryValueSleepAnalysisAsleepCore: "core",
+  HKCategoryValueSleepAnalysisAsleepDeep: "deep",
+  HKCategoryValueSleepAnalysisAsleepREM: "rem",
+  HKCategoryValueSleepAnalysisAsleepUnspecified: "unspecified",
+  HKCategoryValueSleepAnalysisAsleep: "unspecified", // pre-iOS 16 exports
+  HKCategoryValueSleepAnalysisInBed: "inbed",
+  HKCategoryValueSleepAnalysisAwake: "awake",
+  "0": "inbed", "1": "unspecified", "2": "awake", // very old integer exports
+};
+const SLEEP_KEY = (stage: string) => `Sleep.${stage}`;
+const ASLEEP_STAGES = ["core", "deep", "rem", "unspecified"];
+
+function exportDateMs(s: string): number {
+  // "2026-01-02 08:14:00 +0100" → epoch ms; NaN when unparseable.
+  return Date.parse(s.trim().replace(" ", "T").replace(/ ([+-]\d{2})(\d{2})$/, "$1:$2"));
+}
+
 export interface ParseStats {
   recordsSeen: number;
   recordsKept: number;
@@ -299,6 +348,21 @@ export function consumeChunk(chunk: string, daily: Daily, stats: ParseStats): st
     stats.recordsSeen += 1;
     const a = attrsOf(m[1]);
     const type = a.type;
+    if (type === SLEEP_TYPE) {
+      const stage = SLEEP_STAGE[a.value ?? ""];
+      const start = exportDateMs(a.startDate ?? "");
+      const end = exportDateMs(a.endDate ?? "");
+      if (!stage || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+      const date = (a.endDate ?? "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const hours = (end - start) / 3_600_000;
+      if (hours > 24) continue; // a runaway record, never a night
+      addSample(daily, SLEEP_KEY(stage), date, a.sourceName || "unknown", hours, a.startDate ?? "");
+      stats.recordsKept += 1;
+      if (!stats.firstDate || date < stats.firstDate) stats.firstDate = date;
+      if (!stats.lastDate || date > stats.lastDate) stats.lastDate = date;
+      continue;
+    }
     if (!type || !type.startsWith(TYPE_PREFIX)) continue;
     const spec = SPEC_BY_KEY.get(type.slice(TYPE_PREFIX.length));
     if (!spec) continue;
@@ -420,6 +484,171 @@ function summarise(daily: Daily, since: string): Summary[] {
   return out;
 }
 
+// ── Day files (the healthsync DayFile shape) ──
+//
+// One JSON per day under USER/HEALTH/DATA/apple, the same files the hourly
+// Health Auto Export drain writes, with the same key names (healthsync/apple.ts
+// + hae.ts) so the trend board reads history and live data through one path.
+
+/** HKQuantityTypeIdentifier suffix → DayFile metric key. */
+const DAYFILE_KEY: Record<string, string> = {
+  StepCount: "steps",
+  ActiveEnergyBurned: "active_energy_kcal",
+  BasalEnergyBurned: "basal_energy_kcal",
+  AppleExerciseTime: "exercise_minutes",
+  RestingHeartRate: "resting_hr",
+  HeartRateVariabilitySDNN: "hrv_ms",
+  BodyMass: "weight_kg",
+  BodyFatPercentage: "body_fat_pct",
+  LeanBodyMass: "lean_mass_kg",
+  OxygenSaturation: "spo2_pct",
+  VO2Max: "vo2max",
+  RespiratoryRate: "respiratory_rate",
+  DistanceWalkingRunning: "distance_km",
+  FlightsClimbed: "flights",
+  WalkingHeartRateAverage: "walking_hr",
+  BloodPressureSystolic: "bp_systolic",
+  BloodPressureDiastolic: "bp_diastolic",
+  AppleStandTime: "stand_minutes",
+};
+
+export type DayMetrics = Record<string, number | string | null>;
+
+/**
+ * Collapse the aggregates into per-day metric objects. Quantity metrics use
+ * `collapse()` per key; sleep picks ONE source per night (the one that logged
+ * the most asleep time) and takes every stage from it, so deep from a ring and
+ * core from a mattress never get stitched into a night nobody slept.
+ */
+export function buildDayFiles(daily: Daily): Map<string, DayMetrics> {
+  const days = new Map<string, DayMetrics>();
+  const row = (date: string) => {
+    let r = days.get(date);
+    if (!r) {
+      r = {};
+      days.set(date, r);
+    }
+    return r;
+  };
+  for (const spec of METRICS) {
+    const key = DAYFILE_KEY[spec.key];
+    const byDate = daily.get(spec.key);
+    if (!key || !byDate) continue;
+    for (const [date, bySource] of byDate) {
+      const { value } = collapse(bySource, spec.agg);
+      row(date)[key] = round(value, spec.dp);
+    }
+  }
+  // Sleep: winner by asleep total, then that source's stages.
+  const nights = new Set<string>();
+  for (const stage of [...ASLEEP_STAGES, "inbed", "awake"]) {
+    for (const date of daily.get(SLEEP_KEY(stage))?.keys() ?? []) nights.add(date);
+  }
+  for (const date of nights) {
+    const asleepBySource = new Map<string, number>();
+    for (const stage of ASLEEP_STAGES) {
+      for (const [src, b] of daily.get(SLEEP_KEY(stage))?.get(date) ?? []) {
+        asleepBySource.set(src, (asleepBySource.get(src) ?? 0) + b.sum);
+      }
+    }
+    let winner: string | null = null;
+    let best = -1;
+    for (const [src, h] of asleepBySource) if (h > best) { best = h; winner = src; }
+    if (winner === null) {
+      // In-bed only (no staging) — still a night, keyed on the biggest in-bed source.
+      for (const [src, b] of daily.get(SLEEP_KEY("inbed"))?.get(date) ?? []) {
+        if (b.sum > best) { best = b.sum; winner = src; }
+      }
+      if (winner === null) continue;
+    }
+    const hoursFrom = (stage: string) => {
+      const b = daily.get(SLEEP_KEY(stage))?.get(date)?.get(winner as string);
+      return b ? round(b.sum, 2) : null;
+    };
+    const r = row(date);
+    const asleep = ASLEEP_STAGES.reduce((a, s) => a + (hoursFrom(s) ?? 0), 0);
+    r.sleep_hours = asleepBySource.size ? round(asleep, 2) : null;
+    r.sleep_core_h = hoursFrom("core");
+    r.sleep_deep_h = hoursFrom("deep");
+    r.sleep_rem_h = hoursFrom("rem");
+    r.sleep_inbed_h = hoursFrom("inbed");
+    r.sleep_awake_h = hoursFrom("awake");
+    r.sleep_source = winner;
+  }
+  return days;
+}
+
+/**
+ * Write day files. An existing day (the hourly drain may already own it) is
+ * never overwritten: the export only fills keys that are missing or null there,
+ * unless --overwrite. Returns counts for the report line.
+ */
+/**
+ * The one day-file destination check. The directory guard (checkWritableOut)
+ * vouches for the directory, not its children: an existing child that is a symlink or a hard link would carry a read
+ * or a write out of the directory the guard accepted. So every destination is checked on its own, after realpath:
+ * the date is a plain YYYY-MM-DD name, the file's canonical parent IS the canonical day directory, and an existing
+ * leaf is a regular file with one link. A refusal throws before that file is read or written.
+ */
+export function dayFileDestination(realDir: string, date: string): { path: string; exists: boolean } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`REFUSED: day key "${date.slice(0, 40)}" is not a YYYY-MM-DD date; nothing written for it.`);
+  const path = join(realDir, `${date}.json`);
+  if (realpathSync(dirname(path)) !== realDir) throw new Error(`REFUSED: "${path}" does not sit directly in the day directory.`);
+  let st: ReturnType<typeof lstatSync> | null = null;
+  try { st = lstatSync(path); } catch (e) { if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") throw e; }
+  if (st === null) return { path, exists: false };
+  if (st.isSymbolicLink()) throw new Error(`REFUSED: "${path}" is a symlink; a day file is never read or written through a link.`);
+  if (!st.isFile()) throw new Error(`REFUSED: "${path}" is not a regular file.`);
+  if (st.nlink > 1) throw new Error(`REFUSED: "${path}" has ${st.nlink} hard links; writing it would change a file outside the day directory.`);
+  return { path, exists: true };
+}
+
+/** Write one day file without following a link: O_NOFOLLOW always, O_EXCL when it is new. */
+function writeDayFileSafely(path: string, existed: boolean, content: string): void {
+  const flags = FS.O_WRONLY | FS.O_NOFOLLOW | (existed ? FS.O_TRUNC : FS.O_CREAT | FS.O_EXCL);
+  const fd = openSync(path, flags, 0o644);
+  try { writeSync(fd, content); } finally { closeSync(fd); }
+}
+
+export function writeDayFiles(
+  days: Map<string, DayMetrics>,
+  dir: string,
+  opts: { overwrite: boolean; exportDate: string | null; dryRun: boolean },
+): { created: number; filled: number; untouched: number } {
+  let created = 0, filled = 0, untouched = 0;
+  if (!opts.dryRun) mkdirSync(dir, { recursive: true });
+  const fetchedAt = new Date().toISOString();
+  // Canonicalise the directory once; every destination is checked against this, never against the lexical path.
+  const realDir = existsSync(dir) ? realpathSync(dir) : null;
+  // Every destination is vetted before ANY file is touched, so a planted link refuses the whole run cleanly.
+  const plan = [...days.entries()].sort().map(([date, metrics]) => ({ date, metrics, dest: realDir === null ? { path: join(dir, `${date}.json`), exists: false } : dayFileDestination(realDir, date) }));
+  for (const { metrics, dest } of plan) {
+    const path = dest.path;
+    let existing: Record<string, unknown> | null = null;
+    if (dest.exists) {
+      try { existing = JSON.parse(readFileSync(path, "utf-8")).metrics ?? null; } catch { existing = null; }
+    }
+    let out: Record<string, unknown>;
+    if (existing && !opts.overwrite) {
+      out = { ...existing };
+      let changed = false;
+      for (const [k, v] of Object.entries(metrics)) {
+        if (out[k] === undefined || out[k] === null) { out[k] = v; changed = true; }
+      }
+      if (!changed) { untouched += 1; continue; }
+      filled += 1;
+    } else {
+      out = { ...metrics, origin: "export", export_date: opts.exportDate };
+      created += 1;
+    }
+    if (!opts.dryRun) {
+      invariant(realDir !== null, "the day directory exists before a day file is written");
+      writeDayFileSafely(path, dest.exists, JSON.stringify({ schema: 1, source: "apple", fetched_at: fetchedAt, metrics: out }, null, 2));
+    }
+  }
+  return { created, filled, untouched };
+}
+
 /** `since` = windowDays back from the newest sample, not from today — an export
  *  is often days old, and anchoring on today silently empties the window. */
 function windowStart(lastDate: string, windowDays: number): string {
@@ -532,7 +761,7 @@ function arg(name: string, fallback?: string): string | undefined {
 async function main(): Promise<void> {
   const input = process.argv[2];
   if (!input || input.startsWith("--")) {
-    console.error("Usage: bun AppleHealthImport.ts <export.zip|export.xml> [--days N] [--out PATH] [--dry-run]");
+    console.error("Usage: bun AppleHealthImport.ts <export.zip|export.xml> [--days N] [--out PATH] [--days-out [DIR]] [--overwrite] [--dry-run]");
     process.exit(2);
   }
   if (!existsSync(input)) {
@@ -549,6 +778,15 @@ async function main(): Promise<void> {
   // minutes, and refusing only at the end wastes all of it to say no.
   const out = assertWritableOut(arg("--out", DEFAULT_OUT)!);
   const dryRun = process.argv.includes("--dry-run");
+  // --days-out [DIR]: also write one DayFile per day for the whole export (this
+  // is how years of history reach the trend board). DIR defaults to the live
+  // apple data directory; existing days are filled, never clobbered (--overwrite).
+  const daysOutIdx = process.argv.indexOf("--days-out");
+  const daysOutArg = daysOutIdx !== -1 ? process.argv[daysOutIdx + 1] : undefined;
+  const daysOut = daysOutIdx === -1
+    ? null
+    : assertWritableOut(daysOutArg && !daysOutArg.startsWith("--") ? daysOutArg : DEFAULT_DAYS_OUT);
+  const overwrite = process.argv.includes("--overwrite");
 
   const t0 = Date.now();
   const { daily, stats } = await parseExport(input);
@@ -571,11 +809,18 @@ async function main(): Promise<void> {
     writeFileSync(out, markdown, "utf-8");
   }
 
+  let dayLine = "";
+  if (daysOut) {
+    const days = buildDayFiles(daily);
+    const r = writeDayFiles(days, daysOut, { overwrite, exportDate: stats.lastDate, dryRun });
+    dayLine = ` · day files: ${days.size} days (${r.created} created, ${r.filled} filled, ${r.untouched} untouched)${dryRun ? "" : ` → ${daysOut}`}`;
+  }
+
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
   console.error(
     `[apple-health] ${stats.recordsKept.toLocaleString("en-US")}/${stats.recordsSeen.toLocaleString("en-US")} ` +
     `records, ${summaries.length} metrics, ${stats.firstDate}..${stats.lastDate}, ` +
-    `window ${since}..${stats.lastDate} (${secs}s)${dryRun ? " [dry run]" : ` → ${out}`}`,
+    `window ${since}..${stats.lastDate} (${secs}s)${dryRun ? " [dry run]" : ` → ${out}`}${dayLine}`,
   );
 }
 

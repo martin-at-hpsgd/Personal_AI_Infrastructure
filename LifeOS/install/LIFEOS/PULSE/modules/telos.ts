@@ -7,15 +7,17 @@
  *   GET /api/telos/freshness         → full freshness JSON (all sections)
  *   GET /api/telos/freshness/stale   → stale sections only, sorted
  *   GET /api/telos/freshness/summary → tiny payload for statusline / DA panel
+ *   GET /api/telos/risks             → the `## Risks (RN)` register (TelosRisks.ts), prevent/detect/respond states
  *
  * The DA panel and statusline call /summary every refresh; the Interview
  * skill calls /freshness once at the top of /interview to drive its
- * conversation. No writes here — bumps go through the Interview workflow,
+ * conversation. No writes here — bumps go through the Interview intent,
  * which calls bumpTelosTimestamp() in the lib.
  */
 
 import { readTelosFreshness, readContextFreshness, type TelosFreshness, type ContextFreshness } from "../../TOOLS/TelosFreshness";
 import { writeFreshnessCache } from "../../TOOLS/FreshnessCache";
+import { openFindings, readTelosRisks } from "../../TOOLS/TelosRisks";
 
 function refreshFileCache(): void {
   try {
@@ -47,7 +49,7 @@ const state: ModuleState = {
 
 // Cache freshness reads for 60s — files are small and cheap to re-read, but
 // the statusline polls frequently and there's no value in scanning per request.
-// Cache invalidates on Pulse /reload (calls invalidate()).
+// Cache invalidates on POST /api/freshness/invalidate (calls invalidate()).
 const CACHE_TTL_MS = 60_000;
 
 function ensureCache(): void {
@@ -89,8 +91,9 @@ export async function stop(): Promise<void> {
 }
 
 /**
- * Invalidate the freshness cache. Call from Pulse /reload so the next
- * request re-reads everything.
+ * Invalidate the freshness cache so the next request re-reads everything.
+ * Reachable as `POST /api/freshness/invalidate` (public issue #2201, @bak3r;
+ * the documented `/reload` route never existed).
  */
 export function invalidate(): void {
   state.cachedTelos = null;
@@ -124,13 +127,19 @@ export function health(): { status: string; details?: Record<string, unknown> } 
  * Pulse routes /api/telos/* here. Returns null on unhandled paths so the
  * outer router can fall through to the next module.
  */
-export async function handleRequest(_req: Request, pathname: string): Promise<Response | null> {
+export async function handleRequest(req: Request, pathname: string): Promise<Response | null> {
   // Multi-file constitutional context (telos + 6 constitutional files)
   if (pathname.startsWith("/api/freshness")) {
+    if (pathname === "/api/freshness/invalidate") {
+      if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
+      invalidate();
+      return Response.json({ ok: true, invalidated_at: new Date().toISOString() });
+    }
     if (pathname === "/api/freshness/summary") {
       const c = contextFreshness();
       return Response.json({
         total: c.total,
+        graded_total: c.graded_total,
         fresh_count: c.fresh_count,
         stale_count: c.stale_count,
         overall_pct: c.overall_pct,
@@ -191,6 +200,17 @@ export async function handleRequest(_req: Request, pathname: string): Promise<Re
   }
   if (pathname === "/api/telos/health") {
     return Response.json(health());
+  }
+  // The `## Risks (RN)` register — the principal's top life risks with their
+  // prevent/detect/respond states. Read straight from TELOS.md through the one
+  // parser (LIFEOS/TOOLS/TelosRisks.ts); nothing in the section is secret, so
+  // nothing is stripped. `errors` is non-empty when the section is malformed.
+  if (pathname === "/api/telos/risks") {
+    const parsed = readTelosRisks();
+    // Each risk carries its open technical Achilles findings, rolled up through the estate register.
+    const open = openFindings(parsed.risks.map((r) => r.id));
+    const risks = parsed.risks.map((r) => ({ ...r, open_findings: open[r.id] ?? 0 }));
+    return Response.json({ count: risks.length, section_line: parsed.sectionLine, errors: parsed.errors, risks });
   }
   return null;
 }

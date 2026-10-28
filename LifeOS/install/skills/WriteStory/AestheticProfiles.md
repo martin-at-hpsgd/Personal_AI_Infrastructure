@@ -1,5 +1,7 @@
 # Aesthetic Profiles
 
+**Contents:** How Profiles Work · Built-In Profiles · Custom Profile Template · Profile Blending · Genre-Default Profiles
+
 Configurable prose style profiles that shape how the WriteStory skill writes. Each profile defines vocabulary range, sentence patterns, descriptive density, pacing, and rhetorical figure preferences.
 
 ## How Profiles Work

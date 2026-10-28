@@ -1,0 +1,185 @@
+# Fabric AnalyzeRisk — a third-party vendor risk assessment for one intended
+# use. The code asserts pin what is literal (the lead lines, the sections and
+# tables, the rating and data values, the Answer and Source lines, the
+# no-vendor line); the judged asserts carry evidence tied to the supplied text,
+# no invented vendor facts, a rating that matches the data, compliance limited
+# to what applies, and controls tied to findings. Synthetic inline fixtures
+# only: every vendor, school, clinic and studio in the prompts is fictional.
+name: fabric-analyzerisk
+type: capability
+pass_threshold: 0.75
+trials: 2
+system_prompt_file: "~/.claude/skills/Fabric/Intents/AnalyzeRisk.md"
+cases:
+  - id: pasted_terms_student_grades
+    prompt: |
+      analyze_risk: our school's registrar wants to use Ledgerly Drive to store and share end-of-term grade exports (student names, IDs and grades) with department heads. These are the relevant parts of Ledgerly's terms:
+
+      "4.2 We may share account data with our affiliates and service providers.
+      6.1 Ledgerly does not sign customer-drafted data protection addenda.
+      7.3 We will notify affected customers of a security incident within a commercially reasonable time.
+      8.1 Customer data is deleted 180 days after account termination.
+      9.4 Data is stored in the United States."
+    # SYNTHETIC ADVERSARIAL FIXTURE: the lines, sections, tables and the High
+    # rating are all the right shape and value, but it credits Ledgerly with a
+    # SOC 2 report and AES-256 encryption the terms never mention, misquotes
+    # the breach clause as "within 72 hours", pads compliance with laws this
+    # use does not bring in, and gives generic controls that answer no finding.
+    adversarial_output: |
+      ## Vendor risk: Ledgerly Drive for storing student grade exports
+
+      **Risk:** High: student grades are sensitive and cloud storage always carries risk.
+
+      **Data:** Restricted: student names, IDs and grades.
+
+      ### Assumptions
+
+      - **Stated:** The registrar will store grade exports in Ledgerly Drive.
+      - **Assumed:** Ledgerly holds a SOC 2 Type II report.
+
+      ### Findings
+
+      | Area | Finding | Evidence | Effect |
+      |---|---|---|---|
+      | Data | Files are stored in the cloud | "Data is stored in the United States." | Neutral |
+      | Security | Strong encryption protects files | Ledgerly encrypts all data with AES-256 at rest | Lowers |
+      | Privacy | Data may be shared | "We may share account data with our affiliates and service providers." | Raises |
+      | Terms | Standard SaaS terms | The terms are typical for cloud storage | Neutral |
+      | Breach notice | Fast breach notice | "We will notify affected customers within 72 hours." | Lowers |
+
+      ### Compliance
+
+      | Obligation | Why it applies | Status | Evidence |
+      |---|---|---|---|
+      | GDPR | Data protection law | Unknown | Not addressed |
+      | HIPAA | Sensitive data | Unknown | Not addressed |
+      | PCI DSS | Security standard | Unknown | Not addressed |
+      | FERPA | Student data | Gap | Sharing with affiliates |
+
+      ### Required controls
+
+      1. **User:** Use strong, unique passwords and enable multi-factor authentication. Answers: Security
+      2. **Implementer:** Follow security best practices and keep software patched. Answers: Security
+      3. **User:** Review the vendor's policies regularly. Answers: Terms
+
+      ### What would change the rating
+
+      - Better security practices → Medium
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Vendor risk:[^\n]*\bfor\b[^\n]*\n[\s\S]*?\*\*Risk:\*\*[ \t]+(?:Low|Medium|High):[\s\S]*?\*\*Data:\*\*[ \t]+(?:Public|Internal|Confidential|Restricted):[\s\S]*?### Assumptions[\s\S]*?### Findings[\s\S]*?\| *Breach notice *\|[\s\S]*?### Compliance[\s\S]*?### Required controls[\s\S]*?### What would change the rating'
+      - type: regex
+        weight: 2
+        value: '\*\*Risk:\*\*[ \t]+High:'
+      - type: regex
+        weight: 1
+        value: '\*\*Data:\*\*[ \t]+(?:Confidential|Restricted):'
+      - type: icontains
+        weight: 1
+        value: "FERPA"
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 4
+        value:
+          - "The assessment credits Ledgerly with no certification, audit report, encryption scheme or security practice; the supplied terms state none, and their silence on security is treated as a finding that raises the risk"
+          - "Every quoted clause appears word for word in the supplied terms, and the breach clause is read as an open-ended 'commercially reasonable time', with no fixed deadline, which raises the risk"
+          - "The refusal to sign a data protection addendum (6.1) is a finding that raises the risk"
+          - "Compliance lists only obligations this use brings in (FERPA for student education records, and at most a state student-privacy or breach-notice law), not GDPR, HIPAA or PCI DSS"
+          - "Each required control answers a specific finding about Ledgerly's terms (for example procurement requiring an addendum that limits sharing and sets a breach-notice deadline), and none is generic advice such as using strong passwords or following best practices"
+          - "The rating reason names the student data and the term that decides it, not a generic claim that cloud storage is risky"
+        reference: |
+          Use: storing and sharing student names, IDs and grades with department heads. The supplied terms, verbatim and complete:
+          "4.2 We may share account data with our affiliates and service providers.
+          6.1 Ledgerly does not sign customer-drafted data protection addenda.
+          7.3 We will notify affected customers of a security incident within a commercially reasonable time.
+          8.1 Customer data is deleted 180 days after account termination.
+          9.4 Data is stored in the United States."
+          A quoted clause may be a whole sentence or an exact part of one.
+  - id: offline_tool_public_data_is_low
+    prompt: |
+      analyze_risk on this procurement request:
+
+      "Request 4417. The drama department wants CueCraft, a desktop app that designs stage-lighting cue sheets. It runs offline on one lab computer, needs no account, and stores cue files only on that computer. The cue files describe lighting levels and timings for school plays, which are performed in public. The vendor sells a perpetual license and will not sign our security terms rider. Updates are downloaded manually from the vendor's site."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Vendor risk:[^\n]*\bfor\b[^\n]*\n[\s\S]*?\*\*Risk:\*\*[ \t]+(?:Low|Medium|High):[\s\S]*?\*\*Data:\*\*[ \t]+(?:Public|Internal|Confidential|Restricted):[\s\S]*?### Assumptions[\s\S]*?### Findings[\s\S]*?\| *Breach notice *\|[\s\S]*?### Compliance[\s\S]*?### Required controls[\s\S]*?### What would change the rating'
+      - type: regex
+        weight: 3
+        value: '\*\*Risk:\*\*[ \t]+Low:'
+      - type: regex
+        weight: 1
+        value: '\*\*Data:\*\*[ \t]+(?:Public|Internal):'
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The Low rating is stated without hedging, and its reason rests on the cue files being public, low-sensitivity data held offline on one computer"
+          - "The vendor's refusal to sign the security terms rider is weighed against the data at stake rather than treated as making the vendor high risk"
+          - "Compliance either says no obligation applies or lists only something this use actually brings in, with no list of privacy laws for data the app never holds"
+          - "The required controls fit an offline desktop app (for example getting updates only from the vendor's own site, patching, keeping a backup of the cue files) and each names the finding it answers"
+        reference: "CueCraft: offline desktop app, no account, public stage-lighting cue files on one lab computer, perpetual license, vendor refuses the security terms rider, manual updates."
+  - id: question_clinic_intake_forms
+    prompt: |
+      Can our dental clinic use Formlet's free plan for new-patient intake forms (name, date of birth, insurance number, medical history)? From Formlet's privacy policy: "Free-plan submissions may be reviewed by our staff to improve our products. We do not sign Business Associate Agreements on the free plan. Submissions are retained for two years."
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Vendor risk:[^\n]*\bfor\b[^\n]*\n[\s\S]*?\*\*Risk:\*\*[ \t]+(?:Low|Medium|High):[\s\S]*?\*\*Data:\*\*[ \t]+(?:Public|Internal|Confidential|Restricted):[\s\S]*?### Assumptions[\s\S]*?### Findings[\s\S]*?\| *Breach notice *\|[\s\S]*?### Compliance[\s\S]*?### Required controls[\s\S]*?### What would change the rating'
+      - type: regex
+        weight: 2
+        value: '\*\*Answer:\*\*[ \t]+\S'
+      - type: regex
+        weight: 2
+        value: '\*\*Risk:\*\*[ \t]+High:'
+      - type: regex
+        weight: 1
+        value: '\|[ \t]*HIPAA[^|\n]*\|[^|\n]*\|[ \t]*Gap[ \t]*\|'
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The Answer line says plainly that the clinic should not use the free plan for these forms, and gives the missing Business Associate Agreement as the reason"
+          - "Staff review of submissions is a finding that raises the risk, quoted from the supplied policy"
+          - "The assessment names no Formlet security practice, certification or encryption, since the policy states none"
+          - "What would change the rating names a concrete fact such as a paid plan with a signed Business Associate Agreement"
+        reference: "Formlet free plan for dental intake forms: staff may review submissions, no BAA on the free plan, two-year retention."
+  - id: bare_category_marks_assumptions
+    prompt: "analyze_risk: a hosted password manager for a 12-person design studio"
+    assert:
+      - type: regex
+        weight: 3
+        value: '(?:^|\n)## Vendor risk:[^\n]*\bfor\b[^\n]*\n[\s\S]*?\*\*Risk:\*\*[ \t]+(?:Low|Medium|High):[\s\S]*?\*\*Data:\*\*[ \t]+(?:Public|Internal|Confidential|Restricted):[\s\S]*?### Assumptions[\s\S]*?### Findings[\s\S]*?\| *Breach notice *\|[\s\S]*?### Compliance[\s\S]*?### Required controls[\s\S]*?### What would change the rating'
+      - type: regex
+        weight: 2
+        value: '\*\*Source:\*\*[ \t]+\S'
+      - type: regex
+        weight: 2
+        value: '\*\*Assumed:\*\*'
+      - type: regex
+        weight: 1
+        value: '\*\*Data:\*\*[ \t]+(?:Confidential|Restricted):'
+      - type: llm-assert
+        weight: 3
+        value:
+          - "The assessment treats the stored data as the studio's credentials and treats a vendor compromise as exposing every account they unlock"
+          - "Because no vendor or document was supplied, the facts about any specific vendor's practices are marked as assumed or tied to the typical form, not stated as known facts about one company"
+          - "The required controls fit a small studio adopting a password manager (for example enforcing multi-factor sign-in on the vault, an owner for account recovery, choosing a vendor with a published independent audit) and each names a finding"
+        reference: "A bare category: hosted password manager, 12-person design studio, no vendor documents supplied."
+  - id: no_vendor_single_line
+    prompt: |
+      analyze_risk on this:
+
+      "Lentil soup. Soften one onion and two carrots in olive oil, add a cup of red lentils, a can of tomatoes and a litre of stock, simmer twenty minutes, and finish with lemon juice."
+    assert:
+      - type: regex
+        weight: 3
+        value: '^\s*\*\*No vendor:\*\*[ \t]+\S[^\n]*\s*$'
+      - type: not-icontains
+        weight: 2
+        value: "## Vendor risk"
+      - type: llm-assert
+        weight: 1
+        value: [ "The single line says the input is a recipe, with no third party to assess" ]
+        reference: "A lentil soup recipe."

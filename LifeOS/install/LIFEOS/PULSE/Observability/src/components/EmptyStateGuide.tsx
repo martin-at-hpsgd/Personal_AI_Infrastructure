@@ -30,7 +30,7 @@ export default function EmptyStateGuide({
   const defaultDaPrompt = daPromptExample ?? `help me set up my ${section.toLowerCase()}`;
 
   return (
-    <div className="rounded-xl border border-blue-900/40 bg-gradient-to-br from-blue-950/30 to-[rgba(6,11,26,0.5)] p-6">
+    <div className="rounded-xl glass p-6">
       <div className="flex items-start gap-3 mb-4">
         <div className="rounded-lg bg-blue-500/10 p-2 mt-0.5">
           <Sparkles className="w-5 h-5 text-blue-400" />

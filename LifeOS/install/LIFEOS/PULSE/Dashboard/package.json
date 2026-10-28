@@ -1,0 +1,1 @@
+{"name":"pulse-dashboard","productName":"Pulse Dashboard","version":"2.0.0","private":true,"main":"dist/main.cjs","scripts":{"build":"bun build.ts","test":"bun test","start":"bun run build && ../Desktop/node_modules/.bin/electron .","package":"bun test && bun build.ts --package"}}

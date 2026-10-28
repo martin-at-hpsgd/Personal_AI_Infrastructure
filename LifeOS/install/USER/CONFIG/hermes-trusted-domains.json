@@ -1,0 +1,4 @@
+{
+  "_docs": "Operator-trusted egress hosts for the Hermes sidecar guard. Read by LIFEOS/HERMES/Mount.ts trustedEgressDomains() at mount time: only the `domains` array of strings is used; anything else is ignored and a missing/malformed file degrades to loopback-only (localhost, 127.0.0.1, [::1]). A curl/fetch to a listed host does not taint the session. List only hosts YOU own or operate (your Pulse box, your own workers); never a third-party site. Re-mount after editing: bun LIFEOS/HERMES/Mount.ts",
+  "domains": []
+}

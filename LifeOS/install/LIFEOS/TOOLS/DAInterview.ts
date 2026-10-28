@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 /**
+ * @version 1.3.11
  * DAInterview.ts -- Interactive CLI wizard for creating DA identities
  *
  * Usage:
@@ -19,10 +20,11 @@
  *   LIFEOS/USER/DIGITAL_ASSISTANT/diary.jsonl
  *
  * Reads roster scaffolding (presets) from:
- *   LIFEOS/USER/LIFEOS_WORKERS/_presets.yaml
+ *   LIFEOS/USER/LIFEOS_WORKERS/_presets.yaml   (if present, older installs)
+ *   LIFEOS/USER/DIGITAL_ASSISTANT/_presets.yaml (the shipped template)
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -30,14 +32,27 @@ import { fileURLToPath } from "url";
 // Resolve relative to this script's own location. Script ships at
 // LIFEOS/TOOLS/DAInterview.ts. This tool is primary-DA-only; the primary lives at
 // USER/DIGITAL_ASSISTANT/ (flat — files live at the dir root, not in a name
-// subdir). Worker DAs in USER/LIFEOS_WORKERS/ are out of scope. Roster scaffolding
-// (presets/registry) lives at USER/LIFEOS_WORKERS/.
+// subdir). Worker DAs in USER/LIFEOS_WORKERS/ are out of scope. The registry lives at
+// USER/LIFEOS_WORKERS/; presets ship at USER/DIGITAL_ASSISTANT/ (LIFEOS_WORKERS copy honoured first).
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const LIFEOS_DIR = join(SCRIPT_DIR, "..");
 const DA_DIR = join(LIFEOS_DIR, "USER/DIGITAL_ASSISTANT");
-const PRESETS_PATH = join(LIFEOS_DIR, "USER/LIFEOS_WORKERS/_presets.yaml");
+// Presets ship at USER/DIGITAL_ASSISTANT/_presets.yaml (the release template);
+// an older LIFEOS_WORKERS copy is honoured first where an install still has one.
+const PRESETS_PATH = [
+  join(LIFEOS_DIR, "USER/LIFEOS_WORKERS/_presets.yaml"),
+  join(LIFEOS_DIR, "USER/DIGITAL_ASSISTANT/_presets.yaml"),
+].find((p) => existsSync(p)) ?? join(LIFEOS_DIR, "USER/DIGITAL_ASSISTANT/_presets.yaml");
 const REGISTRY_PATH = join(LIFEOS_DIR, "USER/LIFEOS_WORKERS/_registry.yaml");
+// Growth files (diary, opinions) live where DAGrowth.ts reads them: USER/DA/<slug>/.
+const GROWTH_ROOT = join(LIFEOS_DIR, "USER/DA");
+
+/** The primary DA's identity is the flat USER/DIGITAL_ASSISTANT/DA_IDENTITY.md that hooks/lib/identity.ts loads;
+ * any other DA keeps a named subdirectory. */
+function identityDirFor(slug: string, primary: string | undefined): string {
+  return !primary || slug === primary ? DA_DIR : join(DA_DIR, slug);
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -451,14 +466,10 @@ core:
 
 # -- Voice ---------------------------------------------------------------
 voice:
-  provider: elevenlabs
+  provider: fish
   main:
-    voice_id: ""
-    stability: 0.85
-    similarity_boost: 0.7
-    style: 0.3
-    speed: 1.1
-    volume: 1.2
+    fish_reference_id: ""
+    fish_speed: 1.0
 
 # -- Personality ---------------------------------------------------------
 personality:
@@ -665,6 +676,7 @@ function writeRegistry(registry: { version: number; primary: string; das: Record
     }
   }
 
+  mkdirSync(dirname(REGISTRY_PATH), { recursive: true });
   writeFileSync(REGISTRY_PATH, yaml);
 }
 
@@ -753,7 +765,7 @@ function main(): void {
   // Load presets
   if (!existsSync(PRESETS_PATH)) {
     println("Error: Presets file not found at " + PRESETS_PATH);
-    println("Run this from the LifeOS root directory.");
+    println("Not configured: restore LIFEOS/USER/DIGITAL_ASSISTANT/_presets.yaml from the release templates.");
     process.exit(1);
   }
 
@@ -790,7 +802,7 @@ function main(): void {
       process.exit(1);
     }
 
-    const daDir = join(DA_DIR, daToUpdate);
+    const daDir = identityDirFor(daToUpdate, registry.primary);
     const existing = loadExistingIdentity(daDir);
 
     if (!existing) {
@@ -826,16 +838,28 @@ function main(): void {
 
   // Generate files
   const slug = data.daName.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const daDir = join(DA_DIR, slug);
+  const priorRegistry = readRegistry();
+  const willBePrimary = Object.keys(priorRegistry.das).length === 0 || !priorRegistry.primary || priorRegistry.primary === slug;
+  const identityDir = identityDirFor(slug, willBePrimary ? slug : priorRegistry.primary);
+  const daDir = join(GROWTH_ROOT, slug);
 
-  // Create directory
-  if (!existsSync(daDir)) {
-    mkdirSync(daDir, { recursive: true });
+  // Create directories
+  for (const d of [identityDir, daDir]) {
+    if (!existsSync(d)) mkdirSync(d, { recursive: true });
   }
 
-  // Write DA_IDENTITY.md (single file: YAML frontmatter + prose body)
+  // Write DA_IDENTITY.md (single file: YAML frontmatter + prose body). An existing file is backed up first,
+  // because the generated file replaces its prose body.
+  const identityPath = join(identityDir, "DA_IDENTITY.md");
+  if (existsSync(identityPath)) {
+    const backups = join(identityDir, "Backups");
+    mkdirSync(backups, { recursive: true });
+    const backupPath = join(backups, `DA_IDENTITY.${new Date().toISOString().replace(/[:.]/g, "-")}.md`);
+    copyFileSync(identityPath, backupPath);
+    println(`  Backed up the existing identity to ${backupPath}`);
+  }
   const identityContent = generateIdentityFile(data);
-  writeFileSync(join(daDir, "DA_IDENTITY.md"), identityContent);
+  writeFileSync(identityPath, identityContent);
 
   // Create empty growth files if they don't exist
   const emptyFiles = ["growth.jsonl", "diary.jsonl"];
@@ -887,7 +911,7 @@ function main(): void {
   println(`  Dynamic:        ${data.relationshipDynamic ?? "peers"}`);
   println();
   println("  Files created:");
-  println(`    ${join(daDir, "DA_IDENTITY.md")}`);
+  println(`    ${identityPath}`);
   println(`    ${join(daDir, "growth.jsonl")}`);
   println(`    ${join(daDir, "opinions.yaml")}`);
   println(`    ${join(daDir, "diary.jsonl")}`);

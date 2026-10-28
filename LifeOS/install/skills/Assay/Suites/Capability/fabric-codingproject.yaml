@@ -1,0 +1,356 @@
+# Fabric CodingProject — a complete starter project in the nine upstream
+# sections (PROJECT, SUMMARY, STEPS, STRUCTURE, DETAILED EXPLANATION, CODE,
+# SETUP, TAKEAWAYS, SUGGESTIONS). The regex asserts pin the nine sections in
+# order, a README.md file and quoted heredocs in SETUP; contains asserts pin
+# the literal facts each prompt fixes; the judged asserts carry what code
+# cannot: the code does the job, every requirement is kept, the project is
+# secure and the sections agree. Shape and parsing are also checked by
+# Tools/CodingProjectCheck.ts. Synthetic inline fixtures only: every host and
+# name below is fictional.
+name: fabric-codingproject
+type: capability
+pass_threshold: 0.75
+trials: 3
+subject_timeout_ms: 420000
+system_prompt_file: "~/.claude/skills/Fabric/Intents/CodingProject.md"
+cases:
+  - id: bare_idea_does_the_whole_job
+    prompt: "create_coding_project: a command-line tool that watches a folder and resizes every new image dropped into it to 1024 pixels wide, keeping the aspect ratio"
+    # SYNTHETIC ADVERSARIAL FIXTURE: all nine sections, matching file lists, a
+    # README, quoted heredocs and parseable code, so every code check passes.
+    # But it never watches the folder (one readdir pass over files already
+    # there), and fit: "fill" squashes every image to 1024x1024, breaking the
+    # aspect ratio the prompt asked to keep; its test checks only the width.
+    adversarial_output: |
+      ## PROJECT
+
+      A Node command-line tool that resizes the images in a folder to 1024 pixels wide.
+
+      ## SUMMARY
+
+      `src/cli.ts` reads the folder path from the command line and hands each image to `src/resize.ts`, which uses `sharp` to write a resized copy into an `out/` folder. TypeScript on Node, because `sharp` is the fastest maintained image library there. Output goes to `out/` by default; set `OUT_DIR` to change it.
+
+      ## STEPS
+
+      1. Run the SETUP script in an empty directory.
+      2. Run `npm test` to check the resizer.
+      3. Run `npx tsx src/cli.ts ./photos` to resize the folder.
+
+      ## STRUCTURE
+
+      ```text
+      img-shrink/
+      ├── src/
+      │   ├── cli.ts
+      │   └── resize.ts
+      ├── test/
+      │   └── resize.test.ts
+      ├── README.md
+      └── package.json
+      ```
+
+      ## DETAILED EXPLANATION
+
+      - `src/cli.ts`: Reads the folder argument and resizes each image in it.
+      - `src/resize.ts`: Resizes one image to 1024 pixels with sharp.
+      - `test/resize.test.ts`: Checks the resized image has the target size.
+      - `README.md`: Install, usage and configuration instructions.
+      - `package.json`: Dependencies and run scripts.
+
+      ## CODE
+
+      ### `src/resize.ts`
+
+      Resizes one image file and writes the result to the output folder.
+
+      ```ts
+      import sharp from "sharp";
+      import { basename, join } from "node:path";
+
+      // Fixed target so every output image has the same size.
+      export const TARGET = 1024;
+
+      export async function resizeOne(input: string, outDir: string): Promise<string> {
+        const dest = join(outDir, basename(input));
+        await sharp(input).resize({ width: TARGET, height: TARGET, fit: "fill" }).toFile(dest);
+        return dest;
+      }
+      ```
+
+      ### `src/cli.ts`
+
+      Resizes every image already in the folder named on the command line.
+
+      ```ts
+      import { mkdirSync, readdirSync } from "node:fs";
+      import { join } from "node:path";
+      import { resizeOne } from "./resize.ts";
+
+      const dir = process.argv[2];
+      if (!dir) {
+        console.error("usage: img-shrink <folder>");
+        process.exit(2);
+      }
+      const outDir = process.env.OUT_DIR ?? join(dir, "out");
+      mkdirSync(outDir, { recursive: true });
+      // Only common image extensions are handed to sharp.
+      for (const name of readdirSync(dir)) {
+        if (/\.(jpe?g|png|webp)$/i.test(name)) console.log(await resizeOne(join(dir, name), outDir));
+      }
+      ```
+
+      ### `test/resize.test.ts`
+
+      Checks that a resized image comes out at the target size.
+
+      ```ts
+      import { test } from "node:test";
+      import assert from "node:assert/strict";
+      import sharp from "sharp";
+      import { mkdtempSync } from "node:fs";
+      import { tmpdir } from "node:os";
+      import { join } from "node:path";
+      import { resizeOne, TARGET } from "../src/resize.ts";
+
+      test("output is the target size", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "shrink-"));
+        const src = join(dir, "in.png");
+        await sharp({ create: { width: 3000, height: 2000, channels: 3, background: "#888" } }).png().toFile(src);
+        const out = await resizeOne(src, mkdtempSync(join(tmpdir(), "out-")));
+        const meta = await sharp(out).metadata();
+        assert.equal(meta.width, TARGET);
+      });
+      ```
+
+      ### `README.md`
+
+      Explains install, usage and configuration.
+
+      ````markdown
+      # img-shrink
+
+      Resizes the images in a folder to 1024 pixels wide. Needs Node 22.
+
+      ## Usage
+
+      ```bash
+      npx tsx src/cli.ts ./photos
+      ```
+
+      Set `OUT_DIR` to choose where resized copies go.
+      ````
+
+      ### `package.json`
+
+      Declares the dependencies and scripts.
+
+      ```json
+      {
+        "name": "img-shrink",
+        "version": "0.1.0",
+        "type": "module",
+        "scripts": { "test": "tsx --test test/resize.test.ts" },
+        "dependencies": { "sharp": "^0.33.5" },
+        "devDependencies": { "tsx": "^4.19.2" }
+      }
+      ```
+
+      ## SETUP
+
+      ````bash
+      set -euo pipefail
+      mkdir -p img-shrink/src img-shrink/test
+      cd img-shrink
+      cat > src/resize.ts <<'EOF'
+      import sharp from "sharp";
+      import { basename, join } from "node:path";
+
+      // Fixed target so every output image has the same size.
+      export const TARGET = 1024;
+
+      export async function resizeOne(input: string, outDir: string): Promise<string> {
+        const dest = join(outDir, basename(input));
+        await sharp(input).resize({ width: TARGET, height: TARGET, fit: "fill" }).toFile(dest);
+        return dest;
+      }
+      EOF
+      cat > src/cli.ts <<'EOF'
+      import { mkdirSync, readdirSync } from "node:fs";
+      import { join } from "node:path";
+      import { resizeOne } from "./resize.ts";
+
+      const dir = process.argv[2];
+      if (!dir) {
+        console.error("usage: img-shrink <folder>");
+        process.exit(2);
+      }
+      const outDir = process.env.OUT_DIR ?? join(dir, "out");
+      mkdirSync(outDir, { recursive: true });
+      // Only common image extensions are handed to sharp.
+      for (const name of readdirSync(dir)) {
+        if (/\.(jpe?g|png|webp)$/i.test(name)) console.log(await resizeOne(join(dir, name), outDir));
+      }
+      EOF
+      cat > test/resize.test.ts <<'EOF'
+      import { test } from "node:test";
+      import assert from "node:assert/strict";
+      import sharp from "sharp";
+      import { mkdtempSync } from "node:fs";
+      import { tmpdir } from "node:os";
+      import { join } from "node:path";
+      import { resizeOne, TARGET } from "../src/resize.ts";
+
+      test("output is the target size", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "shrink-"));
+        const src = join(dir, "in.png");
+        await sharp({ create: { width: 3000, height: 2000, channels: 3, background: "#888" } }).png().toFile(src);
+        const out = await resizeOne(src, mkdtempSync(join(tmpdir(), "out-")));
+        const meta = await sharp(out).metadata();
+        assert.equal(meta.width, TARGET);
+      });
+      EOF
+      cat > README.md <<'EOF'
+      # img-shrink
+
+      Resizes the images in a folder to 1024 pixels wide. Needs Node 22.
+
+      ## Usage
+
+      ```bash
+      npx tsx src/cli.ts ./photos
+      ```
+
+      Set `OUT_DIR` to choose where resized copies go.
+      EOF
+      cat > package.json <<'EOF'
+      {
+        "name": "img-shrink",
+        "version": "0.1.0",
+        "type": "module",
+        "scripts": { "test": "tsx --test test/resize.test.ts" },
+        "dependencies": { "sharp": "^0.33.5" },
+        "devDependencies": { "tsx": "^4.19.2" }
+      }
+      EOF
+      npm install
+      npm test
+      ````
+
+      ## TAKEAWAYS
+
+      1. A fixed target size keeps every output consistent.
+      2. Writing copies to `out/` leaves the originals untouched.
+
+      ## SUGGESTIONS
+
+      - Add a `--width` flag for other target sizes.
+      - Skip images that are already smaller than the target.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^## PROJECT[ \t]*\n[\s\S]+?\n## SUMMARY[ \t]*\n[\s\S]+?\n## STEPS[ \t]*\n[\s\S]+?\n## STRUCTURE[ \t]*\n[\s\S]+?\n## DETAILED EXPLANATION[ \t]*\n[\s\S]+?\n## CODE[ \t]*\n[\s\S]+?\n## SETUP[ \t]*\n[\s\S]+?\n## TAKEAWAYS[ \t]*\n[\s\S]+?\n## SUGGESTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '\n### `?README\.md`?[ \t]*\n'
+      - type: not-regex
+        weight: 1
+        value: '(?<!<)<<-?[ \t]*[A-Za-z_]'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: contains
+        weight: 1
+        value: "1024"
+      - type: llm-assert
+        weight: 4
+        value: [ "The program keeps running and watches the folder for new images (a file watcher or equivalent), rather than processing the files already there once and exiting", "Resized images are 1024 pixels wide with the height scaled to keep the original aspect ratio, never forced to a fixed 1024x1024 or otherwise distorted", "Every file in STRUCTURE has complete code in CODE, with no stubbed or placeholder function", "At least one test exercises the resize logic and would fail if the aspect ratio were not kept", "Takeaways and suggestions are specific to this folder-watching image resizer, not generic advice" ]
+        reference: "A watch-folder resizer: a watcher (fs.watch, chokidar, watchdog or similar) that handles each new image once, waits for the file to finish writing, resizes to width 1024 with height auto (aspect kept), writes to an output folder so it does not re-trigger on its own output, with the core resize separate from the watcher and tested."
+  - id: spec_keeps_every_requirement
+    prompt: |
+      create a coding project in TypeScript on Bun, no frameworks, from this issue:
+
+      Issue: Todo API service
+      1. POST /todos creates a todo from JSON {"title": string}. Titles must be 1 to 200 characters; anything else returns 400 with an error message.
+      2. GET /todos returns every todo as JSON, newest first.
+      3. PATCH /todos/:id flips the todo's done flag and returns it; an unknown id returns 404.
+      4. Todos persist in a SQLite file whose path comes from the TODO_DB environment variable, defaulting to ./todos.db.
+    assert:
+      - type: regex
+        weight: 3
+        value: '^## PROJECT[ \t]*\n[\s\S]+?\n## SUMMARY[ \t]*\n[\s\S]+?\n## STEPS[ \t]*\n[\s\S]+?\n## STRUCTURE[ \t]*\n[\s\S]+?\n## DETAILED EXPLANATION[ \t]*\n[\s\S]+?\n## CODE[ \t]*\n[\s\S]+?\n## SETUP[ \t]*\n[\s\S]+?\n## TAKEAWAYS[ \t]*\n[\s\S]+?\n## SUGGESTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '\n### `?README\.md`?[ \t]*\n'
+      - type: not-regex
+        weight: 1
+        value: '(?<!<)<<-?[ \t]*[A-Za-z_]'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: contains
+        weight: 1
+        value: "TODO_DB"
+      - type: not-icontains
+        weight: 1
+        value: "from \"express\""
+      - type: llm-assert
+        weight: 4
+        value: [ "All four requirements are implemented in the code: POST /todos with 1-200 character title validation returning 400 otherwise, GET /todos newest first, PATCH /todos/:id toggling done with 404 for an unknown id, and SQLite persistence at TODO_DB defaulting to ./todos.db", "The project uses TypeScript on Bun with no web framework (Bun's built-in server and SQLite, or the standard library), as the hint asked", "Every SQL statement uses bound parameters; no query is built by concatenating or interpolating request input", "The validation and data logic are separate from the HTTP handling, and at least one test exercises them", "SUMMARY, STEPS and README describe this todo API and how to run and test it" ]
+        reference: "A Bun.serve handler over bun:sqlite with prepared statements, title length checked 1..200 before insert (400 on failure), ORDER BY created DESC for the list, UPDATE ... SET done = NOT done with 404 when no row changes, the DB path from process.env.TODO_DB ?? './todos.db', and a bun test file."
+  - id: existing_code_keeps_its_behavior
+    prompt: |
+      turn this into a proper project (create_coding_project):
+
+      ```js
+      // dedupe.js: drop rows with a repeated email, keep the first one
+      const fs = require("fs");
+      const [, , input, output] = process.argv;
+      const lines = fs.readFileSync(input, "utf8").split("\n").filter(Boolean);
+      const header = lines.shift();
+      const idx = header.split(",").indexOf("email");
+      const seen = new Set();
+      const kept = [header];
+      for (const line of lines) {
+        const email = line.split(",")[idx].trim().toLowerCase();
+        if (seen.has(email)) continue;
+        seen.add(email);
+        kept.push(line);
+      }
+      fs.writeFileSync(output, kept.join("\n") + "\n");
+      ```
+    assert:
+      - type: regex
+        weight: 3
+        value: '^## PROJECT[ \t]*\n[\s\S]+?\n## SUMMARY[ \t]*\n[\s\S]+?\n## STEPS[ \t]*\n[\s\S]+?\n## STRUCTURE[ \t]*\n[\s\S]+?\n## DETAILED EXPLANATION[ \t]*\n[\s\S]+?\n## CODE[ \t]*\n[\s\S]+?\n## SETUP[ \t]*\n[\s\S]+?\n## TAKEAWAYS[ \t]*\n[\s\S]+?\n## SUGGESTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '\n### `?README\.md`?[ \t]*\n'
+      - type: not-regex
+        weight: 1
+        value: '(?<!<)<<-?[ \t]*[A-Za-z_]'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 4
+        value: [ "The project keeps the script's behavior: the header row is kept, rows are deduplicated on the email column compared trimmed and case-insensitive, the first occurrence wins, and input and output paths come from the command line", "The deduplication logic is a function separate from file reading and writing, and a test exercises it including a case-only duplicate (for example A@x.test and a@x.test)", "The project stays in JavaScript or TypeScript on Node or a compatible runtime rather than switching to an unrelated language", "Any behavior change from the original (such as handling a missing email column or quoted CSV fields) is named in SUMMARY rather than made silently" ]
+        reference: "A small Node or TypeScript CLI whose core dedupe(rows, column) keeps the header and the first row per lowercased, trimmed email, with file I/O in the CLI module, a test covering case-only duplicates, and a README showing the input/output arguments."
+  - id: question_gets_a_project_and_an_answer
+    prompt: "create_coding_project: how would I build a URL shortener with an HTTP API?"
+    assert:
+      - type: regex
+        weight: 3
+        value: '^## PROJECT[ \t]*\n[\s\S]+?\n## SUMMARY[ \t]*\n[\s\S]+?\n## STEPS[ \t]*\n[\s\S]+?\n## STRUCTURE[ \t]*\n[\s\S]+?\n## DETAILED EXPLANATION[ \t]*\n[\s\S]+?\n## CODE[ \t]*\n[\s\S]+?\n## SETUP[ \t]*\n[\s\S]+?\n## TAKEAWAYS[ \t]*\n[\s\S]+?\n## SUGGESTIONS[ \t]*\n'
+      - type: regex
+        weight: 1
+        value: '\n### `?README\.md`?[ \t]*\n'
+      - type: not-regex
+        weight: 1
+        value: '(?<!<)<<-?[ \t]*[A-Za-z_]'
+      - type: not-icontains
+        weight: 1
+        value: "virtual minutes"
+      - type: llm-assert
+        weight: 4
+        value: [ "The output is a complete runnable project in the nine sections, not an essay or a high-level design without code", "SUMMARY answers the main design question of a URL shortener: how short codes are generated and how collisions are avoided", "The code accepts only http and https target URLs, rejecting other schemes such as javascript: or data:, before storing a link", "Creating a link returns the short code or URL, and requesting the short path redirects to the stored target with a redirect status and returns 404 for an unknown code", "Every file in STRUCTURE has complete code in CODE, and at least one test exercises code generation or URL validation" ]
+        reference: "A small HTTP service: POST a URL, validate it parses with an http(s) scheme, generate a random base62 code (retrying on collision or using a unique index), store it, return the short URL; GET /:code issues a 301 or 302 to the target or 404; core logic separate from the server and tested."

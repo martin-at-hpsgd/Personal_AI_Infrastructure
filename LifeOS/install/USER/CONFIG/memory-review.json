@@ -4,5 +4,6 @@
   "min_minutes_between": 30,
   "idle_threshold": 2,
   "confidence_threshold": 0.70,
-  "notes": "Cadence for the autonomic memory reviewer: it considers writing durable memory only after >= turn_threshold turns, >= min_minutes_between minutes since the last run, and >= idle_threshold idle turns. Tier-C proposals auto-apply at >= confidence_threshold. Conservative defaults; tune after use."
+  "confidence_threshold_by_kind": { "identity": null, "operational-rule": null },
+  "notes": "Cadence for the autonomic memory reviewer: it considers writing durable memory only after >= turn_threshold turns, >= min_minutes_between minutes since the last run, and >= idle_threshold idle turns. Tier-C proposals auto-apply at >= confidence_threshold, except kinds set to null in confidence_threshold_by_kind, which always queue for review: identity and operational-rule edits load into every session, so they wait for the principal (GHSA-xjxj-cqpp-gf82, @mj-deving; discussion #2229, @Steffen025). Conservative defaults; tune after use."
 }

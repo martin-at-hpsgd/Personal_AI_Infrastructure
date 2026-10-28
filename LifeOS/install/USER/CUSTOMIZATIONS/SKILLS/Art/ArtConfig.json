@@ -1,0 +1,19 @@
+{
+  "provenance": "template",
+  "thumbnailGround": "#F5F5F0",
+  "signature": {
+    "fontFile": "/System/Library/Fonts/Supplemental/SignPainter.ttc",
+    "fontName": "SignPainter-HouseScript",
+    "fill": "rgba(55,45,38,0.55)"
+  },
+  "contractOverrides": {
+    "Essay": { "mandates": ["/\\bcharcoal\\b/i", "/\\bumber\\b/i", "/\\bindigo\\b/i"] }
+  },
+  "variants": {
+    "ExampleNet": {
+      "contractOverrides": {
+        "Essay": { "mandates": ["/\\bsepia\\b/i"], "bans": ["/\\bindigo\\b/i"] }
+      }
+    }
+  }
+}

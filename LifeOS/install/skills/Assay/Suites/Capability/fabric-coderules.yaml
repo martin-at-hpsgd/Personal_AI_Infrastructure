@@ -1,0 +1,254 @@
+# Fabric CodeRules — the smallest set of one-sentence rules an AI coding agent
+# should follow, from a tutorial, an essay, a guide, a code file or a stack,
+# as a bare paste-ready list. The code asserts pin what is literal (no title
+# or heading, bulleted plain Markdown, backticked
+# commands, the source's own tools, the no-rules line); the judged asserts
+# carry what code cannot: fidelity to the source, leaving out what a capable
+# model already does, concreteness, the hint override, the source's own
+# exclusions and corrections, kept hedges, generalized examples and expert
+# practice.
+# Synthetic inline fixtures only.
+name: fabric-coderules
+type: capability
+pass_threshold: 0.75
+trials: 3
+system_prompt_file: "~/.claude/skills/Fabric/Intents/CodeRules.md"
+cases:
+  - id: tutorial_transcript_faithful
+    prompt: |
+      generate code rules from this tutorial transcript:
+
+      Hey everyone, welcome back. Today we're setting up the backend for Quillmark, a fictional note-taking API, and I'll show you the conventions we use on the team. Smash that like button. First, we use Bun for everything: bun install, bun test, bun run. Don't use npm or yarn in this repo, and never commit a package-lock.json. Before you commit, always run bun run check, which runs the type checker and the linter together. Next, configuration. Every environment variable is read in exactly one file, src/config.ts, which validates them with zod at startup. Nowhere else in the code should touch process.env directly. Database: we use migrations through bun run db:migrate. Once a migration file has been applied anywhere, you never edit it; you write a new migration instead. I learned that one the hard way when staging and production drifted apart for a week. Tests live next to the code they test, named like notes.test.ts. Every request body is parsed with a zod schema at the route boundary before it reaches a handler. And we don't use default exports anywhere, only named exports, because they make renames safe. Personally I love dark mode for coding, but that's up to you. See you next time.
+    # SYNTHETIC ADVERSARIAL FIXTURE: bare list, one-sentence bulleted rules,
+    # backticked commands and the real db:migrate script, but it tells the agent
+    # to edit applied migrations (the opposite of the tutorial), adds a tool the
+    # tutorial never mentions, and pads the list with advice any capable model
+    # already follows.
+    adversarial_output: |
+      - Use `bun` for installs, tests and scripts in this repo.
+      - Run `bun run db:migrate` after fixing a bug in an existing migration file.
+      - Format every file with `prettier --write` before committing.
+      - Write clean, readable code with descriptive variable names.
+      - Handle errors gracefully and log them where appropriate.
+      - Add comments to explain complex logic.
+    assert:
+      - type: starts-with
+        value: "- "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*#'
+        weight: 1
+      - type: contains-any
+        value: [ "db:migrate", "bun run check", "src/config.ts" ]
+        weight: 2
+      - type: contains
+        value: "`"
+        weight: 1
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*\d+[.)][ \t]'
+        weight: 1
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-icontains
+        value: "the AI should"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The rules include the tutorial's own conventions: Bun only with no npm, yarn or package-lock.json, running `bun run check` before committing, reading environment variables only in src/config.ts, and never editing an applied migration (write a new one instead)", "No rule contradicts the tutorial; in particular no rule tells the agent to edit or fix an existing migration file", "No rule names a tool or command the tutorial never mentions, such as Prettier or ESLint by name", "No rule is generic advice a capable coding model already follows without being told, such as writing clean or readable code, using descriptive names, handling errors gracefully, or adding comments", "Nothing from the off-topic chatter (liking the video, dark mode) became a rule", "Each rule is a single direct instruction with no explanation sentence after it" ]
+        reference: "A fictional backend tutorial whose rules are: Bun only and no package-lock.json; run bun run check before committing; env vars read only in src/config.ts via zod; migrations through bun run db:migrate and never edit an applied one; tests colocated as *.test.ts; zod-parse every request body at the route boundary; named exports only."
+  - id: bare_stack_expert_practice
+    prompt: "code rules: Go HTTP services"
+    # SYNTHETIC ADVERSARIAL FIXTURE: right shape and it names context.Context,
+    # but every rule is too vague to verify or is something a capable model
+    # does unprompted.
+    adversarial_output: |
+      - Write idiomatic Go that is easy to read and maintain.
+      - Use `context.Context` where appropriate in your code.
+      - Handle errors properly in every handler.
+      - Keep functions small and focused on one thing.
+      - Follow Go best practices for project structure.
+    assert:
+      - type: starts-with
+        value: "- "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*#'
+        weight: 1
+      - type: contains-any
+        value: [ "context.Context", "ctx context", "%w", "errors.Is", "gofmt", "go vet", "golangci-lint", "-race", "http.Server", "ReadHeaderTimeout" ]
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*\d+[.)][ \t]'
+        weight: 1
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The rules are concrete practices an experienced Go engineer would hand an agent for HTTP services, such as passing context.Context as the first parameter and honoring cancellation, wrapping errors with %w and checking them with errors.Is or errors.As, setting server timeouts instead of using the default http.Server, running gofmt or go vet or tests with -race, or closing response bodies", "Each rule is specific enough that a reviewer reading a diff could tell whether it was followed; none is vague like 'where appropriate', 'properly' or 'follow best practices'", "No rule is generic advice a capable coding model already follows without being told, such as writing readable code or keeping functions small" ]
+        reference: "code rules: Go HTTP services"
+  - id: no_coding_practice_in_source
+    prompt: |
+      generate code rules from this:
+
+      The fictional Linden Street Bakery opens at 07:00 on weekdays and 08:00 on weekends. The sourdough is fermented for eighteen hours in a cool room before baking, and the rye loaves sell out by noon on Saturdays. Orders for whole cakes need two days' notice. The bakery closes on public holidays.
+    assert:
+      - type: starts-with
+        value: "No code rules found in"
+        weight: 3
+      - type: not-regex
+        value: '(?:^|\n)[-*+][ \t]'
+        weight: 2
+  - id: hint_keeps_only_testing
+    prompt: |
+      code rules from our style guide, only the testing rules:
+
+      Fictional Team Hollow Style Guide. Naming: files are kebab-case, React components are PascalCase, and hooks start with use. Git: squash-merge every pull request and write the subject in the imperative mood under 60 characters. Testing: every test file sits next to its source as name.test.ts and runs with vitest; shared fixtures live in tests/fixtures and are never mutated by a test; any test that touches the network uses the msw handlers in tests/mocks rather than real endpoints; a bug fix lands with a test that failed before the fix. Deploys: only the release workflow deploys to production.
+    assert:
+      - type: starts-with
+        value: "- "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*#'
+        weight: 1
+      - type: contains-any
+        value: [ "vitest", "tests/fixtures", "msw", "tests/mocks" ]
+        weight: 2
+      - type: not-icontains
+        value: "squash"
+        weight: 1
+      - type: not-icontains
+        value: "kebab-case"
+        weight: 1
+      - type: not-icontains
+        value: "release workflow"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "Every rule is about testing; none covers naming, git or deploys", "The rules carry the guide's testing conventions: tests colocated as name.test.ts with vitest, shared fixtures in tests/fixtures never mutated, network calls through the msw handlers in tests/mocks, and bug fixes landing with a test that failed before the fix", "No rule adds a testing practice the guide does not state" ]
+        reference: "A fictional style guide whose testing rules are: colocated name.test.ts run with vitest; fixtures in tests/fixtures never mutated; network through msw handlers in tests/mocks; every bug fix ships a test that failed first. Naming, git and deploy rules must be left out."
+  - id: code_file_conventions
+    prompt: |
+      code rules from this file, so new code matches it:
+
+      ```ts
+      // src/billing/invoice-service.ts (fictional)
+      import { ok, err, type Result } from "../lib/result";
+      import { logger } from "../lib/logger";
+      import type { InvoiceRepo } from "./invoice-repo";
+
+      export class InvoiceService {
+        private log = logger.child({ module: "billing" });
+        constructor(private readonly repo: InvoiceRepo) {}
+
+        async void(invoiceId: string): Promise<Result<void, "not_found" | "already_paid">> {
+          const invoice = await this.repo.find(invoiceId);
+          if (!invoice) return err("not_found");
+          if (invoice.paidAtMs !== null) return err("already_paid");
+          await this.repo.markVoid(invoiceId, Date.now());
+          this.log.info({ invoiceId }, "invoice voided");
+          return ok(undefined);
+        }
+      }
+      ```
+    assert:
+      - type: starts-with
+        value: "- "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*#'
+        weight: 1
+      - type: contains-any
+        value: [ "Result", "err(", "ok(" ]
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*\d+[.)][ \t]'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The rules codify conventions the file demonstrates, such as returning Result values built with ok and err instead of throwing, string-literal error codes, a module-scoped logger.child, injecting the repository through the constructor, or timestamps stored as epoch milliseconds with an Ms suffix", "No rule introduces a library, tool, framework or practice that appears nowhere in the file (for example a validation library, a test framework, or throwing custom exception classes)" ]
+        reference: |
+          The full fictional file the rules were drawn from (anything visible here counts as shown by the file):
+
+          // src/billing/invoice-service.ts (fictional)
+          import { ok, err, type Result } from "../lib/result";
+          import { logger } from "../lib/logger";
+          import type { InvoiceRepo } from "./invoice-repo";
+
+          export class InvoiceService {
+            private log = logger.child({ module: "billing" });
+            constructor(private readonly repo: InvoiceRepo) {}
+
+            async void(invoiceId: string): Promise<Result<void, "not_found" | "already_paid">> {
+              const invoice = await this.repo.find(invoiceId);
+              if (!invoice) return err("not_found");
+              if (invoice.paidAtMs !== null) return err("already_paid");
+              await this.repo.markVoid(invoiceId, Date.now());
+              this.log.info({ invoiceId }, "invoice voided");
+              return ok(undefined);
+            }
+          }
+  - id: essay_examples_generalized
+    prompt: |
+      turn this essay into rules for my CLAUDE.md:
+
+      Four habits I want from a coding agent, from a fictional month of pairing with one. First, scope. When I asked it to fix an off-by-one in formatInvoiceTotal, it also rewrote the three functions next to it, renamed a parameter, and reformatted the file, and the review took an hour instead of a minute. Change what the task needs and nothing else. Second, reproduce before you fix: a bug fix should start with a test that fails because of the bug, then make it pass. Third, never make a red suite green by deleting or skipping the failing test; mine once marked test_rounding as skipped and called the job done. Fourth, when it reports a task finished, it should say which commands it ran and what they printed, not just that things work. I write all of this in Vim, by the way, which has nothing to do with any of it.
+    # SYNTHETIC ADVERSARIAL FIXTURE: bare list with all four habits, but two
+    # rules are tied to the essay's illustrations (formatInvoiceTotal and
+    # test_rounding) instead of the general practice, and the Vim aside
+    # became a rule.
+    adversarial_output: |
+      - Never rewrite the functions next to `formatInvoiceTotal` when fixing its off-by-one.
+      - Start every bug fix with a test that fails because of the bug.
+      - Never mark `test_rounding` as skipped to get the suite passing.
+      - Name each command run and its output when reporting a task finished.
+      - Edit files in Vim.
+    assert:
+      - type: starts-with
+        value: "- "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*#'
+        weight: 1
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*\d+[.)][ \t]'
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "The rules carry all four habits from the essay: keep a change to what the task needs, start a bug fix with a test that fails because of the bug, never delete or skip a failing test to pass the suite, and report the commands run and their output when saying a task is done", "Each rule states the general practice so it applies in any codebase; no rule is tied to the essay's illustrative examples such as formatInvoiceTotal or test_rounding", "Nothing from the off-topic aside about writing in Vim became a rule" ]
+        reference: "A fictional essay on four agent habits, illustrated with a formatInvoiceTotal fix that sprawled and a skipped test_rounding test. The rules should be the four general habits, with the illustrations generalized away and the Vim aside left out."
+  - id: messy_transcript_directions
+    prompt: |
+      code rules from this, I just dictated it:
+
+      ok so rules for Fernway, it's a fictional Python service. Tests, we used to run them with python -m unittest but scratch that, we switched to pytest -q back in March, so it's pytest -q now. All database access goes through get_session() in fernway/db/session.py, never call sqlite3.connect yourself. Every public function gets type hints and mypy --strict has to pass before you open a PR. Functions, I dunno, try to keep them around 40 lines-ish, it's not a hard rule, just a smell. Oh and I like two-space tabs and a dark theme but don't put my editor stuff in the rules, that's just me. And never push straight to main, everything goes through a pull request.
+    # SYNTHETIC ADVERSARIAL FIXTURE: bare list with real paths, but it keeps the
+    # superseded unittest command, hardens the hedged 40-line guideline into a
+    # strict limit, and includes the editor preferences the speaker excluded.
+    adversarial_output: |
+      - Route all database access through `get_session()` in `fernway/db/session.py` and never call `sqlite3.connect`.
+      - Run tests with `python -m unittest` before every commit.
+      - Keep every function at 40 lines or fewer.
+      - Indent with two spaces and use a dark editor theme.
+      - Never push to `main` directly; open a pull request instead.
+    assert:
+      - type: starts-with
+        value: "- "
+        weight: 2
+      - type: not-regex
+        value: '(?:^|\n)[ \t]*#'
+        weight: 1
+      - type: contains-any
+        value: [ "get_session", "mypy --strict", "pytest -q" ]
+        weight: 2
+      - type: not-contains
+        value: "**"
+        weight: 1
+      - type: llm-assert
+        weight: 3
+        value: [ "Tests are run with pytest -q; no rule tells the agent to use python -m unittest, which the speaker replaced", "The rules carry the speaker's firm conventions: database access only through get_session() in fernway/db/session.py and never sqlite3.connect, type hints on public functions with mypy --strict passing before a PR, and no direct pushes to main", "The function-length guideline is either left out or kept as the speaker's approximate preference; no rule turns it into a strict limit such as at most 40 lines", "No rule covers the speaker's editor settings (two-space tabs, dark theme), which the speaker said to leave out" ]
+        reference: "A fictional dictated transcript for a Python service. Firm rules: pytest -q (replacing python -m unittest), DB only via get_session() in fernway/db/session.py, type hints and mypy --strict before a PR, no direct pushes to main. The ~40-line function guideline is explicitly not a hard rule; the editor preferences are explicitly excluded."

@@ -29,6 +29,8 @@
     <string>{{USER_DIR}}/PRINCIPAL</string>
     <string>{{USER_DIR}}/DIGITAL_ASSISTANT</string>
     <string>{{USER_DIR}}/CONFIG</string>
+    <string>{{USER_DIR}}/MEMORY/Network</string>
+    <string>{{HOME}}/.claude/.env</string>
   </array>
   <key>ThrottleInterval</key>
   <integer>30</integer>

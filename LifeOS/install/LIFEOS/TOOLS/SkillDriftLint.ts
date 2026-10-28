@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * SkillDriftLint — Bitter-Pill drift detector for skill & doctrine files.
+ * @version 1.1.2
+ * SkillDriftLint — Bitter-Lesson drift detector for skill & doctrine files.
  *
  * Ported from the reference implementation donated by @rpriven (public issue #1523,
  * MIT, gist 82ecc6c832d46d35c97a3c7918de06ae) — security-reviewed line-by-line on
@@ -84,7 +85,7 @@ function lintText(text: string): { findings: Finding[]; heuristics: { type: stri
   const bashFences = (text.match(/```bash/g) || []).length;
   if (bashFences >= 4) heuristics.push({ type: "V1", sev: "low", msg: `${bashFences} bash code-blocks — check for prescribed command sequences vs. illustrative examples.` });
   const routes = (text.match(/["“`][^"”`\n]{2,40}["”`]\s*(?:→|->)\s*\w[\w-]*\.md/g) || []).length;
-  if (routes >= 3) heuristics.push({ type: "V1", sev: "med", msg: `If-then routing dispatch table (${routes} "trigger"→file.md maps) — let the model pick the workflow from context.` });
+  if (routes >= 3) heuristics.push({ type: "V1", sev: "med", msg: `If-then routing dispatch table (${routes} "trigger"→file.md maps) — let the model pick the intent from context.` });
   return { findings, heuristics };
 }
 

@@ -1,0 +1,6 @@
+{
+  "_docs": "Read by LIFEOS/LOCATION/Here.ts readConfig(). Keys: url = your Location Worker's address (leave unset until the Worker is deployed; sync and pair refuse to run without it). home = {name, lat, lon, timezone} is the point the system treats as home; the 0,0 placeholder below is not a real place, so set it to yours before the first sync. stale_hours = how old a fix may be before readers fall back to home (default 6). home_radius_m = how close counts as at home (default 500). Edit only these keys; extra keys are ignored.",
+  "stale_hours": 6,
+  "home_radius_m": 500,
+  "home": { "name": "Home", "lat": 0, "lon": 0, "timezone": "UTC" }
+}

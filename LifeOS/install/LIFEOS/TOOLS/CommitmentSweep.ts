@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * @version 1.3.10
+ */
 // Normalize env path vars Claude Code may inject unexpanded — literal $HOME/${HOME}
 // in LIFEOS_DIR/LIFEOS_CONFIG_DIR/PROJECTS_DIR resolves to a shadow dir (#1404 / PR #1451, author jbmml).
 for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -23,7 +26,8 @@ for (const __k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
  *   4. Voice-notifies on overdue OR due_today (via Pulse /notify)
  *   5. Appends one digest line to MEMORY/OBSERVABILITY/commitment-digest.jsonl
  *
- * Always exits 0. gh / pulse failures log but never propagate.
+ * Exit status: 0 = complete digest; 1 = fetch / parse / notify / fatal error (digest incomplete); 2 = sweep disabled
+ * (no work config). gh / pulse failures are logged in the digest AND reflected in the exit code, so a scheduler can tell.
  */
 
 import { existsSync, mkdirSync, appendFileSync } from "fs";
@@ -32,6 +36,7 @@ import { spawnSync } from "child_process";
 import { loadWorkConfig } from "../../hooks/lib/work-config";
 import { PULSE_BASE } from "../PULSE/endpoint";
 import { homedir } from "node:os";
+import { getLifeosDir } from "./Paths"; // public issue #1974 @sabo961, PR #1918 @PigLardLord
 
 // Normalize env path vars that Claude Code injects without shell expansion (LifeOS#1404)
 for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
@@ -41,7 +46,7 @@ for (const k of ["LIFEOS_DIR", "LIFEOS_CONFIG_DIR", "PROJECTS_DIR"]) {
 
 
 const HOME = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
-const LIFEOS_DIR = process.env.LIFEOS_DIR || join(HOME, ".claude", "LIFEOS");
+const LIFEOS_DIR = getLifeosDir();
 const OBS_DIR = join(LIFEOS_DIR, "MEMORY", "OBSERVABILITY");
 const OBS_LOG = join(OBS_DIR, "commitment-digest.jsonl");
 const PULSE_NOTIFY = `${PULSE_BASE}/notify`;
@@ -126,13 +131,36 @@ function fetchIssues(repo: string): { issues: GhIssue[]; error: string | null } 
   }
 }
 
+/**
+ * Validate the notify origin: http only for loopback, https for any other host (certificate verification stays on),
+ * no embedded credentials, no path/query smuggling. Returns the normalized notify URL or throws.
+ */
+export function validatedNotifyUrl(base: string): string {
+  let u: URL;
+  try { u = new URL(base); } catch { throw new Error(`PULSE_URL is not a URL: ${JSON.stringify(base)}`); }
+  const loopback = u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "[::1]";
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(`PULSE_URL scheme must be http or https: ${u.protocol}`);
+  if (u.protocol === "http:" && !loopback) throw new Error("PULSE_URL over plain http is only allowed for loopback hosts");
+  if (u.username || u.password) throw new Error("PULSE_URL must not embed credentials");
+  return `${u.origin}${u.pathname.replace(/\/+$/, "")}/notify`;
+}
+
+/** Exit status for a finished sweep: 0 only when the digest is complete; 1 for fetch/parse/notify errors; 2 when the sweep is disabled/unavailable. */
+export function sweepExitCode(digest: Pick<Digest, "errors">, disabled: boolean): number {
+  if (disabled) return 2;
+  return digest.errors.length > 0 ? 1 : 0;
+}
+
 function pulseNotify(message: string): boolean {
+  let url: string;
+  try { url = validatedNotifyUrl(PULSE_BASE); } catch (e) { console.error(`[CommitmentSweep] notify refused: ${String(e)}`); return false; }
   const r = spawnSync(
     "curl",
     [
-      "-sk", "-X", "POST", PULSE_NOTIFY,
+      // No -k: TLS certificate verification stays on for https hosts.
+      "-s", "-f", "-X", "POST", url,
       "-H", "Content-Type: application/json",
-      // Cadence job: silent banner only — scheduled tasks never voice ({{PRINCIPAL_NAME}}, 2026-08-14)
+      // Cadence job: silent banner only — scheduled tasks never voice (2026-08-14)
       "-d", JSON.stringify({ message, voice_enabled: false }),
       "--max-time", "8",
     ],
@@ -187,7 +215,7 @@ async function main() {
     digest.errors.push(`work_config_disabled: ${cfg.reason || "unknown"}`);
     appendFileSync(OBS_LOG, JSON.stringify(digest) + "\n");
     console.error(`[CommitmentSweep] disabled: ${cfg.reason}`);
-    process.exit(0);
+    process.exit(sweepExitCode(digest, true));
   }
 
   const { issues, error } = fetchIssues(cfg.repo);
@@ -243,12 +271,13 @@ async function main() {
     `notified=${digest.notified} errors=${digest.errors.length}`,
   );
   if (dryRun && voiceLine) console.log(`[CommitmentSweep] would-say: ${voiceLine}`);
-  process.exit(0);
+  if (digest.errors.length > 0) console.error(`[CommitmentSweep] incomplete digest: ${digest.errors.slice(0, 5).join(" | ")}`);
+  process.exit(sweepExitCode(digest, false));
 }
 
 if (import.meta.main) {
   main().catch((err) => {
     console.error(`[CommitmentSweep] Fatal: ${String(err)}`);
-    process.exit(0);
+    process.exit(1);
   });
 }
